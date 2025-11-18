@@ -104,84 +104,93 @@ export default function AdminRegistration() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const sendVerificationCode = async (email) => {
-    try {
-      const code = Math.floor(1000 + Math.random() * 9000).toString();
-      setGeneratedCode(code);
-      setCodeExpiry(Date.now() + 10 * 60 * 1000);
+const sendVerificationCode = async (userEmail) => {
+  try {
+    const code = Math.floor(1000 + Math.random() * 9000).toString();
+    setGeneratedCode(code);
+    setCodeExpiry(Date.now() + 10 * 60 * 1000);
 
-      console.log("📧 Sending verification code to:", email);
+    console.log("🎯 SENDING VERIFICATION CODE", {
+      to: userEmail,
+      from: "zohaibytautomation@gmail.com", 
+      code: code
+    });
 
-      // Simple EmailJS implementation without API fallback
-      const templateParams = {
-        to_email: email,
-        user_name: formData.fullName,
+    // Use Nodemailer - Most Reliable
+    const response = await fetch('/api/send-verification', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: userEmail, // 👈 User ki actual email
+        userName: formData.fullName,
         company: formData.company,
-        verification_code: code,
-        code: code,
-        from_name: "Admin Registration",
-        subject: `Your Verification Code: ${code}`
-      };
+        code: code
+      }),
+    });
 
-      await emailjs.send(
-        process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID,
-        process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID,
-        templateParams
-      );
+    const result = await response.json();
 
-      console.log("✅ Email sent successfully");
+    if (response.ok && result.success) {
+      console.log("✅ EMAIL SENT SUCCESSFULLY!", {
+        to: userEmail,
+        messageId: result.messageId
+      });
       setStep(2);
       return { success: true };
-
-    } catch (error) {
-      console.error("❌ Email send error:", error);
-      
-      // Development mode - proceed without showing error
-      console.log("🔄 Development mode: Proceeding to verification");
-      setStep(2);
-      return { success: true };
+    } else {
+      console.error("❌ Nodemailer failed:", result);
+      throw new Error(result.error || 'Email service unavailable');
     }
-  };
 
-  const handleRegister = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setErrors({});
+  } catch (error) {
+    console.error("💥 Email sending error:", error);
+    
+    // Emergency fallback - show code for testing
+    console.log("🚨 EMERGENCY: Showing code for testing:", generatedCode);
+    alert(`EMAIL SERVICE TEMPORARILY UNAVAILABLE\n\nUse this code for testing: ${generatedCode}\n\nThis would be sent to: ${formData.email}`);
+    
+    setStep(2);
+    return { success: true };
+  }
+};
 
-    if (!validateForm()) {
+const handleRegister = async (e) => {
+  e.preventDefault();
+  setLoading(true);
+  setErrors({});
+
+  if (!validateForm()) {
+    setLoading(false);
+    return;
+  }
+
+  try {
+    // Check existing email
+    const { data: existing, error: fetchError } = await supabase
+      .from("admin_users")
+      .select("*")
+      .eq("email", formData.email);
+
+    if (fetchError) throw fetchError;
+    
+    if (existing && existing.length > 0) {
+      setErrors({ email: "Email already registered!" });
       setLoading(false);
       return;
     }
 
-    try {
-      // Check existing email
-      console.log("🔍 Checking existing email:", formData.email);
-      const { data: existing, error: fetchError } = await supabase
-        .from("admin_users")
-        .select("*")
-        .eq("email", formData.email);
-
-      if (fetchError) {
-        console.error("❌ Supabase fetch error:", fetchError);
-        throw new Error(`Database error: ${fetchError.message}`);
-      }
+    // 👇 YAHI IMPORTANT CALL HAI
+    await sendVerificationCode(formData.email); // User ki actual email pass karein
       
-      if (existing && existing.length > 0) {
-        setErrors({ email: "Email already registered!" });
-        setLoading(false);
-        return;
-      }
-
-      console.log("✅ Email available, sending verification code");
-      await sendVerificationCode(formData.email);
-      
-    } catch (error) {
-      console.error("💥 Registration process error:", error);
-      setErrors({ general: error.message });
-    } finally {
-      setLoading(false);
-    }
-  };
+  } catch (error) {
+    console.error("Registration error:", error);
+    setErrors({ general: error.message });
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleResendCode = async () => {
     setLoading(true);
