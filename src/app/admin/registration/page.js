@@ -4,7 +4,7 @@ import { supabase } from "@/utils/supabaseClient";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import emailjs from "@emailjs/browser";
-import emailjs from "emailjs-com"; 
+
 
 export default function AdminRegistration() {
   const [formData, setFormData] = useState({
