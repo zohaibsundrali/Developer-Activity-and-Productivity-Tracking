@@ -1,27 +1,104 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from '@supabase/supabase-js';
+import Header from "@/components/admin/Header";
+import Navigation from "@/components/admin/Navigation";
+import DashboardOverview from "@/components/admin/DashboardOverview";
+import AllProjects from "@/components/admin/AllProjects";
+import Notifications from "@/components/admin/Notifications";
+import AddDeveloper from "@/components/admin/AddDeveloper";
+import ViewDevelopers from "@/components/admin/ViewDevelopers";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
 export default function AdminDashboard() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [activeSection, setActiveSection] = useState("overview");
+  const [developers, setDevelopers] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const router = useRouter();
 
   useEffect(() => {
-    // Check if user is logged in
     const adminUser = localStorage.getItem("adminUser");
     if (!adminUser) {
-      router.push("/admin/login");
+      router.push("/login");
       return;
     }
 
-    setUser(JSON.parse(adminUser));
-    setLoading(false);
+    const userData = JSON.parse(adminUser);
+    setUser(userData);
+    fetchDashboardData();
   }, [router]);
+
+
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch developers
+      const { data: developersData } = await supabase
+        .from('developers')
+        .select('*')
+        .order('created_at', { ascending: false });
+      setDevelopers(developersData || []);
+
+      // Fetch projects
+      const { data: projectsData } = await supabase
+        .from('projects')
+        .select('*')
+        .order('created_at', { ascending: false });
+      setProjects(projectsData || []);
+
+      // Fetch notifications
+      const { data: notificationsData } = await supabase
+        .from('notifications')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10);
+      setNotifications(notificationsData || []);
+
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      alert('Error loading data from database');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem("adminUser");
     router.push("/admin/login");
+  };
+
+  const renderContent = () => {
+    const contentProps = {
+      user,
+      developers,
+      projects,
+      notifications,
+      onRefresh: fetchDashboardData,
+      supabase
+    };
+
+    switch (activeSection) {
+      case "all-projects":
+        return <AllProjects {...contentProps} />;
+      case "notifications":
+        return <Notifications {...contentProps} />;
+      case "add-developer":
+        return <AddDeveloper {...contentProps} />;
+      case "view-developers":
+        return <ViewDevelopers {...contentProps} />;
+      default:
+        return <DashboardOverview {...contentProps} />;
+    }
   };
 
   if (loading) {
@@ -34,67 +111,17 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* Header */}
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-              <p className="text-gray-600">Welcome back, {user?.full_name}</p>
-            </div>
-            <div className="flex items-center space-x-4">
-              <span className="text-gray-700">{user?.company}</span>
-              <button
-                onClick={handleLogout}
-                className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
-              >
-                Logout
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
+      <Header user={user} onLogout={handleLogout} />
+      <Navigation 
+        activeSection={activeSection} 
+        onSectionChange={setActiveSection}
+        notificationCount={notifications.length}
+      />
+      
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
-          <div className="border-4 border-dashed border-gray-200 rounded-lg h-96 p-8">
-            <div className="text-center">
-              <h2 className="text-2xl font-bold text-gray-700 mb-4">
-                Dashboard Overview
-              </h2>
-              <p className="text-gray-600">
-                Welcome to your admin dashboard. Here you can manage your organization's settings and users.
-              </p>
-              
-              <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white p-6 rounded-lg shadow">
-                  <h3 className="text-lg font-semibold mb-2">Profile</h3>
-                  <p className="text-gray-600">Name: {user?.full_name}</p>
-                  <p className="text-gray-600">Email: {user?.email}</p>
-                  <p className="text-gray-600">Company: {user?.company}</p>
-                </div>
-                
-                <div className="bg-white p-6 rounded-lg shadow">
-                  <h3 className="text-lg font-semibold mb-2">Quick Actions</h3>
-                  <div className="space-y-2">
-                    <button className="w-full bg-[#009578] text-white p-2 rounded hover:bg-[#0e7762]">
-                      Manage Users
-                    </button>
-                    <button className="w-full bg-[#009578] text-white p-2 rounded hover:bg-[#0e7762]">
-                      Settings
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="bg-white p-6 rounded-lg shadow">
-                  <h3 className="text-lg font-semibold mb-2">Status</h3>
-                  <p className="text-green-600">✓ Account Verified</p>
-                  <p className="text-green-600">✓ Active</p>
-                  <p className="text-gray-600">Role: {user?.role}</p>
-                </div>
-              </div>
-            </div>
+          <div className="border-4 border-dashed border-gray-200 rounded-lg min-h-96 p-8">
+            {renderContent()}
           </div>
         </div>
       </main>
