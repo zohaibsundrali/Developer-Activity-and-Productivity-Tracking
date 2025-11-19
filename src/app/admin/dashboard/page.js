@@ -22,6 +22,7 @@ export default function AdminDashboard() {
   const [developers, setDevelopers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const router = useRouter();
 
   useEffect(() => {
@@ -35,8 +36,6 @@ export default function AdminDashboard() {
     setUser(userData);
     fetchDashboardData();
   }, [router]);
-
-
 
   const fetchDashboardData = async () => {
     try {
@@ -57,12 +56,7 @@ export default function AdminDashboard() {
       setProjects(projectsData || []);
 
       // Fetch notifications
-      const { data: notificationsData } = await supabase
-        .from('notifications')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(10);
-      setNotifications(notificationsData || []);
+      await fetchNotifications();
 
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -72,9 +66,54 @@ export default function AdminDashboard() {
     }
   };
 
+  const fetchNotifications = async () => {
+    try {
+      const { data: notificationsData, error: notificationsError } = await supabase
+        .from('notifications')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (notificationsError) throw notificationsError;
+
+      setNotifications(notificationsData || []);
+      
+      // Calculate unread count
+      const unread = notificationsData?.filter(notif => !notif.read).length || 0;
+      setUnreadCount(unread);
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    }
+  };
+
+  const handleMarkAsRead = async (notificationId) => {
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('id', notificationId);
+
+      if (error) throw error;
+
+      // Update local state
+      setNotifications(prev => 
+        prev.map(notif => 
+          notif.id === notificationId 
+            ? { ...notif, read: true }
+            : notif
+        )
+      );
+
+      // Update unread count
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("adminUser");
-    router.push("/admin/login");
+    router.push("/login");
   };
 
   const renderContent = () => {
@@ -91,7 +130,13 @@ export default function AdminDashboard() {
       case "all-projects":
         return <AllProjects {...contentProps} />;
       case "notifications":
-        return <Notifications {...contentProps} />;
+        return (
+          <Notifications 
+            {...contentProps} 
+            onMarkAsRead={handleMarkAsRead}
+            unreadCount={unreadCount}
+          />
+        );
       case "add-developer":
         return <AddDeveloper {...contentProps} />;
       case "view-developers":
@@ -115,7 +160,7 @@ export default function AdminDashboard() {
       <Navigation 
         activeSection={activeSection} 
         onSectionChange={setActiveSection}
-        notificationCount={notifications.length}
+        notificationCount={unreadCount} // Use unreadCount instead of notifications.length
       />
       
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
