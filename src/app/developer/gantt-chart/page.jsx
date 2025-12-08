@@ -1,0 +1,408 @@
+"use client";
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { Chart } from 'react-google-charts';
+
+export default function GanttChartPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [tasks, setTasks] = useState([]);
+  const [ganttData, setGanttData] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const projectId = searchParams.get('projectId');
+
+  useEffect(() => {
+    if (!projectId) {
+      router.back();
+      return;
+    }
+
+    // Load submitted tasks from localStorage
+    const savedTasks = localStorage.getItem(`project_tasks_${projectId}`);
+    const projectData = localStorage.getItem(`project_submitted_${projectId}`);
+
+    if (!projectData || projectData !== 'true') {
+      alert('Project work not submitted yet!');
+      router.back();
+      return;
+    }
+
+    if (savedTasks) {
+      const parsedTasks = JSON.parse(savedTasks);
+      setTasks(parsedTasks);
+      prepareGanttData(parsedTasks);
+    }
+
+    setLoading(false);
+  }, [projectId, router]);
+
+  const prepareGanttData = (taskList) => {
+    // Define columns for Gantt chart
+    const columns = [
+      { type: 'string', label: 'Task ID' },
+      { type: 'string', label: 'Task Name' },
+      { type: 'string', label: 'Resource' },
+      { type: 'date', label: 'Start Date' },
+      { type: 'date', label: 'End Date' },
+      { type: 'number', label: 'Duration' },
+      { type: 'number', label: 'Percent Complete' },
+      { type: 'string', label: 'Dependencies' },
+    ];
+
+    // Convert tasks to Gantt chart format
+    const rows = taskList.map((task, index) => {
+      // Start date - agar nahi hai toh assigned date use karo
+      const startDate = task.startDate && task.startDate !== 'null' 
+        ? new Date(task.startDate) 
+        : new Date();
+
+      // End date - agar nahi hai toh start date + 7 days
+      let endDate;
+      if (task.endDate && task.endDate !== 'null') {
+        endDate = new Date(task.endDate);
+      } else {
+        endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + 7); // Default 1 week
+      }
+
+      // Ensure end date is after start date
+      if (endDate <= startDate) {
+        endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + 1);
+      }
+
+      // Calculate duration in milliseconds (Google Charts ko automatically calculate karega)
+      const duration = endDate - startDate;
+
+      // Progress based on working hours (simplified calculation)
+      const progress = task.workingHours ? Math.min(100, parseInt(task.workingHours) * 5) : 0;
+
+      return [
+        `Task${task.id}`,
+        task.title,
+        'Developer',
+        startDate,
+        endDate,
+        duration, // milliseconds mein duration
+        progress,
+        null, // dependencies
+      ];
+    });
+
+    setGanttData([columns, ...rows]);
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString || dateString === 'null') return 'Not set';
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  const handleBack = () => {
+    router.back();
+  };
+
+  const handleExportData = () => {
+    const dataStr = JSON.stringify(tasks, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `project-${projectId}-tasks.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Calculate project statistics
+  const calculateStats = () => {
+    if (tasks.length === 0) return { totalTasks: 0, totalHours: 0, dateRange: 'N/A' };
+    
+    const totalHours = tasks.reduce((sum, task) => sum + (parseInt(task.workingHours) || 0), 0);
+    
+    // Find earliest start date and latest end date
+    const dates = tasks
+      .map(task => ({
+        start: task.startDate && task.startDate !== 'null' ? new Date(task.startDate) : null,
+        end: task.endDate && task.endDate !== 'null' ? new Date(task.endDate) : null
+      }))
+      .filter(date => date.start && date.end);
+
+    if (dates.length === 0) {
+      return { totalTasks: tasks.length, totalHours, dateRange: 'Dates not set' };
+    }
+
+    const startDates = dates.map(d => d.start);
+    const endDates = dates.map(d => d.end);
+    
+    const earliestStart = new Date(Math.min(...startDates));
+    const latestEnd = new Date(Math.max(...endDates));
+    
+    const dateRange = `${formatDate(earliestStart)} - ${formatDate(latestEnd)}`;
+    
+    return { totalTasks: tasks.length, totalHours, dateRange };
+  };
+
+  const stats = calculateStats();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-xl text-gray-600">Loading Gantt Chart...</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-8">
+      <div className="max-w-7xl mx-auto px-4">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center">
+            <button
+              onClick={handleBack}
+              className="flex items-center text-gray-600 hover:text-gray-800 mr-4 bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-all"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              Back to Project
+            </button>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Project Gantt Chart</h1>
+              <p className="text-gray-600 mt-1">Visual timeline showing exact dates for each task</p>
+            </div>
+          </div>
+          
+          <button
+            onClick={handleExportData}
+            className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors font-medium flex items-center"
+          >
+            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Export Data
+          </button>
+        </div>
+
+        {/* Project Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="bg-white rounded-lg shadow p-4">
+            <div className="flex items-center">
+              <div className="bg-blue-100 p-3 rounded-lg mr-4">
+                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Total Tasks</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.totalTasks}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-4">
+            <div className="flex items-center">
+              <div className="bg-green-100 p-3 rounded-lg mr-4">
+                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Total Hours</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.totalHours} hrs</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-4">
+            <div className="flex items-center">
+              <div className="bg-purple-100 p-3 rounded-lg mr-4">
+                <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Project Timeline</p>
+                <p className="text-sm font-bold text-gray-900 truncate">{stats.dateRange}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Gantt Chart */}
+        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+          <div className="mb-4">
+            <h2 className="text-xl font-semibold text-gray-800 mb-2">Project Timeline (Date-wise)</h2>
+            <p className="text-gray-600">Each bar shows the exact start and end dates for tasks</p>
+          </div>
+          
+          {ganttData.length > 1 ? (
+            <div className="border rounded-lg overflow-hidden">
+              <Chart
+                width={'100%'}
+                height={'600px'}
+                chartType="Gantt"
+                loader={<div className="flex justify-center items-center h-32">Loading Gantt Chart...</div>}
+                data={ganttData}
+                options={{
+                  height: 600,
+                  gantt: {
+                    trackHeight: 40,
+                    barHeight: 30,
+                    labelMaxWidth: 400,
+                    criticalPathEnabled: false,
+                    innerGridTrack: { fill: '#f8fafc' },
+                    innerGridDarkTrack: { fill: '#e2e8f0' },
+                    arrow: {
+                      angle: 100,
+                      width: 2,
+                      color: '#6e6e6e',
+                      radius: 0,
+                    },
+                    palette: [
+                      {
+                        color: '#3B82F6', // Blue
+                        dark: '#1D4ED8',
+                        light: '#93C5FD',
+                      },
+                      {
+                        color: '#10B981', // Green
+                        dark: '#047857',
+                        light: '#6EE7B7',
+                      },
+                      {
+                        color: '#F59E0B', // Amber
+                        dark: '#D97706',
+                        light: '#FCD34D',
+                      },
+                      {
+                        color: '#EF4444', // Red
+                        dark: '#DC2626',
+                        light: '#FCA5A5',
+                      },
+                      {
+                        color: '#8B5CF6', // Purple
+                        dark: '#7C3AED',
+                        light: '#C4B5FD',
+                      },
+                    ],
+                  },
+                  backgroundColor: '#ffffff',
+                  chartArea: {
+                    left: 400,
+                    top: 60,
+                    width: '70%',
+                    height: '85%'
+                  },
+                  hAxis: {
+                    format: 'MMM dd, yyyy', // Date format
+                    gridlines: {
+                      count: -1,
+                      color: '#e5e7eb'
+                    },
+                    minorGridlines: {
+                      count: 0
+                    }
+                  },
+                  vAxis: {
+                    textStyle: {
+                      fontSize: 12
+                    }
+                  }
+                }}
+                rootProps={{ 'data-testid': '1' }}
+              />
+            </div>
+          ) : (
+            <div className="text-center py-12 border-2 border-dashed border-gray-300 rounded-lg">
+              <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No Task Data Available</h3>
+              <p className="text-gray-500 mb-4">Submit project work with tasks to view the Gantt chart.</p>
+            </div>
+          )}
+        </div>
+
+        {/* Detailed Tasks Table */}
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <h2 className="text-xl font-semibold text-gray-800 mb-4">Task Details with Dates</h2>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Task Name
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Description
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Start Date
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    End Date
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Working Hours
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Duration
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {tasks.map((task) => {
+                  const startDate = task.startDate && task.startDate !== 'null' ? new Date(task.startDate) : null;
+                  const endDate = task.endDate && task.endDate !== 'null' ? new Date(task.endDate) : null;
+                  const duration = startDate && endDate ? Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) : 'N/A';
+                  
+                  return (
+                    <tr key={task.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">{task.title}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-gray-500 max-w-xs truncate">{task.description}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">
+                          {startDate ? formatDate(startDate) : 'Not set'}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">
+                          {endDate ? formatDate(endDate) : 'Not set'}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{task.workingHours || 0} hrs</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">
+                          {typeof duration === 'number' ? `${duration} days` : duration}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            
+            {tasks.length === 0 && (
+              <div className="text-center py-8">
+                <p className="text-gray-500">No tasks available for this project.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

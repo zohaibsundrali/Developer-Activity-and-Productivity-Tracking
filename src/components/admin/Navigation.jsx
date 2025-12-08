@@ -4,6 +4,8 @@ export default function Navigation({ activeSection, onSectionChange, notificatio
     { id: "all-projects", label: "All Projects" },
     { id: "notifications", label: "Notifications" },
     { id: "add-developer", label: "Add Developer" },
+    // Navigation items mein add karein:
+{ id: "developer-activity", label: "Developer Activity" },
     { id: "view-developers", label: "View Developers" }
   ];
 

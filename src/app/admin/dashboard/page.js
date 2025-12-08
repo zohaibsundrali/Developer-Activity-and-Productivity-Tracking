@@ -9,6 +9,7 @@ import AllProjects from "@/components/admin/AllProjects";
 import Notifications from "@/components/admin/Notifications";
 import AddDeveloper from "@/components/admin/AddDeveloper";
 import ViewDevelopers from "@/components/admin/ViewDevelopers";
+import DeveloperActivity from "@/components/admin/DeveloperActivity";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -35,13 +36,28 @@ export default function AdminDashboard() {
     const userData = JSON.parse(adminUser);
     setUser(userData);
     fetchDashboardData();
+    
+    // Set up real-time subscription for notifications
+    const notificationsSubscription = supabase
+      .channel('notifications-changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'notifications' }, 
+        () => {
+          fetchNotifications(); // Refresh when notifications change
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(notificationsSubscription);
+    };
   }, [router]);
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
       
-      // Fetch developers
+      // Fetch all developers
       const { data: developersData } = await supabase
         .from('developers')
         .select('*')
@@ -60,7 +76,6 @@ export default function AdminDashboard() {
 
     } catch (error) {
       console.error('Error fetching data:', error);
-      alert('Error loading data from database');
     } finally {
       setLoading(false);
     }
@@ -68,19 +83,31 @@ export default function AdminDashboard() {
 
   const fetchNotifications = async () => {
     try {
-      const { data: notificationsData, error: notificationsError } = await supabase
+      const currentAdmin = JSON.parse(localStorage.getItem("adminUser"));
+      
+      if (!currentAdmin) {
+        setNotifications([]);
+        setUnreadCount(0);
+        return;
+      }
+
+      // Fetch notifications for current admin only
+      const { data: notificationsData, error } = await supabase
         .from('notifications')
         .select('*')
-        .order('created_at', { ascending: false })
-        .limit(20);
+        .or(`admin_id.eq.${currentAdmin.id},admin_email.ilike.%${currentAdmin.email}%`)
+        .order('created_at', { ascending: false });
 
-      if (notificationsError) throw notificationsError;
+      if (error) throw error;
 
       setNotifications(notificationsData || []);
       
-      // Calculate unread count
+      // Calculate unread count for current admin
       const unread = notificationsData?.filter(notif => !notif.read).length || 0;
       setUnreadCount(unread);
+      
+      console.log("📊 Dashboard: Unread count updated to", unread);
+
     } catch (error) {
       console.error('Error fetching notifications:', error);
     }
@@ -88,14 +115,19 @@ export default function AdminDashboard() {
 
   const handleMarkAsRead = async (notificationId) => {
     try {
+      console.log("📝 Marking notification as read:", notificationId);
+      
       const { error } = await supabase
         .from('notifications')
-        .update({ read: true })
+        .update({ 
+          read: true, 
+          read_at: new Date().toISOString() 
+        })
         .eq('id', notificationId);
 
       if (error) throw error;
 
-      // Update local state
+      // Optimistically update local state
       setNotifications(prev => 
         prev.map(notif => 
           notif.id === notificationId 
@@ -104,8 +136,12 @@ export default function AdminDashboard() {
         )
       );
 
-      // Update unread count
+      // Update unread count (decrease by 1)
       setUnreadCount(prev => Math.max(0, prev - 1));
+
+      // Refresh to ensure sync
+      setTimeout(fetchNotifications, 300);
+
     } catch (error) {
       console.error('Error marking notification as read:', error);
     }
@@ -117,32 +153,53 @@ export default function AdminDashboard() {
   };
 
   const renderContent = () => {
-    const contentProps = {
-      user,
-      developers,
-      projects,
-      notifications,
-      onRefresh: fetchDashboardData,
-      supabase
-    };
-
     switch (activeSection) {
       case "all-projects":
-        return <AllProjects {...contentProps} />;
+        return <AllProjects 
+          user={user} 
+          developers={developers}
+          projects={projects}
+          notifications={notifications}
+          onRefresh={fetchDashboardData}
+          supabase={supabase}
+        />;
       case "notifications":
         return (
           <Notifications 
-            {...contentProps} 
+            notifications={notifications}
             onMarkAsRead={handleMarkAsRead}
             unreadCount={unreadCount}
+            supabase={supabase}
+            user={user}
           />
         );
       case "add-developer":
-        return <AddDeveloper {...contentProps} />;
+        return <AddDeveloper 
+          user={user}
+          developers={developers}
+          projects={projects}
+          notifications={notifications}
+          onRefresh={fetchDashboardData}
+          supabase={supabase}
+        />;
+      case "developer-activity":
+        return <DeveloperActivity />; // No props needed, it fetches internally
       case "view-developers":
-        return <ViewDevelopers {...contentProps} />;
+        return <ViewDevelopers 
+          developers={developers}
+          onRefresh={fetchDashboardData}
+          supabase={supabase}
+          user={user}
+        />;
       default:
-        return <DashboardOverview {...contentProps} />;
+        return <DashboardOverview 
+          user={user}
+          developers={developers}
+          projects={projects}
+          notifications={notifications}
+          onRefresh={fetchDashboardData}
+          supabase={supabase}
+        />;
     }
   };
 
@@ -160,7 +217,7 @@ export default function AdminDashboard() {
       <Navigation 
         activeSection={activeSection} 
         onSectionChange={setActiveSection}
-        notificationCount={unreadCount} // Use unreadCount instead of notifications.length
+        notificationCount={unreadCount} // This should now work correctly
       />
       
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">

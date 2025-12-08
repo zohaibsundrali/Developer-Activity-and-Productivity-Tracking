@@ -7,6 +7,7 @@ import Navigation from "@/components/developer/Navigation";
 import DashboardOverview from "@/components/developer/DashboardOverview";
 import MyProjects from "@/components/developer/MyProjects";
 import Notifications from "@/components/developer/Notifications";
+import ProjectDetails from "@/components/developer/ProjectDetails"; // Naya component import karein
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -142,6 +143,33 @@ export default function DeveloperDashboard() {
     router.push("/login");
   };
 
+  // URL se section detect karne ka function
+  const getActiveSectionFromURL = () => {
+    const path = window.location.pathname;
+    if (path.includes('/project-details')) return 'project-details';
+    if (path.includes('/notifications')) return 'notifications';
+    if (path.includes('/projects')) return 'projects';
+    return 'overview';
+  };
+
+  // URL change par active section update karein
+  useEffect(() => {
+    const handleRouteChange = () => {
+      const section = getActiveSectionFromURL();
+      setActiveSection(section);
+    };
+
+    // Initial check
+    handleRouteChange();
+
+    // Event listener for route changes
+    window.addEventListener('popstate', handleRouteChange);
+
+    return () => {
+      window.removeEventListener('popstate', handleRouteChange);
+    };
+  }, []);
+
   const renderContent = () => {
     const contentProps = {
       user,
@@ -154,11 +182,18 @@ export default function DeveloperDashboard() {
       supabase
     };
 
+    // URL check karein agar project-details page hai toh
+    if (typeof window !== 'undefined' && window.location.pathname.includes('/project-details')) {
+      return <ProjectDetails />;
+    }
+
     switch (activeSection) {
       case "projects":
         return <MyProjects {...contentProps} />;
       case "notifications":
         return <Notifications {...contentProps} />;
+      case "project-details":
+        return <ProjectDetails />;
       default:
         return <DashboardOverview {...contentProps} />;
     }

@@ -1,4 +1,9 @@
+"use client";
+import { useRouter } from 'next/navigation';
+
 export default function MyProjects({ assignedProjects, supabase }) {
+  const router = useRouter();
+
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -13,8 +18,9 @@ export default function MyProjects({ assignedProjects, supabase }) {
     }
   };
 
-  const handleUpdateProgress = (projectId) => {
-    alert(`Update progress for project ${projectId}`);
+  const handleViewProject = (project) => {
+    // Project details ko URL parameters ke through bhejna
+    router.push(`/developer/project-details?id=${project.id}&name=${encodeURIComponent(project.name)}&description=${encodeURIComponent(project.description || '')}&status=${project.status}&progress=${project.progress}&deadline=${project.deadline || ''}&created_at=${project.created_at}&file_url=${project.file_url || ''}&file_name=${project.file_name || ''}`);
   };
 
   const handleSubmitWork = (projectId) => {
@@ -94,10 +100,10 @@ export default function MyProjects({ assignedProjects, supabase }) {
 
               <div className="flex space-x-2">
                 <button 
-                  onClick={() => handleUpdateProgress(project.id)}
+                  onClick={() => handleViewProject(project)}
                   className="flex-1 bg-blue-500 text-white py-1 px-3 rounded text-sm hover:bg-blue-600"
                 >
-                  Update Progress
+                  View Project
                 </button>
                 <button 
                   onClick={() => handleSubmitWork(project.id)}
