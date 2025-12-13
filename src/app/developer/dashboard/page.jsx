@@ -7,16 +7,106 @@ import Navigation from "@/components/developer/Navigation";
 import DashboardOverview from "@/components/developer/DashboardOverview";
 import MyProjects from "@/components/developer/MyProjects";
 import Notifications from "@/components/developer/Notifications";
-import ProjectDetails from "@/components/developer/ProjectDetails"; // Naya component import karein
+import ProjectDetails from "@/components/developer/ProjectDetails";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-export default function DeveloperDashboard() {
+// Authentication check karne ka function
+const checkAuth = () => {
+  if (typeof window === 'undefined') return false;
+  
+  const developerUser = localStorage.getItem("developerUser");
+  if (!developerUser) return false;
+
+  try {
+    const userData = JSON.parse(developerUser);
+    
+    // Session expiry check (24 hours)
+    const loginTime = new Date(userData.loginTime);
+    const currentTime = new Date();
+    const hoursDiff = (currentTime - loginTime) / (1000 * 60 * 60);
+    
+    if (hoursDiff > 24) {
+      localStorage.removeItem("developerUser");
+      return false;
+    }
+    
+    return userData;
+  } catch (error) {
+    return false;
+  }
+};
+
+// Auth check ke liye HOC
+const withAuth = (WrappedComponent) => {
+  return (props) => {
+    const router = useRouter();
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+      const authCheck = () => {
+        const user = checkAuth();
+        if (!user) {
+          // Clear any existing auth data
+          localStorage.removeItem("developerUser");
+          // Redirect to login
+          router.push("/login");
+        } else {
+          setIsAuthenticated(true);
+          setLoading(false);
+        }
+      };
+
+      authCheck();
+
+      // Listen for storage changes (for logout from other tabs)
+      const handleStorageChange = (e) => {
+        if (e.key === "developerUser" && !e.newValue) {
+          router.push("/login");
+        }
+      };
+
+      // Listen for beforeunload to maintain session
+      const handleBeforeUnload = () => {
+        const user = checkAuth();
+        if (user) {
+          // Update last activity time
+          user.lastActivity = new Date().toISOString();
+          localStorage.setItem("developerUser", JSON.stringify(user));
+        }
+      };
+
+      window.addEventListener("storage", handleStorageChange);
+      window.addEventListener("beforeunload", handleBeforeUnload);
+
+      return () => {
+        window.removeEventListener("storage", handleStorageChange);
+        window.removeEventListener("beforeunload", handleBeforeUnload);
+      };
+    }, [router]);
+
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center min-h-screen bg-[#009578]">
+          <div className="text-white text-xl">Loading...</div>
+        </div>
+      );
+    }
+
+    if (!isAuthenticated) {
+      return null; // Will redirect in useEffect
+    }
+
+    return <WrappedComponent {...props} />;
+  };
+};
+
+function DeveloperDashboardContent() {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [assignedProjects, setAssignedProjects] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [activeSection, setActiveSection] = useState("overview");
@@ -24,21 +114,25 @@ export default function DeveloperDashboard() {
   const router = useRouter();
 
   useEffect(() => {
-    const developerUser = localStorage.getItem("developerUser");
-    if (!developerUser) {
+    const authUser = checkAuth();
+    if (!authUser) {
       router.push("/login");
       return;
     }
+    
+    setUser(authUser);
+    fetchDeveloperData(authUser);
+    
+    // Auto logout after 30 minutes of inactivity
+    const inactivityTimeout = setTimeout(() => {
+      handleLogout();
+    }, 30 * 60 * 1000);
 
-    const userData = JSON.parse(developerUser);
-    setUser(userData);
-    fetchDeveloperData(userData);
+    return () => clearTimeout(inactivityTimeout);
   }, [router]);
 
   const fetchDeveloperData = async (developerData) => {
     try {
-      setLoading(true);
-      
       // Fetch assigned projects
       const { data: projectsData, error: projectsError } = await supabase
         .from('projects')
@@ -49,19 +143,16 @@ export default function DeveloperDashboard() {
       if (projectsError) throw projectsError;
       setAssignedProjects(projectsData || []);
 
-      // Fetch notifications for this developer - FIXED QUERY
+      // Fetch notifications
       await fetchNotifications(developerData);
 
     } catch (error) {
       console.error('Error fetching developer data:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
   const fetchNotifications = async (developerData) => {
     try {
-      // Better query to get developer-specific notifications
       const { data: notificationsData, error: notificationsError } = await supabase
         .from('notifications')
         .select('*')
@@ -73,12 +164,8 @@ export default function DeveloperDashboard() {
       
       setNotifications(notificationsData || []);
       
-      // Calculate unread notifications
       const unread = notificationsData?.filter(notif => !notif.read).length || 0;
       setUnreadCount(unread);
-
-      console.log('Developer Notifications:', notificationsData);
-      console.log('Unread Count:', unread);
 
     } catch (error) {
       console.error('Error fetching notifications:', error);
@@ -94,7 +181,6 @@ export default function DeveloperDashboard() {
 
       if (error) throw error;
 
-      // Update local state
       setNotifications(prev => 
         prev.map(notif => 
           notif.id === notificationId 
@@ -103,7 +189,6 @@ export default function DeveloperDashboard() {
         )
       );
 
-      // Update unread count
       setUnreadCount(prev => Math.max(0, prev - 1));
 
     } catch (error) {
@@ -117,7 +202,6 @@ export default function DeveloperDashboard() {
       
       if (unreadNotifications.length === 0) return;
 
-      // Update all unread notifications in database
       const { error } = await supabase
         .from('notifications')
         .update({ read: true })
@@ -125,12 +209,10 @@ export default function DeveloperDashboard() {
 
       if (error) throw error;
 
-      // Update local state
       setNotifications(prev => 
         prev.map(notif => ({ ...notif, read: true }))
       );
 
-      // Reset unread count
       setUnreadCount(0);
 
     } catch (error) {
@@ -139,12 +221,18 @@ export default function DeveloperDashboard() {
   };
 
   const handleLogout = () => {
+    // Clear all auth data
     localStorage.removeItem("developerUser");
+    // Clear cookies bhi agar hain
+    document.cookie = "developer_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    
+    // Redirect to login
     router.push("/login");
   };
 
-  // URL se section detect karne ka function
   const getActiveSectionFromURL = () => {
+    if (typeof window === 'undefined') return 'overview';
+    
     const path = window.location.pathname;
     if (path.includes('/project-details')) return 'project-details';
     if (path.includes('/notifications')) return 'notifications';
@@ -152,17 +240,14 @@ export default function DeveloperDashboard() {
     return 'overview';
   };
 
-  // URL change par active section update karein
   useEffect(() => {
     const handleRouteChange = () => {
       const section = getActiveSectionFromURL();
       setActiveSection(section);
     };
 
-    // Initial check
     handleRouteChange();
 
-    // Event listener for route changes
     window.addEventListener('popstate', handleRouteChange);
 
     return () => {
@@ -179,12 +264,12 @@ export default function DeveloperDashboard() {
       onMarkAsRead: handleMarkAsRead,
       onMarkAllAsRead: handleMarkAllAsRead,
       onSectionChange: setActiveSection,
-      supabase
+      supabase,
+      onLogout: handleLogout // Add logout function to props
     };
 
-    // URL check karein agar project-details page hai toh
     if (typeof window !== 'undefined' && window.location.pathname.includes('/project-details')) {
-      return <ProjectDetails />;
+      return <ProjectDetails user={user} />;
     }
 
     switch (activeSection) {
@@ -193,13 +278,13 @@ export default function DeveloperDashboard() {
       case "notifications":
         return <Notifications {...contentProps} />;
       case "project-details":
-        return <ProjectDetails />;
+        return <ProjectDetails user={user} />;
       default:
         return <DashboardOverview {...contentProps} />;
     }
   };
 
-  if (loading) {
+  if (!user) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#009578]">
         <div className="text-white text-xl">Loading...</div>
@@ -232,3 +317,6 @@ export default function DeveloperDashboard() {
     </div>
   );
 }
+
+// Wrap main component with auth HOC
+export default withAuth(DeveloperDashboardContent);

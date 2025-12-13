@@ -8,26 +8,25 @@ const supabase = createClient(
 );
 
 export default function DeveloperActivity() {
-  const [currentAdmin, setCurrentAdmin] = useState(null); // Changed to store full admin object
+  const [currentAdmin, setCurrentAdmin] = useState(null);
   const [developers, setDevelopers] = useState([]);
   const [selectedDeveloper, setSelectedDeveloper] = useState("");
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [timeRange, setTimeRange] = useState("today");
   const [activityData, setActivityData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [fetchingDevelopers, setFetchingDevelopers] = useState(false);
   const [productivityScore, setProductivityScore] = useState(0);
 
-  // Step 1: Get current admin from localStorage (like your ViewDevelopers component)
+  // Get current admin from localStorage
   useEffect(() => {
     const getCurrentAdmin = () => {
       try {
         const adminData = JSON.parse(localStorage.getItem("adminUser"));
         
         if (adminData && adminData.email) {
-          console.log("Admin found in localStorage:", adminData);
           setCurrentAdmin(adminData);
         } else {
-          console.log("No admin found in localStorage");
           setCurrentAdmin(null);
         }
       } catch (error) {
@@ -37,88 +36,110 @@ export default function DeveloperActivity() {
     };
 
     getCurrentAdmin();
-
-    // Listen for storage changes (if other components update it)
-    const handleStorageChange = (e) => {
-      if (e.key === "adminUser") {
-        getCurrentAdmin();
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('storage', getCurrentAdmin);
     
-    // Also check periodically (optional)
-    const interval = setInterval(getCurrentAdmin, 5000);
-
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      clearInterval(interval);
+      window.removeEventListener('storage', getCurrentAdmin);
     };
   }, []);
 
-  // Step 2: Fetch developers added by current admin
+  // Fetch developers added by current admin
   useEffect(() => {
-    if (currentAdmin) {
-      console.log("Fetching developers for admin:", currentAdmin.email);
+    if (currentAdmin && currentAdmin.id) {
       fetchAddedDevelopers();
     } else {
-      console.log("No admin, clearing developers");
       setDevelopers([]);
       setSelectedDeveloper("");
     }
   }, [currentAdmin]);
 
   const fetchAddedDevelopers = async () => {
+    setFetchingDevelopers(true);
     try {
-      if (!currentAdmin) {
-        console.log("No admin available to fetch developers");
+      if (!currentAdmin || !currentAdmin.id) {
         return;
       }
 
-      console.log("Fetching developers for admin ID:", currentAdmin.id, "Email:", currentAdmin.email);
+      let developersData = [];
 
-      // Try different possible column names based on your database structure
-      let query = supabase
-        .from('developers')
-        .select('*')
-        .order('name', { ascending: true });
+      // Try different approaches to find developers
+      
+      // Approach 1: Try common column names
+      const possibleColumns = ['added_by_admin', 'added_by', 'admin_id', 'created_by'];
+      
+      for (const column of possibleColumns) {
+        // Try with admin ID
+        const { data, error } = await supabase
+          .from('developers')
+          .select('*')
+          .eq(column, currentAdmin.id);
+          
+        if (!error && data && data.length > 0) {
+          developersData = data;
+          break;
+        }
+        
+        // Try with admin email if available
+        if (currentAdmin.email) {
+          const { data: dataByEmail } = await supabase
+            .from('developers')
+            .select('*')
+            .eq(column, currentAdmin.email);
+            
+          if (dataByEmail && dataByEmail.length > 0) {
+            developersData = dataByEmail;
+            break;
+          }
+        }
+      }
 
-      // Check which column exists in your database
-      // Option 1: added_by_admin column
-      query = query.or(`added_by_admin.eq.${currentAdmin.id},added_by_admin.ilike.%${currentAdmin.email}%`);
-
-      // Option 2: If above doesn't work, try other possible column names
-      // query = query.or(`
-      //   added_by.eq.${currentAdmin.id},
-      //   added_by_email.eq.${currentAdmin.email},
-      //   admin_id.eq.${currentAdmin.id},
-      //   created_by.eq.${currentAdmin.id}
-      // `);
-
-      const { data: developers, error } = await query;
-
-      if (error) {
-        console.error("Supabase error fetching developers:", error);
-        // Try with more simple query
+      // Approach 2: If no results, fetch all and filter client-side
+      if (developersData.length === 0) {
         const { data: allDevelopers } = await supabase
           .from('developers')
           .select('*')
           .order('name', { ascending: true });
-        
-        console.log("All developers (debug):", allDevelopers);
-        setDevelopers([]);
-        return;
+
+        if (allDevelopers) {
+          // Filter by checking multiple possible fields
+          developersData = allDevelopers.filter(dev => {
+            return (
+              (dev.added_by_admin && dev.added_by_admin === currentAdmin.id) ||
+              (dev.added_by && dev.added_by === currentAdmin.id) ||
+              (dev.admin_id && dev.admin_id === currentAdmin.id) ||
+              (dev.created_by && dev.created_by === currentAdmin.id) ||
+              (currentAdmin.email && (
+                (dev.added_by_admin && dev.added_by_admin === currentAdmin.email) ||
+                (dev.added_by && dev.added_by === currentAdmin.email)
+              ))
+            );
+          });
+        }
       }
-      
-      console.log("Developers fetched:", developers?.length || 0, developers);
-      setDevelopers(developers || []);
-      
-      // Reset selected developer if it's not in the list
-      if (selectedDeveloper && developers && !developers.find(d => d.id === selectedDeveloper)) {
+
+      // Approach 3: Try OR query
+      if (developersData.length === 0 && currentAdmin.id) {
+        const { data: orData } = await supabase
+          .from('developers')
+          .select('*')
+          .or(`added_by_admin.eq.${currentAdmin.id},added_by.eq.${currentAdmin.id},admin_id.eq.${currentAdmin.id}`);
+          
+        if (orData) {
+          developersData = orData;
+        }
+      }
+
+      setDevelopers(developersData);
+
+      // Reset selected developer if not in list
+      if (selectedDeveloper && developersData.length > 0 && !developersData.find(d => d.id === selectedDeveloper)) {
         setSelectedDeveloper("");
       }
+
     } catch (error) {
       console.error('Error fetching developers:', error);
+    } finally {
+      setFetchingDevelopers(false);
     }
   };
 
@@ -133,40 +154,44 @@ export default function DeveloperActivity() {
     try {
       const dateFilter = getDateFilter();
       
-      // Fetch activities
-      const { data: activities } = await supabase
-        .from('developer_activities')
-        .select('*')
-        .eq('developer_id', selectedDeveloper)
-        .gte('timestamp', dateFilter.start)
-        .lte('timestamp', dateFilter.end)
-        .order('timestamp', { ascending: true });
+      // Fetch all activity data
+      const [activitiesRes, screenshotsRes, productivityRes] = await Promise.all([
+        supabase
+          .from('developer_activities')
+          .select('*')
+          .eq('developer_id', selectedDeveloper)
+          .gte('timestamp', dateFilter.start)
+          .lte('timestamp', dateFilter.end)
+          .order('timestamp', { ascending: true }),
+        
+        supabase
+          .from('screenshots')
+          .select('*')
+          .eq('developer_id', selectedDeveloper)
+          .gte('timestamp', dateFilter.start)
+          .lte('timestamp', dateFilter.end)
+          .order('timestamp', { ascending: true }),
+        
+        supabase
+          .from('productivity_scores')
+          .select('*')
+          .eq('developer_id', selectedDeveloper)
+          .gte('date', selectedDate)
+          .order('date', { ascending: false })
+      ]);
 
-      // Fetch screenshots
-      const { data: screenshots } = await supabase
-        .from('screenshots')
-        .select('*')
-        .eq('developer_id', selectedDeveloper)
-        .gte('timestamp', dateFilter.start)
-        .lte('timestamp', dateFilter.end)
-        .order('timestamp', { ascending: true });
+      const activities = activitiesRes.data || [];
+      const screenshots = screenshotsRes.data || [];
+      const productivity = productivityRes.data || [];
 
-      // Fetch productivity scores
-      const { data: productivity } = await supabase
-        .from('productivity_scores')
-        .select('*')
-        .eq('developer_id', selectedDeveloper)
-        .gte('date', selectedDate)
-        .order('date', { ascending: false });
-
-      // Calculate productivity metrics
-      const metrics = calculateProductivityMetrics(activities || []);
+      // Calculate metrics
+      const metrics = calculateProductivityMetrics(activities);
       
       setActivityData({
-        activities: activities || [],
-        screenshots: screenshots || [],
-        productivity: productivity || [],
-        metrics: metrics
+        activities,
+        screenshots,
+        productivity,
+        metrics
       });
 
       setProductivityScore(metrics.productivityPercentage);
@@ -297,13 +322,12 @@ export default function DeveloperActivity() {
     }
   };
 
-  // Refresh admin data (if needed)
+  // Refresh admin data
   const refreshAdminData = () => {
     try {
       const adminData = JSON.parse(localStorage.getItem("adminUser"));
       if (adminData) {
         setCurrentAdmin(adminData);
-        console.log("Admin data refreshed:", adminData);
       }
     } catch (error) {
       console.error("Error refreshing admin data:", error);
@@ -345,14 +369,18 @@ export default function DeveloperActivity() {
             value={selectedDeveloper}
             onChange={(e) => setSelectedDeveloper(e.target.value)}
             className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]"
-            disabled={!currentAdmin || developers.length === 0}
+            disabled={!currentAdmin || fetchingDevelopers}
           >
             <option value="">Choose Developer</option>
-            {developers.map(dev => (
-              <option key={dev.id} value={dev.id}>
-                {dev.name} ({dev.email})
-              </option>
-            ))}
+            {fetchingDevelopers ? (
+              <option value="" disabled>Loading developers...</option>
+            ) : (
+              developers.map(dev => (
+                <option key={dev.id} value={dev.id}>
+                  {dev.name} ({dev.email})
+                </option>
+              ))
+            )}
           </select>
           {!currentAdmin && (
             <div className="mt-1">
@@ -365,14 +393,25 @@ export default function DeveloperActivity() {
               </button>
             </div>
           )}
-          {currentAdmin && developers.length === 0 && (
-            <p className="text-xs text-yellow-500 mt-1">No developers added yet</p>
+          {currentAdmin && fetchingDevelopers && (
+            <p className="text-xs text-gray-500 mt-1">Loading developers...</p>
           )}
-          {currentAdmin && developers.length > 0 && (
+          {currentAdmin && !fetchingDevelopers && developers.length === 0 && (
+            <div className="mt-1">
+              <p className="text-xs text-yellow-500">No developers added by you yet</p>
+              <button
+                onClick={() => window.location.href = '/add-developer'}
+                className="text-xs text-green-600 hover:text-green-800 underline"
+              >
+                Add Developers
+              </button>
+            </div>
+          )}
+          {/* {currentAdmin && !fetchingDevelopers && developers.length > 0 && (
             <p className="text-xs text-gray-500 mt-1">
               Showing {developers.length} developer{developers.length !== 1 ? 's' : ''} added by you
             </p>
-          )}
+          )} */}
         </div>
 
         <div>
@@ -407,20 +446,12 @@ export default function DeveloperActivity() {
         <div className="flex items-end">
           <button
             onClick={fetchDeveloperActivity}
-            disabled={!selectedDeveloper}
+            disabled={!selectedDeveloper || loading}
             className="w-full bg-[#009578] text-white py-2 px-4 rounded-md hover:bg-[#0e7762] disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
           >
-            Refresh Data
+            {loading ? 'Loading...' : 'Refresh Data'}
           </button>
         </div>
-      </div>
-
-      {/* Debug info (remove in production) */}
-      <div className="mb-4 p-3 bg-gray-50 rounded text-sm hidden"> {/* Add 'hidden' class to hide in production */}
-        <p><strong>Debug Info:</strong></p>
-        <p>Admin: {currentAdmin ? JSON.stringify(currentAdmin) : 'Not logged in'}</p>
-        <p>Developers found: {developers.length}</p>
-        <p>Selected Developer: {selectedDeveloper || 'None'}</p>
       </div>
 
       {loading && (
@@ -616,7 +647,7 @@ export default function DeveloperActivity() {
                 <div className="mt-4">
                   <p className="text-gray-400 text-sm">No developers found added by you</p>
                   <button
-                    onClick={() => window.location.href = '/add-developer'} // Adjust this URL
+                    onClick={() => window.location.href = '/add-developer'}
                     className="mt-2 text-blue-500 hover:text-blue-700 underline text-sm"
                   >
                     Add Developers First

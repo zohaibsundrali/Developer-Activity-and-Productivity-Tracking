@@ -149,55 +149,69 @@ export default function LoginPage() {
     }
   };
 
-  const handleVerification = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
+const handleVerification = async (e) => {
+  e.preventDefault();
+  setLoading(true);
+  setError("");
 
-    try {
-      const storedVerification = localStorage.getItem(`verification_${email}`);
-      if (!storedVerification) {
-        throw new Error('Verification session expired. Please login again.');
-      }
-
-      const verificationData = JSON.parse(storedVerification);
-      
-      // Check if code is expired (10 minutes)
-      const isExpired = (new Date().getTime() - verificationData.timestamp) > 10 * 60 * 1000;
-      if (isExpired) {
-        localStorage.removeItem(`verification_${email}`);
-        throw new Error('Verification code expired. Please login again.');
-      }
-
-      // Check if code matches
-      if (verificationData.code !== verificationCode) {
-        throw new Error('Invalid verification code');
-      }
-
-      // Verification successful - store user data and redirect
-      const userSession = {
-        ...userData,
-        role: role,
-        loginTime: new Date().toISOString()
-      };
-
-      if (role === "admin") {
-        localStorage.setItem("adminUser", JSON.stringify(userSession));
-        router.push("/admin/dashboard");
-      } else {
-        localStorage.setItem("developerUser", JSON.stringify(userSession));
-        router.push("/developer/dashboard");
-      }
-
-      // Clean up verification data
-      localStorage.removeItem(`verification_${email}`);
-
-    } catch (error) {
-      setError(error.message);
-    } finally {
-      setLoading(false);
+  try {
+    const storedVerification = localStorage.getItem(`verification_${email}`);
+    if (!storedVerification) {
+      throw new Error('Verification session expired. Please login again.');
     }
-  };
+
+    const verificationData = JSON.parse(storedVerification);
+    
+    // Check if code is expired (10 minutes)
+    const isExpired = (new Date().getTime() - verificationData.timestamp) > 10 * 60 * 1000;
+    if (isExpired) {
+      localStorage.removeItem(`verification_${email}`);
+      throw new Error('Verification code expired. Please login again.');
+    }
+
+    // Check if code matches
+    if (verificationData.code !== verificationCode) {
+      throw new Error('Invalid verification code');
+    }
+
+    // Verification successful - store user data
+    const userSession = {
+      ...userData,
+      role: role,
+      loginTime: new Date().toISOString(),
+      lastActivity: new Date().toISOString() // Add last activity timestamp
+    };
+
+    // After successful admin verification
+ if (role === "admin") {
+  localStorage.setItem("adminUser", JSON.stringify(userSession));
+  
+  // Set cookie for middleware (30 days expiry)
+  const expiryDate = new Date();
+  expiryDate.setDate(expiryDate.getDate() + 30);
+  document.cookie = `admin_auth=true; expires=${expiryDate.toUTCString()}; path=/`;
+  
+  // Set additional security cookie
+  document.cookie = `admin_id=${userData.id}; expires=${expiryDate.toUTCString()}; path=/; HttpOnly; Secure`;
+  
+  router.push("/admin/dashboard");
+}
+else {
+      localStorage.setItem("developerUser", JSON.stringify(userSession));
+      // Set cookie for middleware
+      document.cookie = "developer_auth=true; path=/";
+      router.push("/developer/dashboard");
+    }
+
+    // Clean up verification data
+    localStorage.removeItem(`verification_${email}`);
+
+  } catch (error) {
+    setError(error.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleResendCode = async () => {
     setLoading(true);

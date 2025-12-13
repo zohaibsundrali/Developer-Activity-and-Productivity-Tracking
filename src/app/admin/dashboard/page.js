@@ -16,7 +16,122 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-export default function AdminDashboard() {
+// Authentication check function for admin
+const checkAdminAuth = () => {
+  if (typeof window === 'undefined') return false;
+  
+  const adminUser = localStorage.getItem("adminUser");
+  if (!adminUser) return false;
+
+  try {
+    const userData = JSON.parse(adminUser);
+    
+    // Verify it's actually an admin
+    if (userData.role !== 'admin') {
+      localStorage.removeItem("adminUser");
+      return false;
+    }
+    
+    // Session expiry check (24 hours)
+    const loginTime = new Date(userData.loginTime);
+    const currentTime = new Date();
+    const hoursDiff = (currentTime - loginTime) / (1000 * 60 * 60);
+    
+    if (hoursDiff > 24) {
+      localStorage.removeItem("adminUser");
+      document.cookie = "admin_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      return false;
+    }
+    
+    return userData;
+  } catch (error) {
+    return false;
+  }
+};
+
+// Higher Order Component for Admin Auth
+const withAdminAuth = (WrappedComponent) => {
+  return (props) => {
+    const router = useRouter();
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+      const authCheck = () => {
+        const user = checkAdminAuth();
+        if (!user) {
+          // Clear any existing auth data
+          localStorage.removeItem("adminUser");
+          document.cookie = "admin_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+          // Redirect to login
+          router.push("/login?redirect=" + encodeURIComponent(window.location.pathname));
+        } else {
+          setIsAuthenticated(true);
+          setLoading(false);
+        }
+      };
+
+      authCheck();
+
+      // Listen for storage changes
+      const handleStorageChange = (e) => {
+        if (e.key === "adminUser" && !e.newValue) {
+          router.push("/login");
+        }
+      };
+
+      // Auto logout after inactivity
+      let inactivityTimer;
+      const resetInactivityTimer = () => {
+        clearTimeout(inactivityTimer);
+        inactivityTimer = setTimeout(() => {
+          handleLogout();
+        }, 30 * 60 * 1000); // 30 minutes
+      };
+
+      // Event listeners for activity
+      const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+      
+      activityEvents.forEach(event => {
+        window.addEventListener(event, resetInactivityTimer);
+      });
+
+      resetInactivityTimer(); // Start timer
+
+      window.addEventListener("storage", handleStorageChange);
+
+      return () => {
+        clearTimeout(inactivityTimer);
+        activityEvents.forEach(event => {
+          window.removeEventListener(event, resetInactivityTimer);
+        });
+        window.removeEventListener("storage", handleStorageChange);
+      };
+    }, [router]);
+
+    const handleLogout = () => {
+      localStorage.removeItem("adminUser");
+      document.cookie = "admin_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      router.push("/login");
+    };
+
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center min-h-screen bg-[#009578]">
+          <div className="text-white text-xl">Loading...</div>
+        </div>
+      );
+    }
+
+    if (!isAuthenticated) {
+      return null; // Will redirect in useEffect
+    }
+
+    return <WrappedComponent {...props} onLogout={handleLogout} />;
+  };
+};
+
+function AdminDashboardContent({ onLogout: parentLogout }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState("overview");
@@ -27,14 +142,13 @@ export default function AdminDashboard() {
   const router = useRouter();
 
   useEffect(() => {
-    const adminUser = localStorage.getItem("adminUser");
-    if (!adminUser) {
+    const authUser = checkAdminAuth();
+    if (!authUser) {
       router.push("/login");
       return;
     }
 
-    const userData = JSON.parse(adminUser);
-    setUser(userData);
+    setUser(authUser);
     fetchDashboardData();
     
     // Set up real-time subscription for notifications
@@ -48,8 +162,17 @@ export default function AdminDashboard() {
       )
       .subscribe();
 
+    // Set up interval to check session every minute
+    const sessionCheckInterval = setInterval(() => {
+      const currentUser = checkAdminAuth();
+      if (!currentUser) {
+        handleLogout();
+      }
+    }, 60000); // Check every minute
+
     return () => {
       supabase.removeChannel(notificationsSubscription);
+      clearInterval(sessionCheckInterval);
     };
   }, [router]);
 
@@ -57,6 +180,13 @@ export default function AdminDashboard() {
     try {
       setLoading(true);
       
+      // Verify user is still authenticated
+      const currentUser = checkAdminAuth();
+      if (!currentUser) {
+        handleLogout();
+        return;
+      }
+
       // Fetch all developers
       const { data: developersData } = await supabase
         .from('developers')
@@ -83,11 +213,10 @@ export default function AdminDashboard() {
 
   const fetchNotifications = async () => {
     try {
-      const currentAdmin = JSON.parse(localStorage.getItem("adminUser"));
+      const currentAdmin = checkAdminAuth();
       
       if (!currentAdmin) {
-        setNotifications([]);
-        setUnreadCount(0);
+        handleLogout();
         return;
       }
 
@@ -105,8 +234,6 @@ export default function AdminDashboard() {
       // Calculate unread count for current admin
       const unread = notificationsData?.filter(notif => !notif.read).length || 0;
       setUnreadCount(unread);
-      
-      console.log("📊 Dashboard: Unread count updated to", unread);
 
     } catch (error) {
       console.error('Error fetching notifications:', error);
@@ -115,7 +242,12 @@ export default function AdminDashboard() {
 
   const handleMarkAsRead = async (notificationId) => {
     try {
-      console.log("📝 Marking notification as read:", notificationId);
+      // Verify user is authenticated
+      const currentUser = checkAdminAuth();
+      if (!currentUser) {
+        handleLogout();
+        return;
+      }
       
       const { error } = await supabase
         .from('notifications')
@@ -136,11 +268,8 @@ export default function AdminDashboard() {
         )
       );
 
-      // Update unread count (decrease by 1)
+      // Update unread count
       setUnreadCount(prev => Math.max(0, prev - 1));
-
-      // Refresh to ensure sync
-      setTimeout(fetchNotifications, 300);
 
     } catch (error) {
       console.error('Error marking notification as read:', error);
@@ -148,21 +277,60 @@ export default function AdminDashboard() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("adminUser");
-    router.push("/login");
+    if (parentLogout) {
+      parentLogout();
+    } else {
+      localStorage.removeItem("adminUser");
+      document.cookie = "admin_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      router.push("/login");
+    }
   };
 
+  // Check URL for active section
+  useEffect(() => {
+    const getActiveSectionFromURL = () => {
+      if (typeof window === 'undefined') return 'overview';
+      
+      const path = window.location.pathname;
+      if (path.includes('/admin/all-projects')) return 'all-projects';
+      if (path.includes('/admin/notifications')) return 'notifications';
+      if (path.includes('/admin/add-developer')) return 'add-developer';
+      if (path.includes('/admin/view-developers')) return 'view-developers';
+      if (path.includes('/admin/developer-activity')) return 'developer-activity';
+      return 'overview';
+    };
+
+    const handleRouteChange = () => {
+      const section = getActiveSectionFromURL();
+      setActiveSection(section);
+    };
+
+    handleRouteChange();
+
+    window.addEventListener('popstate', handleRouteChange);
+
+    return () => {
+      window.removeEventListener('popstate', handleRouteChange);
+    };
+  }, []);
+
   const renderContent = () => {
+    if (!user) return null;
+
+    const contentProps = {
+      user,
+      developers,
+      projects,
+      notifications,
+      onRefresh: fetchDashboardData,
+      supabase,
+      onMarkAsRead: handleMarkAsRead,
+      onLogout: handleLogout
+    };
+
     switch (activeSection) {
       case "all-projects":
-        return <AllProjects 
-          user={user} 
-          developers={developers}
-          projects={projects}
-          notifications={notifications}
-          onRefresh={fetchDashboardData}
-          supabase={supabase}
-        />;
+        return <AllProjects {...contentProps} />;
       case "notifications":
         return (
           <Notifications 
@@ -174,32 +342,13 @@ export default function AdminDashboard() {
           />
         );
       case "add-developer":
-        return <AddDeveloper 
-          user={user}
-          developers={developers}
-          projects={projects}
-          notifications={notifications}
-          onRefresh={fetchDashboardData}
-          supabase={supabase}
-        />;
+        return <AddDeveloper {...contentProps} />;
       case "developer-activity":
-        return <DeveloperActivity />; // No props needed, it fetches internally
+        return <DeveloperActivity user={user} supabase={supabase} />;
       case "view-developers":
-        return <ViewDevelopers 
-          developers={developers}
-          onRefresh={fetchDashboardData}
-          supabase={supabase}
-          user={user}
-        />;
+        return <ViewDevelopers {...contentProps} />;
       default:
-        return <DashboardOverview 
-          user={user}
-          developers={developers}
-          projects={projects}
-          notifications={notifications}
-          onRefresh={fetchDashboardData}
-          supabase={supabase}
-        />;
+        return <DashboardOverview {...contentProps} />;
     }
   };
 
@@ -211,13 +360,21 @@ export default function AdminDashboard() {
     );
   }
 
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-[#009578]">
+        <div className="text-white text-xl">Redirecting to login...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-100">
       <Header user={user} onLogout={handleLogout} />
       <Navigation 
         activeSection={activeSection} 
         onSectionChange={setActiveSection}
-        notificationCount={unreadCount} // This should now work correctly
+        notificationCount={unreadCount}
       />
       
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
@@ -230,3 +387,6 @@ export default function AdminDashboard() {
     </div>
   );
 }
+
+// Wrap with auth HOC
+export default withAdminAuth(AdminDashboardContent);
