@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import emailjs from "@emailjs/browser";
 
-
 export default function AdminRegistration() {
   const [formData, setFormData] = useState({
     fullName: "",
@@ -22,6 +21,11 @@ export default function AdminRegistration() {
   const [verificationLoading, setVerificationLoading] = useState(false);
   const [errors, setErrors] = useState({});
   const router = useRouter();
+
+  // New function to go back to home/starting page
+  const handleGoToHome = () => {
+    router.push("/");
+  };
 
   // Initialize EmailJS
   useEffect(() => {
@@ -322,7 +326,18 @@ const handleRegister = async (e) => {
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-[#009578] text-black">
-      <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-lg">
+      <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-lg relative">
+        {/* Back Arrow to Home - added for both steps */}
+        <button
+          onClick={handleGoToHome}
+          className="absolute top-4 left-4 text-gray-600 hover:text-gray-800 transition duration-200"
+          title="Go to Home"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+        </button>
+
         <h2 className="text-2xl font-bold text-center mb-6">
           {step === 1 ? "Admin Registration" : "Verify Your Email"}
         </h2>

@@ -20,6 +20,11 @@ export default function LoginPage() {
   const [userData, setUserData] = useState(null);
   const router = useRouter();
 
+  // New function to go back to home/starting page
+  const handleGoToHome = () => {
+    router.push("/");
+  };
+
   const generateVerificationCode = () => {
     return Math.floor(1000 + Math.random() * 9000).toString(); // 4-digit code
   };
@@ -149,69 +154,69 @@ export default function LoginPage() {
     }
   };
 
-const handleVerification = async (e) => {
-  e.preventDefault();
-  setLoading(true);
-  setError("");
+  const handleVerification = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
 
-  try {
-    const storedVerification = localStorage.getItem(`verification_${email}`);
-    if (!storedVerification) {
-      throw new Error('Verification session expired. Please login again.');
-    }
+    try {
+      const storedVerification = localStorage.getItem(`verification_${email}`);
+      if (!storedVerification) {
+        throw new Error('Verification session expired. Please login again.');
+      }
 
-    const verificationData = JSON.parse(storedVerification);
-    
-    // Check if code is expired (10 minutes)
-    const isExpired = (new Date().getTime() - verificationData.timestamp) > 10 * 60 * 1000;
-    if (isExpired) {
+      const verificationData = JSON.parse(storedVerification);
+      
+      // Check if code is expired (10 minutes)
+      const isExpired = (new Date().getTime() - verificationData.timestamp) > 10 * 60 * 1000;
+      if (isExpired) {
+        localStorage.removeItem(`verification_${email}`);
+        throw new Error('Verification code expired. Please login again.');
+      }
+
+      // Check if code matches
+      if (verificationData.code !== verificationCode) {
+        throw new Error('Invalid verification code');
+      }
+
+      // Verification successful - store user data
+      const userSession = {
+        ...userData,
+        role: role,
+        loginTime: new Date().toISOString(),
+        lastActivity: new Date().toISOString() // Add last activity timestamp
+      };
+
+      // After successful admin verification
+      if (role === "admin") {
+        localStorage.setItem("adminUser", JSON.stringify(userSession));
+        
+        // Set cookie for middleware (30 days expiry)
+        const expiryDate = new Date();
+        expiryDate.setDate(expiryDate.getDate() + 30);
+        document.cookie = `admin_auth=true; expires=${expiryDate.toUTCString()}; path=/`;
+        
+        // Set additional security cookie
+        document.cookie = `admin_id=${userData.id}; expires=${expiryDate.toUTCString()}; path=/; HttpOnly; Secure`;
+        
+        router.push("/admin/dashboard");
+      }
+      else {
+        localStorage.setItem("developerUser", JSON.stringify(userSession));
+        // Set cookie for middleware
+        document.cookie = "developer_auth=true; path=/";
+        router.push("/developer/dashboard");
+      }
+
+      // Clean up verification data
       localStorage.removeItem(`verification_${email}`);
-      throw new Error('Verification code expired. Please login again.');
+
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setLoading(false);
     }
-
-    // Check if code matches
-    if (verificationData.code !== verificationCode) {
-      throw new Error('Invalid verification code');
-    }
-
-    // Verification successful - store user data
-    const userSession = {
-      ...userData,
-      role: role,
-      loginTime: new Date().toISOString(),
-      lastActivity: new Date().toISOString() // Add last activity timestamp
-    };
-
-    // After successful admin verification
- if (role === "admin") {
-  localStorage.setItem("adminUser", JSON.stringify(userSession));
-  
-  // Set cookie for middleware (30 days expiry)
-  const expiryDate = new Date();
-  expiryDate.setDate(expiryDate.getDate() + 30);
-  document.cookie = `admin_auth=true; expires=${expiryDate.toUTCString()}; path=/`;
-  
-  // Set additional security cookie
-  document.cookie = `admin_id=${userData.id}; expires=${expiryDate.toUTCString()}; path=/; HttpOnly; Secure`;
-  
-  router.push("/admin/dashboard");
-}
-else {
-      localStorage.setItem("developerUser", JSON.stringify(userSession));
-      // Set cookie for middleware
-      document.cookie = "developer_auth=true; path=/";
-      router.push("/developer/dashboard");
-    }
-
-    // Clean up verification data
-    localStorage.removeItem(`verification_${email}`);
-
-  } catch (error) {
-    setError(error.message);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const handleResendCode = async () => {
     setLoading(true);
@@ -239,7 +244,18 @@ else {
   if (verificationStep) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#009578] text-black">
-        <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-lg">
+        <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-lg relative">
+          {/* Back Arrow to Home */}
+          <button
+            onClick={handleGoToHome}
+            className="absolute top-4 left-4 text-gray-600 hover:text-gray-800 transition duration-200"
+            title="Go to Home"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+          </button>
+          
           {/* Heading */}
           <h2 className="text-2xl font-bold text-center mb-6">Verify Your Email</h2>
           
@@ -318,7 +334,18 @@ else {
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-[#009578] text-black">
-      <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-lg">
+      <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-lg relative">
+        {/* Back Arrow to Home */}
+        <button
+          onClick={handleGoToHome}
+          className="absolute top-4 left-4 text-gray-600 hover:text-gray-800 transition duration-200"
+          title="Go to Home"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+        </button>
+        
         {/* Heading */}
         <h2 className="text-2xl font-bold text-center mb-6">Login</h2>
 
