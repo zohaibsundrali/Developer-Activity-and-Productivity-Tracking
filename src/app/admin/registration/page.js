@@ -496,7 +496,7 @@ const handleRegister = async (e) => {
 
         <p className="text-center text-sm mt-6">
           Already have an account?{" "}
-          <Link href="/admin/login" className="text-[#009578] hover:text-[#0e7762] font-medium">
+          <Link href="/login" className="text-[#009578] hover:text-[#0e7762] font-medium">
             Login
           </Link>
         </p>

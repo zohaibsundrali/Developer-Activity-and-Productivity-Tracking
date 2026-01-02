@@ -387,7 +387,7 @@ export default function Navbar() {
                     Sign In
                   </a>
                   <a
-                    href="/register"
+                    href="/admin/registration"
                     className="px-5 py-2 bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors text-sm rounded-lg shadow-sm"
                   >
                     Sign Up
