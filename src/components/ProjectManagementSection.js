@@ -1,16 +1,18 @@
 export default function ProjectManagementSection() {
-  const projectFeatures = [
-    { name: 'Task Estimation', included: true },
-    { name: 'Budget Tracking', included: true },
-    { name: 'Time vs Estimate Analysis', included: true }
-  ];
+const projectFeatures = [
+    { name: 'Task Time Estimation', included: true },
+    { name: 'Actual vs Estimated Analysis', included: true },
+    { name: 'Progress Monitoring', included: true },
+    { name: 'Project Timeline View', included: true }
+];
 
-  const reportFeatures = [
-    'Customizable time reports with grouping options',
-    'Invoice generation with payment tracking',
-    'Export to PDF/Excel with custom formatting',
-    'Multi-currency support for global teams'
-  ];
+const reportFeatures = [
+    'Daily & weekly productivity reports',
+    'Time spent on apps & websites',
+    'Task completion status charts',
+    'Filter reports by date range',
+    'Export reports to PDF format'
+];
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">

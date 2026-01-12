@@ -6,12 +6,15 @@ export default function EmployeeMonitoringSection() {
     { icon: '🔗', label: 'URL Tracking' }
   ];
 
-  const features = [
-    'Real-time activity timelines and user behavior analysis',
-    'GPS location tracking for offsite team members',
-    'Automated email reports with detailed insights',
-    'Notifications for low activity or missed hours'
-  ];
+const features = [
+  'Track mouse clicks, keyboard activity & screen time',
+  'Monitor apps & websites used by developers',
+  'AI-powered productivity scoring & insights',
+  'Automatic screenshot capture',
+  'Real-time reports with charts & graphs',
+  'Project task assignment & progress tracking',
+  'Secure login with email verification'
+];
 
   return (
     <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8">
@@ -20,7 +23,7 @@ export default function EmployeeMonitoringSection() {
           <h3 className="text-2xl font-bold text-black mb-6">Complete Activity Tracking</h3>
           <p className="text-gray-600 mb-6 font-light leading-relaxed">
             Monitor everything from screenshots and application usage to visited URLs 
-            and activity scores. Get comprehensive reports via email with detailed insights.
+            and activity scores. Get comprehensive reports with detailed insights.
           </p>
           
           <div className="grid grid-cols-2 gap-4 mb-8">

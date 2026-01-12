@@ -6,7 +6,7 @@ import PlatformCards from '@/components/PlatformCards';
 import TimeTrackingSection from '@/components/TimeTrackingSection';
 import EmployeeMonitoringSection from '@/components/EmployeeMonitoringSection';
 import ProjectManagementSection from '@/components/ProjectManagementSection';
-import CTASection from '@/components/CTASection';
+
 import Footer from '@/components/Footer';
 
 export default function ProductTourPage() {
@@ -53,7 +53,7 @@ export default function ProductTourPage() {
               <div className="text-center mb-12">
                 <h2 className="text-3xl font-bold text-black mb-4">Employee Monitoring</h2>
                 <p className="text-gray-600 text-lg max-w-3xl mx-auto font-light">
-                  Collect and analyze team activity data with comprehensive insights
+                  Collect and analyze activity data with comprehensive insights
                 </p>
               </div>
               
@@ -65,7 +65,7 @@ export default function ProductTourPage() {
               <div className="text-center mb-12">
                 <h2 className="text-3xl font-bold text-black mb-4">Project Management & Reports</h2>
                 <p className="text-gray-600 text-lg max-w-3xl mx-auto font-light">
-                  Create project plans, generate reports, and track expenses efficiently
+                  Create project plans and generate reports
                 </p>
               </div>
               
@@ -73,7 +73,7 @@ export default function ProductTourPage() {
             </div>
 
             {/* CTA Section */}
-            <CTASection />
+         
           </div>
         </section>
       </main>

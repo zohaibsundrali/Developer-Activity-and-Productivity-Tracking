@@ -1,6 +1,7 @@
 "use client";
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import { supabase } from '@/utils/supabaseClient'; // Supabase client import
 
 export default function ProjectDetailsPage() {
   const router = useRouter();
@@ -9,9 +10,71 @@ export default function ProjectDetailsPage() {
   const [editingTask, setEditingTask] = useState(null);
   const [showSubmitSuccess, setShowSubmitSuccess] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [projectData, setProjectData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [downloading, setDownloading] = useState(false);
 
-  // URL parameters se project data get karein
-  const getProjectData = () => {
+  // ✅ FIXED: Back navigation functions
+  const handleBack = () => {
+    router.push('/developer/dashboard');
+  };
+
+  const handleBackToProjects = () => {
+    router.push('/developer/dashboard?section=projects');
+  };
+
+  // Supabase se project data fetch karein
+  useEffect(() => {
+    const fetchProjectFromSupabase = async () => {
+      try {
+        setLoading(true);
+        const projectId = searchParams.get('id');
+        
+        if (!projectId || projectId === 'null') {
+          console.warn('No project ID found in URL');
+          // URL parameters se data use karein
+          const urlProject = getProjectDataFromURL();
+          setProjectData(urlProject);
+          return;
+        }
+
+        console.log('Fetching project from Supabase with ID:', projectId);
+
+        // Supabase se project data fetch karein
+        const { data, error } = await supabase
+          .from('projects') // Aapki table ka naam - agar alag hai to change karein
+          .select('*')
+          .eq('id', projectId)
+          .single();
+
+        if (error) {
+          console.error('Supabase error:', error);
+          throw error;
+        }
+
+        if (data) {
+          console.log('Data fetched from Supabase:', data);
+          setProjectData(data);
+        } else {
+          console.warn('No data found in Supabase, using URL params');
+          setProjectData(getProjectDataFromURL());
+        }
+      } catch (err) {
+        console.error('Error fetching project from Supabase:', err);
+        setError(err.message);
+        // Fallback: URL parameters se data use karein
+        setProjectData(getProjectDataFromURL());
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProjectFromSupabase();
+  }, [searchParams]);
+
+  // URL parameters se project data get karein (fallback ke liye)
+  const getProjectDataFromURL = () => {
     return {
       id: searchParams.get('id'),
       name: decodeURIComponent(searchParams.get('name') || ''),
@@ -19,13 +82,119 @@ export default function ProjectDetailsPage() {
       status: searchParams.get('status'),
       progress: parseInt(searchParams.get('progress') || '0'),
       deadline: searchParams.get('deadline'),
-      created_at: searchParams.get('created_at'), // Yeh Supabase se assigned date hai
+      created_at: searchParams.get('created_at'),
       file_url: searchParams.get('file_url'),
-      file_name: decodeURIComponent(searchParams.get('file_name') || '')
+      file_name: decodeURIComponent(searchParams.get('file_name') || ''),
+      assigned_at: searchParams.get('assigned_at'),
+      assigned_date: searchParams.get('assigned_date'),
+      assigned_developer_name: searchParams.get('assigned_developer_name'),
+      assigned_developer_email: searchParams.get('assigned_developer_email')
     };
   };
 
-  const project = getProjectData();
+  // Final project data - Supabase data ya URL data
+  const project = projectData || getProjectDataFromURL();
+
+  // Get assigned date (priority: assigned_at > assigned_date > created_at)
+  const getAssignedDate = () => {
+    if (project.assigned_at && project.assigned_at !== 'null' && project.assigned_at !== 'undefined') {
+      return project.assigned_at;
+    }
+    if (project.assigned_date && project.assigned_date !== 'null' && project.assigned_date !== 'undefined') {
+      return project.assigned_date;
+    }
+    return project.created_at; // Fallback to created_at (Supabase se aayega)
+  };
+
+  const assignedDate = getAssignedDate();
+
+  // ✅ FIXED: File Download Function - Direct Download
+// ✅ FIXED: File Download Function - Direct Download
+// ✅ FIXED: File Download Function - Force Download
+const handleDownloadFile = async () => {
+  if (!project.file_url || project.file_url === 'null') {
+    alert('No file available for download');
+    return;
+  }
+
+  try {
+    setDownloading(true);
+    
+    // Method 1: Direct download with fetch API (works for most servers)
+    const response = await fetch(project.file_url, {
+      mode: 'cors',
+      credentials: 'omit'
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    
+    // Get filename from URL or use default
+    const fileName = project.file_name || 
+                    project.file_url.split('/').pop() || 
+                    'project_file';
+    
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    
+    // Cleanup
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(link);
+    
+  } catch (error) {
+    console.error('Fetch download failed:', error);
+    
+    // Method 2: Fallback to simple download
+    try {
+      const link = document.createElement('a');
+      link.href = project.file_url;
+      link.download = project.file_name || 'project_file';
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (fallbackError) {
+      console.error('Fallback download failed:', fallbackError);
+      
+      // Method 3: Last resort - open in new tab
+      alert('Opening file in new tab. Please use browser\'s "Save as" option to download.');
+      window.open(project.file_url, '_blank');
+    }
+    
+  } finally {
+    setDownloading(false);
+  }
+};
+
+  // ✅ FIXED: Direct file download function
+  const downloadFileDirect = (url, fileName) => {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName || 'project_file';
+    link.target = '_blank'; // For external links
+    
+    // Add attributes for better download handling
+    link.setAttribute('download', fileName || 'project_file');
+    link.style.display = 'none';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // Agar download nahi hua to new tab mein open karein
+    setTimeout(() => {
+      if (!document.querySelector(`a[href="${url}"]`)) {
+        window.open(url, '_blank');
+      }
+    }, 100);
+  };
 
   // Check if work is already submitted
   useEffect(() => {
@@ -42,7 +211,7 @@ export default function ProjectDetailsPage() {
       setTasks(JSON.parse(savedTasks));
     } else {
       // Default tasks create karein with assigned date as start date
-      const assignedDate = project.created_at || new Date().toISOString().split('T')[0];
+      const assignedDate = getAssignedDate() || new Date().toISOString().split('T')[0];
       const defaultTasks = [
         {
           id: 1,
@@ -92,7 +261,7 @@ export default function ProjectDetailsPage() {
       ];
       setTasks(defaultTasks);
     }
-  }, [project.id, project.created_at]);
+  }, [project.id]);
 
   // Tasks save karein localStorage mein
   useEffect(() => {
@@ -108,25 +277,6 @@ export default function ProjectDetailsPage() {
       month: 'short',
       day: 'numeric'
     });
-  };
-
-  const handleDownloadFile = () => {
-    if (project.file_url && project.file_url !== 'null') {
-      // Direct download karein
-      const link = document.createElement('a');
-      link.href = project.file_url;
-      link.target = '_blank';
-      link.download = project.file_name || 'project_file';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } else {
-      alert('No file available for download');
-    }
-  };
-
-  const handleBack = () => {
-    router.back();
   };
 
   const handleSubmitWork = () => {
@@ -172,7 +322,7 @@ export default function ProjectDetailsPage() {
       id: Date.now(),
       title: '',
       description: '',
-      startDate: project.created_at || new Date().toISOString().split('T')[0],
+      startDate: assignedDate || new Date().toISOString().split('T')[0],
       endDate: '',
       workingHours: '',
       status: 'pending'
@@ -205,12 +355,54 @@ export default function ProjectDetailsPage() {
     return sum + hours;
   }, 0);
 
+  // Loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <div className="text-xl text-gray-600 mt-4">Loading project details from Supabase...</div>
+          <button
+            onClick={handleBack}
+            className="mt-4 bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition-colors"
+          >
+            Go to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error && !project.id) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center bg-white p-8 rounded-lg shadow-lg">
+          <div className="text-red-500 text-xl mb-4">Error Loading Project</div>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <button
+            onClick={handleBack}
+            className="bg-blue-500 text-white px 6 py-2 rounded-lg hover:bg-blue-600 transition-colors"
+          >
+            Go to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Agar project data nahi hai toh loading show karein
   if (!project.id) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="text-xl text-gray-600">Loading project details...</div>
+          <button
+            onClick={handleBack}
+            className="mt-4 bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition-colors"
+          >
+            Go to Dashboard
+          </button>
         </div>
       </div>
     );
@@ -219,21 +411,41 @@ export default function ProjectDetailsPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4">
-        {/* Header with Back Button */}
+        {/* ✅ FIXED: Header with better navigation options */}
         <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center">
+          <div className="flex items-center space-x-3">
             <button
               onClick={handleBack}
-              className="flex items-center text-gray-600 hover:text-gray-800 mr-4 bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-all"
+              className="flex items-center text-gray-600 hover:text-gray-800 bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-all"
             >
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
-              Back to Projects
+              Dashboard
             </button>
-            <h1 className="text-3xl font-bold text-gray-900">Project Details</h1>
+            
+            <button
+              onClick={handleBackToProjects}
+              className="hidden md:flex items-center text-gray-600 hover:text-gray-800 bg-gray-100 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors border border-gray-300"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+              All Projects
+            </button>
+            
+            <h1 className="text-3xl font-bold text-gray-900 ml-4">Project Details</h1>
           </div>
           
+          {/* Data Source Indicator */}
+          {projectData && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-1">
+              <p className="text-xs text-blue-700">
+                <span className="font-semibold">✓ Live:</span> Supabase Data
+              </p>
+            </div>
+          )}
+
           {/* Submitted Status */}
           {isSubmitted && (
             <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-2 rounded-lg">
@@ -281,13 +493,24 @@ export default function ProjectDetailsPage() {
 
                 {/* Project Timeline */}
                 <div className="space-y-4 mb-6">
+                  {/* ✅ ASSIGNED DATE - SUPABASE SE */}
                   <div className="bg-white border rounded-lg p-4">
-                    <h3 className="text-md font-semibold mb-2 text-gray-800">Assigned Date</h3>
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-md font-semibold text-gray-800">Assigned Date</h3>
+                      {projectData && (
+                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">Supabase</span>
+                      )}
+                    </div>
                     <div className="flex items-center text-gray-600">
                       <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      <span>{formatDate(project.created_at)}</span>
+                      <span>{formatDate(assignedDate)}</span>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {projectData 
+                        ? "Directly from Supabase database" 
+                        : "From URL parameters"}
                     </div>
                   </div>
 
@@ -304,37 +527,58 @@ export default function ProjectDetailsPage() {
                   )}
                 </div>
 
-                {/* File Attachment */}
-                {project.file_url && project.file_url !== 'null' && (
-                  <div className="mb-6">
-                    <h2 className="text-lg font-semibold mb-3 text-gray-800">Project Files</h2>
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                          <div>
-                            <p className="font-semibold text-blue-900 text-sm">
-                              {project.file_name || 'Project Requirements Document'}
-                            </p>
-                            <p className="text-xs text-blue-700 mt-1">Click download to get the file</p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={handleDownloadFile}
-                          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm flex items-center"
-                        >
-                          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                          </svg>
-                          Download
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {/* ✅ FIXED: File Attachment with Download Button */}
+               {project.file_url && project.file_url !== 'null' && (
+  <div className="mb-6">
+    <h2 className="text-lg font-semibold mb-3 text-gray-800">Project Files</h2>
+    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-sm">
+            <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <div>
+            <p className="font-semibold text-blue-900">
+              {project.file_name || 'Project Requirements Document'}
+            </p>
+            <p className="text-xs text-blue-700 mt-1">Click to download file</p>
+          </div>
+        </div>
+        <button
+          onClick={handleDownloadFile}
+          disabled={downloading}
+          className={`px-4 py-2 rounded-lg font-medium text-sm flex items-center ${
+            downloading 
+              ? 'bg-blue-400 cursor-not-allowed' 
+              : 'bg-blue-600 hover:bg-blue-700 transition-colors'
+          } text-white`}
+        >
+          {downloading ? (
+            <>
+              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Downloading...
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Download
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
+                {/* Developer Info if available from Supabase */}
+            
                 {/* Summary */}
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                   <h3 className="text-md font-semibold mb-2 text-yellow-800">Project Summary</h3>
@@ -487,17 +731,29 @@ export default function ProjectDetailsPage() {
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex space-x-4 mt-6">
-          <button
-            onClick={handleBack}
-            className="flex-1 bg-gray-500 text-white py-3 px-6 rounded-lg hover:bg-gray-600 transition-colors font-medium flex items-center justify-center"
-          >
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            Back to Projects
-          </button>
+        {/* ✅ FIXED: Action Buttons */}
+        <div className="flex flex-col sm:flex-row gap-4 mt-6">
+          <div className="flex flex-col sm:flex-row gap-4 flex-1">
+            <button
+              onClick={handleBack}
+              className="flex-1 bg-gray-500 text-white py-3 px-6 rounded-lg hover:bg-gray-600 transition-colors font-medium flex items-center justify-center"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+              </svg>
+              Go to Dashboard
+            </button>
+            
+            <button
+              onClick={handleBackToProjects}
+              className="flex-1 bg-blue-500 text-white py-3 px-6 rounded-lg hover:bg-blue-600 transition-colors font-medium flex items-center justify-center"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+              All Projects
+            </button>
+          </div>
           
           {/* Submit Work Button - Only show if not submitted */}
           {!isSubmitted && (

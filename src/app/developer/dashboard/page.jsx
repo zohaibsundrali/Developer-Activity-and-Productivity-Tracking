@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useRef } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { createClient } from '@supabase/supabase-js';
 import Header from "@/components/developer/Header";
 import Navigation from "@/components/developer/Navigation";
@@ -106,13 +106,119 @@ const withAuth = (WrappedComponent) => {
 };
 
 function DeveloperDashboardContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  
   const [user, setUser] = useState(null);
   const [assignedProjects, setAssignedProjects] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [activeSection, setActiveSection] = useState("overview");
   const [unreadCount, setUnreadCount] = useState(0);
-  const router = useRouter();
+  const audioRef = useRef(null);
 
+  // Notification sound setup
+  useEffect(() => {
+    audioRef.current = new Audio('/notification-sound.mp3');
+    audioRef.current.volume = 0.5;
+    
+    // Cleanup
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  // Play notification sound
+  const playNotificationSound = () => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch(e => console.log("Audio play failed:", e));
+    }
+  };
+
+  // Show browser notification
+  const showBrowserNotification = (notification) => {
+    if (!("Notification" in window)) return;
+    
+    if (Notification.permission === "granted") {
+      new Notification("New Notification", {
+        body: notification.message,
+        icon: "/favicon.ico"
+      });
+    } else if (Notification.permission !== "denied") {
+      Notification.requestPermission().then(permission => {
+        if (permission === "granted") {
+          new Notification("New Notification", {
+            body: notification.message,
+            icon: "/favicon.ico"
+          });
+        }
+      });
+    }
+  };
+
+  // Setup realtime notifications subscription
+  const setupRealtimeNotifications = (developerId) => {
+    const channel = supabase
+      .channel(`notifications-${developerId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `assigned_developer_id=eq.${developerId}`
+        },
+        (payload) => {
+          console.log('🎯 Realtime notification received:', payload.new);
+          
+          // Add new notification to the beginning of array
+          setNotifications(prev => [payload.new, ...prev]);
+          
+          // Increase unread count
+          setUnreadCount(prev => prev + 1);
+          
+          // Play sound
+          playNotificationSound();
+          
+          // Show browser notification for project assignments
+          if (payload.new.type === 'project_assigned' || payload.new.message.includes('project')) {
+            showBrowserNotification(payload.new);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'notifications',
+          filter: `assigned_developer_id=eq.${developerId}`
+        },
+        (payload) => {
+          // Update notification if marked as read from another tab/device
+          setNotifications(prev => 
+            prev.map(notif => 
+              notif.id === payload.new.id ? payload.new : notif
+            )
+          );
+          
+          // Update unread count
+          const newUnreadCount = notifications.filter(n => !n.read).length;
+          setUnreadCount(newUnreadCount);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  };
+
+  // Initialize user and data
   useEffect(() => {
     const authUser = checkAuth();
     if (!authUser) {
@@ -123,6 +229,11 @@ function DeveloperDashboardContent() {
     setUser(authUser);
     fetchDeveloperData(authUser);
     
+    // Request notification permission
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+    
     // Auto logout after 30 minutes of inactivity
     const inactivityTimeout = setTimeout(() => {
       handleLogout();
@@ -130,6 +241,42 @@ function DeveloperDashboardContent() {
 
     return () => clearTimeout(inactivityTimeout);
   }, [router]);
+
+  // Setup realtime notifications
+  useEffect(() => {
+    if (user?.id) {
+      const cleanup = setupRealtimeNotifications(user.id);
+      return cleanup;
+    }
+  }, [user?.id]);
+
+  // ✅ FIXED: Update active section based on URL
+  useEffect(() => {
+    const updateActiveSection = () => {
+      const sectionParam = searchParams.get('section');
+      
+      if (sectionParam) {
+        setActiveSection(sectionParam);
+      } else {
+        // Default section based on path or default to overview
+        setActiveSection('overview');
+      }
+    };
+
+    updateActiveSection();
+  }, [pathname, searchParams]);
+
+  // ✅ FIXED: Handle section change with URL update
+  const handleSectionChange = (section) => {
+    setActiveSection(section);
+    
+    // Update URL without page reload
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('section', section);
+    
+    // Update URL - maintain path as /developer/dashboard
+    router.push(`/developer/dashboard?${params.toString()}`, { scroll: false });
+  };
 
   const fetchDeveloperData = async (developerData) => {
     try {
@@ -158,7 +305,7 @@ function DeveloperDashboardContent() {
         .select('*')
         .or(`assigned_developer_id.eq.${developerData.id},message.ilike.%${developerData.name}%`)
         .order('created_at', { ascending: false })
-        .limit(20);
+        .limit(50);
 
       if (notificationsError) throw notificationsError;
       
@@ -230,30 +377,11 @@ function DeveloperDashboardContent() {
     router.push("/login");
   };
 
-  const getActiveSectionFromURL = () => {
-    if (typeof window === 'undefined') return 'overview';
-    
-    const path = window.location.pathname;
-    if (path.includes('/project-details')) return 'project-details';
-    if (path.includes('/notifications')) return 'notifications';
-    if (path.includes('/projects')) return 'projects';
-    return 'overview';
+  // ✅ FIXED: Handle project details navigation
+  const handleViewProjectDetails = (project) => {
+    // Navigate to project details page
+    router.push(`/developer/project-details?id=${project.id}&name=${encodeURIComponent(project.name)}&description=${encodeURIComponent(project.description || '')}&status=${project.status}&progress=${project.progress}&deadline=${project.deadline}&created_at=${project.created_at}&file_url=${project.file_url || ''}&file_name=${encodeURIComponent(project.file_name || '')}&assigned_at=${project.assigned_at || ''}&assigned_developer_name=${encodeURIComponent(project.assigned_developer_name || '')}&assigned_developer_email=${project.assigned_developer_email || ''}`);
   };
-
-  useEffect(() => {
-    const handleRouteChange = () => {
-      const section = getActiveSectionFromURL();
-      setActiveSection(section);
-    };
-
-    handleRouteChange();
-
-    window.addEventListener('popstate', handleRouteChange);
-
-    return () => {
-      window.removeEventListener('popstate', handleRouteChange);
-    };
-  }, []);
 
   const renderContent = () => {
     const contentProps = {
@@ -263,22 +391,24 @@ function DeveloperDashboardContent() {
       unreadCount,
       onMarkAsRead: handleMarkAsRead,
       onMarkAllAsRead: handleMarkAllAsRead,
-      onSectionChange: setActiveSection,
+      onSectionChange: handleSectionChange,
+      onViewProjectDetails: handleViewProjectDetails, // Add this prop
       supabase,
-      onLogout: handleLogout // Add logout function to props
+      onLogout: handleLogout
     };
 
-    if (typeof window !== 'undefined' && window.location.pathname.includes('/project-details')) {
-      return <ProjectDetails user={user} />;
+    // Check if we're on project-details page
+    if (pathname.includes('/project-details')) {
+      return <ProjectDetails />;
     }
 
+    // Render based on active section
     switch (activeSection) {
       case "projects":
         return <MyProjects {...contentProps} />;
       case "notifications":
         return <Notifications {...contentProps} />;
-      case "project-details":
-        return <ProjectDetails user={user} />;
+      case "overview":
       default:
         return <DashboardOverview {...contentProps} />;
     }
@@ -297,12 +427,13 @@ function DeveloperDashboardContent() {
       <Header 
         user={user} 
         assignedProjects={assignedProjects} 
-        onLogout={handleLogout} 
+        onLogout={handleLogout}
+        unreadCount={unreadCount}
       />
       
       <Navigation 
         activeSection={activeSection}
-        onSectionChange={setActiveSection}
+        onSectionChange={handleSectionChange}
         assignedProjectsCount={assignedProjects.length}
         unreadCount={unreadCount}
       />

@@ -5,12 +5,12 @@ export default function TimeTrackingSection() {
       description: 'Start/stop tracking with a single click'
     },
     {
-      title: 'Customizable Timesheets',
-      description: 'Tailor fields and visibility for your team'
+      title: 'Automated Tracking',
+      description: 'Automatically tracks work hours and activities'
     },
     {
       title: 'AI-Powered Detection',
-      description: 'Automatic activity categorization'
+      description: 'Automatic activity categorization and insights'
     }
   ];
 
@@ -20,8 +20,7 @@ export default function TimeTrackingSection() {
         <h3 className="text-2xl font-bold text-black mb-6">Smart Time Management</h3>
         <p className="text-gray-600 mb-6 font-light leading-relaxed">
           Our AI automatically tracks work hours, categorizes activities, and provides 
-          intelligent time insights. Use the desktop app's one-click timer or mobile 
-          app's GPS tracking for comprehensive time management.
+          intelligent time insights. Use the desktop app for comprehensive time management.
         </p>
         
         <div className="space-y-4">

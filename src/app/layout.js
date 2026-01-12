@@ -1,15 +1,13 @@
-import "./globals.css";
-
-export const metadata = {
-  title: "Developer Activity Tracking",
-  description: "Track developer activity and productivity",
-};
+import { AuthProvider } from '@/contexts/AuthContext';
+import './globals.css';
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body>
-        {children}
+        <AuthProvider>
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

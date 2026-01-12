@@ -12,10 +12,10 @@ export default function Footer() {
         <div className="flex flex-col md:flex-row justify-between items-center">
           <div className="mb-8 md:mb-0">
             <h2 className="text-2xl font-bold mb-2">
-              DevTrack<span className="text-blue-400">AI</span>
+               Developer Activity & Productivity Tracking with AI
             </h2>
             <p className="text-gray-400 text-sm">
-              Developer Activity & Productivity Tracking with AI
+             
             </p>
           </div>
           
