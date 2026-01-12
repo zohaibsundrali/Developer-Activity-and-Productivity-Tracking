@@ -14,6 +14,10 @@ export default function ProjectDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [downloading, setDownloading] = useState(false);
+  
+  // ✅ NEW: Validation messages state
+  const [validationError, setValidationError] = useState('');
+  const [validationSuccess, setValidationSuccess] = useState('');
 
   // ✅ FIXED: Back navigation functions
   const handleBack = () => {
@@ -24,6 +28,145 @@ export default function ProjectDetailsPage() {
     router.push('/developer/dashboard?section=projects');
   };
 
+  // ✅ NEW: Validate all tasks before submission
+  const validateAllTasks = () => {
+    if (tasks.length === 0) {
+      return {
+        isValid: false,
+        message: 'Please add at least one task before submitting.'
+      };
+    }
+
+    const invalidTasks = [];
+    
+    tasks.forEach((task, index) => {
+      const taskNumber = index + 1;
+      
+      // Check if start date is missing
+      if (!task.startDate || task.startDate.trim() === '') {
+        invalidTasks.push(`Task ${taskNumber}: Start date is required`);
+        return;
+      }
+      
+      // Check if end date is missing
+      if (!task.endDate || task.endDate.trim() === '') {
+        invalidTasks.push(`Task ${taskNumber}: End date is required`);
+        return;
+      }
+      
+      // Check if start date is valid
+      const startDate = new Date(task.startDate);
+      if (isNaN(startDate.getTime())) {
+        invalidTasks.push(`Task ${taskNumber}: Invalid start date`);
+        return;
+      }
+      
+      // Check if end date is valid
+      const endDate = new Date(task.endDate);
+      if (isNaN(endDate.getTime())) {
+        invalidTasks.push(`Task ${taskNumber}: Invalid end date`);
+        return;
+      }
+      
+      // Check if end date is before start date
+      if (endDate < startDate) {
+        invalidTasks.push(`Task ${taskNumber}: End date cannot be before start date`);
+        return;
+      }
+      
+      // Check if dates are in reasonable range (not too far in past or future)
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      if (startDate < new Date('2000-01-01')) {
+        invalidTasks.push(`Task ${taskNumber}: Start date is too far in the past`);
+      }
+      
+      if (endDate > new Date('2100-12-31')) {
+        invalidTasks.push(`Task ${taskNumber}: End date is too far in the future`);
+      }
+    });
+
+    if (invalidTasks.length > 0) {
+      return {
+        isValid: false,
+        message: 'Please fix the following issues:',
+        details: invalidTasks
+      };
+    }
+
+    return {
+      isValid: true,
+      message: 'All tasks are valid and ready for submission.'
+    };
+  };
+
+  // ✅ NEW: Enhanced handleSubmitWork with validation
+  const handleSubmitWork = () => {
+    // Step 1: Validate all tasks
+    const validation = validateAllTasks();
+    
+    if (!validation.isValid) {
+      // Show validation error
+      setValidationError(validation.message);
+      
+      // Auto-hide error after 5 seconds
+      setTimeout(() => {
+        setValidationError('');
+      }, 5000);
+      
+      return; // Stop submission
+    }
+    
+    // Step 2: Confirm submission
+    if (!confirm('Are you sure you want to submit all tasks? This action cannot be undone.')) {
+      return;
+    }
+    
+    // Step 3: Submit work
+    setShowSubmitSuccess(true);
+    setIsSubmitted(true);
+    localStorage.setItem(`project_submitted_${project.id}`, 'true');
+    
+    // Step 4: Show success message
+    setValidationSuccess('Work submitted successfully! Tasks are now locked.');
+    
+    // Step 5: Auto-hide messages
+    setTimeout(() => {
+      setShowSubmitSuccess(false);
+      setValidationSuccess('');
+    }, 3000);
+  };
+
+  // ✅ NEW: Check if task is valid (for UI indicators)
+  const isTaskValid = (task) => {
+    if (!task.startDate || task.startDate.trim() === '') return false;
+    if (!task.endDate || task.endDate.trim() === '') return false;
+    
+    const startDate = new Date(task.startDate);
+    const endDate = new Date(task.endDate);
+    
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return false;
+    if (endDate < startDate) return false;
+    
+    return true;
+  };
+
+  // ✅ NEW: Calculate validation statistics
+  const getValidationStats = () => {
+    const totalTasks = tasks.length;
+    const validTasks = tasks.filter(isTaskValid).length;
+    const invalidTasks = totalTasks - validTasks;
+    
+    return {
+      totalTasks,
+      validTasks,
+      invalidTasks,
+      isAllValid: totalTasks > 0 && validTasks === totalTasks
+    };
+  };
+
+  // Rest of your existing code remains the same...
   // Supabase se project data fetch karein
   useEffect(() => {
     const fetchProjectFromSupabase = async () => {
@@ -109,91 +252,66 @@ export default function ProjectDetailsPage() {
   const assignedDate = getAssignedDate();
 
   // ✅ FIXED: File Download Function - Direct Download
-// ✅ FIXED: File Download Function - Direct Download
-// ✅ FIXED: File Download Function - Force Download
-const handleDownloadFile = async () => {
-  if (!project.file_url || project.file_url === 'null') {
-    alert('No file available for download');
-    return;
-  }
-
-  try {
-    setDownloading(true);
-    
-    // Method 1: Direct download with fetch API (works for most servers)
-    const response = await fetch(project.file_url, {
-      mode: 'cors',
-      credentials: 'omit'
-    });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+  const handleDownloadFile = async () => {
+    if (!project.file_url || project.file_url === 'null') {
+      alert('No file available for download');
+      return;
     }
-    
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    
-    // Get filename from URL or use default
-    const fileName = project.file_name || 
-                    project.file_url.split('/').pop() || 
-                    'project_file';
-    
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    
-    // Cleanup
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(link);
-    
-  } catch (error) {
-    console.error('Fetch download failed:', error);
-    
-    // Method 2: Fallback to simple download
+
     try {
+      setDownloading(true);
+      
+      // Method 1: Direct download with fetch API (works for most servers)
+      const response = await fetch(project.file_url, {
+        mode: 'cors',
+        credentials: 'omit'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = project.file_url;
-      link.download = project.file_name || 'project_file';
-      link.style.display = 'none';
+      link.href = url;
+      
+      // Get filename from URL or use default
+      const fileName = project.file_name || 
+                      project.file_url.split('/').pop() || 
+                      'project_file';
+      
+      link.download = fileName;
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
-    } catch (fallbackError) {
-      console.error('Fallback download failed:', fallbackError);
       
-      // Method 3: Last resort - open in new tab
-      alert('Opening file in new tab. Please use browser\'s "Save as" option to download.');
-      window.open(project.file_url, '_blank');
-    }
-    
-  } finally {
-    setDownloading(false);
-  }
-};
-
-  // ✅ FIXED: Direct file download function
-  const downloadFileDirect = (url, fileName) => {
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = fileName || 'project_file';
-    link.target = '_blank'; // For external links
-    
-    // Add attributes for better download handling
-    link.setAttribute('download', fileName || 'project_file');
-    link.style.display = 'none';
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    // Agar download nahi hua to new tab mein open karein
-    setTimeout(() => {
-      if (!document.querySelector(`a[href="${url}"]`)) {
-        window.open(url, '_blank');
+      // Cleanup
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(link);
+      
+    } catch (error) {
+      console.error('Fetch download failed:', error);
+      
+      // Method 2: Fallback to simple download
+      try {
+        const link = document.createElement('a');
+        link.href = project.file_url;
+        link.download = project.file_name || 'project_file';
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (fallbackError) {
+        console.error('Fallback download failed:', fallbackError);
+        
+        // Method 3: Last resort - open in new tab
+        alert('Opening file in new tab. Please use browser\'s "Save as" option to download.');
+        window.open(project.file_url, '_blank');
       }
-    }, 100);
+      
+    } finally {
+      setDownloading(false);
+    }
   };
 
   // Check if work is already submitted
@@ -248,15 +366,6 @@ const handleDownloadFile = async () => {
           endDate: '',
           workingHours: '',
           status: 'pending'
-        },
-        {
-          id: 5,
-          title: 'Database Schema',
-          description: 'Design and implement database structure',
-          startDate: assignedDate,
-          endDate: '',
-          workingHours: '',
-          status: 'pending'
         }
       ];
       setTasks(defaultTasks);
@@ -277,16 +386,6 @@ const handleDownloadFile = async () => {
       month: 'short',
       day: 'numeric'
     });
-  };
-
-  const handleSubmitWork = () => {
-    // Submit work logic here
-    setShowSubmitSuccess(true);
-    setIsSubmitted(true);
-    localStorage.setItem(`project_submitted_${project.id}`, 'true');
-    setTimeout(() => {
-      setShowSubmitSuccess(false);
-    }, 3000);
   };
 
   // Task edit start karein
@@ -408,6 +507,9 @@ const handleDownloadFile = async () => {
     );
   }
 
+  // ✅ NEW: Get validation stats
+  const validationStats = getValidationStats();
+
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4">
@@ -458,6 +560,77 @@ const handleDownloadFile = async () => {
             </div>
           )}
         </div>
+
+        {/* ✅ NEW: Validation Status Banner */}
+        {!isSubmitted && tasks.length > 0 && (
+          <div className={`mb-6 p-4 rounded-lg border ${
+            validationStats.isAllValid 
+              ? 'bg-green-50 border-green-200' 
+              : 'bg-yellow-50 border-yellow-200'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${
+                  validationStats.isAllValid ? 'bg-green-100' : 'bg-yellow-100'
+                }`}>
+                  {validationStats.isAllValid ? (
+                    <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.698-.833-2.464 0L4.288 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                  )}
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-800">
+                    {validationStats.isAllValid ? 'Ready to Submit' : 'Validation Required'}
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    {validationStats.isAllValid 
+                      ? `All ${validationStats.totalTasks} tasks have valid dates` 
+                      : `${validationStats.validTasks} of ${validationStats.totalTasks} tasks are valid`}
+                  </p>
+                </div>
+              </div>
+              
+              {!validationStats.isAllValid && (
+                <button
+                  onClick={() => {
+                    // Highlight invalid tasks
+                    const invalidTasks = tasks.filter(task => !isTaskValid(task));
+                    if (invalidTasks.length > 0) {
+                      setEditingTask(invalidTasks[0]);
+                    }
+                  }}
+                  className="text-sm bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded transition-colors"
+                >
+                  Fix Issues
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ✅ NEW: Validation Error Message */}
+        {validationError && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 animate-pulse">
+            <div className="flex items-start">
+              <svg className="w-5 h-5 text-red-500 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                <h4 className="font-semibold text-red-800 mb-1">{validationError}</h4>
+                {validationStats.invalidTasks > 0 && (
+                  <p className="text-sm text-red-600">
+                    {validationStats.invalidTasks} task(s) have invalid dates. Please fix them before submitting.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column - Project Details */}
@@ -599,6 +772,17 @@ const handleDownloadFile = async () => {
                         {isSubmitted ? 'Submitted' : 'In Progress'}
                       </span>
                     </div>
+                    {/* ✅ NEW: Validation Status in Summary */}
+                    {!isSubmitted && (
+                      <div className="flex justify-between">
+                        <span className="text-yellow-700">Task Validation:</span>
+                        <span className={`font-semibold ${
+                          validationStats.isAllValid ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                          {validationStats.validTasks}/{validationStats.totalTasks} valid
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -627,19 +811,47 @@ const handleDownloadFile = async () => {
                         isSubmitted 
                           ? 'bg-gray-50 border-gray-300' 
                           : 'bg-white hover:shadow-md border-gray-200'
+                      } ${
+                        !isSubmitted && !isTaskValid(task) ? 'border-l-4 border-l-red-500' : ''
                       }`}>
                         <div className="flex justify-between items-start mb-3">
-                          <div>
-                            <h3 className={`text-lg font-semibold ${
-                              isSubmitted ? 'text-gray-600' : 'text-gray-800'
-                            }`}>
-                              {task.title || 'Untitled Task'}
-                            </h3>
-                            <p className={`text-sm mt-1 ${
-                              isSubmitted ? 'text-gray-500' : 'text-gray-600'
-                            }`}>
-                              {task.description || 'No description provided'}
-                            </p>
+                          <div className="flex items-start space-x-3">
+                            {/* ✅ NEW: Validation Indicator */}
+                            {!isSubmitted && (
+                              <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-1 ${
+                                isTaskValid(task) ? 'bg-green-100' : 'bg-red-100'
+                              }`}>
+                                {isTaskValid(task) ? (
+                                  <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                ) : (
+                                  <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                )}
+                              </div>
+                            )}
+                            <div>
+                              <h3 className={`text-lg font-semibold ${
+                                isSubmitted ? 'text-gray-600' : 'text-gray-800'
+                              }`}>
+                                {task.title || 'Untitled Task'}
+                              </h3>
+                              <p className={`text-sm mt-1 ${
+                                isSubmitted ? 'text-gray-500' : 'text-gray-600'
+                              }`}>
+                                {task.description || 'No description provided'}
+                              </p>
+                              {/* ✅ NEW: Validation error messages for invalid tasks */}
+                              {!isSubmitted && !isTaskValid(task) && (
+                                <div className="mt-2 text-xs text-red-600 bg-red-50 p-2 rounded">
+                                  {!task.startDate || task.startDate.trim() === '' ? '• Start date is required' : ''}
+                                  {!task.endDate || task.endDate.trim() === '' ? '• End date is required' : ''}
+                                  {task.startDate && task.endDate && new Date(task.endDate) < new Date(task.startDate) ? '• End date cannot be before start date' : ''}
+                                </div>
+                              )}
+                            </div>
                           </div>
                           
                           {/* Action Buttons - Only show if not submitted */}
@@ -666,16 +878,46 @@ const handleDownloadFile = async () => {
                             <label className={`font-medium ${
                               isSubmitted ? 'text-gray-500' : 'text-gray-700'
                             }`}>Start Date</label>
-                            <p className={isSubmitted ? 'text-gray-400' : 'text-gray-600'}>
-                              {task.startDate ? formatDate(task.startDate) : 'Not set'}
+                            <p className={`flex items-center ${isSubmitted ? 'text-gray-400' : 'text-gray-600'}`}>
+                              {!task.startDate || task.startDate.trim() === '' ? (
+                                <span className="text-red-500 italic">Not set</span>
+                              ) : (
+                                <>
+                                  <svg className={`w-4 h-4 mr-1 ${
+                                    isTaskValid(task) ? 'text-green-500' : 'text-red-500'
+                                  }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    {isTaskValid(task) ? (
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    ) : (
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    )}
+                                  </svg>
+                                  {formatDate(task.startDate)}
+                                </>
+                              )}
                             </p>
                           </div>
                           <div>
                             <label className={`font-medium ${
                               isSubmitted ? 'text-gray-500' : 'text-gray-700'
                             }`}>End Date</label>
-                            <p className={isSubmitted ? 'text-gray-400' : 'text-gray-600'}>
-                              {task.endDate ? formatDate(task.endDate) : 'Not set'}
+                            <p className={`flex items-center ${isSubmitted ? 'text-gray-400' : 'text-gray-600'}`}>
+                              {!task.endDate || task.endDate.trim() === '' ? (
+                                <span className="text-red-500 italic">Not set</span>
+                              ) : (
+                                <>
+                                  <svg className={`w-4 h-4 mr-1 ${
+                                    isTaskValid(task) ? 'text-green-500' : 'text-red-500'
+                                  }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    {isTaskValid(task) ? (
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    ) : (
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    )}
+                                  </svg>
+                                  {formatDate(task.endDate)}
+                                </>
+                              )}
                             </p>
                           </div>
                           <div>
@@ -759,12 +1001,17 @@ const handleDownloadFile = async () => {
           {!isSubmitted && (
             <button
               onClick={handleSubmitWork}
-              className="flex-1 bg-green-500 text-white py-3 px-6 rounded-lg hover:bg-green-600 transition-colors font-medium flex items-center justify-center"
+              disabled={!validationStats.isAllValid || tasks.length === 0}
+              className={`flex-1 py-3 px-6 rounded-lg font-medium flex items-center justify-center ${
+                validationStats.isAllValid && tasks.length > 0
+                  ? 'bg-green-500 hover:bg-green-600 text-white transition-colors cursor-pointer'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
             >
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              Submit Work
+              {validationStats.isAllValid ? 'Submit Work' : 'Fix Tasks First'}
             </button>
           )}
 
@@ -790,6 +1037,18 @@ const handleDownloadFile = async () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               Work submitted successfully! You can now view Gantt Chart.
+            </div>
+          </div>
+        )}
+
+        {/* ✅ NEW: Validation Success Message */}
+        {validationSuccess && (
+          <div className="fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg">
+            <div className="flex items-center">
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              {validationSuccess}
             </div>
           </div>
         )}
@@ -829,25 +1088,46 @@ const handleDownloadFile = async () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Start Date *</label>
                   <input
                     type="date"
                     value={editingTask.startDate}
                     onChange={(e) => setEditingTask({...editingTask, startDate: e.target.value})}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
                   />
+                  {!editingTask.startDate && (
+                    <p className="text-xs text-red-500 mt-1">Start date is required</p>
+                  )}
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">End Date *</label>
                   <input
                     type="date"
                     value={editingTask.endDate}
                     onChange={(e) => setEditingTask({...editingTask, endDate: e.target.value})}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
                   />
+                  {!editingTask.endDate && (
+                    <p className="text-xs text-red-500 mt-1">End date is required</p>
+                  )}
                 </div>
               </div>
+
+              {/* ✅ NEW: Date Validation Check */}
+              {editingTask.startDate && editingTask.endDate && 
+               new Date(editingTask.endDate) < new Date(editingTask.startDate) && (
+                <div className="bg-red-50 border border-red-200 rounded p-3">
+                  <p className="text-sm text-red-600 flex items-center">
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    End date cannot be before start date
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Working Hours</label>
@@ -856,7 +1136,6 @@ const handleDownloadFile = async () => {
                   value={editingTask.workingHours}
                   onChange={(e) => setEditingTask({...editingTask, workingHours: e.target.value})}
                   placeholder="Enter working hours"
-                  min="0"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -872,7 +1151,7 @@ const handleDownloadFile = async () => {
               <button
                 onClick={handleUpdateTask}
                 className="flex-1 bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600 transition-colors"
-                disabled={!editingTask.title}
+                disabled={!editingTask.title || !editingTask.startDate || !editingTask.endDate}
               >
                 {editingTask.title ? 'Update Task' : 'Add Task'}
               </button>

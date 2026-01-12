@@ -191,6 +191,24 @@ export default function Navbar() {
     window.location.href = '/';
   };
 
+  // ✅ FIXED: Dynamic Dashboard Navigation
+  const navigateToDashboard = (e) => {
+    if (e) {
+      e.preventDefault();
+    }
+    
+    if (userRole === USER_TYPES.ADMIN) {
+      console.log('👑 Navigating to Admin Dashboard');
+      window.location.href = '/admin/dashboard';
+    } else if (userRole === USER_TYPES.DEVELOPER) {
+      console.log('👨‍💻 Navigating to Developer Dashboard');
+      window.location.href = '/developer/dashboard';
+    } else {
+      console.log('❓ No role detected, going to login');
+      window.location.href = '/login';
+    }
+  };
+
   // Get user initials for avatar
   const getUserInitials = () => {
     if (!user) return 'U';
@@ -252,24 +270,47 @@ export default function Navbar() {
     return 'User';
   };
 
-  // Get user-specific navigation items
+  // ✅ FIXED: Get user-specific navigation items with dynamic dashboard
   const getUserNavItems = () => {
     const baseItems = [...navItems];
     
+    // Add Dashboard link with proper href based on user role
     if (userRole === USER_TYPES.ADMIN) {
       baseItems.push(
-        { name: 'Admin Panel', href: '/admin/dashboard' },
-        { name: 'Users', href: '/admin/users' }
+        { name: 'Dashboard', href: '/admin/dashboard' },
+       
       );
     } else if (userRole === USER_TYPES.DEVELOPER) {
       baseItems.push(
-        { name: 'My Dashboard', href: '/dashboard' },
-        { name: 'Reports', href: '/reports' }
+        { name: 'Dashboard', href: '/developer/dashboard' }
       );
     }
     
     return baseItems;
   };
+
+  // ✅ FIXED: Navigation item click handler
+  const handleNavItemClick = (href, e) => {
+    if (href === '/admin/dashboard' || href === '/dashboard' || href === '/developer/dashboard') {
+      e.preventDefault();
+      navigateToDashboard(e);
+    } else {
+      window.location.href = href;
+    }
+  };
+
+  // ✅ FIXED: Dynamic Dashboard button for profile dropdown
+  const DashboardButton = () => (
+    <button
+      onClick={(e) => navigateToDashboard(e)}
+      className="flex items-center w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
+    >
+      <svg className="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+      </svg>
+      Dashboard
+    </button>
+  );
 
   // Render auth buttons based on login state
   const renderAuthButtons = () => {
@@ -340,16 +381,8 @@ export default function Navbar() {
                 </div>
               </div>
               
-              <a
-                href={userRole === USER_TYPES.ADMIN ? "/admin/dashboard" : "/dashboard"}
-                className="flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
-                onClick={() => setIsProfileMenuOpen(false)}
-              >
-                <svg className="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-                Dashboard
-              </a>
+              {/* ✅ FIXED: Dynamic Dashboard Button */}
+              <DashboardButton />
               
               <button
                 onClick={handleLogout}
@@ -396,14 +429,13 @@ export default function Navbar() {
       <div className="md:hidden bg-white border-t border-gray-100 mt-4">
         <div className="py-3 space-y-1">
           {currentNavItems.map((item) => (
-            <a
+            <button
               key={item.name}
-              href={item.href}
-              className="block px-4 py-2 text-gray-700 hover:text-blue-600 hover:bg-gray-50 text-sm font-medium"
-              onClick={() => setIsMenuOpen(false)}
+              onClick={(e) => handleNavItemClick(item.href, e)}
+              className="block w-full text-left px-4 py-2 text-gray-700 hover:text-blue-600 hover:bg-gray-50 text-sm font-medium"
             >
               {item.name}
-            </a>
+            </button>
           ))}
           
           <div className="border-t border-gray-100 pt-2 mt-2 px-4">
@@ -435,6 +467,20 @@ export default function Navbar() {
                     <p className="text-xs text-gray-500">{getUserRoleText()}</p>
                   </div>
                 </div>
+                
+                {/* ✅ FIXED: Mobile Dashboard Button */}
+                <button
+                  onClick={(e) => {
+                    navigateToDashboard(e);
+                    setIsMenuOpen(false);
+                  }}
+                  className="flex items-center w-full text-left px-4 py-2 text-gray-700 hover:text-blue-600 hover:bg-gray-50 text-sm font-medium"
+                >
+                  <svg className="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  Dashboard
+                </button>
                 
                 <button
                   onClick={handleLogout}
@@ -470,14 +516,6 @@ export default function Navbar() {
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-100 shadow-sm">
-      {/* Debug button - Remove in production */}
-      {/* <button 
-        onClick={debugAuth}
-        className="fixed bottom-4 right-4 bg-red-500 text-white p-2 rounded text-xs z-50"
-      >
-        Debug Auth
-      </button> */}
-      
       <div className="container mx-auto px-6 py-4">
         <div className="flex items-center justify-between">
           
@@ -492,13 +530,13 @@ export default function Navbar() {
           <div className="hidden md:flex items-center space-x-12">
             <div className="flex items-center space-x-8">
               {(isLoggedIn && user ? getUserNavItems() : navItems).map((item) => (
-                <a
+                <button
                   key={item.name}
-                  href={item.href}
+                  onClick={(e) => handleNavItemClick(item.href, e)}
                   className="text-gray-700 hover:text-blue-600 font-bold transition-colors duration-200 text-sm tracking-wide"
                 >
                   {item.name}
-                </a>
+                </button>
               ))}
             </div>
 
