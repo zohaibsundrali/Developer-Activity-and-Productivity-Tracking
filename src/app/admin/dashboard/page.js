@@ -155,8 +155,14 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
     const notificationsSubscription = supabase
       .channel('notifications-changes')
       .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'notifications' }, 
-        () => {
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'notifications',
+          filter: `admin_id=eq.${authUser.id}` // Only listen for current admin's notifications
+        }, 
+        (payload) => {
+          console.log("📢 Real-time notification change:", payload.eventType);
           fetchNotifications(); // Refresh when notifications change
         }
       )
@@ -234,6 +240,8 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
       // Calculate unread count for current admin
       const unread = notificationsData?.filter(notif => !notif.read).length || 0;
       setUnreadCount(unread);
+      
+      console.log("📊 Fetched notifications:", notificationsData?.length || 0, "unread:", unread);
 
     } catch (error) {
       console.error('Error fetching notifications:', error);
@@ -248,6 +256,8 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
         handleLogout();
         return;
       }
+      
+      console.log("✅ Parent: Marking notification as read:", notificationId);
       
       const { error } = await supabase
         .from('notifications')
@@ -270,9 +280,67 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
 
       // Update unread count
       setUnreadCount(prev => Math.max(0, prev - 1));
+      
+      console.log("✅ Parent: Unread count updated to:", Math.max(0, unreadCount - 1));
 
     } catch (error) {
       console.error('Error marking notification as read:', error);
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      const currentUser = checkAdminAuth();
+      if (!currentUser) {
+        handleLogout();
+        return;
+      }
+      
+      // Get unread notification IDs for current admin
+      const unreadIds = notifications
+        .filter(notif => !notif.read)
+        .map(notif => notif.id);
+
+      if (unreadIds.length === 0) return;
+      
+      console.log("✅ Parent: Marking all as read:", unreadIds.length, "notifications");
+
+      const { error } = await supabase
+        .from('notifications')
+        .update({ 
+          read: true, 
+          read_at: new Date().toISOString() 
+        })
+        .in('id', unreadIds);
+
+      if (error) throw error;
+
+      // Optimistically update all notifications
+      setNotifications(prev => 
+        prev.map(notif => ({ ...notif, read: true }))
+      );
+
+      // Set unread count to 0
+      setUnreadCount(0);
+      
+      console.log("✅ Parent: All marked as read, unread count: 0");
+
+    } catch (error) {
+      console.error('Error marking all notifications as read:', error);
+    }
+  };
+
+  // Function to handle unread count change from Notifications component
+  const handleUnreadCountChange = (updater) => {
+    if (typeof updater === 'function') {
+      setUnreadCount(prev => {
+        const newValue = updater(prev);
+        console.log("🔄 Parent: Unread count changed from", prev, "to", newValue);
+        return newValue;
+      });
+    } else {
+      console.log("🔄 Parent: Unread count set to", updater);
+      setUnreadCount(updater);
     }
   };
 
@@ -337,6 +405,7 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
             notifications={notifications}
             onMarkAsRead={handleMarkAsRead}
             unreadCount={unreadCount}
+            onUnreadCountChange={handleUnreadCountChange} // ✅ IMPORTANT: Add this prop
             supabase={supabase}
             user={user}
           />
@@ -384,6 +453,15 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
           </div>
         </div>
       </main>
+      
+      {/* Debug info (remove in production) */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="fixed bottom-4 right-4 bg-black bg-opacity-80 text-white p-3 rounded text-xs">
+          <div>Unread Count: {unreadCount}</div>
+          <div>Total Notifications: {notifications.length}</div>
+          <div>Unread Notifications: {notifications.filter(n => !n.read).length}</div>
+        </div>
+      )}
     </div>
   );
 }

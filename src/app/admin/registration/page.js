@@ -59,10 +59,13 @@ export default function AdminRegistration() {
     };
   };
 
+  // UPDATED: Fixed sanitizeInput function - removed .trim() to preserve spaces
   const sanitizeInput = (input) => {
-    return input.trim().replace(/[<>]/g, '');
+    // Only remove potentially dangerous characters, don't trim spaces
+    return input.replace(/[<>]/g, '');
   };
 
+  // UPDATED: handleInputChange now preserves spaces
   const handleInputChange = (field, value) => {
     const sanitizedValue = sanitizeInput(value);
     setFormData(prev => ({
@@ -81,8 +84,15 @@ export default function AdminRegistration() {
   const validateForm = () => {
     const newErrors = {};
 
-    if (!formData.fullName) newErrors.fullName = "Full name is required";
-    if (!formData.company) newErrors.company = "Company is required";
+    // UPDATED: Check if fullName is empty or contains only whitespace
+    if (!formData.fullName || formData.fullName.trim() === "") {
+      newErrors.fullName = "Full name is required";
+    }
+    
+    // UPDATED: Check if company is empty or contains only whitespace
+    if (!formData.company || formData.company.trim() === "") {
+      newErrors.company = "Company is required";
+    }
     
     if (!formData.email) {
       newErrors.email = "Email is required";
@@ -257,13 +267,13 @@ const handleRegister = async (e) => {
 
       console.log("✅ Supabase connected. Inserting user...");
 
-      // Insert user data
+      // Insert user data - spaces will be preserved in full_name and company
       const { data, error } = await supabase
         .from("admin_users")
         .insert([
           {
-            full_name: formData.fullName,
-            company: formData.company,
+            full_name: formData.fullName, // Preserves spaces
+            company: formData.company, // Preserves spaces
             email: formData.email,
             password: formData.password,
             is_verified: true,
@@ -350,7 +360,7 @@ const handleRegister = async (e) => {
 
         {step === 1 ? (
           <form onSubmit={handleRegister} className="space-y-4">
-            <div>
+            <div className="mb-4">
               <input
                 type="text"
                 placeholder="Full Name"
@@ -359,7 +369,9 @@ const handleRegister = async (e) => {
                 className={`w-full p-3 border rounded-lg ${errors.fullName ? 'border-red-500' : 'border-gray-300'}`}
                 required
               />
-              {errors.fullName && <p className="text-red-500 text-sm mt-1">{errors.fullName}</p>}
+              {errors.fullName && (
+                <p className="text-red-500 text-sm mt-1">{errors.fullName}</p>
+              )}
             </div>
 
             <div>

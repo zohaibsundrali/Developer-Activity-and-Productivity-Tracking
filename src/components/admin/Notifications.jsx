@@ -1,34 +1,31 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
-export default function Notifications({ notifications: initialNotifications, onMarkAsRead, unreadCount, supabase, user }) {
-  const [localNotifications, setLocalNotifications] = useState([]);
+export default function Notifications({ 
+  notifications: initialNotifications, 
+  onMarkAsRead, 
+  unreadCount,
+  onUnreadCountChange,
+  supabase, 
+  user 
+}) {
   const [currentAdmin, setCurrentAdmin] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [optimisticNotifications, setOptimisticNotifications] = useState([]);
 
+  // Get current admin from localStorage
   useEffect(() => {
     const fetchAdminData = () => {
       try {
-        // Get current admin from localStorage (more reliable)
         const adminData = JSON.parse(localStorage.getItem("adminUser"));
         
         if (adminData) {
           console.log("🔔 Notifications: Admin found", adminData.email);
           setCurrentAdmin(adminData);
-          
-          // If initial notifications provided, filter for this admin
-          if (initialNotifications) {
-            const filteredNotifications = initialNotifications.filter(notif => 
-              notif.admin_id === adminData.id || 
-              notif.admin_email === adminData.email
-            );
-            console.log("🔔 Filtered notifications:", filteredNotifications.length);
-            setLocalNotifications(filteredNotifications);
-          }
         } else {
           console.log("🔔 No admin found in localStorage");
           setCurrentAdmin(null);
-          setLocalNotifications([]);
         }
       } catch (error) {
         console.error("🔔 Error reading admin data:", error);
@@ -52,46 +49,71 @@ export default function Notifications({ notifications: initialNotifications, onM
     return () => {
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, [initialNotifications]);
+  }, []);
 
-  // Fetch notifications directly if not provided
+  // Sync initialNotifications with optimisticNotifications
   useEffect(() => {
-    if (supabase && currentAdmin && !initialNotifications) {
-      fetchAdminNotifications();
+    if (initialNotifications && currentAdmin) {
+      const filteredNotifications = initialNotifications.filter(notif => 
+        notif.admin_id === currentAdmin.id || 
+        notif.admin_email === currentAdmin.email
+      );
+      setOptimisticNotifications(filteredNotifications);
     }
-  }, [supabase, currentAdmin, initialNotifications]);
+  }, [initialNotifications, currentAdmin]);
 
+  // Filter notifications for current admin
+  const adminNotifications = useMemo(() => {
+    if (!currentAdmin) return [];
+    
+    // Use optimisticNotifications if available, otherwise use initialNotifications
+    const notificationsToUse = optimisticNotifications.length > 0 
+      ? optimisticNotifications 
+      : (initialNotifications || []);
+    
+    return notificationsToUse.filter(notif => {
+      const isForThisAdmin = 
+        (notif.admin_id && notif.admin_id === currentAdmin.id) ||
+        (notif.admin_email && notif.admin_email.toLowerCase() === currentAdmin.email.toLowerCase());
+      
+      return isForThisAdmin;
+    });
+  }, [optimisticNotifications, initialNotifications, currentAdmin]);
+
+  // Separate unread and read notifications
+  const unreadNotifications = useMemo(() => 
+    adminNotifications.filter(notif => !notif.read), 
+    [adminNotifications]
+  );
+  
+  const readNotifications = useMemo(() => 
+    adminNotifications.filter(notif => notif.read), 
+    [adminNotifications]
+  );
+
+  // Function to fetch notifications from database (for refresh button)
   const fetchAdminNotifications = async () => {
     try {
-      setLoading(true);
+      setRefreshing(true);
       
       if (!currentAdmin?.id) {
         console.log("🔔 No admin ID for fetching notifications");
         return;
       }
 
-      console.log("🔔 Fetching notifications for admin:", currentAdmin.email);
+      console.log("🔔 Manually refreshing notifications for admin:", currentAdmin.email);
       
-      // Fetch notifications for current admin only
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .or(`admin_id.eq.${currentAdmin.id},admin_email.ilike.%${currentAdmin.email}%`)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      
-      console.log("🔔 Notifications fetched:", data?.length || 0);
-      setLocalNotifications(data || []);
+      // Reset optimistic state when refreshing
+      setOptimisticNotifications([]);
       
     } catch (error) {
-      console.error('❌ Error fetching notifications:', error);
-      setLocalNotifications([]);
+      console.error('❌ Error refreshing notifications:', error);
     } finally {
-      setLoading(false);
+      setRefreshing(false);
     }
   };
 
+  // Function to format date
   const formatDate = (dateString) => {
     if (!dateString) return 'Just now';
     const date = new Date(dateString);
@@ -114,109 +136,120 @@ export default function Notifications({ notifications: initialNotifications, onM
     });
   };
 
+  // Function to mark a single notification as read
   const handleMarkAsRead = async (notificationId) => {
     try {
       console.log("✅ Marking as read:", notificationId);
       
-      // Optimistic update
-      setLocalNotifications(prev => 
+      // Check if this notification was unread before marking
+      const notificationToUpdate = adminNotifications.find(n => n.id === notificationId);
+      const wasUnread = notificationToUpdate && !notificationToUpdate.read;
+      
+      // OPTIMISTIC UPDATE: Immediately update local state
+      setOptimisticNotifications(prev => 
         prev.map(notif => 
           notif.id === notificationId 
             ? { ...notif, read: true }
             : notif
         )
       );
+      
+      // Notify parent component about unread count change
+      if (wasUnread && onUnreadCountChange) {
+        console.log("📢 Notifying parent: Decrementing unread count");
+        onUnreadCountChange(prev => Math.max(0, prev - 1));
+      }
 
-      // Call parent's onMarkAsRead if provided (for Dashboard)
+      // Call parent's onMarkAsRead function
       if (onMarkAsRead) {
         await onMarkAsRead(notificationId);
       } 
-      // Or update directly in database
+      // Or update directly in database if parent function not provided
       else if (supabase) {
         const { error } = await supabase
           .from('notifications')
-          .update({ read: true, read_at: new Date().toISOString() })
+          .update({ 
+            read: true, 
+            read_at: new Date().toISOString() 
+          })
           .eq('id', notificationId);
 
         if (error) throw error;
       }
 
-      // Refresh to get updated count
-      if (supabase && currentAdmin) {
-        setTimeout(fetchAdminNotifications, 500);
-      }
-
     } catch (error) {
       console.error('❌ Error marking as read:', error);
+      
       // Revert optimistic update on error
-      setLocalNotifications(prev => 
-        prev.map(notif => 
-          notif.id === notificationId 
-            ? { ...notif, read: false }
-            : notif
-        )
-      );
+      if (notificationToUpdate) {
+        setOptimisticNotifications(prev => 
+          prev.map(notif => 
+            notif.id === notificationId 
+              ? { ...notif, read: notificationToUpdate.read }
+              : notif
+          )
+        );
+      }
     }
   };
 
+  // Function to mark all notifications as read
   const handleMarkAllAsRead = async () => {
     try {
-      const unreadIds = localNotifications
+      // Get all unread notification IDs
+      const unreadIds = adminNotifications
         .filter(notif => !notif.read)
         .map(notif => notif.id);
 
       if (unreadIds.length === 0) return;
 
       console.log("✅ Marking all as read:", unreadIds.length, "notifications");
-
-      // Optimistic update
-      setLocalNotifications(prev => 
+      
+      // Store original states for potential rollback
+      const originalNotifications = [...adminNotifications];
+      
+      // OPTIMISTIC UPDATE: Immediately update all to read
+      setOptimisticNotifications(prev => 
         prev.map(notif => ({ ...notif, read: true }))
       );
+      
+      // Notify parent component about unread count change
+      if (onUnreadCountChange) {
+        console.log("📢 Notifying parent: Setting unread count to 0");
+        onUnreadCountChange(0);
+      }
 
-      // Call parent's onMarkAsRead for each
+      // Call parent's onMarkAsRead function for each notification
       if (onMarkAsRead) {
-        unreadIds.forEach(id => onMarkAsRead(id));
+        // Call parent function once with all IDs
+        await onMarkAsRead(unreadIds);
       } 
-      // Or update in database
+      // Or update in database if parent function not provided
       else if (supabase) {
         const { error } = await supabase
           .from('notifications')
-          .update({ read: true, read_at: new Date().toISOString() })
+          .update({ 
+            read: true, 
+            read_at: new Date().toISOString() 
+          })
           .in('id', unreadIds);
 
         if (error) throw error;
       }
 
-      // Refresh after marking all
-      if (supabase && currentAdmin) {
-        setTimeout(fetchAdminNotifications, 500);
-      }
-
     } catch (error) {
       console.error('❌ Error marking all as read:', error);
+      // Revert optimistic update on error
+      setOptimisticNotifications(originalNotifications);
     }
   };
-
-  // Filter notifications for current admin
-  const adminNotifications = localNotifications.filter(notif => {
-    if (!currentAdmin) return false;
-    
-    // Match by admin_id or admin_email
-    const isForThisAdmin = 
-      (notif.admin_id && notif.admin_id === currentAdmin.id) ||
-      (notif.admin_email && notif.admin_email.toLowerCase() === currentAdmin.email.toLowerCase());
-    
-    return isForThisAdmin;
-  });
-
-  const unreadNotifications = adminNotifications.filter(notif => !notif.read);
-  const readNotifications = adminNotifications.filter(notif => notif.read);
 
   console.log("🔔 Current admin:", currentAdmin?.email);
   console.log("🔔 Total notifications:", adminNotifications.length);
   console.log("🔔 Unread notifications:", unreadNotifications.length);
+  console.log("🔔 Parent unread count prop:", unreadCount);
 
+  // Loading state
   if (loading) {
     return (
       <div className="bg-white p-6 rounded-lg shadow">
@@ -228,6 +261,7 @@ export default function Notifications({ notifications: initialNotifications, onM
     );
   }
 
+  // No admin logged in state
   if (!currentAdmin) {
     return (
       <div className="bg-white p-6 rounded-lg shadow">
@@ -249,6 +283,7 @@ export default function Notifications({ notifications: initialNotifications, onM
 
   return (
     <div className="bg-white p-6 rounded-lg shadow">
+      {/* Header section */}
       <div className="flex justify-between items-center mb-6">
         <div>
           <h2 className="text-2xl font-bold">Notifications</h2>
@@ -264,16 +299,27 @@ export default function Notifications({ notifications: initialNotifications, onM
           </div>
         </div>
         
+        {/* Action buttons */}
         <div className="flex items-center space-x-3">
           <button
             onClick={fetchAdminNotifications}
-            className="bg-gray-100 text-gray-700 px-3 py-2 rounded-md hover:bg-gray-200 transition-colors text-sm flex items-center"
+            disabled={refreshing}
+            className="bg-gray-100 text-gray-700 px-3 py-2 rounded-md hover:bg-gray-200 transition-colors text-sm flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
             title="Refresh notifications"
           >
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            Refresh
+            {refreshing ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-700 mr-2"></div>
+                Refreshing...
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Refresh
+              </>
+            )}
           </button>
           
           {unreadNotifications.length > 0 && (
@@ -307,6 +353,7 @@ export default function Notifications({ notifications: initialNotifications, onM
             </button>
           </div>
           
+          {/* Unread notifications list */}
           <div className="space-y-3">
             {unreadNotifications.map(notification => (
               <div 
@@ -352,6 +399,7 @@ export default function Notifications({ notifications: initialNotifications, onM
           </div>
         </div>
       ) : (
+        // No unread notifications message
         unreadNotifications.length === 0 && adminNotifications.length > 0 && (
           <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
             <div className="flex items-center justify-between">
@@ -381,6 +429,7 @@ export default function Notifications({ notifications: initialNotifications, onM
             </div>
           </div>
           
+          {/* Read notifications list */}
           <div className="space-y-3">
             {readNotifications.map(notification => (
               <div 
@@ -417,7 +466,7 @@ export default function Notifications({ notifications: initialNotifications, onM
         </div>
       )}
 
-      {/* Empty State */}
+      {/* Empty State - No notifications at all */}
       {adminNotifications.length === 0 && !loading && (
         <div className="text-center py-12">
           <svg className="w-20 h-20 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -440,10 +489,17 @@ export default function Notifications({ notifications: initialNotifications, onM
             </div>
             <div>
               <span className="font-medium">Total:</span> {adminNotifications.length} notifications
+              {unreadNotifications.length > 0 && (
+                <span className="ml-2">
+                  (<span className="text-red-600">{unreadNotifications.length} unread</span>)
+                </span>
+              )}
             </div>
           </div>
         </div>
       )}
+
+    
     </div>
   );
 }

@@ -79,7 +79,7 @@ export default function LoginPage() {
       
       localStorage.setItem(`verification_${email}`, JSON.stringify(verificationData));
       
-      alert(`Email service temporarily unavailable. Your verification code is: ${code}\n\nThis code will expire in 10 minutes.`);
+     
       
       return true;
     }

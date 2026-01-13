@@ -442,28 +442,13 @@ const debugCheckNotifications = async () => {
   return (
     <div className="bg-white p-6 rounded-lg shadow">
       {/* Debug Button - Temporary */}
-      <div className="mb-4">
-        <button
-          onClick={debugCheckNotifications}
-          className="bg-purple-500 text-white px-3 py-1 rounded text-xs"
-        >
-          🔍 Debug Notifications
-        </button>
-      </div>
+   
 
       {/* Header with Add Project Button and Admin Info */}
       <div className="flex justify-between items-center mb-6">
         <div>
           <h2 className="text-2xl font-bold">My Projects</h2>
-          <p className="text-sm text-gray-500">Assigned to: {currentAdmin.name || currentAdmin.email}</p>
-          <div className="flex items-center space-x-4 mt-1">
-            <p className="text-xs text-gray-400">
-              Showing {projects.length} project{projects.length !== 1 ? 's' : ''}
-            </p>
-            <p className="text-xs text-gray-400">
-              {adminDevelopers.length} developer{adminDevelopers.length !== 1 ? 's' : ''} available
-            </p>
-          </div>
+         
         </div>
         <div className="flex items-center space-x-3">
           <button
@@ -487,31 +472,7 @@ const debugCheckNotifications = async () => {
       </div>
 
       {/* Developer Stats */}
-      {adminDevelopers.length > 0 && (
-        <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-medium text-gray-700">Your Available Developers</h3>
-              <div className="flex items-center space-x-4 mt-1">
-                <span className="text-xs text-green-600">
-                  {activeDevelopers.length} Active
-                </span>
-                <span className="text-xs text-red-600">
-                  {inactiveDevelopers.length} Inactive
-                </span>
-              </div>
-            </div>
-            {adminDevelopers.length === 0 && (
-              <a 
-                href="#add-developer" 
-                className="text-sm text-[#009578] hover:underline"
-              >
-                Add your first developer →
-              </a>
-            )}
-          </div>
-        </div>
-      )}
+
 
       {/* Add Project Modal */}
       {showAddProject && (
@@ -607,30 +568,21 @@ const debugCheckNotifications = async () => {
                     </p>
                   </div>
                 )}
-                <p className="text-xs text-gray-500 mt-1">
-                  Only developers added by you are shown here
-                </p>
+                
               </div>
 
-              <div className="p-3 bg-gray-50 rounded-md">
-                <p className="text-sm text-gray-600 mb-2">
-                  <span className="font-medium">Note:</span> This project will be automatically assigned to you ({currentAdmin.name || currentAdmin.email})
-                </p>
-                <p className="text-xs text-gray-500">
-                  Developer must be added by you to appear in the list
-                </p>
-              </div>
+             
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Attach Requirements File (Optional)
+                  Attach Requirements File 
                 </label>
                 <input
                   id="file-input"
                   type="file"
                   onChange={handleFileChange}
                   className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]"
-                  accept=".pdf,.doc,.docx,.txt"
+                  accept=".pdf,.doc,.docx,.txt" required={true}
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   Supported formats: PDF, DOC, DOCX, TXT (Max 10MB)
