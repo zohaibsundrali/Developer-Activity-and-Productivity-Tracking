@@ -17,13 +17,13 @@ export default function DeveloperActivity() {
   const [loading, setLoading] = useState(false);
   const [fetchingDevelopers, setFetchingDevelopers] = useState(false);
   const [productivityScore, setProductivityScore] = useState(0);
+  const [viewMode, setViewMode] = useState("overview");
 
   // Get current admin from localStorage
   useEffect(() => {
     const getCurrentAdmin = () => {
       try {
         const adminData = JSON.parse(localStorage.getItem("adminUser"));
-        
         if (adminData && adminData.email) {
           setCurrentAdmin(adminData);
         } else {
@@ -46,14 +46,14 @@ export default function DeveloperActivity() {
   // Fetch developers added by current admin
   useEffect(() => {
     if (currentAdmin && currentAdmin.id) {
-      fetchAddedDevelopers();
+      fetchAdminDevelopers();
     } else {
       setDevelopers([]);
       setSelectedDeveloper("");
     }
   }, [currentAdmin]);
 
-  const fetchAddedDevelopers = async () => {
+  const fetchAdminDevelopers = async () => {
     setFetchingDevelopers(true);
     try {
       if (!currentAdmin || !currentAdmin.id) {
@@ -62,9 +62,7 @@ export default function DeveloperActivity() {
 
       let developersData = [];
 
-      // Try different approaches to find developers
-      
-      // Approach 1: Try common column names
+      // Try different approaches to find developers added by this admin
       const possibleColumns = ['added_by_admin', 'added_by', 'admin_id', 'created_by'];
       
       for (const column of possibleColumns) {
@@ -93,31 +91,7 @@ export default function DeveloperActivity() {
         }
       }
 
-      // Approach 2: If no results, fetch all and filter client-side
-      if (developersData.length === 0) {
-        const { data: allDevelopers } = await supabase
-          .from('developers')
-          .select('*')
-          .order('name', { ascending: true });
-
-        if (allDevelopers) {
-          // Filter by checking multiple possible fields
-          developersData = allDevelopers.filter(dev => {
-            return (
-              (dev.added_by_admin && dev.added_by_admin === currentAdmin.id) ||
-              (dev.added_by && dev.added_by === currentAdmin.id) ||
-              (dev.admin_id && dev.admin_id === currentAdmin.id) ||
-              (dev.created_by && dev.created_by === currentAdmin.id) ||
-              (currentAdmin.email && (
-                (dev.added_by_admin && dev.added_by_admin === currentAdmin.email) ||
-                (dev.added_by && dev.added_by === currentAdmin.email)
-              ))
-            );
-          });
-        }
-      }
-
-      // Approach 3: Try OR query
+      // If no results, try OR query
       if (developersData.length === 0 && currentAdmin.id) {
         const { data: orData } = await supabase
           .from('developers')
@@ -127,6 +101,11 @@ export default function DeveloperActivity() {
         if (orData) {
           developersData = orData;
         }
+      }
+
+      // If still no results, show message
+      if (developersData.length === 0) {
+        console.log('No developers found for this admin');
       }
 
       setDevelopers(developersData);
@@ -143,69 +122,123 @@ export default function DeveloperActivity() {
     }
   };
 
+  // Fetch activity data when developer or date changes
   useEffect(() => {
     if (selectedDeveloper) {
       fetchDeveloperActivity();
     }
   }, [selectedDeveloper, selectedDate, timeRange]);
 
-  const fetchDeveloperActivity = async () => {
-    setLoading(true);
-    try {
-      const dateFilter = getDateFilter();
-      
-      // Fetch all activity data
-      const [activitiesRes, screenshotsRes, productivityRes] = await Promise.all([
-        supabase
-          .from('developer_activities')
-          .select('*')
-          .eq('developer_id', selectedDeveloper)
-          .gte('timestamp', dateFilter.start)
-          .lte('timestamp', dateFilter.end)
-          .order('timestamp', { ascending: true }),
-        
-        supabase
-          .from('screenshots')
-          .select('*')
-          .eq('developer_id', selectedDeveloper)
-          .gte('timestamp', dateFilter.start)
-          .lte('timestamp', dateFilter.end)
-          .order('timestamp', { ascending: true }),
-        
-        supabase
-          .from('productivity_scores')
-          .select('*')
-          .eq('developer_id', selectedDeveloper)
-          .gte('date', selectedDate)
-          .order('date', { ascending: false })
-      ]);
-
-      const activities = activitiesRes.data || [];
-      const screenshots = screenshotsRes.data || [];
-      const productivity = productivityRes.data || [];
-
-      // Calculate metrics
-      const metrics = calculateProductivityMetrics(activities);
-      
-      setActivityData({
-        activities,
-        screenshots,
-        productivity,
-        metrics
-      });
-
-      setProductivityScore(metrics.productivityPercentage);
-
-    } catch (error) {
-      console.error('Error fetching activity data:', error);
-    } finally {
-      setLoading(false);
+const fetchDeveloperActivity = async () => {
+  setLoading(true);
+  try {
+    const dateFilter = getDateFilter();
+    const developer = developers.find(d => d.id === selectedDeveloper);
+    
+    if (!developer) {
+      setActivityData(null);
+      return;
     }
-  };
 
+    console.log('Fetching for developer:', developer.email);
+    
+    // ✅ FIXED: Check which columns exist and try different options
+    let sessions = [];
+    let appEvents = [];
+    
+    // Try different column names for sessions
+    const sessionColumnOptions = [
+      { column: 'user_email', value: developer.email },
+      { column: 'developer_email', value: developer.email },
+      { column: 'email', value: developer.email },
+      { column: 'developer_id', value: developer.id },
+      { column: 'user_id', value: developer.id }
+    ];
+    
+    for (const option of sessionColumnOptions) {
+      try {
+        const { data, error } = await supabase
+          .from('productivity_sessions')
+          .select('*')
+          .eq(option.column, option.value)
+          .gte('start_time', dateFilter.start)
+          .lte('start_time', dateFilter.end);
+        
+        if (!error && data && data.length > 0) {
+          console.log(`Found sessions using column "${option.column}"`);
+          sessions = data;
+          break;
+        }
+      } catch (err) {
+        continue;
+      }
+    }
+    
+    // Try different column names for app events
+    const appEventsColumnOptions = [
+      { column: 'user_email', value: developer.email },
+      { column: 'developer_email', value: developer.email },
+      { column: 'email', value: developer.email },
+      { column: 'developer_id', value: developer.id }
+    ];
+    
+    for (const option of appEventsColumnOptions) {
+      try {
+        const { data, error } = await supabase
+          .from('app_events')
+          .select('*')
+          .eq(option.column, option.value)
+          .gte('timestamp', dateFilter.start)
+          .lte('timestamp', dateFilter.end);
+        
+        if (!error && data && data.length > 0) {
+          console.log(`Found app events using column "${option.column}"`);
+          appEvents = data;
+          break;
+        }
+      } catch (err) {
+        continue;
+      }
+    }
+    
+    console.log('Sessions found:', sessions.length);
+    console.log('App events found:', appEvents.length);
+    
+    // If still no data, check table structure
+    if (sessions.length === 0) {
+      console.log('Checking table structure...');
+      
+      // Get first row to see columns
+      const { data: sampleData } = await supabase
+        .from('productivity_sessions')
+        .select('*')
+        .limit(1);
+      
+      if (sampleData && sampleData.length > 0) {
+        console.log('Available columns in productivity_sessions:', Object.keys(sampleData[0]));
+        console.log('Sample row:', sampleData[0]);
+      }
+    }
+    
+    // Process the data
+    const processedData = processActivityData(sessions, appEvents, developer);
+    setActivityData(processedData);
+    setProductivityScore(processedData.overallProductivityScore);
+
+  } catch (error) {
+    console.error('Error fetching activity data:', error);
+    setActivityData(null);
+  } finally {
+    setLoading(false);
+  }
+};
   const getDateFilter = () => {
     const start = new Date(selectedDate);
     const end = new Date(selectedDate);
+    
+    // Set to beginning and end of day for proper filtering
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
     
     switch (timeRange) {
       case 'week':
@@ -214,8 +247,6 @@ export default function DeveloperActivity() {
       case 'month':
         start.setMonth(start.getMonth() - 1);
         break;
-      default: // today
-        end.setDate(end.getDate() + 1);
     }
     
     return {
@@ -224,70 +255,94 @@ export default function DeveloperActivity() {
     };
   };
 
-  const calculateProductivityMetrics = (activities) => {
-    if (!activities.length) {
-      return { 
-        productivityPercentage: 0, 
-        activeTime: 0, 
-        idleTime: 0,
+  const processActivityData = (sessions, appEvents, developer) => {
+    if (!sessions || sessions.length === 0) {
+      return {
+        developer,
+        sessions: [],
+        appEvents: [],
+        overallProductivityScore: 0,
+        totalActiveTime: 0,
+        totalIdleTime: 0,
         appUsage: [],
-        websiteUsage: [],
-        totalActivities: 0
+        topApps: [],
+        totalSessions: 0,
+        totalMouseEvents: 0,
+        totalKeyboardEvents: 0,
+        totalAppSwitches: 0
       };
     }
+
+    // Calculate metrics
+    let totalProductivityScore = 0;
+    let totalActiveTime = 0;
+    let totalIdleTime = 0;
+    let totalMouseEvents = 0;
+    let totalKeyboardEvents = 0;
+    let totalAppSwitches = 0;
+    const appUsageMap = {};
     
-    let totalScore = 0;
-    let activeTime = 0;
-    let idleTime = 0;
-    const appUsage = {};
-    const websiteUsage = {};
-    
-    activities.forEach(activity => {
-      totalScore += activity.productivity_score || 0;
-      
-      if (activity.activity_type === 'idle') {
-        idleTime += activity.activity_data?.idle_time_seconds || 0;
-      } else {
-        activeTime += 60;
-      }
-      
-      if (activity.activity_type === 'app_switch') {
-        const app = activity.activity_data?.application;
-        if (app) {
-          appUsage[app] = (appUsage[app] || 0) + 1;
-        }
-      }
-      
-      if (activity.activity_data?.url) {
-        const domain = extractDomain(activity.activity_data.url);
-        if (domain) {
-          websiteUsage[domain] = (websiteUsage[domain] || 0) + 1;
+    sessions.forEach(session => {
+      totalProductivityScore += session.productivity_score || 0;
+      totalActiveTime += session.active_duration || 0;
+      totalIdleTime += session.idle_duration || 0;
+      totalMouseEvents += session.mouse_events || 0;
+      totalKeyboardEvents += session.keyboard_events || 0;
+      totalAppSwitches += session.app_switches || 0;
+
+      // Parse apps_used if available
+      if (session.apps_used) {
+        try {
+          const appsData = JSON.parse(session.apps_used);
+          if (appsData.top_apps && Array.isArray(appsData.top_apps)) {
+            appsData.top_apps.forEach(app => {
+              if (app && typeof app === 'string') {
+                appUsageMap[app] = (appUsageMap[app] || 0) + 1;
+              }
+            });
+          }
+        } catch (error) {
+          console.log('Error parsing apps_used:', error);
         }
       }
     });
-    
-    const productivityPercentage = activities.length > 0 ? (totalScore / activities.length) * 100 : 0;
-    
-    return {
-      productivityPercentage: Math.round(productivityPercentage),
-      activeTime: Math.round(activeTime / 60),
-      idleTime: Math.round(idleTime / 60),
-      appUsage: Object.entries(appUsage)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10),
-      websiteUsage: Object.entries(websiteUsage)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10),
-      totalActivities: activities.length
-    };
-  };
 
-  const extractDomain = (url) => {
-    try {
-      return new URL(url).hostname;
-    } catch {
-      return null;
+    // Also process app events
+    if (appEvents && appEvents.length > 0) {
+      appEvents.forEach(event => {
+        const appName = event.app_name;
+        if (appName) {
+          appUsageMap[appName] = (appUsageMap[appName] || 0) + 1;
+        }
+      });
     }
+
+    const overallProductivityScore = sessions.length > 0 
+      ? totalProductivityScore / sessions.length 
+      : 0;
+
+    // Convert app usage to sorted array
+    const appUsage = Object.entries(appUsageMap)
+      .map(([app, count]) => ({ app, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    const topApps = appUsage.slice(0, 5);
+
+    return {
+      developer,
+      sessions,
+      appEvents,
+      overallProductivityScore,
+      totalActiveTime: totalActiveTime / 3600, // Convert to hours
+      totalIdleTime: totalIdleTime / 3600, // Convert to hours
+      totalSessions: sessions.length,
+      totalMouseEvents,
+      totalKeyboardEvents,
+      totalAppSwitches,
+      appUsage,
+      topApps
+    };
   };
 
   const getProductivityColor = (score) => {
@@ -296,38 +351,46 @@ export default function DeveloperActivity() {
     return 'text-red-600';
   };
 
+  const getProductivityBgColor = (score) => {
+    if (score >= 80) return 'bg-green-100';
+    if (score >= 60) return 'bg-yellow-100';
+    return 'bg-red-100';
+  };
+
   const getProductivityLevel = (score) => {
     if (score >= 80) return 'High';
     if (score >= 60) return 'Medium';
     return 'Low';
   };
 
-  const getActivityTypeColor = (type) => {
-    switch (type) {
-      case 'mouse': return 'bg-blue-500';
-      case 'keyboard': return 'bg-green-500';
-      case 'app_switch': return 'bg-purple-500';
-      case 'idle': return 'bg-red-500';
-      default: return 'bg-gray-500';
+  const formatTime = (seconds) => {
+    if (!seconds) return '0m';
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
     }
+    return `${minutes}m`;
   };
 
-  const getActivityTypeIcon = (type) => {
-    switch (type) {
-      case 'mouse': return '🖱️';
-      case 'keyboard': return '⌨️';
-      case 'app_switch': return '💻';
-      case 'idle': return '⏸️';
-      default: return '📊';
-    }
+  const formatDateTime = (isoString) => {
+    if (!isoString) return 'N/A';
+    const date = new Date(isoString);
+    return date.toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
-  // Refresh admin data
   const refreshAdminData = () => {
     try {
       const adminData = JSON.parse(localStorage.getItem("adminUser"));
       if (adminData) {
         setCurrentAdmin(adminData);
+        fetchAdminDevelopers();
       }
     } catch (error) {
       console.error("Error refreshing admin data:", error);
@@ -337,22 +400,20 @@ export default function DeveloperActivity() {
   return (
     <div className="bg-white p-6 rounded-lg shadow">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold">Developer Activity Tracking</h2>
+        <h2 className="text-2xl font-bold">Developer Activity Dashboard</h2>
         
-        {/* Admin info section */}
         <div className="flex items-center space-x-4">
           {currentAdmin && (
             <div className="text-right">
               <p className="text-sm font-medium text-gray-700">
                 {currentAdmin.name || currentAdmin.email}
               </p>
-              <p className="text-xs text-gray-500">Logged in as Admin</p>
+              <p className="text-xs text-gray-500">Admin Dashboard</p>
             </div>
           )}
           <button
             onClick={refreshAdminData}
             className="bg-gray-100 text-gray-700 px-3 py-1 rounded-md hover:bg-gray-200 transition-colors text-sm"
-            title="Refresh admin session"
           >
             Refresh
           </button>
@@ -360,7 +421,7 @@ export default function DeveloperActivity() {
       </div>
 
       {/* Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Select Developer
@@ -407,11 +468,11 @@ export default function DeveloperActivity() {
               </button>
             </div>
           )}
-          {/* {currentAdmin && !fetchingDevelopers && developers.length > 0 && (
+          {currentAdmin && !fetchingDevelopers && developers.length > 0 && (
             <p className="text-xs text-gray-500 mt-1">
               Showing {developers.length} developer{developers.length !== 1 ? 's' : ''} added by you
             </p>
-          )} */}
+          )}
         </div>
 
         <div>
@@ -443,6 +504,22 @@ export default function DeveloperActivity() {
           </select>
         </div>
 
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            View Mode
+          </label>
+          <select
+            value={viewMode}
+            onChange={(e) => setViewMode(e.target.value)}
+            className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]"
+            disabled={!selectedDeveloper}
+          >
+            <option value="overview">Overview</option>
+            <option value="apps">App Usage</option>
+            <option value="timeline">Timeline</option>
+          </select>
+        </div>
+
         <div className="flex items-end">
           <button
             onClick={fetchDeveloperActivity}
@@ -463,159 +540,272 @@ export default function DeveloperActivity() {
 
       {activityData && !loading && (
         <div className="space-y-6">
-          {/* Productivity Overview */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-500">
-              <h3 className="text-lg font-semibold text-blue-800">Productivity Score</h3>
-              <p className={`text-3xl font-bold ${getProductivityColor(productivityScore)}`}>
-                {productivityScore}%
-              </p>
-              <p className="text-sm text-blue-600">
-                {getProductivityLevel(productivityScore)} Performance
-              </p>
-            </div>
-            
-            <div className="bg-green-50 p-4 rounded-lg border-l-4 border-green-500">
-              <h3 className="text-lg font-semibold text-green-800">Active Time</h3>
-              <p className="text-3xl font-bold text-green-600">
-                {activityData.metrics.activeTime}m
-              </p>
-              <p className="text-sm text-green-600">Productive Work</p>
-            </div>
-            
-            <div className="bg-red-50 p-4 rounded-lg border-l-4 border-red-500">
-              <h3 className="text-lg font-semibold text-red-800">Idle Time</h3>
-              <p className="text-3xl font-bold text-red-600">
-                {activityData.metrics.idleTime}m
-              </p>
-              <p className="text-sm text-red-600">Inactive Periods</p>
-            </div>
-            
-            <div className="bg-purple-50 p-4 rounded-lg border-l-4 border-purple-500">
-              <h3 className="text-lg font-semibold text-purple-800">Total Activities</h3>
-              <p className="text-3xl font-bold text-purple-600">
-                {activityData.metrics.totalActivities}
-              </p>
-              <p className="text-sm text-purple-600">Mouse, Keyboard, Apps</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Applications Used */}
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h3 className="text-lg font-semibold mb-4">Top Applications</h3>
-              <div className="space-y-2">
-                {activityData.metrics.appUsage.length > 0 ? (
-                  activityData.metrics.appUsage.map(([app, count], index) => (
-                    <div key={index} className="flex justify-between items-center p-2 bg-white rounded border">
-                      <span className="text-sm font-medium truncate">{app}</span>
-                      <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                        {count} uses
-                      </span>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-gray-500 text-center py-4">No application data available</p>
-                )}
+          {/* Developer Header */}
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-2xl font-bold text-gray-800">{activityData.developer.name}</h3>
+                <p className="text-gray-600">{activityData.developer.email}</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  Total Sessions: {activityData.totalSessions} • Added by: You
+                </p>
               </div>
-            </div>
-
-            {/* Websites Visited */}
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h3 className="text-lg font-semibold mb-4">Top Websites</h3>
-              <div className="space-y-2">
-                {activityData.metrics.websiteUsage.length > 0 ? (
-                  activityData.metrics.websiteUsage.map(([website, count], index) => (
-                    <div key={index} className="flex justify-between items-center p-2 bg-white rounded border">
-                      <span className="text-sm font-medium truncate">{website}</span>
-                      <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
-                        {count} visits
-                      </span>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-gray-500 text-center py-4">No website data available</p>
-                )}
+              <div className={`px-6 py-3 rounded-full ${getProductivityBgColor(productivityScore)}`}>
+                <p className="text-sm text-gray-600">Overall Productivity</p>
+                <p className={`text-3xl font-bold ${getProductivityColor(productivityScore)}`}>
+                  {productivityScore.toFixed(1)}%
+                </p>
+                <p className="text-sm text-gray-500">{getProductivityLevel(productivityScore)}</p>
               </div>
             </div>
           </div>
 
-          {/* Activity Timeline */}
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <h3 className="text-lg font-semibold mb-4">Recent Activity Timeline</h3>
-            <div className="space-y-2 max-h-80 overflow-y-auto">
-              {activityData.activities.length > 0 ? (
-                activityData.activities.slice(0, 100).map((activity, index) => (
-                  <div key={index} className="flex items-center space-x-3 p-3 bg-white rounded border hover:shadow-md transition-shadow">
-                    <div className="text-lg">
-                      {getActivityTypeIcon(activity.activity_type)}
+          {/* Overview Cards */}
+          {viewMode === "overview" && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-white p-6 rounded-lg border shadow-sm">
+                  <div className="flex items-center">
+                    <div className="bg-green-100 p-3 rounded-lg mr-4">
+                      <span className="text-2xl">⏱️</span>
                     </div>
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-2">
-                        <p className="text-sm font-medium capitalize">{activity.activity_type}</p>
-                        <span className={`text-xs px-2 py-1 rounded ${getActivityTypeColor(activity.activity_type)} text-white`}>
-                          {Math.round((activity.productivity_score || 0) * 100)}%
-                        </span>
+                    <div>
+                      <p className="text-sm text-gray-500">Total Active Time</p>
+                      <p className="text-2xl font-bold text-gray-800">
+                        {activityData.totalActiveTime.toFixed(1)} hrs
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-lg border shadow-sm">
+                  <div className="flex items-center">
+                    <div className="bg-red-100 p-3 rounded-lg mr-4">
+                      <span className="text-2xl">⏸️</span>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Total Idle Time</p>
+                      <p className="text-2xl font-bold text-gray-800">
+                        {activityData.totalIdleTime.toFixed(1)} hrs
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-lg border shadow-sm">
+                  <div className="flex items-center">
+                    <div className="bg-blue-100 p-3 rounded-lg mr-4">
+                      <span className="text-2xl">📊</span>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Sessions Tracked</p>
+                      <p className="text-2xl font-bold text-gray-800">
+                        {activityData.totalSessions}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-lg border shadow-sm">
+                  <div className="flex items-center">
+                    <div className="bg-purple-100 p-3 rounded-lg mr-4">
+                      <span className="text-2xl">💻</span>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Unique Apps</p>
+                      <p className="text-2xl font-bold text-gray-800">
+                        {activityData.appUsage.length}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Activity Stats */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-gray-50 p-6 rounded-lg">
+                  <h3 className="text-lg font-semibold mb-4">Activity Summary</h3>
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Mouse Events:</span>
+                      <span className="font-bold text-blue-600">{activityData.totalMouseEvents}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Keyboard Events:</span>
+                      <span className="font-bold text-green-600">{activityData.totalKeyboardEvents}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">App Switches:</span>
+                      <span className="font-bold text-purple-600">{activityData.totalAppSwitches}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Top Applications */}
+                <div className="bg-gray-50 p-6 rounded-lg md:col-span-2">
+                  <h3 className="text-lg font-semibold mb-4">Top Applications Used</h3>
+                  <div className="space-y-2">
+                    {activityData.appUsage.length > 0 ? (
+                      activityData.appUsage.map((item, index) => (
+                        <div key={index} className="flex justify-between items-center p-3 bg-white rounded border hover:bg-gray-50">
+                          <div className="flex items-center">
+                            <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
+                              <span className="text-blue-600">💻</span>
+                            </div>
+                            <span className="font-medium">{item.app}</span>
+                          </div>
+                          <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
+                            Used {item.count} times
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-gray-500 text-center py-4">No application data available</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Session Timeline View */}
+          {viewMode === "timeline" && (
+            <div className="bg-white p-6 rounded-lg border shadow-sm">
+              <h3 className="text-lg font-semibold mb-4">Session Timeline ({activityData.sessions.length})</h3>
+              <div className="space-y-4 max-h-96 overflow-y-auto">
+                {activityData.sessions.length > 0 ? (
+                  activityData.sessions.map((session, index) => (
+                    <div key={index} className="border-l-4 border-blue-500 pl-4 py-4 bg-white rounded hover:shadow-md transition-shadow">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h4 className="font-semibold text-gray-800">
+                            Session {session.session_id?.slice(-8) || `#${index + 1}`}
+                          </h4>
+                          <p className="text-sm text-gray-600">
+                            {formatDateTime(session.start_time)}
+                            {session.end_time && ` → ${formatDateTime(session.end_time)}`}
+                          </p>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${getProductivityBgColor(session.productivity_score)} ${getProductivityColor(session.productivity_score)}`}>
+                              Score: {session.productivity_score?.toFixed(1) || 0}%
+                            </span>
+                            <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
+                              ⏱️ {formatTime(session.total_duration)}
+                            </span>
+                            {session.mouse_events > 0 && (
+                              <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs">
+                                🖱️ {session.mouse_events}
+                              </span>
+                            )}
+                            {session.keyboard_events > 0 && (
+                              <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-xs">
+                                ⌨️ {session.keyboard_events}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className={`text-xs px-2 py-1 rounded ${session.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                            {session.status || 'completed'}
+                          </span>
+                        </div>
                       </div>
-                      <p className="text-xs text-gray-500">
-                        {new Date(activity.timestamp).toLocaleString()}
-                      </p>
-                      {activity.activity_data?.application && (
-                        <p className="text-xs text-gray-600">
-                          App: {activity.activity_data.application}
-                        </p>
-                      )}
-                      {activity.activity_data?.url && (
-                        <p className="text-xs text-blue-600 truncate">
-                          URL: {activity.activity_data.url}
-                        </p>
-                      )}
-                      {activity.activity_data?.idle_time_seconds && (
-                        <p className="text-xs text-red-600">
-                          Idle: {Math.round(activity.activity_data.idle_time_seconds / 60)} minutes
-                        </p>
+                      
+                      {/* App Usage in Session */}
+                      {(session.apps_used) && (
+                        <div className="mt-3 pt-3 border-t">
+                          <p className="text-sm font-medium text-gray-700 mb-1">Apps in this session:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {(() => {
+                              try {
+                                let apps = [];
+                                if (session.apps_used) {
+                                  const appsData = JSON.parse(session.apps_used);
+                                  if (appsData.top_apps) {
+                                    apps = appsData.top_apps.slice(0, 5);
+                                  }
+                                }
+                                
+                                return apps.map((app, i) => (
+                                  <span key={i} className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
+                                    {app}
+                                  </span>
+                                ));
+                              } catch {
+                                return (
+                                  <span className="text-xs text-gray-500">App data available</span>
+                                );
+                              }
+                            })()}
+                          </div>
+                        </div>
                       )}
                     </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-gray-500 text-center py-4">No activity data available</p>
-              )}
-            </div>
-          </div>
-
-          {/* Screenshots */}
-          {activityData.screenshots.length > 0 && (
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h3 className="text-lg font-semibold mb-4">
-                Screenshots ({activityData.screenshots.length})
-              </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {activityData.screenshots.map((screenshot, index) => (
-                  <div key={index} className="border rounded-lg overflow-hidden bg-white hover:shadow-md transition-shadow">
-                    <img 
-                      src={screenshot.image_url} 
-                      alt={`Screenshot ${index + 1}`}
-                      className="w-full h-32 object-cover cursor-pointer hover:opacity-80 transition-opacity"
-                      onClick={() => window.open(screenshot.image_url, '_blank')}
-                    />
-                    <div className="p-2">
-                      <p className="text-xs text-gray-600 truncate">
-                        {screenshot.activity_context || 'Screenshot'}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {new Date(screenshot.timestamp).toLocaleTimeString()}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <p className="text-gray-500 text-center py-4">No sessions found for selected period</p>
+                )}
               </div>
             </div>
           )}
 
-          {activityData.screenshots.length === 0 && (
-            <div className="text-center py-8 bg-gray-50 rounded-lg">
-              <p className="text-gray-500">No screenshots available for the selected period</p>
+          {/* App Events Detailed View */}
+          {viewMode === "apps" && activityData.appEvents.length > 0 && (
+            <div className="bg-gray-50 p-6 rounded-lg">
+              <h3 className="text-lg font-semibold mb-4">Detailed App Usage ({activityData.appEvents.length} events)</h3>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">App Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duration</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">CPU</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Memory</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {activityData.appEvents.slice(0, 20).map((event, index) => (
+                      <tr key={index} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div className="flex-shrink-0 h-8 w-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                              <span className="text-blue-600">📱</span>
+                            </div>
+                            <div className="ml-3">
+                              <div className="text-sm font-medium text-gray-900 truncate max-w-xs">
+                                {event.app_name}
+                              </div>
+                              <div className="text-xs text-gray-500">PID: {event.process_id}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                          {formatTime(event.duration)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="px-2 py-1 text-xs bg-red-100 text-red-800 rounded">
+                            {event.cpu_percent?.toFixed(1) || 0}%
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded">
+                            {event.memory_percent?.toFixed(1) || 0}%
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                          {formatDateTime(event.timestamp)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {activityData.appEvents.length > 20 && (
+                <p className="text-center text-sm text-gray-500 mt-3">
+                  Showing 20 of {activityData.appEvents.length} app events
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -628,8 +818,10 @@ export default function DeveloperActivity() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 17h6l2 2V7a2 2 0 00-2-2H9a2 2 0 00-2 2v12l2-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v8" />
             </svg>
           </div>
-          <p className="text-gray-500 text-lg">No activity data found</p>
-          <p className="text-gray-400 text-sm mt-2">Select a different date or time range</p>
+          <p className="text-gray-500 text-lg">No activity data found for selected period</p>
+          <p className="text-gray-400 text-sm mt-2">
+            Make sure the developer has tracking sessions on {selectedDate}
+          </p>
         </div>
       )}
 
@@ -645,7 +837,7 @@ export default function DeveloperActivity() {
               <p className="text-gray-500 text-lg">Select a developer to view activity data</p>
               {developers.length === 0 && (
                 <div className="mt-4">
-                  <p className="text-gray-400 text-sm">No developers found added by you</p>
+                  <p className="text-gray-400 text-sm">No developers added by you yet</p>
                   <button
                     onClick={() => window.location.href = '/add-developer'}
                     className="mt-2 text-blue-500 hover:text-blue-700 underline text-sm"
