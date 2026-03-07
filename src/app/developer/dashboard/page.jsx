@@ -135,7 +135,7 @@ function DeveloperDashboardContent() {
   const playNotificationSound = () => {
     if (audioRef.current) {
       audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(e => console.log("Audio play failed:", e));
+      audioRef.current.play().catch(() => {});
     }
   };
 
@@ -173,8 +173,6 @@ function DeveloperDashboardContent() {
           filter: `assigned_developer_id=eq.${developerId}`
         },
         (payload) => {
-          console.log('🎯 Realtime notification received:', payload.new);
-          
           // Add new notification to the beginning of array
           setNotifications(prev => [payload.new, ...prev]);
           
@@ -294,7 +292,7 @@ function DeveloperDashboardContent() {
       await fetchNotifications(developerData);
 
     } catch (error) {
-      console.error('Error fetching developer data:', error);
+      // Silently handle error
     }
   };
 
@@ -315,7 +313,7 @@ function DeveloperDashboardContent() {
       setUnreadCount(unread);
 
     } catch (error) {
-      console.error('Error fetching notifications:', error);
+      // Silently handle error
     }
   };
 
@@ -339,7 +337,7 @@ function DeveloperDashboardContent() {
       setUnreadCount(prev => Math.max(0, prev - 1));
 
     } catch (error) {
-      console.error('Error marking notification as read:', error);
+      // Silently handle error
     }
   };
 
@@ -363,7 +361,7 @@ function DeveloperDashboardContent() {
       setUnreadCount(0);
 
     } catch (error) {
-      console.error('Error marking all notifications as read:', error);
+      // Silently handle error
     }
   };
 

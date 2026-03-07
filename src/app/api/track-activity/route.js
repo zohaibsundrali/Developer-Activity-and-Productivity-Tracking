@@ -29,7 +29,6 @@ export async function POST(request) {
     });
 
   } catch (error) {
-    console.error('Error tracking activities:', error);
     return NextResponse.json(
       { error: 'Failed to track activities' },
       { status: 500 }

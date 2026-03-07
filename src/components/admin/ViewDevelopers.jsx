@@ -48,7 +48,6 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
       }
       
     } catch (error) {
-      console.error('Error fetching developers:', error);
       alert('Error loading developers: ' + error.message);
       setDevelopers([]);
     } finally {
@@ -172,7 +171,6 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
       alert("Developer updated successfully!");
       
     } catch (error) {
-      console.error('Error updating developer:', error);
       alert('Error updating developer: ' + error.message);
     } finally {
       setIsEditing(false);
@@ -230,7 +228,6 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
       alert("Developer deleted successfully!");
       
     } catch (error) {
-      console.error('Error deleting developer:', error);
       alert('Error deleting developer: ' + error.message);
     }
   };
@@ -287,7 +284,6 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
       alert(`Developer status changed to ${newStatus} successfully!`);
       
     } catch (error) {
-      console.error('Error updating developer status:', error);
       alert('Error updating developer status: ' + error.message);
     }
   };

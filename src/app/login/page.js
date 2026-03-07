@@ -63,10 +63,8 @@ export default function LoginPage() {
       
       localStorage.setItem(`verification_${email}`, JSON.stringify(verificationData));
       
-      console.log('✅ Verification code sent successfully to:', email);
       return true;
     } catch (error) {
-      console.error('❌ Email sending failed:', error);
       
       // Fallback: Store in localStorage and show code to user
       const verificationData = {
@@ -184,21 +182,15 @@ export default function LoginPage() {
         ...userData,
         role: role,
         loginTime: new Date().toISOString(),
-        lastActivity: new Date().toISOString() // Add last activity timestamp
+        lastActivity: new Date().toISOString()
       };
-
-      console.log('✅ Verification successful for:', email);
-      console.log('📦 User session data:', userSession);
 
       // After successful admin verification
       if (role === "admin") {
         localStorage.setItem("adminUser", JSON.stringify(userSession));
         
-        console.log('💾 adminUser saved to localStorage');
-        
         // Dispatch auth-change event to update Navbar
         window.dispatchEvent(new Event('auth-change'));
-        console.log('🔔 auth-change event dispatched');
         
         // Set cookie for middleware (30 days expiry)
         const expiryDate = new Date();
@@ -210,25 +202,20 @@ export default function LoginPage() {
         
         // Give time for event to propagate before redirecting
         setTimeout(() => {
-          console.log('🔄 Redirecting to admin dashboard...');
           router.push("/admin/dashboard");
         }, 100);
       }
       else {
         localStorage.setItem("developerUser", JSON.stringify(userSession));
         
-        console.log('💾 developerUser saved to localStorage');
-        
         // Dispatch auth-change event to update Navbar
         window.dispatchEvent(new Event('auth-change'));
-        console.log('🔔 auth-change event dispatched');
         
         // Set cookie for middleware
         document.cookie = "developer_auth=true; path=/";
         
         // Give time for event to propagate before redirecting
         setTimeout(() => {
-          console.log('🔄 Redirecting to developer dashboard...');
           router.push("/developer/dashboard");
         }, 100);
       }

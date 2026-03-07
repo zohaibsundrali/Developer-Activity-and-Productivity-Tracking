@@ -125,12 +125,6 @@ const sendVerificationCode = async (userEmail) => {
     setGeneratedCode(code);
     setCodeExpiry(Date.now() + 10 * 60 * 1000);
 
-    console.log("🎯 SENDING VERIFICATION CODE", {
-      to: userEmail,
-      from: "zohaibytautomation@gmail.com", 
-      code: code
-    });
-
     // Use Nodemailer - Most Reliable
     const response = await fetch('/api/send-verification', {
       method: 'POST',
@@ -148,22 +142,15 @@ const sendVerificationCode = async (userEmail) => {
     const result = await response.json();
 
     if (response.ok && result.success) {
-      console.log("✅ EMAIL SENT SUCCESSFULLY!", {
-        to: userEmail,
-        messageId: result.messageId
-      });
       setStep(2);
       return { success: true };
     } else {
-      console.error("❌ Nodemailer failed:", result);
       throw new Error(result.error || 'Email service unavailable');
     }
 
   } catch (error) {
-    console.error("💥 Email sending error:", error);
     
     // Emergency fallback - show code for testing
-    console.log("🚨 EMERGENCY: Showing code for testing:", generatedCode);
     alert(`EMAIL SERVICE TEMPORARILY UNAVAILABLE\n\nUse this code for testing: ${generatedCode}\n\nThis would be sent to: ${formData.email}`);
     
     setStep(2);
@@ -200,7 +187,6 @@ const handleRegister = async (e) => {
     await sendVerificationCode(formData.email); // User ki actual email pass karein
       
   } catch (error) {
-    console.error("Registration error:", error);
     setErrors({ general: error.message });
   } finally {
     setLoading(false);
@@ -225,12 +211,6 @@ const handleRegister = async (e) => {
     setVerificationLoading(true);
     setErrors({});
 
-    console.log("🔐 Verification attempt:", {
-      enteredCode: code,
-      generatedCode: generatedCode,
-      codeMatch: code === generatedCode
-    });
-
     // Check if code has expired
     if (Date.now() > codeExpiry) {
       setErrors({ code: "Verification code has expired. Please request a new one." });
@@ -239,33 +219,22 @@ const handleRegister = async (e) => {
     }
 
     if (code !== generatedCode) {
-      console.error("❌ Code mismatch:", { entered: code, expected: generatedCode });
       setErrors({ code: "Incorrect verification code. Please try again." });
       setVerificationLoading(false);
       return;
     }
 
     try {
-      console.log("✅ Code verified. Creating admin account...");
-      console.log("📝 User data:", {
-        email: formData.email,
-        name: formData.fullName,
-        company: formData.company
-      });
 
       // Test Supabase connection first
-      console.log("🔌 Testing Supabase connection...");
       const { error: testError } = await supabase
         .from('admin_users')
         .select('count')
         .limit(1);
 
       if (testError) {
-        console.error("❌ Supabase connection failed:", testError);
         throw new Error(`Database connection failed: ${testError.message}`);
       }
-
-      console.log("✅ Supabase connected. Inserting user...");
 
       // Insert user data - spaces will be preserved in full_name and company
       const { data, error } = await supabase
@@ -284,12 +253,6 @@ const handleRegister = async (e) => {
         .select();
 
       if (error) {
-        console.error("❌ Supabase insert error details:", {
-          message: error.message,
-          code: error.code,
-          details: error.details,
-          hint: error.hint
-        });
 
         // Specific error handling
         if (error.code === '23505') {
@@ -307,18 +270,14 @@ const handleRegister = async (e) => {
         throw new Error("No data returned after registration. Please try again.");
       }
 
-      console.log("✅ Registration successful! User data:", data[0]);
-
       // Store user session
       localStorage.setItem("adminUser", JSON.stringify(data[0]));
       localStorage.setItem("adminToken", "admin-authenticated");
       
-      console.log("✅ Session stored. Redirecting to dashboard...");
       alert("🎉 Registration successful! Redirecting to dashboard...");
       router.push("/admin/dashboard");
 
     } catch (error) {
-      console.error("💥 Registration failed with error:", error);
       setErrors({ 
         general: error.message || "Registration failed! Please check console for details." 
       });

@@ -162,8 +162,7 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
           filter: `admin_id=eq.${authUser.id}` // Only listen for current admin's notifications
         }, 
         (payload) => {
-          console.log("📢 Real-time notification change:", payload.eventType);
-          fetchNotifications(); // Refresh when notifications change
+          fetchNotifications();
         }
       )
       .subscribe();
@@ -211,7 +210,7 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
       await fetchNotifications();
 
     } catch (error) {
-      console.error('Error fetching data:', error);
+      // Silently handle error
     } finally {
       setLoading(false);
     }
@@ -241,10 +240,8 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
       const unread = notificationsData?.filter(notif => !notif.read).length || 0;
       setUnreadCount(unread);
       
-      console.log("📊 Fetched notifications:", notificationsData?.length || 0, "unread:", unread);
-
     } catch (error) {
-      console.error('Error fetching notifications:', error);
+      // Silently handle error
     }
   };
 
@@ -256,8 +253,6 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
         handleLogout();
         return;
       }
-      
-      console.log("✅ Parent: Marking notification as read:", notificationId);
       
       const { error } = await supabase
         .from('notifications')
@@ -280,11 +275,8 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
 
       // Update unread count
       setUnreadCount(prev => Math.max(0, prev - 1));
-      
-      console.log("✅ Parent: Unread count updated to:", Math.max(0, unreadCount - 1));
-
     } catch (error) {
-      console.error('Error marking notification as read:', error);
+      // Silently handle error
     }
   };
 
@@ -303,7 +295,7 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
 
       if (unreadIds.length === 0) return;
       
-      console.log("✅ Parent: Marking all as read:", unreadIds.length, "notifications");
+
 
       const { error } = await supabase
         .from('notifications')
@@ -322,24 +314,16 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
 
       // Set unread count to 0
       setUnreadCount(0);
-      
-      console.log("✅ Parent: All marked as read, unread count: 0");
-
     } catch (error) {
-      console.error('Error marking all notifications as read:', error);
+      // Silently handle error
     }
   };
 
   // Function to handle unread count change from Notifications component
   const handleUnreadCountChange = (updater) => {
     if (typeof updater === 'function') {
-      setUnreadCount(prev => {
-        const newValue = updater(prev);
-        console.log("🔄 Parent: Unread count changed from", prev, "to", newValue);
-        return newValue;
-      });
+      setUnreadCount(updater);
     } else {
-      console.log("🔄 Parent: Unread count set to", updater);
       setUnreadCount(updater);
     }
   };

@@ -21,14 +21,11 @@ export default function Notifications({
         const adminData = JSON.parse(localStorage.getItem("adminUser"));
         
         if (adminData) {
-          console.log("🔔 Notifications: Admin found", adminData.email);
           setCurrentAdmin(adminData);
         } else {
-          console.log("🔔 No admin found in localStorage");
           setCurrentAdmin(null);
         }
       } catch (error) {
-        console.error("🔔 Error reading admin data:", error);
         setCurrentAdmin(null);
       } finally {
         setLoading(false);
@@ -97,17 +94,14 @@ export default function Notifications({
       setRefreshing(true);
       
       if (!currentAdmin?.id) {
-        console.log("🔔 No admin ID for fetching notifications");
         return;
       }
 
-      console.log("🔔 Manually refreshing notifications for admin:", currentAdmin.email);
-      
       // Reset optimistic state when refreshing
       setOptimisticNotifications([]);
       
     } catch (error) {
-      console.error('❌ Error refreshing notifications:', error);
+      // Silently handle error
     } finally {
       setRefreshing(false);
     }
@@ -139,8 +133,6 @@ export default function Notifications({
   // Function to mark a single notification as read
   const handleMarkAsRead = async (notificationId) => {
     try {
-      console.log("✅ Marking as read:", notificationId);
-      
       // Check if this notification was unread before marking
       const notificationToUpdate = adminNotifications.find(n => n.id === notificationId);
       const wasUnread = notificationToUpdate && !notificationToUpdate.read;
@@ -156,7 +148,6 @@ export default function Notifications({
       
       // Notify parent component about unread count change
       if (wasUnread && onUnreadCountChange) {
-        console.log("📢 Notifying parent: Decrementing unread count");
         onUnreadCountChange(prev => Math.max(0, prev - 1));
       }
 
@@ -178,8 +169,6 @@ export default function Notifications({
       }
 
     } catch (error) {
-      console.error('❌ Error marking as read:', error);
-      
       // Revert optimistic update on error
       if (notificationToUpdate) {
         setOptimisticNotifications(prev => 
@@ -203,8 +192,6 @@ export default function Notifications({
 
       if (unreadIds.length === 0) return;
 
-      console.log("✅ Marking all as read:", unreadIds.length, "notifications");
-      
       // Store original states for potential rollback
       const originalNotifications = [...adminNotifications];
       
@@ -215,7 +202,6 @@ export default function Notifications({
       
       // Notify parent component about unread count change
       if (onUnreadCountChange) {
-        console.log("📢 Notifying parent: Setting unread count to 0");
         onUnreadCountChange(0);
       }
 
@@ -238,16 +224,10 @@ export default function Notifications({
       }
 
     } catch (error) {
-      console.error('❌ Error marking all as read:', error);
       // Revert optimistic update on error
       setOptimisticNotifications(originalNotifications);
     }
   };
-
-  console.log("🔔 Current admin:", currentAdmin?.email);
-  console.log("🔔 Total notifications:", adminNotifications.length);
-  console.log("🔔 Unread notifications:", unreadNotifications.length);
-  console.log("🔔 Parent unread count prop:", unreadCount);
 
   // Loading state
   if (loading) {

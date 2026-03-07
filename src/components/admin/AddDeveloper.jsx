@@ -32,8 +32,6 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
         return;
       }
       
-      console.log("Current Admin:", adminData);
-      
       // Try to fetch developers added by this admin
       try {
         const { data, error } = await supabase
@@ -43,7 +41,6 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
           .order('created_at', { ascending: false });
 
         if (error) {
-          console.warn('Error with added_by filter:', error.message);
           // If columns don't exist, fetch all developers
           setMissingColumns(true);
           
@@ -60,13 +57,11 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
           setDevelopers(data || []);
         }
       } catch (fetchError) {
-        console.error('Fetch error:', fetchError);
         setMissingColumns(true);
         setDevelopers([]);
       }
       
     } catch (error) {
-      console.error('Error fetching developers:', error);
       alert('Error loading developers: ' + error.message);
       setDevelopers([]);
     } finally {
@@ -112,7 +107,7 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
         return;
       }
     } catch (error) {
-      console.error('Error checking existing developer:', error);
+      // Silently handle error
     }
 
     try {
@@ -136,7 +131,6 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
         developerData.added_by_admin = currentAdmin.email;
         developerData.added_by_name = currentAdmin.name || 'Admin';
       } catch (err) {
-        console.warn('Could not add admin tracking columns:', err.message);
         setMissingColumns(true);
       }
 
@@ -149,8 +143,6 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
       if (error) {
         // If error due to missing columns, try without them
         if (error.message.includes('added_by') || error.message.includes('schema cache')) {
-          console.log('Missing columns detected, trying without admin tracking...');
-          
           // Remove admin tracking columns
           const simplifiedData = {
             name: newDeveloper.name.trim(),
@@ -190,7 +182,7 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
             }
           ]);
       } catch (notifError) {
-        console.warn('Could not create notification:', notifError.message);
+        // Silently handle error
       }
 
       // Refresh the developers list
@@ -211,7 +203,6 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
       alert("Developer added successfully!");
       
     } catch (error) {
-      console.error('Error adding developer:', error);
       alert('Error adding developer: ' + error.message);
     } finally {
       setIsAddingDeveloper(false);

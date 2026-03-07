@@ -34,7 +34,6 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
       const adminData = JSON.parse(localStorage.getItem("adminUser"));
       
       if (!adminData) {
-        console.error("No admin logged in");
         setCurrentAdmin(null);
         setProjects([]);
         setAdminDevelopers([]);
@@ -65,7 +64,6 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
       ]);
 
       if (projectsResult.error) {
-        console.error('Error fetching projects:', projectsResult.error);
         alert('Error fetching projects: ' + projectsResult.error.message);
         setProjects([]);
       } else {
@@ -73,7 +71,6 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
       }
 
       if (developersResult.error) {
-        console.error('Error fetching developers:', developersResult.error);
         // Don't alert for developers error, just log it
         setAdminDevelopers([]);
       } else {
@@ -81,7 +78,6 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
       }
       
     } catch (error) {
-      console.error('Error in fetchAdminData:', error);
       alert('Error loading data: ' + error.message);
       setProjects([]);
       setAdminDevelopers([]);
@@ -145,7 +141,7 @@ const handleConfirmDelete = async () => {
         ]);
 
       if (notificationError) {
-        console.error('Notification error:', notificationError);
+        // Silently handle notification error
       }
     }
 
@@ -159,7 +155,6 @@ const handleConfirmDelete = async () => {
     alert(`Project "${projectToDelete.name}" deleted successfully!`);
 
   } catch (error) {
-    console.error('Error deleting project:', error);
     alert('Error deleting project: ' + error.message);
   } finally {
     setDeleting(false);
@@ -189,7 +184,6 @@ const handleConfirmDelete = async () => {
       return urlData.publicUrl;
 
     } catch (error) {
-      console.error('File upload error:', error);
       alert('File upload failed: ' + error.message);
       return null;
     } finally {
@@ -266,8 +260,6 @@ const handleAddProject = async (e) => {
 
     if (error) throw error;
 
-    console.log('✅ Project created:', data[0]);
-
     // ✅ **FIXED: Add notification with ALL required fields**
     const { error: notificationError } = await supabase
       .from('notifications')
@@ -289,12 +281,7 @@ const handleAddProject = async (e) => {
       ]);
 
     if (notificationError) {
-      console.error('❌ Notification creation error:', notificationError);
-      console.error('Full error details:', JSON.stringify(notificationError, null, 2));
       // Don't throw error for notification, just log it
-    } else {
-      console.log('✅ Notification created successfully');
-      console.log('Notification sent to developer:', assignedDeveloper.id);
     }
 
     // Refresh the projects list
@@ -313,7 +300,6 @@ const handleAddProject = async (e) => {
     alert(`Project "${newProject.name}" added and notification sent to ${assignedDeveloper.name}!`);
 
   } catch (error) {
-    console.error('Error adding project:', error);
     alert('Error adding project: ' + error.message);
   } finally {
     setLoading(false);
@@ -375,8 +361,6 @@ const handleAddProject = async (e) => {
   // Debug function to check notifications table structure
 const debugCheckNotifications = async () => {
   try {
-    console.log('🔍 Debug: Checking notifications table structure...');
-    
     // Check what fields exist in notifications table
     const { data: columns, error: columnsError } = await supabase
       .rpc('get_table_columns', { table_name: 'notifications' });
@@ -387,29 +371,17 @@ const debugCheckNotifications = async () => {
         .from('notifications')
         .select('*')
         .limit(1);
-      
-      console.log('✅ Notifications table sample:', data);
-    } else {
-      console.log('📋 Notifications table columns:', columns);
     }
 
-    // Check current admin
-    console.log('👨‍💼 Current Admin:', currentAdmin);
-    
-    // Check available developers
-    console.log('👨‍💻 Available developers:', adminDevelopers);
-    
     // Check last 5 notifications
     const { data: recentNotifications } = await supabase
       .from('notifications')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(5);
-    
-    console.log('📨 Recent notifications:', recentNotifications);
 
   } catch (error) {
-    console.error('Debug error:', error);
+    // Silently handle error
   }
 };
 

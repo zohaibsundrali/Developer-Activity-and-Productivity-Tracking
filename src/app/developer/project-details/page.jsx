@@ -79,7 +79,6 @@ export default function ProjectDetailsPage() {
         if (storedUser) {
           try {
             const userData = JSON.parse(storedUser);
-            console.log("Found user in localStorage:", userData);
             
             // Set from localStorage immediately for better UX
             setCurrentDeveloper({
@@ -89,7 +88,7 @@ export default function ProjectDetailsPage() {
               user_id: userData.user?.id || userData.id
             });
           } catch (localStorageError) {
-            console.error("Error parsing localStorage data:", localStorageError);
+            // Silently handle error
           }
         }
         
@@ -97,12 +96,10 @@ export default function ProjectDetailsPage() {
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         
         if (userError) {
-          console.error('Error getting user from Supabase:', userError);
           // Don't return, try to continue with localStorage data
         }
         
         if (user) {
-          console.log("Supabase user found:", user);
           
           // Get developer profile from developers table
           const { data: developer, error: devError } = await supabase
@@ -112,7 +109,6 @@ export default function ProjectDetailsPage() {
             .single();
           
           if (devError) {
-            console.error('Error fetching developer from database:', devError);
             // Use user data if developer not found in database
             const developerData = {
               id: user.id,
@@ -121,9 +117,7 @@ export default function ProjectDetailsPage() {
               user_id: user.id
             };
             setCurrentDeveloper(developerData);
-            console.log("Using user data as developer:", developerData);
           } else if (developer) {
-            console.log("Developer found in database:", developer);
             setCurrentDeveloper(developer);
           }
           
@@ -133,15 +127,13 @@ export default function ProjectDetailsPage() {
             timestamp: new Date().toISOString()
           }));
         } else {
-          console.warn("No user found in Supabase auth");
           // If no user found and no localStorage, redirect to login
           if (!storedUser) {
-            console.log("No user data found, redirecting to login...");
             router.push('/developer/login');
           }
         }
       } catch (err) {
-        console.error('Error in getCurrentDeveloper:', err);
+        // Silently handle error
       } finally {
         setDeveloperLoading(false);
       }
@@ -219,7 +211,6 @@ export default function ProjectDetailsPage() {
   // Save tasks to Supabase - SIMPLIFIED VERSION
   const saveTasksToSupabase = async () => {
     try {
-      console.log('Starting to save tasks...');
       
       // Step 1: Get developer info
       let developerToUse = currentDeveloper;
@@ -241,10 +232,9 @@ export default function ProjectDetailsPage() {
                 email: userData.user?.email || userData.email || 'unknown@example.com',
                 user_id: userId
               };
-              console.log('Using developer from localStorage:', developerToUse);
             }
           } catch (e) {
-            console.error('Error parsing localStorage:', e);
+            // Silently handle error
           }
         }
       }
@@ -259,7 +249,6 @@ export default function ProjectDetailsPage() {
             email: user.email,
             user_id: user.id
           };
-          console.log('Using developer from Supabase auth:', developerToUse);
         }
       }
       
@@ -272,10 +261,6 @@ export default function ProjectDetailsPage() {
       if (!project || !project.id) {
         throw new Error('Project information not available.');
       }
-      
-      console.log('Developer ID:', developerToUse.id);
-      console.log('Project ID:', project.id);
-      console.log('Number of tasks:', tasks.length);
       
       // Step 3: Prepare tasks for Supabase
       const tasksToSave = tasks.map((task, index) => {
@@ -313,8 +298,6 @@ export default function ProjectDetailsPage() {
         };
       });
       
-      console.log('Tasks prepared for saving:', tasksToSave);
-      
       // Step 4: Delete existing tasks for this project/developer
       const { error: deleteError } = await supabase
         .from('developer_tasks')
@@ -323,7 +306,6 @@ export default function ProjectDetailsPage() {
         .eq('developer_id', developerToUse.id);
       
       if (deleteError) {
-        console.warn('Could not delete existing tasks:', deleteError);
         // Continue anyway - might be first submission
       }
       
@@ -334,15 +316,12 @@ export default function ProjectDetailsPage() {
         .select();
       
       if (error) {
-        console.error('Supabase insert error:', error);
         throw new Error(`Failed to save tasks: ${error.message}`);
       }
       
-      console.log('Tasks saved successfully:', data);
       return data;
       
     } catch (error) {
-      console.error('Error in saveTasksToSupabase:', error);
       throw error;
     }
   };
@@ -350,7 +329,6 @@ export default function ProjectDetailsPage() {
   // Handle submit work with Supabase integration - SIMPLIFIED VERSION
   const handleSubmitWork = async () => {
     try {
-      console.log('=== SUBMIT WORK STARTED ===');
       
       // Step 1: Validate all tasks
       const validation = validateAllTasks();
@@ -370,12 +348,10 @@ export default function ProjectDetailsPage() {
         `This action cannot be undone.`;
       
       if (!confirm(confirmMessage)) {
-        console.log('Submission cancelled by user');
         return;
       }
       
       // Step 3: Save to Supabase
-      console.log('Saving tasks to Supabase...');
       const savedTasks = await saveTasksToSupabase();
       
       // Step 4: Update local state
@@ -411,12 +387,10 @@ export default function ProjectDetailsPage() {
                 read: false,
                 created_at: new Date().toISOString()
               });
-            
-            console.log('Notification sent successfully');
           }
         }
       } catch (notifError) {
-        console.warn('Notification not sent:', notifError);
+        // Silently handle error
       }
       
       // Auto-hide messages
@@ -425,10 +399,7 @@ export default function ProjectDetailsPage() {
         setValidationSuccess('');
       }, 5000);
       
-      console.log('=== SUBMIT WORK COMPLETED SUCCESSFULLY ===');
-      
     } catch (error) {
-      console.error('=== SUBMISSION ERROR ===', error);
       
       // Better error message
       let errorMessage = `Error submitting tasks: ${error.message}`;
@@ -465,7 +436,6 @@ export default function ProjectDetailsPage() {
       
       return true;
     } catch (error) {
-      console.error('Error updating task status in Supabase:', error);
       return false;
     }
   };
@@ -502,7 +472,6 @@ export default function ProjectDetailsPage() {
         .order('created_at', { ascending: true });
       
       if (error) {
-        console.error('Error loading tasks from Supabase:', error);
         return;
       }
       
@@ -524,7 +493,7 @@ export default function ProjectDetailsPage() {
         localStorage.setItem(`project_tasks_${project.id}`, JSON.stringify(formattedTasks));
       }
     } catch (error) {
-      console.error('Error in loadTasksFromSupabase:', error);
+      // Silently handle error
     }
   };
 
@@ -580,13 +549,10 @@ export default function ProjectDetailsPage() {
         const projectId = searchParams.get('id');
         
         if (!projectId || projectId === 'null') {
-          console.warn('No project ID found in URL');
           const urlProject = getProjectDataFromURL();
           setProjectData(urlProject);
           return;
         }
-
-        console.log('Fetching project from Supabase with ID:', projectId);
 
         const { data, error } = await supabase
           .from('projects')
@@ -595,19 +561,15 @@ export default function ProjectDetailsPage() {
           .single();
 
         if (error) {
-          console.error('Supabase error:', error);
           throw error;
         }
 
         if (data) {
-          console.log('Data fetched from Supabase:', data);
           setProjectData(data);
         } else {
-          console.warn('No data found in Supabase, using URL params');
           setProjectData(getProjectDataFromURL());
         }
       } catch (err) {
-        console.error('Error fetching project from Supabase:', err);
         setError(err.message);
         setProjectData(getProjectDataFromURL());
       } finally {
@@ -661,7 +623,6 @@ export default function ProjectDetailsPage() {
       document.body.removeChild(link);
       
     } catch (error) {
-      console.error('Fetch download failed:', error);
       
       try {
         const link = document.createElement('a');
@@ -672,7 +633,6 @@ export default function ProjectDetailsPage() {
         link.click();
         document.body.removeChild(link);
       } catch (fallbackError) {
-        console.error('Fallback download failed:', fallbackError);
         
         alert('Opening file in new tab. Please use browser\'s "Save as" option to download.');
         window.open(project.file_url, '_blank');

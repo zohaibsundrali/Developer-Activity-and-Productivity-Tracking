@@ -42,7 +42,7 @@ export function AuthProvider({ children }) {
             return true;
           }
         } catch (parseError) {
-          console.error('Error parsing user data:', parseError);
+          // Invalid user data
         }
       }
       
@@ -51,7 +51,7 @@ export function AuthProvider({ children }) {
       setUser(null);
       return false;
     } catch (error) {
-      console.error('Auth check error:', error);
+      // Auth check failed
       setIsLoggedIn(false);
       setUser(null);
       return false;
@@ -91,7 +91,6 @@ export function AuthProvider({ children }) {
     
     // Listen for auth state changes
     const handleAuthStateChange = () => {
-      console.log('Auth state changed, checking again...');
       checkAuth();
     };
     

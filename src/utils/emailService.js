@@ -11,12 +11,9 @@ class EmailService {
       try {
         emailjs.init(process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY);
         this.initialized = true;
-        console.log('✅ EmailJS initialized successfully');
       } catch (error) {
-        console.error('❌ EmailJS initialization failed:', error);
+        // EmailJS initialization failed
       }
-    } else {
-      console.warn('⚠️ EmailJS public key not found');
     }
   }
 
@@ -34,12 +31,6 @@ class EmailService {
       throw new Error('EmailJS Template ID is missing');
     }
 
-    console.log('📧 Attempting to send email...', {
-      serviceId: process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID,
-      templateId: process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID,
-      to: email
-    });
-
     try {
       const templateParams = {
         to_email: email,
@@ -52,15 +43,12 @@ class EmailService {
         subject: 'Your Verification Code'
       };
 
-      console.log('📤 Sending with parameters:', templateParams);
-
       const result = await emailjs.send(
         process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID,
         process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID,
         templateParams
       );
 
-      console.log('✅ Email sent successfully:', result);
       return {
         success: true,
         message: 'Verification code sent successfully',
@@ -68,12 +56,6 @@ class EmailService {
       };
 
     } catch (error) {
-      console.error('❌ EmailJS send error details:', {
-        status: error?.status,
-        text: error?.text,
-        message: error?.message,
-        fullError: error
-      });
 
       // Enhanced error messages
       let userMessage = 'Failed to send verification email. ';
@@ -105,7 +87,6 @@ class EmailService {
       publicKey: !!process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY
     };
 
-    console.log('🔧 EmailJS Configuration Test:', testResults);
     return testResults;
   }
 }

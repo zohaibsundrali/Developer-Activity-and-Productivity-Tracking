@@ -30,63 +30,45 @@ export default function Navbar() {
   // FIXED: Enhanced authentication check with better debugging
   const checkAuthStatus = () => {
     try {
-      console.log('🔄 Navbar: Checking auth status...');
-      
-      // Check for admin login
       const adminDataStr = localStorage.getItem(STORAGE_KEYS.ADMIN);
-      // Check for developer login
       const developerDataStr = localStorage.getItem(STORAGE_KEYS.DEVELOPER);
-      
-      console.log('📁 LocalStorage Check:');
-      console.log('- adminUser key exists:', !!adminDataStr);
-      console.log('- developerUser key exists:', !!developerDataStr);
       
       if (adminDataStr) {
         try {
           const adminData = JSON.parse(adminDataStr);
-          console.log('📊 Admin Data:', adminData);
           
           if (adminData && typeof adminData === 'object') {
             setIsLoggedIn(true);
             setUser(adminData);
             setUserRole(USER_TYPES.ADMIN);
-            console.log('✅ User is logged in as ADMIN');
           } else {
-            console.log('❌ Invalid admin data format');
             clearAuthData();
           }
         } catch (parseError) {
-          console.error('❌ Error parsing admin data:', parseError);
           clearAuthData();
         }
       } 
       else if (developerDataStr) {
         try {
           const developerData = JSON.parse(developerDataStr);
-          console.log('📊 Developer Data:', developerData);
           
           if (developerData && typeof developerData === 'object') {
             setIsLoggedIn(true);
             setUser(developerData);
             setUserRole(USER_TYPES.DEVELOPER);
-            console.log('✅ User is logged in as DEVELOPER');
           } else {
-            console.log('❌ Invalid developer data format');
             clearAuthData();
           }
         } catch (parseError) {
-          console.error('❌ Error parsing developer data:', parseError);
           clearAuthData();
         }
       } 
       else {
-        console.log('❌ No auth data found - User is logged OUT');
         setIsLoggedIn(false);
         setUser(null);
         setUserRole(null);
       }
     } catch (error) {
-      console.error('❌ Auth check error:', error);
       clearAuthData();
     } finally {
       setIsLoading(false);
@@ -100,13 +82,10 @@ export default function Navbar() {
     
     // Listen for custom auth events
     const handleAuthChange = () => {
-      console.log('🔔 Navbar: Auth-change event received!');
       checkAuthStatus();
     };
 
-    // Listen for storage changes
     const handleStorageChange = (e) => {
-      console.log('💾 Storage changed:', e.key);
       if (e.key === STORAGE_KEYS.ADMIN || e.key === STORAGE_KEYS.DEVELOPER) {
         checkAuthStatus();
       }
@@ -125,17 +104,6 @@ export default function Navbar() {
 
     document.addEventListener('mousedown', handleClickOutside);
     
-    // Log current state for debugging
-    console.log('🔧 Navbar mounted with state:', {
-      isLoggedIn,
-      userRole,
-      user,
-      localStorageKeys: {
-        admin: localStorage.getItem(STORAGE_KEYS.ADMIN),
-        developer: localStorage.getItem(STORAGE_KEYS.DEVELOPER)
-      }
-    });
-    
     return () => {
       window.removeEventListener('auth-change', handleAuthChange);
       window.removeEventListener('storage', handleStorageChange);
@@ -145,24 +113,11 @@ export default function Navbar() {
 
   // Debug function to manually check auth
   const debugAuth = () => {
-    console.log('=== DEBUG AUTH ===');
-    console.log('isLoggedIn state:', isLoggedIn);
-    console.log('userRole state:', userRole);
-    console.log('user state:', user);
-    console.log('LocalStorage:');
-    console.log('- adminUser:', localStorage.getItem(STORAGE_KEYS.ADMIN));
-    console.log('- developerUser:', localStorage.getItem(STORAGE_KEYS.DEVELOPER));
-    console.log('All localStorage:');
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      console.log(`  ${key}:`, localStorage.getItem(key));
-    }
-    console.log('==================');
+    // Debug helper - no-op in production
   };
 
   // Clear auth data
   const clearAuthData = () => {
-    console.log('🧹 Clearing auth data...');
     localStorage.removeItem(STORAGE_KEYS.ADMIN);
     localStorage.removeItem(STORAGE_KEYS.DEVELOPER);
     
@@ -178,16 +133,13 @@ export default function Navbar() {
 
   // Handle logout
   const handleLogout = () => {
-    console.log('🚪 User logging out...');
     clearAuthData();
     setIsProfileMenuOpen(false);
     setIsMenuOpen(false);
     
     // Dispatch auth change event for other components
     window.dispatchEvent(new Event('auth-change'));
-    console.log('🔔 auth-change event dispatched');
     
-    // Redirect to home page
     window.location.href = '/';
   };
 
@@ -198,13 +150,10 @@ export default function Navbar() {
     }
     
     if (userRole === USER_TYPES.ADMIN) {
-      console.log('👑 Navigating to Admin Dashboard');
       window.location.href = '/admin/dashboard';
     } else if (userRole === USER_TYPES.DEVELOPER) {
-      console.log('👨‍💻 Navigating to Developer Dashboard');
       window.location.href = '/developer/dashboard';
     } else {
-      console.log('❓ No role detected, going to login');
       window.location.href = '/login';
     }
   };
@@ -314,13 +263,6 @@ export default function Navbar() {
 
   // Render auth buttons based on login state
   const renderAuthButtons = () => {
-    console.log('🎨 Rendering auth buttons. State:', {
-      isLoading,
-      isLoggedIn,
-      userRole,
-      hasUser: !!user
-    });
-
     if (isLoading) {
       return (
         <div className="flex items-center space-x-4">
@@ -398,8 +340,6 @@ export default function Navbar() {
         </div>
       );
     } else {
-      // User is NOT logged in - show Sign In & Sign Up buttons
-      console.log('👤 Showing Sign In/Sign Up (user not logged in)');
       return (
         <>
           <a

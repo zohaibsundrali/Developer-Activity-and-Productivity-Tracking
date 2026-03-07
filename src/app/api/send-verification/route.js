@@ -5,14 +5,6 @@ export async function POST(request) {
   try {
     const { email, userName, company, code, type = "login", role = "user" } = await request.json();
 
-    console.log('🎯 Sending verification code:', {
-      to: email,
-      from: process.env.GMAIL_EMAIL,
-      code: code,
-      type: type,
-      role: role
-    });
-
     // Create transporter
     const transporter = nodemailer.createTransport({
       service: 'gmail',
@@ -90,12 +82,6 @@ export async function POST(request) {
     // Send email
     const result = await transporter.sendMail(mailOptions);
     
-    console.log('✅ Email sent successfully!', {
-      to: email,
-      messageId: result.messageId,
-      response: result.response
-    });
-
     return NextResponse.json({
       success: true,
       message: 'Verification code sent successfully',
@@ -104,7 +90,6 @@ export async function POST(request) {
     });
 
   } catch (error) {
-    console.error('❌ Email sending failed:', error);
     return NextResponse.json(
       { 
         success: false,

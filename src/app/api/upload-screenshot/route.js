@@ -67,7 +67,6 @@ export async function POST(request) {
     });
 
   } catch (error) {
-    console.error('Error uploading screenshot:', error);
     return NextResponse.json(
       { error: 'Failed to upload screenshot' },
       { status: 500 }

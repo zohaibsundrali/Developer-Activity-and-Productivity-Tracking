@@ -38,13 +38,10 @@ export default function ProjectDetails() {
         const projectId = searchParams.get('id');
         
         if (!projectId || projectId === 'null') {
-          console.warn('No project ID found in URL');
           setProjectData(urlProject);
           setDataSource('url');
           return;
         }
-
-        console.log('Fetching project from Supabase with ID:', projectId);
 
         // Supabase se project data fetch karein
         const { data, error } = await supabase
@@ -54,21 +51,17 @@ export default function ProjectDetails() {
           .single();
 
         if (error) {
-          console.error('Supabase error:', error);
           throw error;
         }
 
         if (data) {
-          console.log('Data fetched from Supabase:', data);
           setProjectData(data);
           setDataSource('supabase');
         } else {
-          console.warn('No data found in Supabase, using URL params');
           setProjectData(urlProject);
           setDataSource('url');
         }
       } catch (err) {
-        console.error('Error fetching project from Supabase:', err);
         setError(err.message);
         // Fallback: URL parameters se data use karein
         setProjectData(urlProject);
@@ -99,7 +92,6 @@ export default function ProjectDetails() {
         weekday: 'long'
       });
     } catch (error) {
-      console.error('Date formatting error:', error);
       return 'Invalid date';
     }
   };
@@ -120,7 +112,6 @@ export default function ProjectDetails() {
         minute: '2-digit'
       });
     } catch (error) {
-      console.error('Date formatting error:', error);
       return 'Invalid date';
     }
   };
@@ -140,7 +131,6 @@ export default function ProjectDetails() {
       
       return diffDays;
     } catch (error) {
-      console.error('Date calculation error:', error);
       return null;
     }
   };

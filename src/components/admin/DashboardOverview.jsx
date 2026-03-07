@@ -23,12 +23,7 @@ export default function DashboardOverview({ user, developers, projects, notifica
       const adminId = currentAdmin?.id;
       const adminEmail = currentAdmin?.email;
 
-      if (!adminId && !adminEmail) {
-        console.log("No admin info found");
-        return;
-      }
-
-      console.log("Calculating stats for admin:", adminEmail);
+      if (!adminId && !adminEmail) return;
 
       // 1. Count developers added by this admin
       const myDevelopers = developers.filter(dev => {
@@ -69,16 +64,8 @@ export default function DashboardOverview({ user, developers, projects, notifica
       });
       
       setLastUpdated(new Date());
-
-      console.log("Real-time stats:", {
-        myDevelopers,
-        myProjects,
-        activeDevelopers,
-        pendingNotifications
-      });
-
     } catch (error) {
-      console.error("Error calculating stats:", error);
+      // Silently handle error
     }
   };
 
@@ -88,16 +75,12 @@ export default function DashboardOverview({ user, developers, projects, notifica
 
     try {
       setLoading(true);
-      console.log("Fetching real-time data...");
 
       const currentAdmin = JSON.parse(localStorage.getItem("adminUser")) || user;
       const adminId = currentAdmin?.id;
       const adminEmail = currentAdmin?.email;
 
-      if (!adminId && !adminEmail) {
-        console.log("No admin info for real-time fetch");
-        return;
-      }
+      if (!adminId && !adminEmail) return;
 
       // Fetch developers added by this admin
       const { data: myDevsData } = await supabase
@@ -132,16 +115,8 @@ export default function DashboardOverview({ user, developers, projects, notifica
       });
       
       setLastUpdated(new Date());
-
-      console.log("Real-time fetch complete:", {
-        myDevelopers,
-        myProjects,
-        activeDevelopers,
-        pendingNotifications
-      });
-
     } catch (error) {
-      console.error("Error fetching real-time data:", error);
+      // Silently handle error
     } finally {
       setLoading(false);
     }

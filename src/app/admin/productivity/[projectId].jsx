@@ -78,7 +78,6 @@ export default function ProjectProductivityPage() {
       }
 
     } catch (error) {
-      console.error('Error fetching productivity data:', error);
       setError(error.message);
     } finally {
       setLoading(false);
