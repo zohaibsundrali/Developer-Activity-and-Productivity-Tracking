@@ -10,6 +10,9 @@ import Notifications from "@/components/admin/Notifications";
 import AddDeveloper from "@/components/admin/AddDeveloper";
 import ViewDevelopers from "@/components/admin/ViewDevelopers";
 import DeveloperActivity from "@/components/admin/DeveloperActivity";
+import TaskReviewPanel from "@/components/admin/TaskReviewPanel";
+import ProductivityDashboard from "@/components/admin/ProductivityDashboard";
+import DeadlineMonitor from "@/components/admin/DeadlineMonitor";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -400,6 +403,12 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
         return <DeveloperActivity user={user} supabase={supabase} />;
       case "view-developers":
         return <ViewDevelopers {...contentProps} />;
+      case "task-reviews":
+        return <TaskReviewPanel currentAdmin={user} />;
+      case "productivity":
+        return <ProductivityDashboard currentAdmin={user} />;
+      case "deadline-monitor":
+        return <DeadlineMonitor currentAdmin={user} />;
       default:
         return <DashboardOverview {...contentProps} />;
     }

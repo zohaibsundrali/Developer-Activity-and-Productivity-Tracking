@@ -1,0 +1,284 @@
+import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
+
+// Submit task for review (Developer)
+export async function POST(request) {
+  try {
+    const body = await request.json();
+    const { 
+      taskId, 
+      projectId, 
+      developerId, 
+      fileUrl, 
+      fileName, 
+      fileType, 
+      fileSize,
+      storagePath,
+      submissionNotes 
+    } = body;
+
+    console.log('Task submission request:', { taskId, projectId, developerId, fileName });
+
+    // Validate required fields
+    if (!taskId || !projectId || !developerId) {
+      return NextResponse.json(
+        { error: 'Missing required fields: taskId, projectId, developerId' },
+        { status: 400 }
+      );
+    }
+
+    if (!fileUrl || !fileName) {
+      return NextResponse.json(
+        { error: 'Proof of work file is required' },
+        { status: 400 }
+      );
+    }
+
+    // Get task details to validate deadline
+    const { data: task, error: taskError } = await supabase
+      .from('developer_tasks')
+      .select('*, projects(*)')
+      .eq('id', taskId)
+      .single();
+
+    if (taskError) {
+      console.error('Task lookup error:', taskError);
+      return NextResponse.json(
+        { error: 'Task not found: ' + taskError.message },
+        { status: 404 }
+      );
+    }
+
+    if (!task) {
+      return NextResponse.json(
+        { error: 'Task not found' },
+        { status: 404 }
+      );
+    }
+
+    // Check if task already has a pending submission (skip if table doesn't exist)
+    try {
+      const { data: existingSubmission } = await supabase
+        .from('task_submissions')
+        .select('id')
+        .eq('task_id', taskId)
+        .eq('review_status', 'pending')
+        .single();
+
+      if (existingSubmission) {
+        return NextResponse.json(
+          { error: 'Task already has a pending submission awaiting review' },
+          { status: 400 }
+        );
+      }
+    } catch (checkErr) {
+      // Ignore if table doesn't exist yet
+      console.log('Existing submission check skipped:', checkErr.message);
+    }
+
+    const submittedAt = new Date().toISOString();
+    const endDate = task.end_date ? new Date(task.end_date) : new Date();
+    endDate.setHours(23, 59, 59, 999); // End of day deadline
+    const submissionDate = new Date(submittedAt);
+    
+    // Determine if submitted on time
+    const isOnTime = submissionDate <= endDate;
+
+    // Truncate base64 URL if too long to store (keep reference only)
+    let storedFileUrl = fileUrl;
+    if (fileUrl && fileUrl.length > 10000) {
+      // If base64 is too long, store a reference instead
+      storedFileUrl = `base64:${fileName}:${fileSize}bytes`;
+    }
+
+    // Try to create submission record
+    let submission = null;
+    try {
+      const { data, error: submissionError } = await supabase
+        .from('task_submissions')
+        .insert({
+          task_id: taskId,
+          project_id: projectId,
+          developer_id: developerId,
+          file_url: storedFileUrl,
+          file_name: fileName,
+          file_type: fileType || 'application/octet-stream',
+          file_size: fileSize || 0,
+          storage_path: storagePath || '',
+          submission_notes: submissionNotes || '',
+          submitted_at: submittedAt,
+          is_reviewed: false,
+          review_status: 'pending'
+        })
+        .select()
+        .single();
+
+      if (submissionError) {
+        console.error('Submission insert error:', submissionError);
+        // Continue anyway - we'll still update the task status
+      } else {
+        submission = data;
+      }
+    } catch (insertErr) {
+      console.error('Submission insert exception:', insertErr);
+      // Continue anyway - minimum viable: just update task status
+    }
+
+    // Update task status to awaiting_approval
+    const { error: updateError } = await supabase
+      .from('developer_tasks')
+      .update({
+        status: 'awaiting_approval',
+        submitted_at: submittedAt,
+        updated_at: submittedAt
+      })
+      .eq('id', taskId);
+
+    if (updateError) {
+      console.error('Task update error:', updateError);
+      return NextResponse.json(
+        { error: 'Failed to update task status: ' + updateError.message },
+        { status: 500 }
+      );
+    }
+
+    // Create activity log (don't fail if this doesn't work)
+    try {
+      await supabase
+        .from('activity_logs')
+        .insert({
+          developer_id: developerId,
+          project_id: projectId,
+          task_id: taskId,
+          action_type: 'task_submitted',
+          action_description: `Task "${task.task_title}" submitted for review`,
+          new_value: 'awaiting_approval'
+        });
+    } catch (logErr) {
+      console.log('Activity log skipped:', logErr.message);
+    }
+
+    // Get project's admin to send notification (don't fail if this doesn't work)
+    try {
+      const { data: project } = await supabase
+        .from('projects')
+        .select('admin_id, created_by, name')
+        .eq('id', projectId)
+        .single();
+
+      if (project) {
+        // Get developer name
+        const { data: developer } = await supabase
+          .from('developers')
+          .select('name, email')
+          .eq('id', developerId)
+          .single();
+
+        // Create notification for admin
+        await supabase
+          .from('notifications')
+          .insert({
+            admin_id: project.admin_id || project.created_by,
+            developer_id: developerId,
+            type: 'review_required',
+            title: 'Task Submission for Review',
+            message: `${developer?.name || 'Developer'} has submitted "${task.task_title}" for review in project "${project.name}"`,
+            project_id: projectId,
+            task_id: taskId,
+            submission_id: submission?.id || null,
+            read: false
+          });
+      }
+    } catch (notifErr) {
+      console.log('Notification skipped:', notifErr.message);
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Task submitted successfully for review',
+      submission: submission,
+      isOnTime: isOnTime
+    });
+
+  } catch (error) {
+    console.error('Task submission error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error: ' + error.message },
+      { status: 500 }
+    );
+  }
+}
+
+// Get submissions for a task or project (Admin)
+export async function GET(request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const taskId = searchParams.get('taskId');
+    const projectId = searchParams.get('projectId');
+    const developerId = searchParams.get('developerId');
+    const status = searchParams.get('status');
+
+    let query = supabase
+      .from('task_submissions')
+      .select(`
+        *,
+        developer_tasks (
+          task_title,
+          task_description,
+          start_date,
+          end_date,
+          status,
+          is_on_time,
+          productivity_points
+        ),
+        developers (
+          name,
+          email
+        ),
+        projects (
+          name,
+          deadline
+        )
+      `)
+      .order('submitted_at', { ascending: false });
+
+    if (taskId) {
+      query = query.eq('task_id', taskId);
+    }
+    if (projectId) {
+      query = query.eq('project_id', projectId);
+    }
+    if (developerId) {
+      query = query.eq('developer_id', developerId);
+    }
+    if (status) {
+      query = query.eq('review_status', status);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      return NextResponse.json(
+        { error: 'Failed to fetch submissions: ' + error.message },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      submissions: data || []
+    });
+
+  } catch (error) {
+    console.error('Fetch submissions error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error: ' + error.message },
+      { status: 500 }
+    );
+  }
+}

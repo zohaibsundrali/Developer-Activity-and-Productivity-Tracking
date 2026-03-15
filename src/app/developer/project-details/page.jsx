@@ -2,6 +2,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabaseClient';
+import TaskCompletionModal from "@/components/developer/TaskCompletionModal";
 
 export default function ProjectDetailsPage() {
   const router = useRouter();
@@ -15,7 +16,9 @@ export default function ProjectDetailsPage() {
   const [error, setError] = useState(null);
   const [downloading, setDownloading] = useState(false);
   const [showGanttChart, setShowGanttChart] = useState(false);
-  
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [completionTask, setCompletionTask] = useState(null);
+
   // Get project data from URL parameters (fallback)
   const getProjectDataFromURL = () => {
     return {
@@ -290,11 +293,12 @@ export default function ProjectDetailsPage() {
           developer_id: developerToUse.id,
           task_title: task.title,
           task_description: task.description || '',
+          task_order: index,
           start_date: task.startDate,
           end_date: task.endDate,
-          status: task.status || 'pending',
+          status: 'pending',
           created_at: new Date().toISOString(),
-          submitted_at: new Date().toISOString()
+          updated_at: new Date().toISOString()
         };
       });
       
@@ -354,7 +358,21 @@ export default function ProjectDetailsPage() {
       // Step 3: Save to Supabase
       const savedTasks = await saveTasksToSupabase();
       
-      // Step 4: Update local state
+      // Step 4: Update local tasks with real Supabase UUIDs so workflow buttons work
+      if (savedTasks && savedTasks.length > 0) {
+        const updatedTasks = savedTasks.map(t => ({
+          id: t.id,
+          title: t.task_title,
+          description: t.task_description,
+          startDate: t.start_date,
+          endDate: t.end_date,
+          status: t.status || 'pending',
+          supabaseId: t.id
+        }));
+        setTasks(updatedTasks);
+      }
+
+      // Step 5: Update local state
       setShowSubmitSuccess(true);
       setIsSubmitted(true);
       
@@ -417,46 +435,53 @@ export default function ProjectDetailsPage() {
     }
   };
 
-  // Update task status in Supabase
-  const updateTaskStatusInSupabase = async (taskId, newStatus) => {
+  // ===== SEQUENTIAL TASK WORKFLOW HELPERS =====
+
+  // Can start task only if it's the first, or the previous task is approved/completed
+  const canStartTask = (taskIndex) => {
+    if (taskIndex === 0) return true;
+    const prev = tasks[taskIndex - 1];
+    return prev?.status === 'completed';
+  };
+
+  // Returns index of the currently in-progress task, or -1
+  const getInProgressTaskIndex = () => tasks.findIndex(t => t.status === 'in_progress');
+
+  // Start a task: pending → in_progress
+  const handleStartTask = async (taskId, taskIndex) => {
+    if (!canStartTask(taskIndex)) {
+      alert('Please complete the previous task first.');
+      return;
+    }
+    if (getInProgressTaskIndex() !== -1) {
+      alert('A task is already in progress. Complete it before starting a new one.');
+      return;
+    }
     try {
-      if (!currentDeveloper) return;
-      
       const { error } = await supabase
         .from('developer_tasks')
-        .update({ 
-          status: newStatus,
-          completed_at: newStatus === 'completed' ? new Date().toISOString() : null,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', taskId)
-        .eq('developer_id', currentDeveloper.id);
-      
+        .update({ status: 'in_progress', updated_at: new Date().toISOString() })
+        .eq('id', taskId);
       if (error) throw error;
-      
-      return true;
-    } catch (error) {
-      return false;
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'in_progress' } : t));
+    } catch (err) {
+      alert('Failed to start task: ' + err.message);
     }
   };
 
-  // Handle task status change
-  const handleStatusChange = async (taskId, newStatus) => {
-    if (isSubmitted) return;
-    
-    // Update local state immediately for better UX
-    setTasks(prev => prev.map(task => 
-      task.id === taskId ? { ...task, status: newStatus } : task
+  // Open the Task Completion Modal
+  const handleOpenCompletionModal = (task) => {
+    setCompletionTask(task);
+    setShowCompletionModal(true);
+  };
+
+  // Called by TaskCompletionModal when submission succeeds
+  const handleTaskUpdated = (updatedTask) => {
+    setTasks(prev => prev.map(t =>
+      t.id === updatedTask.id ? { ...t, status: updatedTask.status || 'awaiting_approval' } : t
     ));
-    
-    // If work is submitted to Supabase, update there too
-    if (isSubmitted) {
-      const success = await updateTaskStatusInSupabase(taskId, newStatus);
-      if (!success) {
-        // Revert local state if Supabase update fails
-        alert('Failed to update status in database. Please try again.');
-      }
-    }
+    setShowCompletionModal(false);
+    setCompletionTask(null);
   };
 
   // Load tasks from Supabase if already submitted
@@ -484,6 +509,11 @@ export default function ProjectDetailsPage() {
           startDate: task.start_date,
           endDate: task.end_date,
           status: task.status || 'pending',
+          rejection_reason: task.rejection_reason,
+          admin_comments: task.admin_comments,
+          actual_completion_date: task.actual_completion_date,
+          is_on_time: task.is_on_time,
+          productivity_points: task.productivity_points,
           supabaseId: task.id
         }));
         
@@ -772,8 +802,9 @@ export default function ProjectDetailsPage() {
     const completed = tasks.filter(t => t.status === 'completed').length;
     const inProgress = tasks.filter(t => t.status === 'in_progress').length;
     const pending = tasks.filter(t => t.status === 'pending').length;
-    
-    return { total, completed, inProgress, pending };
+    const awaitingReview = tasks.filter(t => t.status === 'awaiting_approval').length;
+    const rejected = tasks.filter(t => t.status === 'rejected').length;
+    return { total, completed, inProgress, pending, awaitingReview, rejected };
   };
 
   const taskSummary = getTaskSummary();
@@ -828,8 +859,10 @@ export default function ProjectDetailsPage() {
               const duration = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1);
               
               const barColor = task.status === 'completed' ? 'bg-green-500' :
-                              task.status === 'in_progress' ? 'bg-blue-500' :
-                              'bg-amber-500';
+                              task.status === 'in_progress' ? 'bg-yellow-500' :
+                              task.status === 'awaiting_approval' ? 'bg-orange-400' :
+                              task.status === 'rejected' ? 'bg-red-500' :
+                              'bg-blue-400';
               
               return (
                 <div key={task.id} className="flex items-center mb-3">
@@ -856,19 +889,12 @@ export default function ProjectDetailsPage() {
             })}
           </div>
         </div>
-        <div className="mt-4 flex items-center space-x-4 text-sm">
-          <div className="flex items-center">
-            <div className="w-3 h-3 bg-green-500 rounded mr-2"></div>
-            <span className="text-gray-600">Completed</span>
-          </div>
-          <div className="flex items-center">
-            <div className="w-3 h-3 bg-blue-500 rounded mr-2"></div>
-            <span className="text-gray-600">In Progress</span>
-          </div>
-          <div className="flex items-center">
-            <div className="w-3 h-3 bg-amber-500 rounded mr-2"></div>
-            <span className="text-gray-600">Pending</span>
-          </div>
+        <div className="mt-4 flex items-center flex-wrap gap-4 text-sm">
+          <div className="flex items-center"><div className="w-3 h-3 bg-blue-400 rounded mr-2"></div><span className="text-gray-600">Pending</span></div>
+          <div className="flex items-center"><div className="w-3 h-3 bg-yellow-500 rounded mr-2"></div><span className="text-gray-600">In Progress</span></div>
+          <div className="flex items-center"><div className="w-3 h-3 bg-orange-400 rounded mr-2"></div><span className="text-gray-600">Awaiting Review</span></div>
+          <div className="flex items-center"><div className="w-3 h-3 bg-green-500 rounded mr-2"></div><span className="text-gray-600">Completed</span></div>
+          <div className="flex items-center"><div className="w-3 h-3 bg-red-500 rounded mr-2"></div><span className="text-gray-600">Rejected</span></div>
         </div>
       </div>
     );
@@ -980,23 +1006,13 @@ export default function ProjectDetailsPage() {
         {/* Task Summary Banner */}
         <div className="mb-6 bg-white rounded-lg shadow border p-4">
           <div className="flex flex-wrap items-center justify-between">
-            <div className="flex items-center space-x-6">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-gray-800">{taskSummary.total}</div>
-                <div className="text-sm text-gray-500">Total Tasks</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-green-600">{taskSummary.completed}</div>
-                <div className="text-sm text-gray-500">Completed</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600">{taskSummary.inProgress}</div>
-                <div className="text-sm text-gray-500">In Progress</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-amber-600">{taskSummary.pending}</div>
-                <div className="text-sm text-gray-500">Pending</div>
-              </div>
+            <div className="flex items-center flex-wrap gap-6">
+              <div className="text-center"><div className="text-2xl font-bold text-gray-800">{taskSummary.total}</div><div className="text-sm text-gray-500">Total</div></div>
+              <div className="text-center"><div className="text-2xl font-bold text-gray-500">{taskSummary.pending}</div><div className="text-sm text-gray-500">Pending</div></div>
+              <div className="text-center"><div className="text-2xl font-bold text-blue-600">{taskSummary.inProgress}</div><div className="text-sm text-gray-500">In Progress</div></div>
+              <div className="text-center"><div className="text-2xl font-bold text-yellow-600">{taskSummary.awaitingReview}</div><div className="text-sm text-gray-500">Awaiting Review</div></div>
+              <div className="text-center"><div className="text-2xl font-bold text-green-600">{taskSummary.completed}</div><div className="text-sm text-gray-500">Completed</div></div>
+              {taskSummary.rejected > 0 && <div className="text-center"><div className="text-2xl font-bold text-red-600">{taskSummary.rejected}</div><div className="text-sm text-gray-500">Rejected</div></div>}
             </div>
             
             {/* Duration Summary */}
@@ -1147,8 +1163,8 @@ export default function ProjectDetailsPage() {
                 <h2 className="text-2xl font-bold">Project Tasks</h2>
                 <p className="text-white mt-1 opacity-90">
                   {isSubmitted 
-                    ? 'Work submitted - Admin can view your work in Timesheet' 
-                    : 'Manage tasks and update status as you progress'
+                    ? 'Task plan saved — work through tasks one by one sequentially' 
+                    : 'Set task names, start dates, and deadlines'
                   }
                 </p>
                 {currentDeveloper && (
@@ -1161,18 +1177,11 @@ export default function ProjectDetailsPage() {
               <div className="p-6">
                 {/* Task Status Legend */}
                 <div className="flex flex-wrap gap-4 mb-6">
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 rounded-full bg-green-500 mr-2"></div>
-                    <span className="text-sm text-gray-600">Completed</span>
-                  </div>
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 rounded-full bg-blue-500 mr-2"></div>
-                    <span className="text-sm text-gray-600">In Progress</span>
-                  </div>
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 rounded-full bg-amber-500 mr-2"></div>
-                    <span className="text-sm text-gray-600">Pending</span>
-                  </div>
+                  <div className="flex items-center"><div className="w-3 h-3 rounded-full bg-gray-400 mr-2"></div><span className="text-sm text-gray-600">Pending</span></div>
+                  <div className="flex items-center"><div className="w-3 h-3 rounded-full bg-blue-500 mr-2"></div><span className="text-sm text-gray-600">In Progress</span></div>
+                  <div className="flex items-center"><div className="w-3 h-3 rounded-full bg-yellow-500 mr-2"></div><span className="text-sm text-gray-600">Awaiting Review</span></div>
+                  <div className="flex items-center"><div className="w-3 h-3 rounded-full bg-green-500 mr-2"></div><span className="text-sm text-gray-600">Completed</span></div>
+                  <div className="flex items-center"><div className="w-3 h-3 rounded-full bg-red-500 mr-2"></div><span className="text-sm text-gray-600">Rejected</span></div>
                 </div>
 
                 {/* Tasks List */}
@@ -1182,8 +1191,9 @@ export default function ProjectDetailsPage() {
                       <div className={`border rounded-lg p-4 ${
                         task.status === 'completed' ? 'bg-green-50 border-green-200' :
                         task.status === 'in_progress' ? 'bg-blue-50 border-blue-200' :
-                        task.status === 'pending' ? 'bg-amber-50 border-amber-200' :
-                        'bg-white border-gray-200'
+                        task.status === 'awaiting_approval' ? 'bg-yellow-50 border-yellow-200' :
+                        task.status === 'rejected' ? 'bg-red-50 border-red-200' :
+                        'bg-gray-50 border-gray-200'
                       } ${
                         !isSubmitted && !isTaskValid(task) ? 'border-l-4 border-l-red-500' : ''
                       }`}>
@@ -1198,10 +1208,14 @@ export default function ProjectDetailsPage() {
                               <span className={`mt-2 px-2 py-1 rounded-full text-xs font-medium ${
                                 task.status === 'completed' ? 'bg-green-100 text-green-800 border border-green-200' :
                                 task.status === 'in_progress' ? 'bg-blue-100 text-blue-800 border border-blue-200' :
-                                'bg-amber-100 text-amber-800 border border-amber-200'
+                                task.status === 'awaiting_approval' ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' :
+                                task.status === 'rejected' ? 'bg-red-100 text-red-800 border border-red-200' :
+                                'bg-gray-100 text-gray-600 border border-gray-200'
                               }`}>
-                                {task.status === 'in_progress' ? 'In Progress' : 
-                                 task.status === 'completed' ? 'Completed' : 'Pending'}
+                                {task.status === 'in_progress' ? 'In Progress' :
+                                 task.status === 'completed' ? 'Completed' :
+                                 task.status === 'awaiting_approval' ? 'Awaiting Review' :
+                                 task.status === 'rejected' ? 'Rejected' : 'Pending'}
                               </span>
                             </div>
                             
@@ -1227,6 +1241,22 @@ export default function ProjectDetailsPage() {
                                 </div>
                               )}
                               
+                              {/* Rejection reason */}
+                              {task.status === 'rejected' && task.rejection_reason && (
+                                <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                                  <strong>Rejection reason:</strong> {task.rejection_reason}
+                                </div>
+                              )}
+                              {task.status === 'rejected' && task.admin_comments && (
+                                <div className="mt-1 p-2 bg-orange-50 border border-orange-200 rounded text-sm text-orange-700">
+                                  <strong>Admin comments:</strong> {task.admin_comments}
+                                </div>
+                              )}
+                              {task.status === 'completed' && task.is_on_time !== undefined && task.is_on_time !== null && (
+                                <div className={`mt-2 p-2 rounded text-xs font-medium ${task.is_on_time ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                                  {task.is_on_time ? '✓ Completed on time · +1 productivity point' : '⚠ Completed late · −1 productivity point'}
+                                </div>
+                              )}
                               {/* Validation error messages */}
                               {!isSubmitted && !isTaskValid(task) && (
                                 <div className="mt-2 text-xs text-red-600 bg-red-50 p-2 rounded border border-red-200">
@@ -1303,44 +1333,52 @@ export default function ProjectDetailsPage() {
                             </p>
                           </div>
                           
-                          {/* Status Change Buttons */}
+                          {/* Sequential Task Workflow Actions */}
                           <div>
-                            <label className="font-medium text-gray-700 mb-2 block">Update Status</label>
-                            <div className="flex space-x-2">
+                            <label className="font-medium text-gray-700 mb-2 block">Action</label>
+                            {!isSubmitted && (
+                              <span className="text-xs text-gray-400 italic">Save task plan first to begin working</span>
+                            )}
+                            {isSubmitted && task.status === 'pending' && (
                               <button
-                                onClick={() => handleStatusChange(task.id, 'pending')}
-                                className={`px-2 py-1 text-xs rounded ${
-                                  task.status === 'pending' 
-                                    ? 'bg-amber-600 text-white' 
-                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                onClick={() => handleStartTask(task.id, index)}
+                                disabled={!canStartTask(index) || getInProgressTaskIndex() !== -1}
+                                title={!canStartTask(index) ? 'Complete the previous task first' : getInProgressTaskIndex() !== -1 ? 'Another task is already in progress' : 'Start working on this task'}
+                                className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                                  canStartTask(index) && getInProgressTaskIndex() === -1
+                                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                                 }`}
-                                disabled={isSubmitted}
                               >
-                                Pending
+                                {canStartTask(index) && getInProgressTaskIndex() === -1 ? '▶ Start Task' : '🔒 Locked'}
                               </button>
+                            )}
+                            {isSubmitted && task.status === 'in_progress' && (
                               <button
-                                onClick={() => handleStatusChange(task.id, 'in_progress')}
-                                className={`px-2 py-1 text-xs rounded ${
-                                  task.status === 'in_progress' 
-                                    ? 'bg-blue-600 text-white' 
-                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                }`}
-                                disabled={isSubmitted}
+                                onClick={() => handleOpenCompletionModal(task)}
+                                className="px-3 py-2 rounded-lg text-xs font-medium bg-green-600 text-white hover:bg-green-700 transition-colors"
                               >
-                                In Progress
+                                ✓ Mark as Completed
                               </button>
+                            )}
+                            {isSubmitted && task.status === 'awaiting_approval' && (
+                              <span className="px-3 py-2 rounded-lg text-xs bg-yellow-100 text-yellow-800 border border-yellow-200 inline-block">
+                                ⏳ Awaiting Admin Review
+                              </span>
+                            )}
+                            {isSubmitted && task.status === 'rejected' && (
                               <button
-                                onClick={() => handleStatusChange(task.id, 'completed')}
-                                className={`px-2 py-1 text-xs rounded ${
-                                  task.status === 'completed' 
-                                    ? 'bg-green-600 text-white' 
-                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                }`}
-                                disabled={isSubmitted}
+                                onClick={() => handleOpenCompletionModal(task)}
+                                className="px-3 py-2 rounded-lg text-xs font-medium bg-orange-600 text-white hover:bg-orange-700 transition-colors"
                               >
-                                Completed
+                                ↻ Re-submit Work
                               </button>
-                            </div>
+                            )}
+                            {isSubmitted && task.status === 'completed' && (
+                              <span className="px-3 py-2 rounded-lg text-xs bg-green-100 text-green-800 border border-green-200 inline-block">
+                                ✓ Admin Approved{task.is_on_time === true ? ' · +1 pt' : task.is_on_time === false ? ' · −1 pt' : ''}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1439,14 +1477,14 @@ export default function ProjectDetailsPage() {
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              {!currentDeveloper ? 'Login Required' : 'Submit Work'}
+              {!currentDeveloper ? 'Login Required' : 'Save Task Plan'}
             </button>
           )}
 
           {/* Timesheet View Button */}
           {isSubmitted && (
             <button
-              onClick={() => router.push(`/admin/timesheet?projectId=${project.id}&developerId=${currentDeveloper?.id}`)}
+              onClick={() => router.push(`/developer/dashboard?section=timesheet`)}
               className="flex-1 bg-purple-600 text-white py-3 px-6 rounded-lg hover:bg-purple-700 font-medium flex items-center justify-center"
             >
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1550,18 +1588,6 @@ export default function ProjectDetailsPage() {
                 </div>
               )}
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                <select
-                  value={editingTask.status}
-                  onChange={(e) => setEditingTask({...editingTask, status: e.target.value})}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="pending">Pending</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="completed">Completed</option>
-                </select>
-              </div>
             </div>
 
             <div className="flex space-x-3 mt-6">
@@ -1581,6 +1607,18 @@ export default function ProjectDetailsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Task Completion / Re-submission Modal */}
+      {showCompletionModal && completionTask && (
+        <TaskCompletionModal
+          isOpen={showCompletionModal}
+          onClose={() => { setShowCompletionModal(false); setCompletionTask(null); }}
+          task={completionTask}
+          project={project}
+          developer={currentDeveloper}
+          onTaskUpdated={handleTaskUpdated}
+        />
       )}
     </div>
   );

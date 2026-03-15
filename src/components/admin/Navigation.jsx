@@ -2,10 +2,12 @@ export default function Navigation({ activeSection, onSectionChange, notificatio
   const navItems = [
     { id: "overview", label: "Overview" },
     { id: "all-projects", label: "All Projects" },
+    { id: "task-reviews", label: "Task Reviews" },
+    { id: "productivity", label: "Productivity" },
+    { id: "deadline-monitor", label: "Deadline Monitor" },
     { id: "notifications", label: "Notifications" },
     { id: "add-developer", label: "Add Developer" },
-    // Navigation items mein add karein:
-{ id: "developer-activity", label: "Developer Activity" },
+    { id: "developer-activity", label: "Developer Activity" },
     { id: "view-developers", label: "View Developers" }
   ];
 
