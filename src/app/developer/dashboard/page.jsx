@@ -6,7 +6,6 @@ import Header from "@/components/developer/Header";
 import Navigation from "@/components/developer/Navigation";
 import DashboardOverview from "@/components/developer/DashboardOverview";
 import MyProjects from "@/components/developer/MyProjects";
-import Notifications from "@/components/developer/Notifications";
 import ProjectDetails from "@/components/developer/ProjectDetails";
 import Timesheet from "@/components/developer/Timesheet";
 
@@ -118,6 +117,12 @@ function DeveloperDashboardContent() {
   const [unreadCount, setUnreadCount] = useState(0);
   const audioRef = useRef(null);
 
+  // Pagination state
+  const [notificationPage, setNotificationPage] = useState(0);
+  const [hasMoreNotifications, setHasMoreNotifications] = useState(false);
+  const [isLoadingMoreNotifications, setIsLoadingMoreNotifications] = useState(false);
+  const NOTIFICATIONS_PER_PAGE = 10;
+
   // Notification sound setup
   useEffect(() => {
     audioRef.current = new Audio('/notification-sound.mp3');
@@ -176,13 +181,13 @@ function DeveloperDashboardContent() {
         (payload) => {
           // Add new notification to the beginning of array
           setNotifications(prev => [payload.new, ...prev]);
-          
+
           // Increase unread count
           setUnreadCount(prev => prev + 1);
-          
+
           // Play sound
           playNotificationSound();
-          
+
           // Show browser notification for project assignments
           if (payload.new.type === 'project_assigned' || payload.new.message.includes('project')) {
             showBrowserNotification(payload.new);
@@ -199,15 +204,21 @@ function DeveloperDashboardContent() {
         },
         (payload) => {
           // Update notification if marked as read from another tab/device
-          setNotifications(prev => 
-            prev.map(notif => 
+          setNotifications(prev =>
+            prev.map(notif =>
               notif.id === payload.new.id ? payload.new : notif
             )
           );
-          
-          // Update unread count
-          const newUnreadCount = notifications.filter(n => !n.read).length;
-          setUnreadCount(newUnreadCount);
+
+          // Recalculate unread count from current notifications
+          setNotifications(currentNotifs => {
+            const updated = currentNotifs.map(notif =>
+              notif.id === payload.new.id ? payload.new : notif
+            );
+            const newUnreadCount = updated.filter(n => !n.read).length;
+            setUnreadCount(newUnreadCount);
+            return updated;
+          });
         }
       )
       .subscribe();
@@ -297,25 +308,65 @@ function DeveloperDashboardContent() {
     }
   };
 
-  const fetchNotifications = async (developerData) => {
+  const fetchNotifications = async (developerData, page = 0, append = false) => {
     try {
+      const startRange = page * NOTIFICATIONS_PER_PAGE;
+      const endRange = startRange + NOTIFICATIONS_PER_PAGE - 1;
+
       const { data: notificationsData, error: notificationsError } = await supabase
         .from('notifications')
         .select('*')
-        .or(`assigned_developer_id.eq.${developerData.id},message.ilike.%${developerData.name}%`)
+        .or(`assigned_developer_id.eq.${developerData.id},developer_id.eq.${developerData.id}`)
         .order('created_at', { ascending: false })
-        .limit(50);
+        .range(startRange, endRange + 1); // Fetch one extra to check if more exist
 
       if (notificationsError) throw notificationsError;
-      
-      setNotifications(notificationsData || []);
-      
-      const unread = notificationsData?.filter(notif => !notif.read).length || 0;
-      setUnreadCount(unread);
+
+      // Check if there are more notifications
+      const hasMore = notificationsData && notificationsData.length > NOTIFICATIONS_PER_PAGE;
+
+      // Remove the extra item if it exists
+      const actualNotifications = hasMore
+        ? notificationsData.slice(0, NOTIFICATIONS_PER_PAGE)
+        : notificationsData;
+
+      setHasMoreNotifications(hasMore);
+
+      if (append) {
+        // Append to existing notifications (for Load More)
+        setNotifications(prev => {
+          const updated = [...prev, ...(actualNotifications || [])];
+          // Calculate unread count from the updated list
+          const unread = updated.filter(notif => !notif.read).length || 0;
+          setUnreadCount(unread);
+          return updated;
+        });
+      } else {
+        // Replace notifications (for initial load)
+        setNotifications(actualNotifications || []);
+        // Calculate unread count from fresh data
+        const unread = actualNotifications?.filter(notif => !notif.read).length || 0;
+        setUnreadCount(unread);
+      }
 
     } catch (error) {
       // Silently handle error
+      console.error('Error fetching notifications:', error);
     }
+  };
+
+  // Load more notifications
+  const handleLoadMoreNotifications = async () => {
+    if (!user || isLoadingMoreNotifications || !hasMoreNotifications) return;
+
+    setIsLoadingMoreNotifications(true);
+
+    const nextPage = notificationPage + 1;
+    setNotificationPage(nextPage);
+
+    await fetchNotifications(user, nextPage, true);
+
+    setIsLoadingMoreNotifications(false);
   };
 
   const handleMarkAsRead = async (notificationId) => {
@@ -345,24 +396,31 @@ function DeveloperDashboardContent() {
   const handleMarkAllAsRead = async () => {
     try {
       const unreadNotifications = notifications.filter(notif => !notif.read);
-      
+
       if (unreadNotifications.length === 0) return;
 
+      // Optimistic update - reset count immediately for better UX
+      setUnreadCount(0);
+      setNotifications(prev =>
+        prev.map(notif => ({ ...notif, read: true }))
+      );
+
+      // Then update database
       const { error } = await supabase
         .from('notifications')
         .update({ read: true })
         .in('id', unreadNotifications.map(notif => notif.id));
 
-      if (error) throw error;
-
-      setNotifications(prev => 
-        prev.map(notif => ({ ...notif, read: true }))
-      );
-
-      setUnreadCount(0);
+      if (error) {
+        // Revert optimistic update on error
+        console.error('Error marking all as read:', error);
+        const unread = notifications.filter(notif => !notif.read).length;
+        setUnreadCount(unread);
+      }
 
     } catch (error) {
       // Silently handle error
+      console.error('Error marking all as read:', error);
     }
   };
 
@@ -407,8 +465,6 @@ function DeveloperDashboardContent() {
         return <MyProjects {...contentProps} />;
       case "timesheet":
         return <Timesheet user={user} />;
-      case "notifications":
-        return <Notifications {...contentProps} />;
       case "overview":
       default:
         return <DashboardOverview {...contentProps} />;
@@ -425,18 +481,22 @@ function DeveloperDashboardContent() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <Header 
-        user={user} 
-        assignedProjects={assignedProjects} 
+      <Header
+        user={user}
+        assignedProjects={assignedProjects}
         onLogout={handleLogout}
         unreadCount={unreadCount}
+        notifications={notifications}
+        onMarkAllAsRead={handleMarkAllAsRead}
+        onLoadMoreNotifications={handleLoadMoreNotifications}
+        hasMoreNotifications={hasMoreNotifications}
+        isLoadingMoreNotifications={isLoadingMoreNotifications}
       />
-      
-      <Navigation 
+
+      <Navigation
         activeSection={activeSection}
         onSectionChange={handleSectionChange}
         assignedProjectsCount={assignedProjects.length}
-        unreadCount={unreadCount}
       />
 
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">

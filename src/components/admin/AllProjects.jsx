@@ -41,12 +41,12 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
       }
       
       setCurrentAdmin(adminData);
-      
-      // Fetch projects assigned to this admin
+
+      // Fetch projects created by this admin (not assigned_to, but created_by)
       const projectsPromise = supabase
         .from('projects')
         .select('*')
-        .or(`assigned_to.eq.${adminData.id},assigned_to_email.ilike.%${adminData.email}%`)
+        .or(`created_by.eq.${adminData.id},added_by.eq.${adminData.id},added_by_admin.ilike.%${adminData.email}%`)
         .order('created_at', { ascending: false });
 
       // Fetch developers added by this admin
@@ -103,6 +103,11 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
     alert(`View Project ${projectId} Productivity`);
   };
 
+  const handleViewGanttChart = (projectId) => {
+    // Navigate to Gantt chart page
+    window.location.href = `/admin/gantt-chart/${projectId}`;
+  };
+
   // New function to handle delete confirmation
   const handleDeleteClick = (project) => {
     setProjectToDelete(project);
@@ -123,16 +128,18 @@ const handleConfirmDelete = async () => {
 
     if (error) throw error;
 
-    // ✅ **FIXED: Add notification with ALL required fields**
+    // ✅ Create TWO notifications: one for developer, one for admin
+
+    // 1. Notification for Developer (if assigned)
     if (projectToDelete.assigned_developer_id) {
-      const { error: notificationError } = await supabase
+      const { error: devNotificationError } = await supabase
         .from('notifications')
         .insert([
           {
             assigned_developer_id: projectToDelete.assigned_developer_id,
             developer_id: projectToDelete.assigned_developer_id,
-            admin_id: currentAdmin.id,
-            admin_email: currentAdmin.email,
+            admin_id: null,
+            admin_email: null,
             message: `🗑️ Project Deleted: "${projectToDelete.name}" has been deleted by admin.`,
             type: 'warning',
             read: false,
@@ -140,9 +147,29 @@ const handleConfirmDelete = async () => {
           }
         ]);
 
-      if (notificationError) {
-        // Silently handle notification error
+      if (devNotificationError) {
+        console.error('Developer notification error:', devNotificationError);
       }
+    }
+
+    // 2. Notification for Admin (confirmation)
+    const { error: adminNotificationError } = await supabase
+      .from('notifications')
+      .insert([
+        {
+          assigned_developer_id: null,
+          developer_id: null,
+          admin_id: currentAdmin.id,
+          admin_email: currentAdmin.email,
+          message: `🗑️ You deleted project "${projectToDelete.name}"`,
+          type: 'info',
+          read: false,
+          created_at: new Date().toISOString()
+        }
+      ]);
+
+    if (adminNotificationError) {
+      console.error('Admin notification error:', adminNotificationError);
     }
 
     // Remove the project from state
@@ -248,8 +275,8 @@ const handleAddProject = async (e) => {
           progress: 0,
           developers_count: 1,
           status: 'active',
-          assigned_to: currentAdmin.id,
-          assigned_to_email: currentAdmin.email,
+          assigned_to: newProject.assigned_developer, // ✅ Fixed: Use developer ID, not admin ID
+          assigned_to_email: assignedDeveloper.email, // ✅ Fixed: Use developer email
           created_by: currentAdmin.id,
           added_by: currentAdmin.id, // Store who added this project
           added_by_admin: currentAdmin.email,
@@ -260,19 +287,17 @@ const handleAddProject = async (e) => {
 
     if (error) throw error;
 
-    // ✅ **FIXED: Add notification with ALL required fields**
-    const { error: notificationError } = await supabase
+    // ✅ Create TWO notifications: one for developer, one for admin
+
+    // 1. Notification for Developer
+    const { error: devNotificationError } = await supabase
       .from('notifications')
       .insert([
         {
-          // 🔴 IMPORTANT: Aapke table mein DONO fields hain
-          assigned_developer_id: assignedDeveloper.id,  // UUID format
-          developer_id: assignedDeveloper.id,            // UUID format
-          
-          // Admin information (jo aapke table mein hain)
-          admin_id: currentAdmin.id,
-          admin_email: currentAdmin.email,
-          
+          assigned_developer_id: assignedDeveloper.id,
+          developer_id: assignedDeveloper.id,
+          admin_id: null, // Not for admin dashboard
+          admin_email: null,
           message: `🎯 New Project Assigned: "${newProject.name}" has been assigned to you. Start working on it now!`,
           type: 'project_assigned',
           read: false,
@@ -280,8 +305,28 @@ const handleAddProject = async (e) => {
         }
       ]);
 
-    if (notificationError) {
-      // Don't throw error for notification, just log it
+    if (devNotificationError) {
+      console.error('Developer notification error:', devNotificationError);
+    }
+
+    // 2. Notification for Admin (confirmation)
+    const { error: adminNotificationError } = await supabase
+      .from('notifications')
+      .insert([
+        {
+          assigned_developer_id: null, // Not for developer dashboard
+          developer_id: null,
+          admin_id: currentAdmin.id,
+          admin_email: currentAdmin.email,
+          message: `✅ Project "${newProject.name}" successfully assigned to ${assignedDeveloper.name}`,
+          type: 'info',
+          read: false,
+          created_at: new Date().toISOString()
+        }
+      ]);
+
+    if (adminNotificationError) {
+      console.error('Admin notification error:', adminNotificationError);
     }
 
     // Refresh the projects list
@@ -790,18 +835,36 @@ const debugCheckNotifications = async () => {
                 </div>
               )}
 
-              <div className="flex space-x-2">
-                <button 
+              <div className="grid grid-cols-3 gap-2">
+                <button
                   onClick={() => handleViewProjectActivity(project.id)}
-                  className="flex-1 bg-blue-500 text-white py-1 px-3 rounded text-sm hover:bg-blue-600"
+                  className="bg-blue-500 text-white py-2 px-2 rounded text-xs hover:bg-blue-600 transition-colors flex items-center justify-center"
+                  title="View Activity"
                 >
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                  </svg>
                   Activity
                 </button>
-                <button 
+                <button
                   onClick={() => handleViewProjectProductivity(project.id)}
-                  className="flex-1 bg-green-500 text-white py-1 px-3 rounded text-sm hover:bg-green-600"
+                  className="bg-green-500 text-white py-2 px-2 rounded text-xs hover:bg-green-600 transition-colors flex items-center justify-center"
+                  title="View Productivity"
                 >
-                  Productivity
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  Metrics
+                </button>
+                <button
+                  onClick={() => handleViewGanttChart(project.id)}
+                  className="bg-purple-500 text-white py-2 px-2 rounded text-xs hover:bg-purple-600 transition-colors flex items-center justify-center"
+                  title="View Gantt Chart Timeline"
+                >
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  Timeline
                 </button>
               </div>
             </div>

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 export default function ViewDevelopers({ developers: initialDevelopers, onRefresh, supabase, user }) {
   const [developers, setDevelopers] = useState([]);
@@ -7,10 +7,39 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
 
+  // Track which specific developer is currently being deleted (by their UUID).
+  // Using a specific ID instead of a boolean prevents shared-state race conditions
+  // where clicking delete on two different rows could delete the wrong developer.
+  const [deletingId, setDeletingId] = useState(null);
+
+  // Ref used as a guard so the deletion handler cannot be entered twice concurrently.
+  const deletionInProgressRef = useRef(false);
+
   // Fetch admin's added developers on component mount
   useEffect(() => {
     fetchAdminDevelopers();
   }, []);
+
+  // Keep the table in sync in real-time across tabs/sessions.
+  useEffect(() => {
+    if (!supabase || !currentAdmin) return;
+
+    const channel = supabase
+      .channel(`admin-developers-${currentAdmin.id || currentAdmin.email}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'developers' },
+        () => {
+          fetchAdminDevelopers();
+          if (onRefresh) onRefresh();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, currentAdmin, onRefresh]);
 
   const fetchAdminDevelopers = async () => {
     try {
@@ -177,58 +206,123 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
     }
   };
 
-  const handleDeleteDeveloper = async (developerId) => {
-    const developer = developers.find(dev => dev.id === developerId);
-    
+  const handleDeleteDeveloper = async (rowDeveloperId) => {
+    // ── Concurrency guard ──────────────────────────────────────────────────────
+    // deletionInProgressRef is set synchronously, so even two rapid clicks in
+    // the same event-loop frame cannot both enter this function.
+    if (deletionInProgressRef.current) {
+      alert('A deletion is already in progress. Please wait.');
+      return;
+    }
+
+    // Resolve the developer using ONLY the primary key from the local list.
+    // Never fall back to user_id here – that could resolve the wrong record.
+    const developer = developers.find((dev) => dev.id === rowDeveloperId);
+
     if (!developer) {
-      alert("Developer not found");
+      alert('Developer not found in the current list. Please refresh and try again.');
       return;
     }
-    
-    // Check if current admin is the one who added this developer
-    if (currentAdmin && 
-        developer.added_by !== currentAdmin.id && 
-        developer.added_by_admin !== currentAdmin.email) {
-      alert("You can only delete developers you added");
-      return;
-    }
-    
-    if (!confirm(`Are you sure you want to delete ${developer.name}?\n\nThis action cannot be undone.`)) {
-      return;
-    }
-    
-    try {
-      const { error } = await supabase
-        .from('developers')
-        .delete()
-        .eq('id', developerId);
 
-      if (error) throw error;
+    // Capture both identifiers NOW, before any async work, so that re-renders
+    // cannot change what we are about to delete.
+    const devId    = developer.id;        // UUID primary key – never changes
+    const devEmail = developer.email || '';
 
-      // Add notification
-      await supabase
-        .from('notifications')
-        .insert([
-          {
-            message: `Developer "${developer.name}" deleted`,
-            type: 'warning',
-            admin_id: currentAdmin?.id,
-            admin_email: currentAdmin?.email
-          }
-        ]);
-
-      // Refresh the developers list
-      await fetchAdminDevelopers();
-      
-      // Call parent refresh if provided
-      if (onRefresh) {
-        await onRefresh();
+    // Client-side authorization pre-check
+    if (currentAdmin) {
+      const hasOwnershipInfo =
+        developer.added_by || developer.added_by_admin || developer.admin_id;
+      const isOwner =
+        developer.added_by       === currentAdmin.id ||
+        developer.added_by_admin === currentAdmin.email;
+      if (hasOwnershipInfo && !isOwner) {
+        alert('You can only delete developers you added.');
+        return;
       }
-      
-      alert("Developer deleted successfully!");
-      
+    }
+
+    try {
+      // Set the lock BEFORE any awaits so no other call sneaks in.
+      deletionInProgressRef.current = true;
+      setDeletingId(devId); // marks exactly this row as deleting in the UI
+
+      // ── Step 1: Dry-run impact check ─────────────────────────────────────
+      const impactParams = new URLSearchParams({ developerId: devId }).toString();
+      const impactResponse = await fetch(`/api/developer/delete?${impactParams}`);
+      const impactData = await impactResponse.json();
+
+      if (!impactResponse.ok || !impactData.success) {
+        alert('Could not load deletion impact:\n' + impactData.error);
+        return;
+      }
+
+      // ── Step 2: Confirmation with impact details ──────────────────────────
+      const { impact, warning } = impactData;
+      const confirmed = window.confirm(
+        `⚠️ WARNING: This action cannot be undone!\n\n` +
+        `Delete Developer: ${developer.name} (${devEmail})\n\n` +
+        `The following data will be permanently deleted:\n` +
+        `• Projects:      ${impact.projects}\n` +
+        `• Tasks:         ${impact.tasks}\n` +
+        `• Submissions:   ${impact.submissions}\n` +
+        `• Activity logs: ${impact.activities}\n\n` +
+        `${warning}\n\n` +
+        `Are you absolutely sure you want to proceed?`
+      );
+      if (!confirmed) return;
+
+      // ── Step 3: Final confirmation ────────────────────────────────────────
+      const finalConfirmed = window.confirm(
+        `🔴 FINAL CONFIRMATION\n\n` +
+        `You are about to permanently delete "${developer.name}".\n\n` +
+        `Click OK to proceed.`
+      );
+      if (!finalConfirmed) return;
+
+      // ── Step 4: Execute deletion – send PRIMARY KEY only ─────────────────
+      const deleteResponse = await fetch('/api/developer/delete', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          developerId: devId,       // ← UUID pk, the single source of truth
+          developerEmail: devEmail, // context only; backend uses id first
+          adminId:    currentAdmin?.id,
+          adminEmail: currentAdmin?.email,
+        }),
+      });
+
+      const deleteData = await deleteResponse.json();
+
+      if (!deleteResponse.ok || !deleteData.success) {
+        alert('Deletion failed:\n' + deleteData.error);
+        return;
+      }
+
+      // ── Step 5: Optimistic UI – remove exactly the deleted row ────────────
+      setDevelopers((prev) => prev.filter((dev) => dev.id !== devId));
+
+      // Notify parent dashboard so counts update
+      if (onRefresh) onRefresh();
+
+      // ── Step 6: Success message ───────────────────────────────────────────
+      const { deletionSummary } = deleteData;
+      alert(
+        `✅ Developer Deleted Successfully!\n\n` +
+        `Name:  ${deletionSummary.developer.name}\n` +
+        `Email: ${deletionSummary.developer.email}\n\n` +
+        `Related data removed:\n` +
+        `• Projects:    ${deletionSummary.relatedDataDeleted.projects}\n` +
+        `• Tasks:       ${deletionSummary.relatedDataDeleted.tasks}\n` +
+        `• Submissions: ${deletionSummary.relatedDataDeleted.submissions}`
+      );
     } catch (error) {
-      alert('Error deleting developer: ' + error.message);
+      console.error('[ViewDevelopers] Deletion error:', error);
+      alert('An unexpected error occurred:\n' + error.message);
+    } finally {
+      // Always clear the lock and per-row loading indicator.
+      deletionInProgressRef.current = false;
+      setDeletingId(null);
     }
   };
 
@@ -464,10 +558,11 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
                   </button>
                   <button 
                     onClick={() => handleDeleteDeveloper(developer.id)}
-                    className="text-red-600 hover:text-red-900 px-2 py-1 hover:bg-red-50 rounded"
+                    className="text-red-600 hover:text-red-900 px-2 py-1 hover:bg-red-50 rounded disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Delete Developer"
+                    disabled={deletingId !== null}
                   >
-                    Delete
+                    {deletingId === developer.id ? 'Deleting…' : 'Delete'}
                   </button>
                 </td>
               </tr>
