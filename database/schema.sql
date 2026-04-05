@@ -45,7 +45,7 @@ ALTER TABLE developer_tasks ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH T
 -- Update status CHECK constraint to include all workflow values
 ALTER TABLE developer_tasks DROP CONSTRAINT IF EXISTS developer_tasks_status_check;
 ALTER TABLE developer_tasks ADD CONSTRAINT developer_tasks_status_check
-  CHECK (status IN ('pending', 'in_progress', 'awaiting_approval', 'completed', 'rejected'));
+  CHECK (status IN ('pending', 'in_progress', 'awaiting_approval', 'reviewed', 'completed', 'rejected'));
 
 -- Task submissions additions (in case table already existed)
 ALTER TABLE task_submissions ADD COLUMN IF NOT EXISTS submission_notes TEXT;
@@ -95,11 +95,12 @@ CREATE TABLE IF NOT EXISTS developer_tasks (
   end_date DATE NOT NULL,
   actual_completion_date DATE,
   
-  -- Status Flow: pending -> in_progress -> awaiting_approval -> completed/rejected
+  -- Status Flow: pending -> in_progress -> awaiting_approval -> [reviewed] -> completed/rejected
   status TEXT DEFAULT 'pending' CHECK (status IN (
     'pending',           -- Not started
     'in_progress',       -- Developer working on it
     'awaiting_approval', -- Developer submitted, waiting for admin review
+    'reviewed',          -- Admin has reviewed (optional intermediate state)
     'completed',         -- Admin approved
     'rejected'           -- Admin rejected
   )),
