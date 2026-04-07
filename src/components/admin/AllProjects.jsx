@@ -12,6 +12,10 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [showMetricsModal, setShowMetricsModal] = useState(false);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metricsError, setMetricsError] = useState("");
+  const [metricsData, setMetricsData] = useState(null);
 
   const [newProject, setNewProject] = useState({
     name: "",
@@ -100,12 +104,46 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
   };
 
   const handleViewProjectProductivity = (projectId) => {
-    alert(`View Project ${projectId} Productivity`);
+    // Placeholder kept for backwards compatibility (no-op)
   };
 
   const handleViewGanttChart = (projectId) => {
     // Navigate to Gantt chart page
     window.location.href = `/admin/gantt-chart/${projectId}`;
+  };
+
+  const handleViewMetrics = async (project) => {
+    if (!project) return;
+
+    if (!project.assigned_developer_id) {
+      alert("Please assign a developer to this project to see productivity metrics.");
+      return;
+    }
+
+    try {
+      setMetricsLoading(true);
+      setMetricsError("");
+      setMetricsData(null);
+      setShowMetricsModal(true);
+
+      const url = `/api/productivity?type=project&projectId=${project.id}&developerId=${project.assigned_developer_id}`;
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setMetricsError(data.error || "Failed to load productivity metrics.");
+        return;
+      }
+
+      setMetricsData({
+        ...data,
+        project,
+      });
+    } catch (err) {
+      setMetricsError("Error loading productivity metrics. Please try again.");
+    } finally {
+      setMetricsLoading(false);
+    }
   };
 
   // New function to handle delete confirmation
@@ -456,6 +494,37 @@ const debugCheckNotifications = async () => {
   const activeDevelopers = adminDevelopers.filter(dev => dev.status === 'active');
   const inactiveDevelopers = adminDevelopers.filter(dev => dev.status === 'inactive');
 
+  const getDeadlineSummary = (deadline) => {
+    if (!deadline) return { label: 'No deadline set', tone: 'text-gray-600' };
+
+    try {
+      const deadlineDate = new Date(deadline);
+      const today = new Date();
+      const diffTime = deadlineDate - today;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays < 0) {
+        return {
+          label: `Overdue by ${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? '' : 's'}`,
+          tone: 'text-red-600'
+        };
+      }
+      if (diffDays === 0) {
+        return { label: 'Due today', tone: 'text-orange-600' };
+      }
+      if (diffDays === 1) {
+        return { label: '1 day left', tone: 'text-orange-600' };
+      }
+
+      return {
+        label: `${diffDays} days left`,
+        tone: diffDays <= 3 ? 'text-orange-600' : 'text-green-600'
+      };
+    } catch {
+      return { label: 'N/A', tone: 'text-gray-600' };
+    }
+  };
+
   return (
     <div className="bg-white p-6 rounded-lg shadow">
       {/* Debug Button - Temporary */}
@@ -741,6 +810,107 @@ const debugCheckNotifications = async () => {
         </div>
       )}
 
+      {/* Metrics / Productivity Modal */}
+      {showMetricsModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-xl shadow-xl max-w-xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">Project Productivity</h3>
+                {metricsData?.project?.name && (
+                  <p className="text-sm text-gray-500 mt-1">
+                    {metricsData.project.name}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  setShowMetricsModal(false);
+                  setMetricsData(null);
+                  setMetricsError("");
+                }}
+                className="text-gray-500 hover:text-gray-700 text-xl"
+              >
+                ✕
+              </button>
+            </div>
+
+            {metricsLoading ? (
+              <div className="py-10 text-center">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#009578]"></div>
+                <p className="mt-3 text-gray-500 text-sm">Loading productivity metrics...</p>
+              </div>
+            ) : metricsError ? (
+              <div className="py-6">
+                <div className="bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-700">
+                  {metricsError}
+                </div>
+              </div>
+            ) : metricsData ? (
+              <div className="space-y-4">
+                {/* Summary cards similar to developer timesheet */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-white rounded-xl border p-4 text-center shadow-sm">
+                    <div className="text-2xl font-bold text-gray-800">{metricsData.totalTasks}</div>
+                    <div className="text-xs text-gray-500 mt-1">Total Tasks</div>
+                  </div>
+                  <div className="bg-green-50 rounded-xl border border-green-200 p-4 text-center shadow-sm">
+                    <div className="text-2xl font-bold text-green-600">{metricsData.summary?.onTime || 0}</div>
+                    <div className="text-xs text-green-700 mt-1">On Time</div>
+                    <div className="text-[11px] text-green-600">+{metricsData.summary?.onTime || 0} pts</div>
+                  </div>
+                  <div className="bg-red-50 rounded-xl border border-red-200 p-4 text-center shadow-sm">
+                    <div className="text-2xl font-bold text-red-600">{metricsData.summary?.late || 0}</div>
+                    <div className="text-xs text-red-700 mt-1">Late</div>
+                    <div className="text-[11px] text-red-600">-{metricsData.summary?.late || 0} pts</div>
+                  </div>
+                  <div
+                    className={`rounded-xl border p-4 text-center shadow-sm ${
+                      parseFloat(metricsData.productivityPercentage || 0) >= 80
+                        ? "bg-green-50 border-green-200"
+                        : parseFloat(metricsData.productivityPercentage || 0) >= 50
+                        ? "bg-yellow-50 border-yellow-200"
+                        : "bg-red-50 border-red-200"
+                    }`}
+                  >
+                    <div
+                      className={`text-2xl font-bold ${
+                        parseFloat(metricsData.productivityPercentage || 0) >= 80
+                          ? "text-green-600"
+                          : parseFloat(metricsData.productivityPercentage || 0) >= 50
+                          ? "text-yellow-600"
+                          : "text-red-600"
+                      }`}
+                    >
+                      {metricsData.productivityPercentage || 0}%
+                    </div>
+                    <div className="text-xs text-gray-600 mt-1">Productivity</div>
+                    <div className="text-[11px] text-gray-500">
+                      Points: {metricsData.productivityPoints >= 0 ? `+${metricsData.productivityPoints}` : metricsData.productivityPoints}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Basic breakdown */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-700">
+                  <p className="mb-1">
+                    <span className="font-semibold">Completed:</span> {metricsData.summary?.completed || 0} ·
+                    {" "}
+                    <span className="font-semibold text-green-700">On Time:</span> {metricsData.summary?.onTime || 0} ·
+                    {" "}
+                    <span className="font-semibold text-red-700">Late:</span> {metricsData.summary?.late || 0} ·
+                    {" "}
+                    <span className="font-semibold">Pending:</span> {(metricsData.summary?.pending || 0) + (metricsData.summary?.inProgress || 0) + (metricsData.summary?.awaiting || 0)} ·
+                    {" "}
+                    <span className="font-semibold">Rejected:</span> {metricsData.summary?.rejected || 0}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
+
       {/* Projects Grid */}
       {projects.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -817,7 +987,7 @@ const debugCheckNotifications = async () => {
               {project.file_url && (
                 <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded-md">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-2 flex-1 min-w-0">
                       <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
@@ -835,19 +1005,43 @@ const debugCheckNotifications = async () => {
                 </div>
               )}
 
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  onClick={() => handleViewProjectActivity(project.id)}
-                  className="bg-blue-500 text-white py-2 px-2 rounded text-xs hover:bg-blue-600 transition-colors flex items-center justify-center"
-                  title="View Activity"
-                >
-                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+              {/* Compact timeline similar to developer view */}
+              <div className="mt-2 mb-3 rounded-md bg-gray-50 border border-dashed border-gray-200 p-3">
+                <p className="text-xs font-semibold text-gray-600 mb-2 flex items-center">
+                  <svg className="w-3 h-3 mr-1 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
-                  Activity
-                </button>
+                  Project timeline
+                </p>
+                <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
+                  <div>
+                    <p className="font-medium">Created</p>
+                    <p>{formatDate(project.created_at)}</p>
+                  </div>
+                  <div className="flex-1 mx-3 h-0.5 bg-gradient-to-r from-gray-300 via-[#009578] to-gray-300 relative">
+                    <span className="absolute -top-1 left-1 w-2 h-2 rounded-full bg-gray-400" />
+                    <span className="absolute -top-1 right-1 w-2 h-2 rounded-full bg-gray-400" />
+                  </div>
+                  <div>
+                    <p className="font-medium">Deadline</p>
+                    <p>{project.deadline ? formatDate(project.deadline) : 'Not set'}</p>
+                  </div>
+                </div>
+                <div className="mt-1">
+                  {(() => {
+                    const summary = getDeadlineSummary(project.deadline);
+                    return (
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full bg-white border text-[11px] font-medium ${summary.tone}`}>
+                        {summary.label}
+                      </span>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={() => handleViewProjectProductivity(project.id)}
+                  onClick={() => handleViewMetrics(project)}
                   className="bg-green-500 text-white py-2 px-2 rounded text-xs hover:bg-green-600 transition-colors flex items-center justify-center"
                   title="View Productivity"
                 >

@@ -47,8 +47,7 @@ export default function DeadlineMonitor({ currentAdmin }) {
           developers (
             id,
             name,
-            email,
-            designation
+            email
           )
         `)
         .in("project_id", projectIds)

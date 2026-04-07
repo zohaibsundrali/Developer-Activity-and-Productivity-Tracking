@@ -509,15 +509,6 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
           </div>
         </div>
       </main>
-      
-      {/* Debug info (remove in production) */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="fixed bottom-4 right-4 bg-black bg-opacity-80 text-white p-3 rounded text-xs">
-          <div>Unread Count: {unreadCount}</div>
-          <div>Total Notifications: {notifications.length}</div>
-          <div>Unread Notifications: {notifications.filter(n => !n.read).length}</div>
-        </div>
-      )}
     </div>
   );
 }

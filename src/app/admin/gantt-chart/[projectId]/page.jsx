@@ -133,8 +133,7 @@ export default function AdminGanttChartPage() {
           developer:developers (
             id,
             name,
-            email,
-            designation
+            email
           )
         `)
         .eq('project_id', projectId)

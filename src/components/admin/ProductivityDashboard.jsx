@@ -432,6 +432,51 @@ export default function ProductivityDashboard({ currentAdmin }) {
           </div>
         </div>
 
+        {/* Timesheet-style productivity summary for admin view */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="bg-white rounded-xl border p-4 text-center shadow-sm">
+            <div className="text-3xl font-bold text-gray-800">{totalTasks}</div>
+            <div className="text-sm text-gray-500 mt-1">Total Tasks</div>
+          </div>
+          <div className="bg-green-50 rounded-xl border border-green-200 p-4 text-center shadow-sm">
+            <div className="text-3xl font-bold text-green-600">{productivityData.totalOnTime}</div>
+            <div className="text-sm text-green-700 mt-1">On Time</div>
+            <div className="text-xs text-green-600">+{productivityData.totalOnTime} pts</div>
+          </div>
+          <div className="bg-red-50 rounded-xl border border-red-200 p-4 text-center shadow-sm">
+            <div className="text-3xl font-bold text-red-600">{productivityData.totalLate}</div>
+            <div className="text-sm text-red-700 mt-1">Late</div>
+            <div className="text-xs text-red-600">
+              -{productivityData.totalLate} pts
+            </div>
+          </div>
+          <div
+            className={`rounded-xl border p-4 text-center shadow-sm ${
+              parseFloat(productivityPercentage) >= 80
+                ? "bg-green-50 border-green-200"
+                : parseFloat(productivityPercentage) >= 50
+                ? "bg-yellow-50 border-yellow-200"
+                : "bg-red-50 border-red-200"
+            }`}
+          >
+            <div
+              className={`text-3xl font-bold ${
+                parseFloat(productivityPercentage) >= 80
+                  ? "text-green-600"
+                  : parseFloat(productivityPercentage) >= 50
+                  ? "text-yellow-600"
+                  : "text-red-600"
+              }`}
+            >
+              {productivityPercentage}%
+            </div>
+            <div className="text-sm text-gray-600 mt-1">Productivity</div>
+            <div className="text-xs text-gray-500">
+              Points: {productivityPoints >= 0 ? `+${productivityPoints}` : productivityPoints}
+            </div>
+          </div>
+        </div>
+
         {/* Projects Breakdown */}
         <div className="bg-white rounded-xl shadow overflow-hidden">
           <div className="p-4 border-b bg-gray-50">
@@ -474,6 +519,13 @@ export default function ProductivityDashboard({ currentAdmin }) {
               </div>
             ))}
           </div>
+        </div>
+
+        {/* Productivity formula note (same logic as developer timesheet) */}
+        <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
+          <strong>Productivity Formula:</strong>
+          {" "}(On-time tasks − Late tasks) / Total tasks × 100
+          {" "}+ 50% · On-time completion = +1 point · Late completion = −1 point
         </div>
       </div>
     );

@@ -35,7 +35,7 @@ export default function DashboardOverview({ user, developers, projects, notifica
 
       // 2. Count projects assigned to this admin
       const myProjects = projects.filter(project => {
-        return project.assigned_to === adminId ||
+        return project.assigned_to === adminId || 
                project.admin_id === adminId ||
                (project.assigned_admin && project.assigned_admin.toLowerCase() === adminEmail?.toLowerCase());
       }).length;
@@ -184,7 +184,7 @@ export default function DashboardOverview({ user, developers, projects, notifica
       </p>
       
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
         {/* My Developers Card */}
         <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl shadow-lg border border-blue-200">
           <div className="flex items-center justify-between mb-4">
@@ -266,40 +266,10 @@ export default function DashboardOverview({ user, developers, projects, notifica
             </div>
           </div>
         </div>
-
-        {/* Overall Stats Card */}
-        <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl shadow-lg border border-purple-200">
-          <div className="flex items-center justify-between mb-4">
-            <div className="bg-purple-500 p-3 rounded-lg">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-            </div>
-            <span className="text-sm font-medium text-purple-600 bg-purple-100 px-3 py-1 rounded-full">
-              Overview
-            </span>
-          </div>
-          <h3 className="text-3xl font-bold text-gray-800 mb-2">
-            {realTimeStats.myDevelopers + realTimeStats.myProjects}
-          </h3>
-          <p className="text-gray-600 font-medium">Total Assignments</p>
-          <div className="mt-4 pt-4 border-t border-purple-200">
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-500">Success Rate</span>
-                <span className="text-sm font-semibold text-green-600">
-                  {realTimeStats.myDevelopers > 0 
-                    ? `${Math.round((realTimeStats.activeDevelopers / realTimeStats.myDevelopers) * 100)}%`
-                    : '0%'}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Profile Information Only */}
+      <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
         <div className="bg-white p-6 rounded-xl shadow border border-gray-200">
           <h3 className="text-lg font-semibold mb-4 text-gray-800">Profile Information</h3>
           <div className="space-y-3 text-left">
@@ -328,102 +298,6 @@ export default function DashboardOverview({ user, developers, projects, notifica
               <div>
                 <p className="text-sm text-gray-500">Role</p>
                 <p className="font-medium capitalize">{user?.role || 'Admin'}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <div className="bg-white p-6 rounded-xl shadow border border-gray-200">
-          <h3 className="text-lg font-semibold mb-4 text-gray-800">Quick Actions</h3>
-          <div className="space-y-3">
-            <button 
-              onClick={() => window.location.hash = 'view-developers'}
-              className="w-full flex items-center justify-between bg-blue-50 hover:bg-blue-100 text-blue-700 p-4 rounded-lg transition-colors"
-            >
-              <div className="flex items-center">
-                <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13 0c1.013 0 1.827.833 1.827 1.86 0 1.03-.814 1.86-1.827 1.86s-1.827-.83-1.827-1.86c0-1.027.814-1.86 1.827-1.86z" />
-                </svg>
-                <span>View My Developers</span>
-              </div>
-              <span className="bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full">
-                {realTimeStats.myDevelopers}
-              </span>
-            </button>
-            
-            <button 
-              onClick={() => window.location.hash = 'all-projects'}
-              className="w-full flex items-center justify-between bg-green-50 hover:bg-green-100 text-green-700 p-4 rounded-lg transition-colors"
-            >
-              <div className="flex items-center">
-                <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-                <span>View My Projects</span>
-              </div>
-              <span className="bg-green-100 text-green-800 text-xs font-bold px-3 py-1 rounded-full">
-                {realTimeStats.myProjects}
-              </span>
-            </button>
-            
-            <button 
-              onClick={() => window.location.hash = 'notifications'}
-              className="w-full flex items-center justify-between bg-yellow-50 hover:bg-yellow-100 text-yellow-700 p-4 rounded-lg transition-colors"
-            >
-              <div className="flex items-center">
-                <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-                <span>Check Notifications</span>
-              </div>
-              {realTimeStats.pendingNotifications > 0 ? (
-                <span className="animate-pulse bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full">
-                  {realTimeStats.pendingNotifications} new
-                </span>
-              ) : (
-                <span className="bg-gray-100 text-gray-800 text-xs font-bold px-3 py-1 rounded-full">
-                  ✓ All read
-                </span>
-              )}
-            </button>
-          </div>
-        </div>
-        
-        <div className="bg-white p-6 rounded-xl shadow border border-gray-200">
-          <h3 className="text-lg font-semibold mb-4 text-gray-800">System Overview</h3>
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600">Total Developers</span>
-              <span className="font-semibold">{developers.length}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600">Total Projects</span>
-              <span className="font-semibold">{projects.length}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600">Your Assignments</span>
-              <span className="font-semibold text-[#009578]">
-                {realTimeStats.myDevelopers + realTimeStats.myProjects}
-              </span>
-            </div>
-            <div className="pt-4 border-t border-gray-200">
-              <p className="text-sm text-gray-500 mb-2">Activity Status</p>
-              <div className="flex items-center">
-                <div className="flex-1 bg-gray-200 rounded-full h-2">
-                  <div 
-                    className="bg-green-500 h-2 rounded-full" 
-                    style={{ 
-                      width: `${realTimeStats.myDevelopers > 0 
-                        ? Math.round((realTimeStats.activeDevelopers / realTimeStats.myDevelopers) * 100) 
-                        : 0}%` 
-                    }}
-                  ></div>
-                </div>
-                <span className="ml-3 text-sm font-medium">
-                  {realTimeStats.myDevelopers > 0 
-                    ? Math.round((realTimeStats.activeDevelopers / realTimeStats.myDevelopers) * 100)
-                    : 0}% Active
-                </span>
               </div>
             </div>
           </div>

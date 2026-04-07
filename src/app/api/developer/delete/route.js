@@ -16,7 +16,7 @@ async function resolveDeveloper({ developerId, developerEmail, userId }) {
   if (normalizedId) {
     const { data, error } = await supabase
       .from('developers')
-      .select('id, user_id, name, email, phone, designation, added_by, added_by_admin, admin_id')
+      .select('id, user_id, name, email, phone, added_by, added_by_admin, admin_id')
       .eq('id', normalizedId)
       .maybeSingle();
 
@@ -26,7 +26,7 @@ async function resolveDeveloper({ developerId, developerEmail, userId }) {
   if (normalizedUserId) {
     const { data, error } = await supabase
       .from('developers')
-      .select('id, user_id, name, email, phone, designation, added_by, added_by_admin, admin_id')
+      .select('id, user_id, name, email, added_by, added_by_admin, admin_id')
       .eq('user_id', normalizedUserId)
       .maybeSingle();
 
@@ -36,7 +36,7 @@ async function resolveDeveloper({ developerId, developerEmail, userId }) {
   if (normalizedEmail) {
     const { data, error } = await supabase
       .from('developers')
-      .select('id, user_id, name, email, phone, designation, added_by, added_by_admin, admin_id')
+      .select('id, user_id, name, email, phone, added_by, added_by_admin, admin_id')
       .ilike('email', normalizedEmail)
       .maybeSingle();
 

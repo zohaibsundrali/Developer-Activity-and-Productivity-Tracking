@@ -45,14 +45,15 @@ export async function POST(request) {
 
     const reviewedAt = new Date().toISOString();
 
-    // Get task and submission details
+    // Get task details (simple select to avoid relationship issues)
     const { data: task, error: taskError } = await supabase
       .from('developer_tasks')
-      .select('*, projects(name, admin_id), developers(name, email)')
+      .select('*')
       .eq('id', taskId)
       .single();
 
     if (taskError || !task) {
+      console.error('Admin review task lookup error:', taskError);
       return NextResponse.json(
         { error: 'Task not found' },
         { status: 404 }
@@ -145,8 +146,9 @@ export async function POST(request) {
         review_comments: comments,
         rejection_reason: rejectionReason,
         task_title: task.task_title,
-        developer_name: task.developers?.name,
-        project_name: task.projects?.name,
+        // developer_name / project_name are optional; can be enriched later
+        developer_name: null,
+        project_name: null,
         submission_file_url: submission.file_url,
         deadline: task.end_date,
         submission_date: submission.submitted_at,
@@ -281,36 +283,17 @@ async function updateProductivityMetrics(developerId, projectId) {
   }
 }
 
-// Get pending reviews for admin
+// Get pending or reviewed submissions for admin
+// Note: For a solo setup we deliberately keep this simple and
+// return all submissions filtered only by review_status. This
+// avoids issues where project/admin relationships are misaligned
+// and ensures the Task Review panel always shows developer work.
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
-    const adminId = searchParams.get('adminId');
     const status = searchParams.get('status') || 'pending';
 
-    if (!adminId) {
-      return NextResponse.json(
-        { error: 'Admin ID is required' },
-        { status: 400 }
-      );
-    }
-
-    // Get projects managed by this admin
-    const { data: adminProjects } = await supabase
-      .from('projects')
-      .select('id')
-      .or(`admin_id.eq.${adminId},created_by.eq.${adminId}`);
-
-    const projectIds = adminProjects?.map(p => p.id) || [];
-
-    if (projectIds.length === 0) {
-      return NextResponse.json({
-        success: true,
-        reviews: []
-      });
-    }
-
-    // Get submissions that need review
+    // Base query: include related task, developer, and project info
     let query = supabase
       .from('task_submissions')
       .select(`
@@ -334,9 +317,9 @@ export async function GET(request) {
           deadline
         )
       `)
-      .in('project_id', projectIds)
       .order('submitted_at', { ascending: false });
 
+    // Filter by review status for the UI tabs
     if (status === 'pending') {
       query = query.eq('review_status', 'pending');
     } else if (status === 'reviewed') {
@@ -354,7 +337,7 @@ export async function GET(request) {
 
     // Get activity logs and screenshots for each submission
     const enrichedData = await Promise.all((data || []).map(async (submission) => {
-      // Get recent activity logs
+      // Recent activity logs for this task/project/developer
       const { data: activityLogs } = await supabase
         .from('activity_logs')
         .select('*')
@@ -363,18 +346,26 @@ export async function GET(request) {
         .order('created_at', { ascending: false })
         .limit(10);
 
-      // Get screenshots from the tracker
-      const { data: screenshots } = await supabase
-        .from('screenshots')
-        .select('id, public_url, timestamp, app_active')
-        .or(`developer_id.eq.${submission.developer_id},developer_email.eq.${submission.developers?.email}`)
-        .order('timestamp', { ascending: false })
-        .limit(5);
+      // Tracker screenshots (if table exists)
+      let screenshots = [];
+      try {
+        const { data: screenshotData } = await supabase
+          .from('screenshots')
+          .select('id, public_url, timestamp, app_active')
+          .or(`developer_id.eq.${submission.developer_id},developer_email.eq.${submission.developers?.email}`)
+          .order('timestamp', { ascending: false })
+          .limit(5);
+
+        screenshots = screenshotData || [];
+      } catch (e) {
+        // If screenshots table doesn't exist, just skip it
+        screenshots = [];
+      }
 
       return {
         ...submission,
         activityLogs: activityLogs || [],
-        screenshots: screenshots || []
+        screenshots
       };
     }));
 
