@@ -27,25 +27,25 @@ export default function DashboardOverview({ user, developers, projects, notifica
 
       // 1. Count developers added by this admin
       const myDevelopers = developers.filter(dev => {
-        return dev.added_by === adminId || 
-               dev.added_by_admin === adminId ||
-               dev.admin_id === adminId ||
-               (dev.added_by_email && dev.added_by_email.toLowerCase() === adminEmail?.toLowerCase());
+        const addedByIdMatch = adminId && dev.added_by === adminId;
+        const addedByEmailMatch = adminEmail && dev.added_by_admin && dev.added_by_admin.toLowerCase() === adminEmail.toLowerCase();
+        return addedByIdMatch || addedByEmailMatch;
       }).length;
 
-      // 2. Count projects assigned to this admin
+      // 2. Count projects created/assigned by this admin
+      //    Based on projects table schema: created_by, added_by, added_by_admin
       const myProjects = projects.filter(project => {
-        return project.assigned_to === adminId || 
-               project.admin_id === adminId ||
-               (project.assigned_admin && project.assigned_admin.toLowerCase() === adminEmail?.toLowerCase());
+        const createdByMatch = adminId && project.created_by === adminId;
+        const addedByIdMatch = adminId && project.added_by === adminId;
+        const addedByEmailMatch = adminEmail && project.added_by_admin && project.added_by_admin.toLowerCase() === adminEmail.toLowerCase();
+        return createdByMatch || addedByIdMatch || addedByEmailMatch;
       }).length;
 
       // 3. Count active developers added by this admin
       const activeDevelopers = developers.filter(dev => {
-        const isMyDeveloper = dev.added_by === adminId || 
-                              dev.added_by_admin === adminId ||
-                              dev.admin_id === adminId ||
-                              (dev.added_by_email && dev.added_by_email.toLowerCase() === adminEmail?.toLowerCase());
+        const addedByIdMatch = adminId && dev.added_by === adminId;
+        const addedByEmailMatch = adminEmail && dev.added_by_admin && dev.added_by_admin.toLowerCase() === adminEmail.toLowerCase();
+        const isMyDeveloper = addedByIdMatch || addedByEmailMatch;
         return isMyDeveloper && dev.status === 'active';
       }).length;
 
@@ -83,16 +83,33 @@ export default function DashboardOverview({ user, developers, projects, notifica
       if (!adminId && !adminEmail) return;
 
       // Fetch developers added by this admin
+      const orFilters = [];
+      if (adminId) {
+        orFilters.push(`added_by.eq.${adminId}`);
+      }
+      if (adminEmail) {
+        orFilters.push(`added_by_admin.ilike.%${adminEmail}%`);
+      }
+
       const { data: myDevsData } = await supabase
         .from('developers')
         .select('*')
-        .or(`added_by.eq.${adminId},added_by_admin.eq.${adminId},admin_id.eq.${adminId}`);
+        .or(orFilters.join(','));
 
-      // Fetch projects assigned to this admin
+      // Fetch projects created/assigned by this admin
+      const projectOrFilters = [];
+      if (adminId) {
+        projectOrFilters.push(`created_by.eq.${adminId}`);
+        projectOrFilters.push(`added_by.eq.${adminId}`);
+      }
+      if (adminEmail) {
+        projectOrFilters.push(`added_by_admin.ilike.%${adminEmail}%`);
+      }
+
       const { data: myProjectsData } = await supabase
         .from('projects')
         .select('*')
-        .or(`assigned_to.eq.${adminId},admin_id.eq.${adminId}`);
+        .or(projectOrFilters.join(','));
 
       // Fetch unread notifications
       const { data: unreadNotifications } = await supabase
