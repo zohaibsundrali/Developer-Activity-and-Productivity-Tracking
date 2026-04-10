@@ -244,14 +244,6 @@ export default function DashboardOverview({ user, developers, projects, notifica
             {realTimeStats.myProjects}
           </h3>
           <p className="text-gray-600 font-medium">My Projects</p>
-          <div className="mt-4 pt-4 border-t border-green-200">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-500">Total assigned</span>
-              <span className="text-sm font-semibold text-green-600">
-                {projects.filter(p => p.status === 'active').length}
-              </span>
-            </div>
-          </div>
         </div>
 
         {/* Pending Notifications Card */}
