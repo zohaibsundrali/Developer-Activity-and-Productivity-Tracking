@@ -103,88 +103,39 @@ export default function TaskCompletionModal({
       setUploading(true);
       setUploadProgress(10);
 
-      // Create unique file name
+      // Create unique file name and storage path
       const timestamp = Date.now();
       const sanitizedName = selectedFile.name.replace(/[^a-zA-Z0-9.-]/g, "_");
       const fileName = `${timestamp}_${sanitizedName}`;
       const storagePath = `submissions/${developer.id}/${project.id}/${task.id}/${fileName}`;
 
-      setUploadProgress(30);
+      setUploadProgress(40);
 
-      // Try uploading to task-submissions bucket first
-      let uploadResult = await supabase.storage
+      // Upload ONLY to the task-submissions bucket
+      const { data: uploadData, error: uploadError } = await supabase.storage
         .from("task-submissions")
         .upload(storagePath, selectedFile, {
           cacheControl: "3600",
           upsert: true,
         });
 
-      // If task-submissions bucket doesn't exist, try other buckets
-      if (uploadResult.error) {
-        console.log("task-submissions bucket error, trying alternatives:", uploadResult.error.message);
-        
-        // Try 'public' bucket
-        uploadResult = await supabase.storage
-          .from("public")
-          .upload(storagePath, selectedFile, {
-            cacheControl: "3600",
-            upsert: true,
-          });
-      }
-
-      // If public bucket also fails, try creating/using 'files' bucket
-      if (uploadResult.error) {
-        console.log("public bucket error, trying files bucket:", uploadResult.error.message);
-        
-        uploadResult = await supabase.storage
-          .from("files")
-          .upload(storagePath, selectedFile, {
-            cacheControl: "3600",
-            upsert: true,
-          });
-      }
-
-      // If all storage attempts fail, convert to base64 data URL as ultimate fallback
-      if (uploadResult.error) {
-        console.log("All storage buckets failed, using base64 fallback");
-        setUploadProgress(50);
-        
-        return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            setUploadProgress(100);
-            resolve({
-              url: reader.result, // base64 data URL
-              path: `local:${storagePath}`,
-              name: selectedFile.name,
-              type: selectedFile.type,
-              size: selectedFile.size,
-              isBase64: true,
-            });
-          };
-          reader.onerror = () => reject(new Error("Failed to read file"));
-          reader.readAsDataURL(selectedFile);
-        });
+      if (uploadError) {
+        console.error("File upload error:", uploadError);
+        setError(`File upload failed: ${uploadError.message}`);
+        return null;
       }
 
       setUploadProgress(80);
 
-      // Determine which bucket succeeded
-      const bucketName = uploadResult.data?.path?.includes("task-submissions") 
-        ? "task-submissions" 
-        : uploadResult.data?.path?.includes("public") 
-        ? "public" 
-        : "files";
-
-      // Get public URL
+      // Get public URL from the same bucket
       const { data: urlData } = supabase.storage
-        .from(bucketName)
+        .from("task-submissions")
         .getPublicUrl(storagePath);
 
       setUploadProgress(100);
 
       return {
-        url: urlData?.publicUrl || `storage://${bucketName}/${storagePath}`,
+        url: urlData?.publicUrl || "",
         path: storagePath,
         name: selectedFile.name,
         type: selectedFile.type,
@@ -192,25 +143,8 @@ export default function TaskCompletionModal({
       };
     } catch (err) {
       console.error("File upload error:", err);
-      
-      // Ultimate fallback: base64 encoding
-      setUploadProgress(50);
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          setUploadProgress(100);
-          resolve({
-            url: reader.result,
-            path: `base64:${selectedFile.name}`,
-            name: selectedFile.name,
-            type: selectedFile.type,
-            size: selectedFile.size,
-            isBase64: true,
-          });
-        };
-        reader.onerror = () => reject(new Error("Failed to process file"));
-        reader.readAsDataURL(selectedFile);
-      });
+      setError("An error occurred while uploading the file. Please try again.");
+      return null;
     } finally {
       setUploading(false);
     }
@@ -229,7 +163,6 @@ export default function TaskCompletionModal({
       // Upload file first
       const fileData = await uploadFile();
       if (!fileData) {
-        setError("Failed to upload file");
         return;
       }
 

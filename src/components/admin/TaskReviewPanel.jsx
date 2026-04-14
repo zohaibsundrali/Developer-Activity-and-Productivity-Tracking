@@ -128,6 +128,60 @@ export default function TaskReviewPanel({ currentAdmin }) {
     return badges[status] || badges.pending;
   };
 
+  const handleDownloadFile = async (fileUrl, fileName, storagePath) => {
+    let downloadUrl = null;
+
+    try {
+      // 1) Prefer generating a fresh URL from Supabase Storage using storagePath
+      if (storagePath) {
+        const { data, error } = await supabase.storage
+          .from("task-submissions")
+          .createSignedUrl(storagePath, 60); // 60 seconds expiry
+
+        if (error) {
+          console.error("Failed to create signed URL from storage:", error);
+        } else if (data?.signedUrl) {
+          downloadUrl = data.signedUrl;
+        }
+      }
+
+      // 2) Fallback to a valid HTTP(S) URL from the database if needed
+      if (
+        !downloadUrl &&
+        fileUrl &&
+        fileUrl.startsWith("http") &&
+        !fileUrl.startsWith("data:") &&
+        !fileUrl.startsWith("base64:")
+      ) {
+        downloadUrl = fileUrl;
+      }
+
+      if (!downloadUrl) {
+        console.error("No valid download URL available for this file");
+        return;
+      }
+      // Fetch the file as a blob, then trigger a forced download
+      const response = await fetch(downloadUrl);
+      if (!response.ok) {
+        console.error("Download request failed with status", response.status);
+        return;
+      }
+
+      const blob = await response.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = fileName || "download";
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      console.error("File download failed:", error);
+    }
+  };
+
   if (!currentAdmin) {
     return (
       <div className="p-6 text-center text-gray-500">
@@ -324,10 +378,15 @@ export default function TaskReviewPanel({ currentAdmin }) {
                       </p>
                     </div>
                   </div>
-                  <a
-                    href={submission.file_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleDownloadFile(
+                        submission.file_url,
+                        submission.file_name,
+                        submission.storage_path
+                      )
+                    }
                     className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center"
                   >
                     <svg
@@ -340,17 +399,11 @@ export default function TaskReviewPanel({ currentAdmin }) {
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         strokeWidth={2}
-                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                      />
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                        d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M16 12l-4 4m0 0l-4-4m4 4V4"
                       />
                     </svg>
-                    View File
-                  </a>
+                    Download File
+                  </button>
                 </div>
 
                 {/* Submission Notes */}
@@ -363,56 +416,7 @@ export default function TaskReviewPanel({ currentAdmin }) {
                   </div>
                 )}
 
-                {/* Screenshots from Tracker */}
-                {submission.screenshots && submission.screenshots.length > 0 && (
-                  <div className="mb-4">
-                    <p className="text-xs text-gray-500 uppercase mb-2">
-                      Recent Screenshots ({submission.screenshots.length})
-                    </p>
-                    <div className="flex space-x-2 overflow-x-auto pb-2">
-                      {submission.screenshots.slice(0, 5).map((screenshot) => (
-                        <a
-                          key={screenshot.id}
-                          href={screenshot.public_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex-shrink-0"
-                        >
-                          <img
-                            src={screenshot.public_url}
-                            alt="Screenshot"
-                            className="w-24 h-16 object-cover rounded border hover:border-blue-500 transition-colors"
-                          />
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Activity Logs */}
-                {submission.activityLogs && submission.activityLogs.length > 0 && (
-                  <div className="mb-4">
-                    <p className="text-xs text-gray-500 uppercase mb-2">
-                      Activity Log
-                    </p>
-                    <div className="bg-gray-50 rounded-lg p-3 max-h-32 overflow-y-auto">
-                      {submission.activityLogs.slice(0, 5).map((log) => (
-                        <div
-                          key={log.id}
-                          className="text-sm py-1 border-b border-gray-200 last:border-0"
-                        >
-                          <span className="text-gray-500">
-                            {formatDate(log.created_at)}
-                          </span>
-                          <span className="mx-2">•</span>
-                          <span className="text-gray-700">
-                            {log.action_description}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                
 
                 {/* Action Buttons */}
                 {submission.review_status === "pending" && (
