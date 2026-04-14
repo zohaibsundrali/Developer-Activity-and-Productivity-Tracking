@@ -113,7 +113,14 @@ export default function DeveloperActivity() {
     try {
       // Fetch all 5 tables in parallel (keyboard via API route to bypass RLS)
       const [sessionsRes, mouseRes, keyboardApiRes, appRes, screenshotRes] = await Promise.all([
-        supabase.from("productivity_sessions").select("*").eq("developer_id", devId).gte("start_time", start).lt("start_time", end).order("start_time", { ascending: false }),
+        // Match sessions for this developer either by developer_id or user_email
+        supabase
+          .from("productivity_sessions")
+          .select("*")
+          .or(`developer_id.eq.${devId},user_email.eq.${devEmail}`)
+          .gte("start_time", start)
+          .lt("start_time", end)
+          .order("start_time", { ascending: false }),
         supabase.from("mouse_activities").select("id, session_id, developer_id, developer_name, timestamp, activity_status, active_percentage, idle_percentage, created_at").eq("developer_id", devId).gte("created_at", start).lte("created_at", end).order("timestamp", { ascending: false }),
         fetch(`/api/keyboard-stats?developerId=${encodeURIComponent(devId)}&email=${encodeURIComponent(devEmail)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`).then(r => r.json()),
         supabase.from("app_usage").select("id, session_id, user_email, app_name, app_name_raw, window_title, start_time, end_time, duration_seconds, duration_minutes, tracked_at, created_at, is_new_app, user_login").eq("user_email", devEmail).gte("tracked_at", start).lte("tracked_at", end).order("tracked_at", { ascending: false }),
@@ -129,7 +136,13 @@ export default function DeveloperActivity() {
       // Fallback to email if developer_id returned nothing
       if (!finalSessions.length && !finalMouse.length) {
         const [s2, m2, a2, ss2] = await Promise.all([
-          supabase.from("productivity_sessions").select("*").eq("email", devEmail).gte("start_time", start).lt("start_time", end).order("start_time", { ascending: false }),
+          supabase
+            .from("productivity_sessions")
+            .select("*")
+            .eq("user_email", devEmail)
+            .gte("start_time", start)
+            .lt("start_time", end)
+            .order("start_time", { ascending: false }),
           supabase.from("mouse_activities").select("id, session_id, developer_id, developer_name, timestamp, activity_status, active_percentage, idle_percentage, created_at").eq("email", devEmail).gte("created_at", start).lte("created_at", end).order("timestamp", { ascending: false }),
           supabase.from("app_usage").select("id, session_id, user_email, app_name, app_name_raw, window_title, start_time, end_time, duration_seconds, duration_minutes, tracked_at, created_at, is_new_app, user_login").eq("user_email", devEmail).gte("tracked_at", start).lte("tracked_at", end).order("tracked_at", { ascending: false }),
           supabase.from("screenshots").select("id, developer_id, developer_email, filename, public_url, storage_path, width, height, size_kb, mime_type, app_active, timestamp, created_at").or(`developer_id.eq.${devId},developer_email.eq.${devEmail}`).gte("timestamp", start).lte("timestamp", end).order("timestamp", { ascending: false }),
@@ -266,7 +279,8 @@ export default function DeveloperActivity() {
         event: "INSERT",
         schema: "public",
         table: "keyboard_stats",
-        filter: `user_email=eq.${dev.email}`,
+        // Some trackers only populate developer_email; listen to that as well
+        filter: `developer_email=eq.${dev.email}`,
       }, (payload) => {
         setKeyboardData(prev => {
           if (prev.some(k => k.id === payload.new.id)) return prev;
@@ -345,8 +359,15 @@ export default function DeveloperActivity() {
   const developer = developers.find(d => d.id === selectedDeveloper);
   const hasData = sessions.length || mouseData.length || keyboardData.length || appUsageData.length || screenshots.length;
 
-  const totalActiveTime = sessions.reduce((s, r) => s + (r.active_duration || 0), 0);
-  const totalIdleTime = sessions.reduce((s, r) => s + (r.idle_duration || 0), 0);
+  // Aggregate durations from productivity_sessions for the selected date/range
+  const totalActiveTime = sessions.reduce((s, r) => s + (Number(r.active_duration) || 0), 0);
+  const totalIdleTime = sessions.reduce((s, r) => s + (Number(r.idle_duration) || 0), 0);
+
+  // Sum of productivity_sessions.total_duration (assumed minutes) = developer's total working time
+  const totalDurationMinutes = sessions.reduce(
+    (sum, r) => sum + (Number(r.total_duration) || 0),
+    0
+  );
   const avgProductivity = sessions.length ? sessions.reduce((s, r) => s + (r.productivity_score || 0), 0) / sessions.length : 0;
 
   // Mouse metrics from actual schema: active_percentage, idle_percentage, activity_status
@@ -468,6 +489,15 @@ export default function DeveloperActivity() {
     const m = Math.floor((sec % 3600) / 60);
     return h > 0 ? `${h}h ${m}m` : `${m}m`;
   };
+
+  // Convert decimal minutes into "X min Y sec" (e.g. 6.5 -> "6 min 30 sec")
+  const fmtMinutesToMinSec = (minutes) => {
+    if (!minutes || isNaN(minutes)) return "0 min 0 sec";
+    const totalSeconds = Math.round(Number(minutes) * 60);
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
+    return `${m} min ${s} sec`;
+  };
   const fmtDateTime = (iso) => {
     if (!iso) return "N/A";
     return new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -484,6 +514,27 @@ export default function DeveloperActivity() {
     if (s === "active") return "bg-green-100 text-green-800";
     if (s === "idle") return "bg-yellow-100 text-yellow-800";
     return "bg-gray-100 text-gray-600";
+  };
+
+  // Format today's total working time from total_duration (in minutes)
+  const formatTotalWorkingTime = (totalMinutes) => {
+    const value = Number(totalMinutes) || 0;
+    if (value <= 0) return "0 min";
+
+    // Treat very small values as seconds (data sometimes logged in seconds)
+    if (value < 1) {
+      const seconds = Math.round(value);
+      return `${seconds} sec`;
+    }
+
+    // Less than an hour → show minutes
+    if (value < 60) {
+      return `${value.toFixed(0)} min`;
+    }
+
+    // 60 minutes or more → show hours with 1 decimal place
+    const hours = value / 60;
+    return `${hours.toFixed(1)} hours`;
   };
 
   const refreshAdminData = () => {
@@ -636,12 +687,15 @@ export default function DeveloperActivity() {
             <>
               {/* Summary Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                <StatCard icon="⏱️" label="Active Time" value={fmtDuration(totalActiveTime)} bg="bg-green-100" />
+                <StatCard
+                  icon="⏳"
+                  label="Today's Total Time"
+                  value={formatTotalWorkingTime(totalDurationMinutes)}
+                  bg="bg-teal-100"
+                />
+                <StatCard icon="⏱️" label="Today Active Time" value={fmtDuration(totalActiveTime)} bg="bg-green-100" />
                 <StatCard icon="⏸️" label="Idle Time" value={fmtDuration(totalIdleTime)} bg="bg-red-100" />
                 <StatCard icon="🖱️" label="Mouse Active %" value={`${avgMouseActive.toFixed(1)}%`} bg="bg-blue-100" />
-                <StatCard icon="⌨️" label="Keystrokes" value={totalKeystrokes.toLocaleString()} bg="bg-purple-100" />
-                <StatCard icon="📝" label="Avg WPM" value={avgWPM.toFixed(1)} bg="bg-yellow-100" />
-                <StatCard icon="🎯" label="Kb Activity %" value={`${avgKeyboardActivity.toFixed(1)}%`} bg="bg-indigo-100" />
                 <StatCard icon="🎯" label="Kb Activity %" value={`${avgKeyboardActivity.toFixed(1)}%`} bg="bg-indigo-100" />
                 <StatCard icon="📸" label="Screenshots" value={screenshots.length} bg="bg-pink-100" />
               </div>
@@ -674,12 +728,18 @@ export default function DeveloperActivity() {
                       {topApps.slice(0, 5).map((app, i) => (
                         <div key={i} className="flex justify-between items-center p-3 bg-white rounded border">
                           <div className="flex items-center">
-                            <div className="w-8 h-8 rounded-lg flex items-center justify-center mr-3" style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] + "20" }}>
+                            <div
+                              className="w-8 h-8 rounded-lg flex items-center justify-center mr-3"
+                              style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] + "20" }}
+                            >
                               <span style={{ color: CHART_COLORS[i % CHART_COLORS.length] }}>●</span>
                             </div>
                             <span className="font-medium text-sm truncate max-w-[180px]">{app.app}</span>
                           </div>
-                          <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs whitespace-nowrap">{fmtDuration(app.totalDuration)}</span>
+                          {/* Show total active time for this app as minutes + seconds */}
+                          <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs whitespace-nowrap">
+                            {fmtMinutesToMinSec(app.totalMinutes || 0)}
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -691,10 +751,20 @@ export default function DeveloperActivity() {
                     <h3 className="text-lg font-semibold mb-4">App Usage Distribution</h3>
                     <ResponsiveContainer width="100%" height={250}>
                       <PieChart>
-                        <Pie data={appPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                        <Pie
+                          data={appPieData}
+                          dataKey="value"
+                          nameKey="name"
+                          cx="50%"
+                          cy="50%"
+                          outerRadius={90}
+                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        >
                           {appPieData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
                         </Pie>
-                        <Tooltip formatter={(v) => fmtDuration(v)} />
+                        {/* v is in minutes; show as "X min Y sec" */}
+                        <Tooltip formatter={(v) => fmtMinutesToMinSec(v)} />
+                        <Tooltip formatter={(v) => `${Number(v).toFixed(1)} min`} />
                       </PieChart>
                     </ResponsiveContainer>
                   </div>

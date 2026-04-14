@@ -7,7 +7,6 @@ import Navigation from "@/components/developer/Navigation";
 import DashboardOverview from "@/components/developer/DashboardOverview";
 import MyProjects from "@/components/developer/MyProjects";
 import ProjectDetails from "@/components/developer/ProjectDetails";
-import Timesheet from "@/components/developer/Timesheet";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -463,8 +462,6 @@ function DeveloperDashboardContent() {
     switch (activeSection) {
       case "projects":
         return <MyProjects {...contentProps} />;
-      case "timesheet":
-        return <Timesheet user={user} />;
       case "overview":
       default:
         return <DashboardOverview {...contentProps} />;
