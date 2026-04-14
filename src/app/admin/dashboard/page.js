@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from '@supabase/supabase-js';
 import Header from "@/components/admin/Header";
 import Navigation from "@/components/admin/Navigation";
@@ -136,12 +136,13 @@ const withAdminAuth = (WrappedComponent) => {
 function AdminDashboardContent({ onLogout: parentLogout }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeSection, setActiveSection] = useState("overview");
   const [developers, setDevelopers] =  useState([]);
   const [projects, setProjects] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const activeSection = searchParams?.get("section") || "overview";
 
   // Pagination state for notifications
   const [notificationPage, setNotificationPage] = useState(0);
@@ -407,33 +408,6 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
     }
   };
 
-  // Check URL for active section
-  useEffect(() => {
-    const getActiveSectionFromURL = () => {
-      if (typeof window === 'undefined') return 'overview';
-
-      const path = window.location.pathname;
-      if (path.includes('/admin/all-projects')) return 'all-projects';
-      if (path.includes('/admin/add-developer')) return 'add-developer';
-      if (path.includes('/admin/view-developers')) return 'view-developers';
-      if (path.includes('/admin/developer-activity')) return 'developer-activity';
-      return 'overview';
-    };
-
-    const handleRouteChange = () => {
-      const section = getActiveSectionFromURL();
-      setActiveSection(section);
-    };
-
-    handleRouteChange();
-
-    window.addEventListener('popstate', handleRouteChange);
-
-    return () => {
-      window.removeEventListener('popstate', handleRouteChange);
-    };
-  }, []);
-
   const renderContent = () => {
     if (!user) return null;
 
@@ -497,8 +471,6 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
         isLoadingMoreNotifications={isLoadingMoreNotifications}
       />
       <Navigation
-        activeSection={activeSection}
-        onSectionChange={setActiveSection}
         notificationCount={unreadCount}
       />
       
