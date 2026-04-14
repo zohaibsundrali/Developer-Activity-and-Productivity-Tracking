@@ -13,7 +13,6 @@ export default function Navigation({ notificationCount }) {
     { id: "all-projects", label: "All Projects" },
     { id: "task-reviews", label: "Task Reviews" },
     { id: "productivity", label: "Productivity" },
-    { id: "deadline-monitor", label: "Deadline Monitor" },
     { id: "add-developer", label: "Add Developer" },
     { id: "developer-activity", label: "Developer Activity" },
     { id: "view-developers", label: "View Developers" }
