@@ -1252,6 +1252,11 @@ export default function ProjectDetailsPage() {
                                   <strong>Admin comments:</strong> {task.admin_comments}
                                 </div>
                               )}
+                              {task.status === 'completed' && task.admin_comments && (
+                                <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-sm text-blue-700">
+                                  <strong>Admin comments:</strong> {task.admin_comments}
+                                </div>
+                              )}
                               {task.status === 'completed' && task.is_on_time !== undefined && task.is_on_time !== null && (
                                 <div className={`mt-2 p-2 rounded text-xs font-medium ${task.is_on_time ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
                                   {task.is_on_time ? '✓ Completed on time · +1 productivity point' : '⚠ Completed late · −1 productivity point'}
