@@ -13,6 +13,7 @@ export default function DashboardTimeTracking({ user }) {
   const [weeklyTotals, setWeeklyTotals] = useState([]);
   const [totalTime, setTotalTime] = useState("00:00");
   const [recentProjects, setRecentProjects] = useState([]);
+  const [todayTrackedTime, setTodayTrackedTime] = useState("00:00:00");
 
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
@@ -22,6 +23,34 @@ export default function DashboardTimeTracking({ user }) {
     const h = Math.floor(mins / 60);
     const m = mins % 60;
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  };
+
+  // ⏱ Seconds → HH:MM:SS
+  const formatSeconds = (totalSeconds) => {
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = Math.floor(totalSeconds % 60);
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  };
+
+  // ⏱ Fetch Today's Tracked Time
+  const loadTodayTrackedTime = async () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Start of today
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1); // Start of tomorrow
+
+    const { data, error } = await supabase
+      .from("productivity_sessions")
+      .select("total_duration")
+      .eq("developer_id", user.id)
+      .gte("start_time", today.toISOString())
+      .lt("start_time", tomorrow.toISOString());
+
+    if (!error && data) {
+      const totalSeconds = data.reduce((sum, session) => sum + (Number(session.total_duration) || 0), 0);
+      setTodayTrackedTime(formatSeconds(totalSeconds));
+    }
   };
 
   // 📊 Fetch time data
@@ -85,6 +114,7 @@ export default function DashboardTimeTracking({ user }) {
   useEffect(() => {
     loadTimeData();
     loadProjects();
+    loadTodayTrackedTime();
 
     const channel = supabase
       .channel("time-tracking-realtime")
@@ -92,6 +122,11 @@ export default function DashboardTimeTracking({ user }) {
         "postgres_changes",
         { event: "*", schema: "public", table: "time_entries" },
         () => loadTimeData()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "productivity_sessions" },
+        () => loadTodayTrackedTime()
       )
       .subscribe();
 
@@ -176,6 +211,14 @@ export default function DashboardTimeTracking({ user }) {
 
       {/* RIGHT PANEL */}
       <div className="bg-white rounded-lg shadow p-6">
+        <div className="mb-6 mb-4">
+          <h3 className="text-lg font-semibold mb-2">Today's Tracked Time</h3>
+          <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-center">
+            <p className="text-3xl font-bold text-blue-600">{todayTrackedTime}</p>
+            <p className="text-sm text-gray-500 mt-1">Completed Sessions</p>
+          </div>
+        </div>
+
         <h3 className="text-lg font-semibold mb-4">Your recent projects</h3>
 
         {recentProjects.length === 0 ? (

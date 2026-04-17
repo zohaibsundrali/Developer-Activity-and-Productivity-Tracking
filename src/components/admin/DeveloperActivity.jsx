@@ -33,6 +33,7 @@ export default function DeveloperActivity() {
   const [appUsageData, setAppUsageData] = useState([]);
   const [screenshots, setScreenshots] = useState([]);
   const [selectedScreenshot, setSelectedScreenshot] = useState(null);
+  const [todayTotalSeconds, setTodayTotalSeconds] = useState(0);
 
   // Real-time state
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -109,15 +110,25 @@ export default function DeveloperActivity() {
     const { start, end } = getDateFilter();
     const devId = dev.id;
     const devEmail = dev.email;
+    const dayStart = new Date(selectedDate);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
 
     try {
       // Fetch all 5 tables in parallel (keyboard via API route to bypass RLS)
-      const [sessionsRes, mouseRes, keyboardApiRes, appRes, screenshotRes] = await Promise.all([
-        // Match sessions for this developer either by developer_id or user_email
+      const sessionFilters = [
+        devEmail ? `user_email.eq.${devEmail}` : null,
+        dev.user_id ? `user_id.eq.${dev.user_id}` : null,
+        devId ? `developer_id.eq.${devId}` : null,
+      ].filter(Boolean).join(",");
+
+      const [sessionsRes, mouseRes, keyboardApiRes, appRes, screenshotRes, todayTotalRes] = await Promise.all([
+        // Match sessions for this developer by email, user_id, or developer_id
         supabase
           .from("productivity_sessions")
           .select("*")
-          .or(`developer_id.eq.${devId},user_email.eq.${devEmail}`)
+          .or(sessionFilters)
           .gte("start_time", start)
           .lt("start_time", end)
           .order("start_time", { ascending: false }),
@@ -125,6 +136,14 @@ export default function DeveloperActivity() {
         fetch(`/api/keyboard-stats?developerId=${encodeURIComponent(devId)}&email=${encodeURIComponent(devEmail)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`).then(r => r.json()),
         supabase.from("app_usage").select("id, session_id, user_email, app_name, app_name_raw, window_title, start_time, end_time, duration_seconds, duration_minutes, tracked_at, created_at, is_new_app, user_login").eq("user_email", devEmail).gte("tracked_at", start).lte("tracked_at", end).order("tracked_at", { ascending: false }),
         supabase.from("screenshots").select("id, developer_id, developer_email, filename, public_url, storage_path, width, height, size_kb, mime_type, app_active, timestamp, created_at").or(`developer_id.eq.${devId},developer_email.eq.${devEmail}`).gte("timestamp", start).lte("timestamp", end).order("timestamp", { ascending: false }),
+        devEmail
+          ? supabase
+              .from("productivity_sessions")
+              .select("total_duration")
+              .eq("user_email", devEmail)
+              .gte("start_time", dayStart.toISOString())
+              .lt("start_time", dayEnd.toISOString())
+          : Promise.resolve({ data: [], error: null }),
       ]);
 
       let finalSessions = sessionsRes.data || [];
@@ -133,13 +152,31 @@ export default function DeveloperActivity() {
       let finalApp = appRes.data || [];
       let finalScreenshots = screenshotRes.data || [];
 
+      const todayTotal = (todayTotalRes?.data || []).reduce(
+        (sum, row) => sum + (Number(row.total_duration) || 0),
+        0
+      );
+      setTodayTotalSeconds(todayTotal);
+
+      // Fallback to created_at for sessions if start_time is missing or not in range
+      if (!finalSessions.length && sessionFilters) {
+        const { data: sByCreatedAt } = await supabase
+          .from("productivity_sessions")
+          .select("*")
+          .or(sessionFilters)
+          .gte("created_at", start)
+          .lt("created_at", end)
+          .order("created_at", { ascending: false });
+        if (sByCreatedAt?.length) finalSessions = sByCreatedAt;
+      }
+
       // Fallback to email if developer_id returned nothing
       if (!finalSessions.length && !finalMouse.length) {
         const [s2, m2, a2, ss2] = await Promise.all([
           supabase
             .from("productivity_sessions")
             .select("*")
-            .eq("user_email", devEmail)
+            .or(sessionFilters)
             .gte("start_time", start)
             .lt("start_time", end)
             .order("start_time", { ascending: false }),
@@ -359,15 +396,31 @@ export default function DeveloperActivity() {
   const developer = developers.find(d => d.id === selectedDeveloper);
   const hasData = sessions.length || mouseData.length || keyboardData.length || appUsageData.length || screenshots.length;
 
+  const { start: rangeStart, end: rangeEnd } = getDateFilter();
+
   // Aggregate durations from productivity_sessions for the selected date/range
   const totalActiveTime = sessions.reduce((s, r) => s + (Number(r.active_duration) || 0), 0);
   const totalIdleTime = sessions.reduce((s, r) => s + (Number(r.idle_duration) || 0), 0);
 
-  // Sum of productivity_sessions.total_duration (assumed minutes) = developer's total working time
-  const totalDurationMinutes = sessions.reduce(
-    (sum, r) => sum + (Number(r.total_duration) || 0),
-    0
-  );
+  // Sum of productivity_sessions.total_duration (in seconds) for the selected day (by start_time)
+  const rangeStartTime = new Date(rangeStart).getTime();
+  const rangeEndTime = new Date(rangeEnd).getTime();
+  const totalDurationSeconds = sessions
+    .filter((r) => {
+      if (!r.start_time || r.total_duration == null) return false;
+      const ts = new Date(r.start_time).getTime();
+      return !Number.isNaN(ts) && ts >= rangeStartTime && ts < rangeEndTime;
+    })
+    .reduce((sum, r) => sum + Number(r.total_duration || 0), 0);
+    
+  // Format seconds to HH:MM:SS
+  const formatHHMMSS = (totalSeconds) => {
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = Math.floor(totalSeconds % 60);
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  };
+
   const avgProductivity = sessions.length ? sessions.reduce((s, r) => s + (r.productivity_score || 0), 0) / sessions.length : 0;
 
   // Mouse metrics from actual schema: active_percentage, idle_percentage, activity_status
@@ -690,7 +743,7 @@ export default function DeveloperActivity() {
                 <StatCard
                   icon="⏳"
                   label="Today's Total Time"
-                  value={formatTotalWorkingTime(totalDurationMinutes)}
+                  value={formatHHMMSS(todayTotalSeconds)}
                   bg="bg-teal-100"
                 />
                 <StatCard icon="⏱️" label="Today Active Time" value={fmtDuration(totalActiveTime)} bg="bg-green-100" />
