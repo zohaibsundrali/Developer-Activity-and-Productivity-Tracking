@@ -65,16 +65,10 @@ export async function POST(request) {
               <p><strong>Role:</strong> ${role.charAt(0).toUpperCase() + role.slice(1)}</p>
             </div>
             
-            <p style="color: #666;">
-              <strong>Note:</strong> This code will expire in 10 minutes.
-            </p>
+          
           </div>
           
-          <div style="background: #f4f4f4; padding: 15px; text-align: center; border-radius: 0 0 10px 10px;">
-            <p style="margin: 0; color: #666; font-size: 12px;">
-              If you didn't request this code, please ignore this email.
-            </p>
-          </div>
+         
         </div>
       `,
     };
