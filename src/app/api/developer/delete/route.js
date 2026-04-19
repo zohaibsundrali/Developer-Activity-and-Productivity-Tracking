@@ -16,27 +16,23 @@ async function resolveDeveloper({ developerId, developerEmail, userId }) {
   if (normalizedId) {
     const { data, error } = await supabase
       .from('developers')
-      .select('id, user_id, name, email, phone, added_by, added_by_admin, admin_id')
+      .select('id, name, email, added_by, added_by_admin, added_by_name')
       .eq('id', normalizedId)
       .maybeSingle();
 
     if (!error && data) return data;
+
+    // Fallback: some callers pass user_id as developerId (legacy schemas only)
+    // Current schema does not include user_id, so skip this lookup when blank.
   }
 
-  if (normalizedUserId) {
-    const { data, error } = await supabase
-      .from('developers')
-      .select('id, user_id, name, email, added_by, added_by_admin, admin_id')
-      .eq('user_id', normalizedUserId)
-      .maybeSingle();
-
-    if (!error && data) return data;
-  }
+  // userId lookup intentionally omitted for schemas without user_id.
+  // Keep the parameter for compatibility with callers.
 
   if (normalizedEmail) {
     const { data, error } = await supabase
       .from('developers')
-      .select('id, user_id, name, email, phone, added_by, added_by_admin, admin_id')
+      .select('id, name, email, added_by, added_by_admin, added_by_name')
       .ilike('email', normalizedEmail)
       .maybeSingle();
 
@@ -52,28 +48,27 @@ function isAdminAuthorizedForDeveloper(developer, adminId, adminEmail) {
 
   const addedBy = normalize(developer?.added_by);
   const addedByAdmin = normalize(developer?.added_by_admin).toLowerCase();
-  const adminOwnerId = normalize(developer?.admin_id);
 
   return Boolean(
-    (normalizedAdminId && (addedBy === normalizedAdminId || adminOwnerId === normalizedAdminId)) ||
+    (normalizedAdminId && addedBy === normalizedAdminId) ||
     (normalizedAdminEmail && addedByAdmin === normalizedAdminEmail)
   );
 }
 
-async function getProjectIdsForDeveloper(developer) {
+async function getProjectIdsForDeveloper(developerId) {
   const projectIdSet = new Set();
 
   const { data: projectsByAssignedTo } = await supabase
     .from('projects')
     .select('id')
-    .eq('assigned_to', developer.id);
+    .eq('assigned_to', developerId);
 
   (projectsByAssignedTo || []).forEach((p) => projectIdSet.add(p.id));
 
   const { data: projectsByAssignedDev } = await supabase
     .from('projects')
     .select('id')
-    .eq('assigned_developer_id', developer.id);
+    .eq('assigned_developer_id', developerId);
 
   (projectsByAssignedDev || []).forEach((p) => projectIdSet.add(p.id));
 
@@ -152,7 +147,7 @@ export async function DELETE(request) {
     const devId = developer.id;
 
     // ── 3. Authorization ─────────────────────────────────────────────────────
-    if (!isAdminAuthorized(developer, adminId, adminEmail)) {
+    if (!isAdminAuthorizedForDeveloper(developer, adminId, adminEmail)) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized: you can only delete developers you added.' },
         { status: 403 }

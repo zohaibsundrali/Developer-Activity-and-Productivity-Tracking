@@ -112,6 +112,10 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
     window.location.href = `/admin/gantt-chart/${projectId}`;
   };
 
+  const handleViewProjectDetails = (projectId) => {
+    window.location.href = `/admin/project-details/${projectId}`;
+  };
+
   const handleViewMetrics = async (project) => {
     if (!project) return;
 
@@ -256,6 +260,34 @@ const handleConfirmDelete = async () => {
     }
   };
 
+  const generateAiTasks = async (projectId, fileUrl, fileName) => {
+    if (!projectId || !fileUrl) return null;
+    const lowerName = (fileName || "").toLowerCase();
+    if (!lowerName.endsWith(".docx")) return null;
+
+    try {
+      const res = await fetch("/api/ai-generate-tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, fileUrl }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        const detail = err.details ? ` (${err.details})` : "";
+        alert(`AI task generation failed: ${err.error || res.statusText}${detail}`);
+        return null;
+      }
+      const data = await res.json();
+      if (!data?.tasks?.length) {
+        alert("AI task generation returned no tasks.");
+      }
+      return data?.tasks || null;
+    } catch {
+      alert("AI task generation failed: network error.");
+      return null;
+    }
+  };
+
 const handleAddProject = async (e) => {
   e.preventDefault();
   
@@ -324,6 +356,13 @@ const handleAddProject = async (e) => {
       .select();
 
     if (error) throw error;
+
+    const createdProject = data?.[0];
+    if (createdProject?.id && fileUrl) {
+      await generateAiTasks(createdProject.id, fileUrl, newProject.file?.name);
+      await fetchAdminData(); // <-- Add this line
+
+    }
 
     // ✅ Create TWO notifications: one for developer, one for admin
 
@@ -668,7 +707,7 @@ const debugCheckNotifications = async () => {
                   type="file"
                   onChange={handleFileChange}
                   className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]"
-                  accept=".pdf,.doc,.docx,.txt" required={true}
+                  accept=".pdf,.doc,.docx,.txt"
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   Supported formats: PDF, DOC, DOCX, TXT (Max 10MB)
@@ -1061,6 +1100,16 @@ const debugCheckNotifications = async () => {
                   Timeline
                 </button>
               </div>
+              <button
+                onClick={() => handleViewProjectDetails(project.id)}
+                className="mt-2 w-full bg-blue-600 text-white py-2 px-2 rounded text-xs hover:bg-blue-700 transition-colors flex items-center justify-center"
+                title="View Project Details"
+              >
+                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                View Detail
+              </button>
             </div>
           ))}
         </div>
@@ -1087,13 +1136,16 @@ const debugCheckNotifications = async () => {
             <p className="text-gray-400 text-sm mb-6">Start by creating your first project</p>
           )}
           
-          <button
+          {
+          adminDevelopers.length === 0 &&  <button
             onClick={() => setShowAddProject(true)}
             className="bg-[#009578] text-white px-6 py-3 rounded-lg hover:bg-[#0e7762] transition-colors text-lg"
             disabled={adminDevelopers.length === 0}
           >
-            {adminDevelopers.length === 0 ? 'Add Developers First' : '+ Add Your First Project'}
+           Add Developer First
           </button>
+          }
+         
         </div>
       )}
     </div>

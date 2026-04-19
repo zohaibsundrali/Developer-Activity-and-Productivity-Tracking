@@ -228,6 +228,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
     // cannot change what we are about to delete.
     const devId    = developer.id;        // UUID primary key – never changes
     const devEmail = developer.email || '';
+    const devUserId = developer.user_id || '';
 
     // Client-side authorization pre-check
     if (currentAdmin) {
@@ -248,7 +249,11 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
       setDeletingId(devId); // marks exactly this row as deleting in the UI
 
       // ── Step 1: Dry-run impact check ─────────────────────────────────────
-      const impactParams = new URLSearchParams({ developerId: devId }).toString();
+      const impactParams = new URLSearchParams({
+        developerId: devId,
+        userId: devUserId,
+        developerEmail: devEmail,
+      }).toString();
       const impactResponse = await fetch(`/api/developer/delete?${impactParams}`);
       const impactData = await impactResponse.json();
 
@@ -287,6 +292,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
         body: JSON.stringify({
           developerId: devId,       // ← UUID pk, the single source of truth
           developerEmail: devEmail, // context only; backend uses id first
+          userId: devUserId,
           adminId:    currentAdmin?.id,
           adminEmail: currentAdmin?.email,
         }),

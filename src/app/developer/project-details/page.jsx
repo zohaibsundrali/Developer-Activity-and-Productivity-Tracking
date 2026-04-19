@@ -52,6 +52,63 @@ export default function ProjectDetailsPage() {
   };
 
   const assignedDate = getAssignedDate();
+
+  const taskPlanStatus = project?.task_plan_status || (isSubmitted ? "pending" : null);
+  const isPlanApproved = taskPlanStatus === "approved";
+  const isPlanPending = taskPlanStatus === "pending";
+  const isPlanRejected = taskPlanStatus === "rejected";
+  const canEditTasks = !isSubmitted || isPlanRejected;
+
+  const addDays = (startDate, days) => {
+    if (!startDate || !days) return "";
+    const date = new Date(startDate);
+    if (isNaN(date.getTime())) return "";
+    const safeDays = Math.max(0, Number(days) - 1);
+    date.setDate(date.getDate() + safeDays);
+    return date.toISOString().split("T")[0];
+  };
+
+  const getNoOfDays = (startDate, endDate) => {
+    if (!startDate || !endDate) return 0;
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
+    const diffTime = Math.abs(end - start);
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+  };
+
+  const parseTemplate = (template) => {
+    if (!template) return [];
+    if (Array.isArray(template)) return template;
+    if (typeof template === "string") {
+      try {
+        const parsed = JSON.parse(template);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  };
+
+  const buildTasksFromTemplate = (template, assignedDateStr) => {
+    const items = parseTemplate(template);
+    if (!items.length) return [];
+    return items.map((item, index) => {
+      const noOfDays = Number(item.noOfDays || item.no_of_days || item.days || 1);
+      const startDate = assignedDateStr;
+      const endDate = addDays(startDate, noOfDays);
+      return {
+        id: Date.now() + index,
+        title: item.title || "Untitled Task",
+        description: item.description || "",
+        startDate,
+        endDate,
+        noOfDays,
+        status: item.status || "pending",
+      };
+    });
+  };
   
   // Validation messages state
   const [validationError, setValidationError] = useState('');
@@ -357,6 +414,22 @@ export default function ProjectDetailsPage() {
       
       // Step 3: Save to Supabase
       const savedTasks = await saveTasksToSupabase();
+
+      // Step 3b: Update project task plan status
+      const { error: planStatusError } = await supabase
+        .from('projects')
+        .update({
+          task_plan_status: 'pending',
+          task_plan_submitted_at: new Date().toISOString(),
+          task_plan_reviewed_at: null,
+          task_plan_reviewed_by: null,
+          task_plan_rejection_reason: null
+        })
+        .eq('id', project.id);
+
+      if (planStatusError) {
+        throw new Error(`Failed to submit task plan: ${planStatusError.message}`);
+      }
       
       // Step 4: Update local tasks with real Supabase UUIDs so workflow buttons work
       if (savedTasks && savedTasks.length > 0) {
@@ -375,6 +448,14 @@ export default function ProjectDetailsPage() {
       // Step 5: Update local state
       setShowSubmitSuccess(true);
       setIsSubmitted(true);
+      setProjectData(prev => ({
+        ...(prev || project),
+        task_plan_status: 'pending',
+        task_plan_submitted_at: new Date().toISOString(),
+        task_plan_reviewed_at: null,
+        task_plan_reviewed_by: null,
+        task_plan_rejection_reason: null
+      }));
       
       // Update localStorage
       localStorage.setItem(`project_submitted_${project.id}`, 'true');
@@ -449,6 +530,10 @@ export default function ProjectDetailsPage() {
 
   // Start a task: pending → in_progress
   const handleStartTask = async (taskId, taskIndex) => {
+    if (!isPlanApproved) {
+      alert('Task plan is awaiting admin approval.');
+      return;
+    }
     if (!canStartTask(taskIndex)) {
       alert('Please complete the previous task first.');
       return;
@@ -494,7 +579,7 @@ export default function ProjectDetailsPage() {
         .select('*')
         .eq('project_id', project.id)
         .eq('developer_id', currentDeveloper.id)
-        .order('created_at', { ascending: true });
+        .order('task_order', { ascending: true });
       
       if (error) {
         return;
@@ -508,6 +593,7 @@ export default function ProjectDetailsPage() {
           description: task.task_description,
           startDate: task.start_date,
           endDate: task.end_date,
+          noOfDays: getNoOfDays(task.start_date, task.end_date),
           status: task.status || 'pending',
           rejection_reason: task.rejection_reason,
           admin_comments: task.admin_comments,
@@ -566,7 +652,7 @@ export default function ProjectDetailsPage() {
     if (isNaN(start.getTime()) || isNaN(end.getTime())) return 'Invalid date';
     
     const diffTime = Math.abs(end - start);
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
     
     return `${diffDays} day${diffDays !== 1 ? 's' : ''}`;
   };
@@ -689,13 +775,19 @@ export default function ProjectDetailsPage() {
     } else if (!isSubmitted) {
       // Default tasks with assigned date as start date
       const assignedDateStr = getAssignedDate() || new Date().toISOString().split('T')[0];
+      const templateTasks = buildTasksFromTemplate(project?.ai_task_template, assignedDateStr);
+      if (templateTasks.length > 0) {
+        setTasks(templateTasks);
+        return;
+      }
       const defaultTasks = [
         {
           id: 1,
           title: 'Functional Requirements Understanding',
           description: 'Understand and analyze project requirements',
           startDate: assignedDateStr,
-          endDate: '',
+          endDate: addDays(assignedDateStr, 1),
+          noOfDays: 1,
           status: 'pending'
         },
         {
@@ -703,7 +795,8 @@ export default function ProjectDetailsPage() {
           title: 'Website Design',
           description: 'Create UI/UX design and wireframes',
           startDate: assignedDateStr,
-          endDate: '',
+          endDate: addDays(assignedDateStr, 1),
+          noOfDays: 1,
           status: 'pending'
         },
         {
@@ -711,7 +804,8 @@ export default function ProjectDetailsPage() {
           title: 'Frontend Development',
           description: 'Develop frontend components and pages',
           startDate: assignedDateStr,
-          endDate: '',
+          endDate: addDays(assignedDateStr, 1),
+          noOfDays: 1,
           status: 'pending'
         },
         {
@@ -719,7 +813,8 @@ export default function ProjectDetailsPage() {
           title: 'Backend Development',
           description: 'Develop backend APIs and server logic',
           startDate: assignedDateStr,
-          endDate: '',
+          endDate: addDays(assignedDateStr, 1),
+          noOfDays: 1,
           status: 'pending'
         }
       ];
@@ -729,10 +824,10 @@ export default function ProjectDetailsPage() {
 
   // Save tasks to localStorage
   useEffect(() => {
-    if (tasks.length > 0 && !isSubmitted) {
+    if (tasks.length > 0 && canEditTasks) {
       localStorage.setItem(`project_tasks_${project.id}`, JSON.stringify(tasks));
     }
-  }, [tasks, project, isSubmitted]);
+  }, [tasks, project, canEditTasks]);
 
   const formatDate = (dateString) => {
     if (!dateString || dateString === 'null') return 'Not set';
@@ -745,21 +840,86 @@ export default function ProjectDetailsPage() {
 
   // Task edit functions
   const handleEditTask = (task) => {
-    if (isSubmitted) return;
+    if (!canEditTasks) return;
     setEditingTask({ ...task });
   };
 
-  const handleUpdateTask = () => {
-    if (!editingTask || isSubmitted) return;
+  const handleEditFieldChange = (field, value) => {
+    setEditingTask((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, [field]: value };
 
-    setTasks(prev => prev.map(task => 
-      task.id === editingTask.id ? editingTask : task
+      if (field === "noOfDays") {
+        const days = Number(value);
+        if (next.startDate && days > 0) {
+          next.endDate = addDays(next.startDate, days);
+        }
+      }
+
+      if (field === "startDate") {
+        if (next.noOfDays && Number(next.noOfDays) > 0) {
+          next.endDate = addDays(value, Number(next.noOfDays));
+        } else if (next.endDate) {
+          next.noOfDays = getNoOfDays(value, next.endDate);
+        }
+      }
+
+      if (field === "endDate") {
+        next.noOfDays = getNoOfDays(next.startDate, value);
+      }
+
+      return next;
+    });
+  };
+
+  const normalizeTitle = (title) => {
+    if (!title) return "";
+    return title
+      .replace(/_/g, " ")
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/\s+/g, " ")
+      .trim();
+  };
+
+  const formatTaskTitle = (title) => normalizeTitle(title);
+
+  const handleUpdateTask = async () => {
+    if (!editingTask || !canEditTasks) return;
+
+    const updatedTask = {
+      ...editingTask,
+      title: normalizeTitle(editingTask.title)
+    };
+
+    setTasks(prev => prev.map(task =>
+      task.id === updatedTask.id ? updatedTask : task
     ));
+
+    if (updatedTask.supabaseId || (isSubmitted && updatedTask.id)) {
+      try {
+        const taskId = updatedTask.supabaseId || updatedTask.id;
+        const { error } = await supabase
+          .from("developer_tasks")
+          .update({
+            task_title: updatedTask.title,
+            task_description: updatedTask.description || "",
+            start_date: updatedTask.startDate,
+            end_date: updatedTask.endDate,
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", taskId);
+
+        if (error) throw error;
+      } catch (err) {
+        alert("Failed to update task: " + err.message);
+      }
+    }
+
     setEditingTask(null);
   };
 
   const handleDeleteTask = (taskId) => {
-    if (isSubmitted) return;
+    if (!canEditTasks) return;
     
     if (confirm('Are you sure you want to delete this task?')) {
       setTasks(prev => prev.filter(task => task.id !== taskId));
@@ -767,14 +927,15 @@ export default function ProjectDetailsPage() {
   };
 
   const handleAddTask = (afterTaskId = null) => {
-    if (isSubmitted) return;
+    if (!canEditTasks) return;
 
     const newTask = {
       id: Date.now(),
       title: '',
       description: '',
       startDate: assignedDate || new Date().toISOString().split('T')[0],
-      endDate: '',
+      endDate: addDays(assignedDate || new Date().toISOString().split('T')[0], 1),
+      noOfDays: 1,
       status: 'pending'
     };
 
@@ -991,17 +1152,55 @@ export default function ProjectDetailsPage() {
           )}
           
           {/* Submitted Status */}
-          {isSubmitted && (
+          {isSubmitted && !isPlanRejected && (
             <div className="bg-green-100 border border-green-400 text-green-800 px-4 py-2 rounded-lg">
               <div className="flex items-center">
                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                Work Submitted - Read Only Mode
+                {isPlanApproved ? 'Task Plan Approved' : 'Task Plan Submitted'}
+              </div>
+            </div>
+          )}
+          {isPlanRejected && (
+            <div className="bg-red-100 border border-red-400 text-red-800 px-4 py-2 rounded-lg">
+              <div className="flex items-center">
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Task Plan Rejected - Edit and Resubmit
               </div>
             </div>
           )}
         </div>
+
+        {isPlanPending && (
+          <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <div className="flex items-start">
+              <svg className="w-5 h-5 text-yellow-500 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                <h4 className="font-semibold text-yellow-800 mb-1">Task plan awaiting admin approval</h4>
+                <p className="text-sm text-yellow-700">You can edit tasks until approval.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isPlanRejected && project?.task_plan_rejection_reason && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex items-start">
+              <svg className="w-5 h-5 text-red-500 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                <h4 className="font-semibold text-red-800 mb-1">Admin rejected the task plan</h4>
+                <p className="text-sm text-red-700">Reason: {project.task_plan_rejection_reason}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Task Summary Banner */}
         <div className="mb-6 bg-white rounded-lg shadow border p-4">
@@ -1162,10 +1361,10 @@ export default function ProjectDetailsPage() {
               <div className={`p-6 ${isSubmitted ? 'bg-gray-600' : 'bg-green-600'} text-white`}>
                 <h2 className="text-2xl font-bold">Project Tasks</h2>
                 <p className="text-white mt-1 opacity-90">
-                  {isSubmitted 
-                    ? 'Task plan saved — work through tasks one by one sequentially' 
-                    : 'Set task names, start dates, and deadlines'
-                  }
+                  {isPlanApproved && 'Task plan approved — work through tasks one by one sequentially'}
+                  {isPlanPending && 'Task plan submitted — waiting for admin approval'}
+                  {isPlanRejected && 'Task plan rejected — edit and resubmit'}
+                  {!isSubmitted && 'Set task names, start dates, and deadlines'}
                 </p>
                 {currentDeveloper && (
                   <p className="text-white/80 text-sm mt-2">
@@ -1195,7 +1394,7 @@ export default function ProjectDetailsPage() {
                         task.status === 'rejected' ? 'bg-red-50 border-red-200' :
                         'bg-gray-50 border-gray-200'
                       } ${
-                        !isSubmitted && !isTaskValid(task) ? 'border-l-4 border-l-red-500' : ''
+                        canEditTasks && !isTaskValid(task) ? 'border-l-4 border-l-red-500' : ''
                       }`}>
                         <div className="flex justify-between items-start mb-3">
                           <div className="flex items-start space-x-3">
@@ -1221,12 +1420,12 @@ export default function ProjectDetailsPage() {
                             
                             <div className="flex-1">
                               <h3 className={`text-lg font-semibold ${
-                                isSubmitted ? 'text-gray-600' : 'text-gray-800'
+                                canEditTasks ? 'text-gray-800' : 'text-gray-600'
                               }`}>
-                                {task.title || 'Untitled Task'}
+                                {formatTaskTitle(task.title) || 'Untitled Task'}
                               </h3>
                               <p className={`text-sm mt-1 ${
-                                isSubmitted ? 'text-gray-500' : 'text-gray-600'
+                                canEditTasks ? 'text-gray-600' : 'text-gray-500'
                               }`}>
                                 {task.description || 'No description provided'}
                               </p>
@@ -1263,7 +1462,7 @@ export default function ProjectDetailsPage() {
                                 </div>
                               )}
                               {/* Validation error messages */}
-                              {!isSubmitted && !isTaskValid(task) && (
+                              {canEditTasks && !isTaskValid(task) && (
                                 <div className="mt-2 text-xs text-red-600 bg-red-50 p-2 rounded border border-red-200">
                                   {!task.title || task.title.trim() === '' ? '• Task title is required' : ''}
                                   {!task.startDate || task.startDate.trim() === '' ? '• Start date is required' : ''}
@@ -1275,7 +1474,7 @@ export default function ProjectDetailsPage() {
                           </div>
                           
                           {/* Action Buttons */}
-                          {!isSubmitted && (
+                          {canEditTasks && (
                             <div className="flex space-x-2">
                               <button
                                 onClick={() => handleEditTask(task)}
@@ -1297,7 +1496,7 @@ export default function ProjectDetailsPage() {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm mt-4">
                           <div>
                             <label className="font-medium text-gray-700 mb-1 block">Start Date</label>
-                            <p className={`flex items-center ${isSubmitted ? 'text-gray-400' : 'text-gray-600'}`}>
+                            <p className={`flex items-center ${canEditTasks ? 'text-gray-600' : 'text-gray-400'}`}>
                               {!task.startDate || task.startDate.trim() === '' ? (
                                 <span className="text-red-500 italic">Not set</span>
                               ) : (
@@ -1318,7 +1517,7 @@ export default function ProjectDetailsPage() {
                           </div>
                           <div>
                             <label className="font-medium text-gray-700 mb-1 block">End Date</label>
-                            <p className={`flex items-center ${isSubmitted ? 'text-gray-400' : 'text-gray-600'}`}>
+                            <p className={`flex items-center ${canEditTasks ? 'text-gray-600' : 'text-gray-400'}`}>
                               {!task.endDate || task.endDate.trim() === '' ? (
                                 <span className="text-red-500 italic">Not set</span>
                               ) : (
@@ -1341,10 +1540,10 @@ export default function ProjectDetailsPage() {
                           {/* Sequential Task Workflow Actions */}
                           <div>
                             <label className="font-medium text-gray-700 mb-2 block">Action</label>
-                            {!isSubmitted && (
+                            {canEditTasks && (
                               <span className="text-xs text-gray-400 italic">Save task plan first to begin working</span>
                             )}
-                            {isSubmitted && task.status === 'pending' && (
+                            {isSubmitted && isPlanApproved && task.status === 'pending' && (
                               <button
                                 onClick={() => handleStartTask(task.id, index)}
                                 disabled={!canStartTask(index) || getInProgressTaskIndex() !== -1}
@@ -1358,7 +1557,7 @@ export default function ProjectDetailsPage() {
                                 {canStartTask(index) && getInProgressTaskIndex() === -1 ? '▶ Start Task' : '🔒 Locked'}
                               </button>
                             )}
-                            {isSubmitted && task.status === 'in_progress' && (
+                            {isSubmitted && isPlanApproved && task.status === 'in_progress' && (
                               <button
                                 onClick={() => handleOpenCompletionModal(task)}
                                 className="px-3 py-2 rounded-lg text-xs font-medium bg-green-600 text-white hover:bg-green-700 transition-colors"
@@ -1366,12 +1565,12 @@ export default function ProjectDetailsPage() {
                                 ✓ Mark as Completed
                               </button>
                             )}
-                            {isSubmitted && task.status === 'awaiting_approval' && (
+                            {isSubmitted && isPlanApproved && task.status === 'awaiting_approval' && (
                               <span className="px-3 py-2 rounded-lg text-xs bg-yellow-100 text-yellow-800 border border-yellow-200 inline-block">
                                 ⏳ Awaiting Admin Review
                               </span>
                             )}
-                            {isSubmitted && task.status === 'rejected' && (
+                            {isSubmitted && isPlanApproved && task.status === 'rejected' && (
                               <button
                                 onClick={() => handleOpenCompletionModal(task)}
                                 className="px-3 py-2 rounded-lg text-xs font-medium bg-orange-600 text-white hover:bg-orange-700 transition-colors"
@@ -1379,9 +1578,14 @@ export default function ProjectDetailsPage() {
                                 ↻ Re-submit Work
                               </button>
                             )}
-                            {isSubmitted && task.status === 'completed' && (
+                            {isSubmitted && isPlanApproved && task.status === 'completed' && (
                               <span className="px-3 py-2 rounded-lg text-xs bg-green-100 text-green-800 border border-green-200 inline-block">
                                 ✓ Admin Approved{task.is_on_time === true ? ' · +1 pt' : task.is_on_time === false ? ' · −1 pt' : ''}
+                              </span>
+                            )}
+                            {isSubmitted && !isPlanApproved && (
+                              <span className="px-3 py-2 rounded-lg text-xs bg-gray-100 text-gray-600 border border-gray-200 inline-block">
+                                ⏳ Waiting for admin approval
                               </span>
                             )}
                           </div>
@@ -1389,7 +1593,7 @@ export default function ProjectDetailsPage() {
                       </div>
                       
                       {/* Add Task Button after each task */}
-                      {!isSubmitted && (
+                      {canEditTasks && (
                         <div className="flex justify-center mt-4">
                           <button
                             onClick={() => handleAddTask(task.id)}
@@ -1407,7 +1611,7 @@ export default function ProjectDetailsPage() {
                 </div>
 
                 {/* Empty State */}
-                {tasks.length === 0 && !isSubmitted && (
+                {tasks.length === 0 && canEditTasks && (
                   <div className="text-center py-8">
                     <button
                       onClick={() => handleAddTask()}
@@ -1421,7 +1625,7 @@ export default function ProjectDetailsPage() {
                   </div>
                 )}
 
-                {tasks.length === 0 && isSubmitted && (
+                {tasks.length === 0 && isSubmitted && !canEditTasks && (
                   <div className="text-center py-8">
                     <p className="text-gray-500">No tasks were added for this project.</p>
                   </div>
@@ -1473,7 +1677,7 @@ export default function ProjectDetailsPage() {
           </div>
           
           {/* Submit Work Button - Always enabled */}
-          {!isSubmitted && (
+          {canEditTasks && (
             <button
               onClick={handleSubmitWork}
               className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 px-6 rounded-lg font-medium flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1482,7 +1686,7 @@ export default function ProjectDetailsPage() {
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              {!currentDeveloper ? 'Login Required' : 'Save Task Plan'}
+              {!currentDeveloper ? 'Login Required' : isPlanRejected ? 'Resubmit Task Plan' : 'Save Task Plan'}
             </button>
           )}
 
@@ -1514,7 +1718,7 @@ export default function ProjectDetailsPage() {
       </div>
 
       {/* Edit Task Modal */}
-      {editingTask && !isSubmitted && (
+      {editingTask && canEditTasks && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full p-6 max-h-[90vh] overflow-y-auto border border-gray-200 shadow-lg">
             <h3 className="text-xl font-bold mb-4 text-gray-800">
@@ -1551,7 +1755,7 @@ export default function ProjectDetailsPage() {
                   <input
                     type="date"
                     value={editingTask.startDate}
-                    onChange={(e) => setEditingTask({...editingTask, startDate: e.target.value})}
+                    onChange={(e) => handleEditFieldChange("startDate", e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     required
                   />
@@ -1562,11 +1766,23 @@ export default function ProjectDetailsPage() {
                   <input
                     type="date"
                     value={editingTask.endDate}
-                    onChange={(e) => setEditingTask({...editingTask, endDate: e.target.value})}
+                    onChange={(e) => handleEditFieldChange("endDate", e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     required
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">No of Days *</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={editingTask.noOfDays || ""}
+                  onChange={(e) => handleEditFieldChange("noOfDays", e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
               </div>
 
               {/* Date Validation Check */}

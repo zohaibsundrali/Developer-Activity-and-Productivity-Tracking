@@ -183,7 +183,7 @@ export default function NotificationDropdown({
                   return (
                     <div
                       key={notification.id}
-                      className={`px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer ${
+                      className={`px-4 py-3 hover:bg-gray-50 transition-colors  ${
                         isUnread ? 'bg-blue-50' : ''
                       }`}
                     >
