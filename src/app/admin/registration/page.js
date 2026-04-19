@@ -4,6 +4,7 @@ import { supabase } from "@/utils/supabaseClient";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import emailjs from "@emailjs/browser";
+import { showInfo, showPre, showSuccess } from "@/utils/alerts";
 
 export default function AdminRegistration() {
   const [formData, setFormData] = useState({
@@ -151,7 +152,11 @@ const sendVerificationCode = async (userEmail) => {
   } catch (error) {
     
     // Emergency fallback - show code for testing
-    alert(`EMAIL SERVICE TEMPORARILY UNAVAILABLE\n\nUse this code for testing: ${generatedCode}\n\nThis would be sent to: ${formData.email}`);
+    showPre(
+      "Email service unavailable",
+      `EMAIL SERVICE TEMPORARILY UNAVAILABLE\n\nUse this code for testing: ${generatedCode}\n\nThis would be sent to: ${formData.email}`,
+      "warning"
+    );
     
     setStep(2);
     return { success: true };
@@ -198,7 +203,7 @@ const handleRegister = async (e) => {
     setErrors({});
     try {
       await sendVerificationCode(formData.email);
-      alert("Verification code has been resent to your email!");
+      showInfo("Verification sent", "Verification code has been resent to your email.");
     } catch (error) {
       setErrors({ general: error.message });
     } finally {
@@ -274,7 +279,7 @@ const handleRegister = async (e) => {
       localStorage.setItem("adminUser", JSON.stringify(data[0]));
       localStorage.setItem("adminToken", "admin-authenticated");
       
-      alert("🎉 Registration successful! Redirecting to dashboard...");
+      showSuccess("Registration complete", "Registration successful. Redirecting to dashboard.");
       router.push("/admin/dashboard");
 
     } catch (error) {

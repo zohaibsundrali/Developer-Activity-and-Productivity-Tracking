@@ -2,6 +2,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { Chart } from 'react-google-charts';
+import { showWarning } from "@/utils/alerts";
 
 export default function GanttChartPage() {
   const router = useRouter();
@@ -23,7 +24,7 @@ export default function GanttChartPage() {
     const projectData = localStorage.getItem(`project_submitted_${projectId}`);
 
     if (!projectData || projectData !== 'true') {
-      alert('Project work not submitted yet!');
+      showWarning("Not submitted", "Project work not submitted yet.");
       router.back();
       return;
     }

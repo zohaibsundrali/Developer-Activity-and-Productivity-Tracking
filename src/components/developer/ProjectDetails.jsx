@@ -2,6 +2,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/utils/supabaseClient'; // Correct path
+import { showInfo } from "@/utils/alerts";
 
 export default function ProjectDetails() {
   const router = useRouter();
@@ -162,7 +163,7 @@ export default function ProjectDetails() {
   };
 
   const handleSubmitWork = () => {
-    alert(`Submit work for project ${project.id}`);
+    showInfo("Submit work", `Submit work for project ${project.id}.`);
   };
 
   // Get assigned date (priority: assigned_at > assigned_date > created_at)

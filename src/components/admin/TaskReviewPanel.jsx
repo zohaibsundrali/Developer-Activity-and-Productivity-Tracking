@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { showError, showSuccess, showWarning } from "@/utils/alerts";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -49,7 +50,7 @@ export default function TaskReviewPanel({ currentAdmin }) {
     if (!selectedSubmission) return;
 
     if (action === "reject" && !rejectionReason.trim()) {
-      alert("Please provide a reason for rejection");
+      showWarning("Missing reason", "Please provide a reason for rejection.");
       return;
     }
 
@@ -74,8 +75,9 @@ export default function TaskReviewPanel({ currentAdmin }) {
       const result = await response.json();
 
       if (result.success) {
-        alert(
-          `Task ${action === "approve" ? "approved" : "rejected"} successfully!`
+        showSuccess(
+          "Review saved",
+          `Task ${action === "approve" ? "approved" : "rejected"} successfully.`
         );
         setShowModal(false);
         setSelectedSubmission(null);
@@ -83,11 +85,11 @@ export default function TaskReviewPanel({ currentAdmin }) {
         setRejectionReason("");
         fetchSubmissions(); // Refresh the list
       } else {
-        alert("Error: " + result.error);
+        showError("Review failed", `Error: ${result.error}`);
       }
     } catch (error) {
       console.error("Review error:", error);
-      alert("Failed to process review");
+      showError("Review failed", "Failed to process review.");
     } finally {
       setProcessing(false);
     }

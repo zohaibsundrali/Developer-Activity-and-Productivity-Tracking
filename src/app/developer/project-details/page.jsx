@@ -3,6 +3,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabaseClient';
 import TaskCompletionModal from "@/components/developer/TaskCompletionModal";
+import { showError, showInfo, showWarning } from "@/utils/alerts";
 
 export default function ProjectDetailsPage() {
   const router = useRouter();
@@ -57,7 +58,7 @@ export default function ProjectDetailsPage() {
   const isPlanApproved = taskPlanStatus === "approved";
   const isPlanPending = taskPlanStatus === "pending";
   const isPlanRejected = taskPlanStatus === "rejected";
-  const canEditTasks = !isSubmitted || isPlanRejected;
+  const canEditTasks = !isSubmitted || isPlanRejected || isPlanPending;
 
   const addDays = (startDate, days) => {
     if (!startDate || !days) return "";
@@ -512,7 +513,7 @@ export default function ProjectDetailsPage() {
         errorMessage = 'Network error. Check your internet connection.';
       }
       
-      alert(errorMessage);
+      showError("Submission failed", errorMessage);
     }
   };
 
@@ -531,15 +532,18 @@ export default function ProjectDetailsPage() {
   // Start a task: pending → in_progress
   const handleStartTask = async (taskId, taskIndex) => {
     if (!isPlanApproved) {
-      alert('Task plan is awaiting admin approval.');
+      showWarning("Plan pending", "Task plan is awaiting admin approval.");
       return;
     }
     if (!canStartTask(taskIndex)) {
-      alert('Please complete the previous task first.');
+      showWarning("Complete previous task", "Please complete the previous task first.");
       return;
     }
     if (getInProgressTaskIndex() !== -1) {
-      alert('A task is already in progress. Complete it before starting a new one.');
+      showWarning(
+        "Task already in progress",
+        "A task is already in progress. Complete it before starting a new one."
+      );
       return;
     }
     try {
@@ -550,7 +554,7 @@ export default function ProjectDetailsPage() {
       if (error) throw error;
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'in_progress' } : t));
     } catch (err) {
-      alert('Failed to start task: ' + err.message);
+      showError("Start failed", `Failed to start task: ${err.message}`);
     }
   };
 
@@ -706,7 +710,7 @@ export default function ProjectDetailsPage() {
   // File Download Function
   const handleDownloadFile = async () => {
     if (!project.file_url || project.file_url === 'null') {
-      alert('No file available for download');
+      showInfo("No file", "No file available for download.");
       return;
     }
 
@@ -749,8 +753,10 @@ export default function ProjectDetailsPage() {
         link.click();
         document.body.removeChild(link);
       } catch (fallbackError) {
-        
-        alert('Opening file in new tab. Please use browser\'s "Save as" option to download.');
+        showInfo(
+          "Opening in new tab",
+          "Opening file in new tab. Please use the browser's Save as option to download."
+        );
         window.open(project.file_url, '_blank');
       }
       
@@ -911,18 +917,32 @@ export default function ProjectDetailsPage() {
 
         if (error) throw error;
       } catch (err) {
-        alert("Failed to update task: " + err.message);
+        showError("Update failed", `Failed to update task: ${err.message}`);
       }
     }
 
     setEditingTask(null);
   };
 
-  const handleDeleteTask = (taskId) => {
+  const handleDeleteTask = async (taskId) => {
     if (!canEditTasks) return;
     
     if (confirm('Are you sure you want to delete this task?')) {
+      const taskToRemove = tasks.find(task => task.id === taskId);
       setTasks(prev => prev.filter(task => task.id !== taskId));
+
+      if (taskToRemove?.supabaseId || (isSubmitted && taskToRemove?.id)) {
+        try {
+          const deleteId = taskToRemove?.supabaseId || taskToRemove?.id;
+          const { error } = await supabase
+            .from("developer_tasks")
+            .delete()
+            .eq("id", deleteId);
+          if (error) throw error;
+        } catch (err) {
+          showError("Delete failed", `Failed to delete task: ${err.message}`);
+        }
+      }
     }
   };
 

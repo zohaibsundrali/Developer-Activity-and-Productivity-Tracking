@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
+import { showError, showWarning } from "@/utils/alerts";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -109,7 +110,7 @@ export default function AdminProjectDetailsPage() {
       if (updateError) throw updateError;
       await fetchProjectDetails();
     } catch (err) {
-      alert("Failed to approve task plan: " + err.message);
+      showError("Approval failed", `Failed to approve task plan: ${err.message}`);
     } finally {
       setProcessing(false);
     }
@@ -118,7 +119,7 @@ export default function AdminProjectDetailsPage() {
   const handleRejectPlan = async () => {
     if (!currentAdmin) return;
     if (!rejectionReason.trim()) {
-      alert("Please provide a rejection reason.");
+      showWarning("Missing reason", "Please provide a rejection reason.");
       return;
     }
 
@@ -137,7 +138,7 @@ export default function AdminProjectDetailsPage() {
       if (updateError) throw updateError;
       await fetchProjectDetails();
     } catch (err) {
-      alert("Failed to reject task plan: " + err.message);
+      showError("Rejection failed", `Failed to reject task plan: ${err.message}`);
     } finally {
       setProcessing(false);
     }

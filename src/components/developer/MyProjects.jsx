@@ -1,5 +1,6 @@
 "use client";
 import { useState } from 'react';
+import { showInfo } from "@/utils/alerts";
 
 export default function MyProjects({ 
   assignedProjects, 
@@ -36,7 +37,7 @@ export default function MyProjects({
     if (project.file_url) {
       window.open(project.file_url, '_blank');
     } else {
-      alert('No file available for this project');
+      showInfo("No file", "No file available for this project.");
     }
   };
 
@@ -46,12 +47,12 @@ export default function MyProjects({
       onViewProjectDetails(project);
     } else {
       // Fallback if prop not provided
-      alert(`Viewing project: ${project.name}`);
+      showInfo("Project", `Viewing project: ${project.name}.`);
     }
   };
 
   const handleSubmitWork = (project) => {
-    alert(`Submit work for project: ${project.name}`);
+    showInfo("Submit work", `Submit work for project: ${project.name}.`);
     // You can implement actual submission logic here
   };
 

@@ -22,7 +22,8 @@
     "react-dom": "^18.2.0",
     "react-google-charts": "^5.2.1",
     "react-router-dom": "^7.9.6",
-    "recharts": "^3.7.0"
+    "recharts": "^3.7.0",
+    "sweetalert2": "^11.12.4"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.16",

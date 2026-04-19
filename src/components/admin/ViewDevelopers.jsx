@@ -1,5 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import Swal from "sweetalert2";
+import { showError, showInfo, showPre, showSuccess, showWarning } from "@/utils/alerts";
 
 export default function ViewDevelopers({ developers: initialDevelopers, onRefresh, supabase, user }) {
   const [developers, setDevelopers] = useState([]);
@@ -50,7 +52,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
       setCurrentAdmin(adminData);
       
       if (!adminData) {
-        alert("Admin not logged in");
+        showWarning("Login required", "Admin not logged in.");
         setDevelopers([]);
         return;
       }
@@ -77,12 +79,22 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
       }
       
     } catch (error) {
-      alert('Error loading developers: ' + error.message);
+      showError("Load failed", `Error loading developers: ${error.message}`);
       setDevelopers([]);
     } finally {
       setLoading(false);
     }
   };
+
+  const escapeHtml = (value = "") =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const toPreHtml = (text) => `<pre class="swal2-pre">${escapeHtml(text)}</pre>`;
 
   const formatDate = (dateString) => {
     if (!dateString) return 'No date';
@@ -110,7 +122,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
         Company: ${developer.company || 'Not specified'}
         Last Updated: ${formatDate(developer.updated_at)}
       `;
-      alert(details);
+      showPre("Developer details", details, "info");
     }
   };
 
@@ -118,7 +130,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
     const developer = developers.find(dev => dev.id === developerId);
     
     if (!developer) {
-      alert("Developer not found");
+      showWarning("Not found", "Developer not found.");
       return;
     }
     
@@ -126,28 +138,48 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
     if (currentAdmin && 
         developer.added_by !== currentAdmin.id && 
         developer.added_by_admin !== currentAdmin.email) {
-      alert("You can only edit developers you added");
+      showWarning("Permission denied", "You can only edit developers you added.");
       return;
     }
     
     try {
       setIsEditing(true);
       
-      const newName = prompt("Enter new name:", developer.name);
-      if (!newName || newName.trim() === "") {
-        alert("Name cannot be empty");
+      const nameResult = await Swal.fire({
+        title: "Edit developer name",
+        input: "text",
+        inputValue: developer.name || "",
+        inputPlaceholder: "Enter new name",
+        showCancelButton: true,
+        confirmButtonText: "Save",
+        cancelButtonText: "Cancel",
+      });
+      if (!nameResult.isConfirmed) return;
+      const newName = (nameResult.value || "").trim();
+      if (!newName) {
+        showWarning("Validation error", "Name cannot be empty.");
         return;
       }
       
-      const newEmail = prompt("Enter new email:", developer.email);
-      if (!newEmail || newEmail.trim() === "") {
-        alert("Email cannot be empty");
+      const emailResult = await Swal.fire({
+        title: "Edit developer email",
+        input: "email",
+        inputValue: developer.email || "",
+        inputPlaceholder: "Enter new email",
+        showCancelButton: true,
+        confirmButtonText: "Save",
+        cancelButtonText: "Cancel",
+      });
+      if (!emailResult.isConfirmed) return;
+      const newEmail = (emailResult.value || "").trim();
+      if (!newEmail) {
+        showWarning("Validation error", "Email cannot be empty.");
         return;
       }
       
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(newEmail)) {
-        alert("Please enter a valid email address");
+        showWarning("Validation error", "Please enter a valid email address.");
         return;
       }
       
@@ -161,7 +193,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
       if (checkError) throw checkError;
 
       if (existingDevs && existingDevs.length > 0) {
-        alert("A developer with this email already exists");
+        showWarning("Duplicate email", "A developer with this email already exists.");
         return;
       }
 
@@ -197,10 +229,10 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
         await onRefresh();
       }
       
-      alert("Developer updated successfully!");
+      showSuccess("Saved", "Developer updated successfully.");
       
     } catch (error) {
-      alert('Error updating developer: ' + error.message);
+      showError("Update failed", `Error updating developer: ${error.message}`);
     } finally {
       setIsEditing(false);
     }
@@ -211,7 +243,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
     // deletionInProgressRef is set synchronously, so even two rapid clicks in
     // the same event-loop frame cannot both enter this function.
     if (deletionInProgressRef.current) {
-      alert('A deletion is already in progress. Please wait.');
+      showInfo("Deletion in progress", "A deletion is already in progress. Please wait.");
       return;
     }
 
@@ -220,7 +252,10 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
     const developer = developers.find((dev) => dev.id === rowDeveloperId);
 
     if (!developer) {
-      alert('Developer not found in the current list. Please refresh and try again.');
+      showWarning(
+        "Not found",
+        "Developer not found in the current list. Please refresh and try again."
+      );
       return;
     }
 
@@ -238,7 +273,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
         developer.added_by       === currentAdmin.id ||
         developer.added_by_admin === currentAdmin.email;
       if (hasOwnershipInfo && !isOwner) {
-        alert('You can only delete developers you added.');
+        showWarning("Permission denied", "You can only delete developers you added.");
         return;
       }
     }
@@ -258,14 +293,18 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
       const impactData = await impactResponse.json();
 
       if (!impactResponse.ok || !impactData.success) {
-        alert('Could not load deletion impact:\n' + impactData.error);
+        showPre(
+          "Deletion check failed",
+          `Could not load deletion impact:\n${impactData.error}`,
+          "error"
+        );
         return;
       }
 
       // ── Step 2: Confirmation with impact details ──────────────────────────
       const { impact, warning } = impactData;
-      const confirmed = window.confirm(
-        `⚠️ WARNING: This action cannot be undone!\n\n` +
+      const impactMessage =
+        `WARNING: This action cannot be undone!\n\n` +
         `Delete Developer: ${developer.name} (${devEmail})\n\n` +
         `The following data will be permanently deleted:\n` +
         `• Projects:      ${impact.projects}\n` +
@@ -273,17 +312,31 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
         `• Submissions:   ${impact.submissions}\n` +
         `• Activity logs: ${impact.activities}\n\n` +
         `${warning}\n\n` +
-        `Are you absolutely sure you want to proceed?`
-      );
-      if (!confirmed) return;
+        `Are you absolutely sure you want to proceed?`;
+      const confirmed = await Swal.fire({
+        title: "Confirm deletion",
+        icon: "warning",
+        html: toPreHtml(impactMessage),
+        showCancelButton: true,
+        confirmButtonText: "Yes, delete",
+        cancelButtonText: "Cancel",
+      });
+      if (!confirmed.isConfirmed) return;
 
       // ── Step 3: Final confirmation ────────────────────────────────────────
-      const finalConfirmed = window.confirm(
-        `🔴 FINAL CONFIRMATION\n\n` +
+      const finalMessage =
+        `FINAL CONFIRMATION\n\n` +
         `You are about to permanently delete "${developer.name}".\n\n` +
-        `Click OK to proceed.`
-      );
-      if (!finalConfirmed) return;
+        `Click OK to proceed.`;
+      const finalConfirmed = await Swal.fire({
+        title: "Final confirmation",
+        icon: "warning",
+        html: toPreHtml(finalMessage),
+        showCancelButton: true,
+        confirmButtonText: "Delete permanently",
+        cancelButtonText: "Cancel",
+      });
+      if (!finalConfirmed.isConfirmed) return;
 
       // ── Step 4: Execute deletion – send PRIMARY KEY only ─────────────────
       const deleteResponse = await fetch('/api/developer/delete', {
@@ -301,7 +354,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
       const deleteData = await deleteResponse.json();
 
       if (!deleteResponse.ok || !deleteData.success) {
-        alert('Deletion failed:\n' + deleteData.error);
+        showPre("Deletion failed", `Deletion failed:\n${deleteData.error}`, "error");
         return;
       }
 
@@ -313,18 +366,24 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
 
       // ── Step 6: Success message ───────────────────────────────────────────
       const { deletionSummary } = deleteData;
-      alert(
-        `✅ Developer Deleted Successfully!\n\n` +
-        `Name:  ${deletionSummary.developer.name}\n` +
-        `Email: ${deletionSummary.developer.email}\n\n` +
-        `Related data removed:\n` +
-        `• Projects:    ${deletionSummary.relatedDataDeleted.projects}\n` +
-        `• Tasks:       ${deletionSummary.relatedDataDeleted.tasks}\n` +
-        `• Submissions: ${deletionSummary.relatedDataDeleted.submissions}`
+      showPre(
+        "Developer deleted",
+        `Developer deleted successfully!\n\n` +
+          `Name:  ${deletionSummary.developer.name}\n` +
+          `Email: ${deletionSummary.developer.email}\n\n` +
+          `Related data removed:\n` +
+          `• Projects:    ${deletionSummary.relatedDataDeleted.projects}\n` +
+          `• Tasks:       ${deletionSummary.relatedDataDeleted.tasks}\n` +
+          `• Submissions: ${deletionSummary.relatedDataDeleted.submissions}`,
+        "success"
       );
     } catch (error) {
       console.error('[ViewDevelopers] Deletion error:', error);
-      alert('An unexpected error occurred:\n' + error.message);
+      showPre(
+        "Unexpected error",
+        `An unexpected error occurred:\n${error.message}`,
+        "error"
+      );
     } finally {
       // Always clear the lock and per-row loading indicator.
       deletionInProgressRef.current = false;
@@ -336,7 +395,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
     const developer = developers.find(dev => dev.id === developerId);
     
     if (!developer) {
-      alert("Developer not found");
+      showWarning("Not found", "Developer not found.");
       return;
     }
     
@@ -344,15 +403,21 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
     if (currentAdmin && 
         developer.added_by !== currentAdmin.id && 
         developer.added_by_admin !== currentAdmin.email) {
-      alert("You can only modify developers you added");
+      showWarning("Permission denied", "You can only modify developers you added.");
       return;
     }
     
     const newStatus = developer.status === 'active' ? 'inactive' : 'active';
     
-    if (!confirm(`Change ${developer.name}'s status to ${newStatus}?`)) {
-      return;
-    }
+    const statusConfirm = await Swal.fire({
+      title: "Change status?",
+      text: `Change ${developer.name}'s status to ${newStatus}?`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Yes, change",
+      cancelButtonText: "Cancel",
+    });
+    if (!statusConfirm.isConfirmed) return;
     
     try {
       const { error } = await supabase
@@ -381,10 +446,13 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
       // Refresh the developers list
       await fetchAdminDevelopers();
       
-      alert(`Developer status changed to ${newStatus} successfully!`);
+      showSuccess(
+        "Status updated",
+        `Developer status changed to ${newStatus} successfully.`
+      );
       
     } catch (error) {
-      alert('Error updating developer status: ' + error.message);
+      showError("Update failed", `Error updating developer status: ${error.message}`);
     }
   };
 
@@ -422,9 +490,9 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
       <div className="flex justify-between items-center mb-6">
         <div>
           <h2 className="text-2xl font-bold">View Developers</h2>
-          <p className="text-sm text-gray-500">
+          {/* <p className="text-sm text-gray-500">
             Showing developers added by: {currentAdmin.name || currentAdmin.email}
-          </p>
+          </p> */}
         </div>
         
         <div className="flex items-center space-x-3">
@@ -457,7 +525,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
           </div>
         </div>
         
-        <div className="bg-green-50 p-4 rounded-lg border border-green-100">
+        {/* <div className="bg-green-50 p-4 rounded-lg border border-green-100">
           <div className="flex items-center">
             <div className="bg-green-100 p-3 rounded-full mr-4">
               <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -469,9 +537,9 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
               <p className="text-2xl font-bold">{activeDevelopers.length}</p>
             </div>
           </div>
-        </div>
+        </div> */}
         
-        <div className="bg-red-50 p-4 rounded-lg border border-red-100">
+        {/* <div className="bg-red-50 p-4 rounded-lg border border-red-100">
           <div className="flex items-center">
             <div className="bg-red-100 p-3 rounded-full mr-4">
               <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -483,7 +551,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
               <p className="text-2xl font-bold">{inactiveDevelopers.length}</p>
             </div>
           </div>
-        </div>
+        </div> */}
       </div>
 
       {/* Developers Table */}
@@ -583,10 +651,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13 0c1.013 0 1.827.833 1.827 1.86 0 1.03-.814 1.86-1.827 1.86s-1.827-.83-1.827-1.86c0-1.027.814-1.86 1.827-1.86z" />
           </svg>
           <p className="text-gray-500 text-lg mb-2">No developers added by you yet</p>
-          <p className="text-gray-400 text-sm mb-4">Add developers using the "Add Developer" section</p>
-          <p className="text-xs text-gray-400">
-            Note: You can only view and manage developers you have added
-          </p>
+         
         </div>
       )}
     </div>

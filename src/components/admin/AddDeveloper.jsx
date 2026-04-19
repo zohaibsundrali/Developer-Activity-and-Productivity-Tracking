@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { showError, showSuccess, showWarning } from "@/utils/alerts";
 
 export default function AddDeveloper({ user, developers: initialDevelopers, onRefresh, supabase }) {
   const [newDeveloper, setNewDeveloper] = useState({
@@ -27,7 +28,7 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
       setCurrentAdmin(adminData);
       
       if (!adminData) {
-        alert("Admin not logged in");
+        showWarning("Login required", "Admin not logged in.");
         setDevelopers([]);
         return;
       }
@@ -62,7 +63,7 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
       }
       
     } catch (error) {
-      alert('Error loading developers: ' + error.message);
+      showError("Load failed", `Error loading developers: ${error.message}`);
       setDevelopers([]);
     } finally {
       setLoading(false);
@@ -73,23 +74,23 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
     e.preventDefault();
     
     if (!currentAdmin) {
-      alert("Admin not logged in");
+      showWarning("Login required", "Admin not logged in.");
       return;
     }
     
     if (!newDeveloper.name.trim() || !newDeveloper.email.trim() || !newDeveloper.password.trim()) {
-      alert("Please fill in all fields");
+      showWarning("Validation error", "Please fill in all fields.");
       return;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(newDeveloper.email)) {
-      alert("Please enter a valid email address");
+      showWarning("Validation error", "Please enter a valid email address.");
       return;
     }
 
     if (newDeveloper.password.length < 6) {
-      alert("Password must be at least 6 characters long");
+      showWarning("Validation error", "Password must be at least 6 characters long.");
       return;
     }
 
@@ -103,7 +104,7 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
       if (checkError) throw checkError;
 
       if (existingDevs && existingDevs.length > 0) {
-        alert("A developer with this email already exists");
+        showWarning("Duplicate email", "A developer with this email already exists.");
         return;
       }
     } catch (error) {
@@ -200,10 +201,10 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
         password: ""
       });
 
-      alert("Developer added successfully!");
+      showSuccess("Saved", "Developer added successfully.");
       
     } catch (error) {
-      alert('Error adding developer: ' + error.message);
+      showError("Save failed", `Error adding developer: ${error.message}`);
     } finally {
       setIsAddingDeveloper(false);
     }
@@ -265,11 +266,11 @@ ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
         <div className="flex justify-between items-center mb-6">
           <div>
             <h2 className="text-2xl font-bold">Add Developer</h2>
-            {currentAdmin && (
+            {/* {currentAdmin && (
               <p className="text-sm text-gray-500">
                 Admin: {currentAdmin.name || currentAdmin.email}
               </p>
-            )}
+            )} */}
           </div>
           
           <button
@@ -421,7 +422,7 @@ ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13 0c1.013 0 1.827.833 1.827 1.86 0 1.03-.814 1.86-1.827 1.86s-1.827-.83-1.827-1.86c0-1.027.814-1.86 1.827-1.86z" />
               </svg>
               <p className="text-gray-500 text-lg mb-2">No developers added yet</p>
-              <p className="text-gray-400 text-sm">Add your first developer using the form above</p>
+              {/* <p className="text-gray-400 text-sm">Add your first developer using the form above</p> */}
             </div>
           )}
         </div>
@@ -460,14 +461,14 @@ ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
       <div className="flex justify-between items-center mb-6">
         <div>
           <h2 className="text-2xl font-bold">Add Developer</h2>
-          {currentAdmin && (
+          {/* {currentAdmin && (
             <p className="text-sm text-gray-500">
               Admin: {currentAdmin.name || currentAdmin.email}
               {!missingColumns && (
                 <span className="ml-2 text-green-600">✓ Isolated Mode</span>
               )}
             </p>
-          )}
+          )} */}
         </div>
         
         <button
@@ -674,7 +675,7 @@ ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
             <p className="text-gray-500 text-lg mb-2">
               {!missingColumns ? 'No developers added by you yet' : 'No developers found'}
             </p>
-            <p className="text-gray-400 text-sm">Add your first developer using the form above</p>
+            {/* <p className="text-gray-400 text-sm">Add your first developer using the form above</p> */}
           </div>
         )}
       </div>

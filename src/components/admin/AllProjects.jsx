@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { showError, showInfo, showSuccess, showWarning } from "@/utils/alerts";
 
 export default function AllProjects({ developers: initialDevelopers, supabase }) {
   const [showAddProject, setShowAddProject] = useState(false);
@@ -68,7 +69,10 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
       ]);
 
       if (projectsResult.error) {
-        alert('Error fetching projects: ' + projectsResult.error.message);
+        showError(
+          "Load failed",
+          `Error fetching projects: ${projectsResult.error.message}`
+        );
         setProjects([]);
       } else {
         setProjects(projectsResult.data || []);
@@ -82,7 +86,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
       }
       
     } catch (error) {
-      alert('Error loading data: ' + error.message);
+      showError("Load failed", `Error loading data: ${error.message}`);
       setProjects([]);
       setAdminDevelopers([]);
     } finally {
@@ -100,7 +104,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
   };
 
   const handleViewProjectActivity = (projectId) => {
-    alert(`View Project ${projectId} Activity`);
+    showInfo("Project activity", `View project ${projectId} activity.`);
   };
 
   const handleViewProjectProductivity = (projectId) => {
@@ -120,7 +124,10 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
     if (!project) return;
 
     if (!project.assigned_developer_id) {
-      alert("Please assign a developer to this project to see productivity metrics.");
+      showWarning(
+        "Missing assignment",
+        "Please assign a developer to this project to see productivity metrics."
+      );
       return;
     }
 
@@ -221,10 +228,10 @@ const handleConfirmDelete = async () => {
     setShowDeleteModal(false);
     setProjectToDelete(null);
     
-    alert(`Project "${projectToDelete.name}" deleted successfully!`);
+    showSuccess("Deleted", `Project "${projectToDelete.name}" deleted successfully.`);
 
   } catch (error) {
-    alert('Error deleting project: ' + error.message);
+    showError("Delete failed", `Error deleting project: ${error.message}`);
   } finally {
     setDeleting(false);
   }
@@ -253,7 +260,7 @@ const handleConfirmDelete = async () => {
       return urlData.publicUrl;
 
     } catch (error) {
-      alert('File upload failed: ' + error.message);
+      showError("Upload failed", `File upload failed: ${error.message}`);
       return null;
     } finally {
       setUploadingFile(false);
@@ -274,16 +281,19 @@ const handleConfirmDelete = async () => {
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         const detail = err.details ? ` (${err.details})` : "";
-        alert(`AI task generation failed: ${err.error || res.statusText}${detail}`);
+        showError(
+          "AI task generation failed",
+          `AI task generation failed: ${err.error || res.statusText}${detail}`
+        );
         return null;
       }
       const data = await res.json();
       if (!data?.tasks?.length) {
-        alert("AI task generation returned no tasks.");
+        showWarning("No tasks generated", "AI task generation returned no tasks.");
       }
       return data?.tasks || null;
     } catch {
-      alert("AI task generation failed: network error.");
+      showError("AI task generation failed", "AI task generation failed: network error.");
       return null;
     }
   };
@@ -292,12 +302,15 @@ const handleAddProject = async (e) => {
   e.preventDefault();
   
   if (!currentAdmin) {
-    alert("Admin not logged in");
+    showWarning("Login required", "Admin not logged in.");
     return;
   }
   
   if (adminDevelopers.length === 0) {
-    alert("You need to add developers first before creating a project. Go to 'Add Developer' section.");
+    showInfo(
+      "Add developers first",
+      "You need to add developers before creating a project. Go to the Add Developer section."
+    );
     return;
   }
   
@@ -306,7 +319,7 @@ const handleAddProject = async (e) => {
   try {
     // Validation
     if (!newProject.name || !newProject.deadline || !newProject.assigned_developer) {
-      alert("Please fill in all required fields");
+      showWarning("Validation error", "Please fill in all required fields.");
       return;
     }
 
@@ -316,7 +329,7 @@ const handleAddProject = async (e) => {
     if (newProject.file) {
       fileUrl = await handleFileUpload(newProject.file);
       if (!fileUrl) {
-        alert("File upload failed. Please try again.");
+        showError("Upload failed", "File upload failed. Please try again.");
         return;
       }
     }
@@ -325,7 +338,10 @@ const handleAddProject = async (e) => {
     const assignedDeveloper = adminDevelopers.find(dev => dev.id === newProject.assigned_developer);
     
     if (!assignedDeveloper) {
-      alert("Selected developer not found in your added developers");
+      showWarning(
+        "Developer not found",
+        "Selected developer not found in your added developers."
+      );
       return;
     }
     
@@ -419,10 +435,13 @@ const handleAddProject = async (e) => {
     });
     
     setShowAddProject(false);
-    alert(`Project "${newProject.name}" added and notification sent to ${assignedDeveloper.name}!`);
+    showSuccess(
+      "Project created",
+      `Project "${newProject.name}" added and notification sent to ${assignedDeveloper.name}.`
+    );
 
   } catch (error) {
-    alert('Error adding project: ' + error.message);
+    showError("Save failed", `Error adding project: ${error.message}`);
   } finally {
     setLoading(false);
   }
@@ -441,7 +460,7 @@ const handleAddProject = async (e) => {
     if (file) {
       // Check file size (max 10MB)
       if (file.size > 10 * 1024 * 1024) {
-        alert("File size must be less than 10MB");
+        showWarning("File too large", "File size must be less than 10MB.");
         return;
       }
       
@@ -454,7 +473,10 @@ const handleAddProject = async (e) => {
       ];
       
       if (!allowedTypes.includes(file.type)) {
-        alert("Please select a valid file type: PDF, DOC, DOCX, or TXT");
+        showWarning(
+          "Invalid file type",
+          "Please select a valid file type: PDF, DOC, DOCX, or TXT."
+        );
         return;
       }
 
@@ -710,7 +732,7 @@ const debugCheckNotifications = async () => {
                   accept=".pdf,.doc,.docx,.txt"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Supported formats: PDF, DOC, DOCX, TXT (Max 10MB)
+                  Supported format only DOCX  (Max 10MB)
                 </p>
 
                 {newProject.file && (

@@ -1,6 +1,7 @@
 "use client";
 import { useState, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { showPre } from "@/utils/alerts";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -196,12 +197,14 @@ export default function TaskCompletionModal({
         }
 
         // Show success message
-        alert(
+        showPre(
+          "Task submitted",
           `Task submitted successfully!\n\n${
             result.isOnTime
-              ? "✓ Submitted on time"
-              : "⚠ Submitted after deadline"
-          }\n\nYour task is now pending admin review.`
+              ? "Submitted on time"
+              : "Submitted after deadline"
+          }\n\nYour task is now pending admin review.`,
+          result.isOnTime ? "success" : "warning"
         );
 
         onClose();

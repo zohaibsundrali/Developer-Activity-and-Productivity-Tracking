@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { showPre } from "@/utils/alerts";
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -621,12 +622,12 @@ export default function DeveloperActivity() {
           {lastUpdated && (
             <p className="text-xs text-gray-400">Updated: {fmtTime(lastUpdated.toISOString())}</p>
           )}
-          {currentAdmin && (
+          {/* {currentAdmin && (
             <div className="text-right">
               <p className="text-sm font-medium text-gray-700">{currentAdmin.name || currentAdmin.email}</p>
               <p className="text-xs text-gray-500">Admin Dashboard</p>
             </div>
-          )}
+          )} */}
           <button onClick={refreshAdminData} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-md hover:bg-gray-200 transition-colors text-sm">
             Refresh
           </button>
@@ -658,7 +659,7 @@ export default function DeveloperActivity() {
           {currentAdmin && !fetchingDevelopers && developers.length === 0 && (
             <div className="mt-1">
               <p className="text-xs text-yellow-500">No developers added by you yet</p>
-              <button onClick={() => window.location.href = "/add-developer"} className="text-xs text-green-600 hover:text-green-800 underline">Add Developers</button>
+              <button onClick={() => window.location.href = "/admin/dashboard?section=add-developer"} className="text-xs text-green-600 hover:text-green-800 underline">Add Developers</button>
             </div>
           )}
           {currentAdmin && !fetchingDevelopers && developers.length > 0 && (
@@ -1430,7 +1431,17 @@ export default function DeveloperActivity() {
                     <button
                       onClick={async () => {
                         const { data, error } = await supabase.from("screenshots").select("id, developer_id, developer_email, public_url, timestamp").limit(5);
-                        alert(error ? `RLS Error: ${error.message}` : `Found ${data?.length || 0} total screenshots.\n${data?.length ? `Sample: developer_email=${data[0].developer_email}, developer_id=${data[0].developer_id}` : "Table is empty."}`);
+                        showPre(
+                          "Screenshot diagnostics",
+                          error
+                            ? `RLS Error: ${error.message}`
+                            : `Found ${data?.length || 0} total screenshots.\n${
+                                data?.length
+                                  ? `Sample: developer_email=${data[0].developer_email}, developer_id=${data[0].developer_id}`
+                                  : "Table is empty."
+                              }`,
+                          error ? "error" : "info"
+                        );
                       }}
                       className="mt-2 px-3 py-1 bg-yellow-200 hover:bg-yellow-300 text-yellow-900 rounded text-xs font-medium transition-colors"
                     >
@@ -1685,12 +1696,12 @@ export default function DeveloperActivity() {
           {currentAdmin ? (
             <div>
               <p className="text-gray-500 text-lg">Select a developer to view activity data</p>
-              {developers.length === 0 && (
+              {/* {developers.length === 0 && (
                 <div className="mt-4">
                   <p className="text-gray-400 text-sm">No developers added by you yet</p>
-                  <button onClick={() => window.location.href = "/add-developer"} className="mt-2 text-blue-500 hover:text-blue-700 underline text-sm">Add Developers First</button>
+                  <button onClick={() => window.location.href = "/admin/dashboard?section=add-developer"} className="mt-2 text-blue-500 hover:text-blue-700 underline text-sm">Add Developers First</button>
                 </div>
-              )}
+              )} */}
             </div>
           ) : (
             <div>
