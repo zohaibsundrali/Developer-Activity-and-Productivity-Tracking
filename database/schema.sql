@@ -29,6 +29,22 @@ ALTER TABLE projects ADD COLUMN IF NOT EXISTS total_productivity_score DECIMAL(5
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS total_tasks_count INTEGER DEFAULT 0;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS completed_tasks_count INTEGER DEFAULT 0;
 
+-- Project task plan workflow additions
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS task_plan_submitted BOOLEAN DEFAULT false;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS task_plan_status TEXT DEFAULT 'draft';
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS task_plan_submitted_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS task_plan_reviewed_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS task_plan_reviewed_by UUID;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS task_plan_rejection_reason TEXT;
+
+-- AI task template (generated from requirement docs)
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_task_template JSONB;
+
+-- Constrain valid task plan statuses
+ALTER TABLE projects DROP CONSTRAINT IF EXISTS projects_task_plan_status_check;
+ALTER TABLE projects ADD CONSTRAINT projects_task_plan_status_check
+  CHECK (task_plan_status IN ('draft', 'pending', 'approved', 'rejected'));
+
 -- Developer tasks additions (in case table already existed with fewer columns)
 ALTER TABLE developer_tasks ADD COLUMN IF NOT EXISTS task_order INTEGER DEFAULT 0;
 ALTER TABLE developer_tasks ADD COLUMN IF NOT EXISTS task_description TEXT;
@@ -75,7 +91,16 @@ CREATE TABLE IF NOT EXISTS projects (
   -- New productivity fields
   total_productivity_score DECIMAL(5,2) DEFAULT 0,
   total_tasks_count INTEGER DEFAULT 0,
-  completed_tasks_count INTEGER DEFAULT 0
+  completed_tasks_count INTEGER DEFAULT 0,
+  -- Task plan workflow (Admin can only approve/reject after submitted)
+  task_plan_submitted BOOLEAN DEFAULT false,
+  task_plan_status TEXT DEFAULT 'draft' CHECK (task_plan_status IN ('draft', 'pending', 'approved', 'rejected')),
+  task_plan_submitted_at TIMESTAMP WITH TIME ZONE,
+  task_plan_reviewed_at TIMESTAMP WITH TIME ZONE,
+  task_plan_reviewed_by UUID,
+  task_plan_rejection_reason TEXT,
+  -- AI-generated template tasks (optional)
+  ai_task_template JSONB
 );
 
 -- ==================== DEVELOPER_TASKS TABLE ====================

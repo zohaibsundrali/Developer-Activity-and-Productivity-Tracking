@@ -361,6 +361,13 @@ const handleAddProject = async (e) => {
           progress: 0,
           developers_count: 1,
           status: 'active',
+          // Task plan workflow defaults (Admin cannot approve/reject until developer submits)
+          task_plan_submitted: false,
+          task_plan_status: 'draft',
+          task_plan_submitted_at: null,
+          task_plan_reviewed_at: null,
+          task_plan_reviewed_by: null,
+          task_plan_rejection_reason: null,
           assigned_to: newProject.assigned_developer, // ✅ Fixed: Use developer ID, not admin ID
           assigned_to_email: assignedDeveloper.email, // ✅ Fixed: Use developer email
           created_by: currentAdmin.id,

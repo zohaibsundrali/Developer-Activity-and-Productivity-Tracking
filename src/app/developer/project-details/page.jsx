@@ -54,11 +54,16 @@ export default function ProjectDetailsPage() {
 
   const assignedDate = getAssignedDate();
 
-  const taskPlanStatus = project?.task_plan_status || (isSubmitted ? "pending" : null);
+  const taskPlanStatus = project?.task_plan_status || (project?.task_plan_submitted ? "pending" : null);
   const isPlanApproved = taskPlanStatus === "approved";
   const isPlanPending = taskPlanStatus === "pending";
   const isPlanRejected = taskPlanStatus === "rejected";
-  const canEditTasks = !isSubmitted || isPlanRejected || isPlanPending;
+  // Editing rules (DB is source of truth):
+  // - draft (not submitted): editable
+  // - pending (waiting for approval): locked
+  // - approved: locked
+  // - rejected: editable (for re-submit)
+  const canEditTasks = !isSubmitted || isPlanRejected;
 
   const addDays = (startDate, days) => {
     if (!startDate || !days) return "";
@@ -416,20 +421,21 @@ export default function ProjectDetailsPage() {
       // Step 3: Save to Supabase
       const savedTasks = await saveTasksToSupabase();
 
-      // Step 3b: Update project task plan status
-      const { error: planStatusError } = await supabase
-        .from('projects')
-        .update({
-          task_plan_status: 'pending',
-          task_plan_submitted_at: new Date().toISOString(),
-          task_plan_reviewed_at: null,
-          task_plan_reviewed_by: null,
-          task_plan_rejection_reason: null
-        })
-        .eq('id', project.id);
+      // Step 3b: Mark task plan as submitted via backend (DB is source of truth)
+      const developerIdForSubmit = savedTasks?.[0]?.developer_id || currentDeveloper?.id;
+      if (!developerIdForSubmit) {
+        throw new Error('Developer ID not found. Please re-login and try again.');
+      }
 
-      if (planStatusError) {
-        throw new Error(`Failed to submit task plan: ${planStatusError.message}`);
+      const submitRes = await fetch('/api/task-plan/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: project.id, developerId: developerIdForSubmit }),
+      });
+
+      const submitResult = await submitRes.json().catch(() => ({}));
+      if (!submitRes.ok || !submitResult.success) {
+        throw new Error(submitResult.error || 'Failed to submit task plan.');
       }
       
       // Step 4: Update local tasks with real Supabase UUIDs so workflow buttons work
@@ -451,8 +457,11 @@ export default function ProjectDetailsPage() {
       setIsSubmitted(true);
       setProjectData(prev => ({
         ...(prev || project),
+        ...(submitResult.project || {}),
+        // Ensure local state reflects DB flags even if select() is unavailable
+        task_plan_submitted: true,
         task_plan_status: 'pending',
-        task_plan_submitted_at: new Date().toISOString(),
+        task_plan_submitted_at: (submitResult.project?.task_plan_submitted_at || new Date().toISOString()),
         task_plan_reviewed_at: null,
         task_plan_reviewed_by: null,
         task_plan_rejection_reason: null
@@ -573,7 +582,7 @@ export default function ProjectDetailsPage() {
     setCompletionTask(null);
   };
 
-  // Load tasks from Supabase if already submitted
+  // Load tasks from Supabase (if any exist)
   const loadTasksFromSupabase = async () => {
     try {
       if (!currentDeveloper || !project || !project.id) return;
@@ -608,8 +617,6 @@ export default function ProjectDetailsPage() {
         }));
         
         setTasks(formattedTasks);
-        setIsSubmitted(true);
-        localStorage.setItem(`project_submitted_${project.id}`, 'true');
         localStorage.setItem(`project_tasks_${project.id}`, JSON.stringify(formattedTasks));
       }
     } catch (error) {
@@ -765,13 +772,17 @@ export default function ProjectDetailsPage() {
     }
   };
 
-  // Check if work is already submitted
+  // Keep submission state in sync with DB (source of truth)
   useEffect(() => {
-    const submitted = localStorage.getItem(`project_submitted_${project.id}`);
-    if (submitted === 'true') {
-      setIsSubmitted(true);
-    }
-  }, [project]);
+    const status = project?.task_plan_status;
+    const dbSubmitted =
+      project?.task_plan_submitted === true ||
+      status === 'pending' ||
+      status === 'approved' ||
+      status === 'rejected';
+
+    setIsSubmitted(Boolean(dbSubmitted));
+  }, [project?.id, project?.task_plan_submitted, project?.task_plan_status]);
 
   // Initial tasks load
   useEffect(() => {
@@ -1202,7 +1213,7 @@ export default function ProjectDetailsPage() {
               </svg>
               <div>
                 <h4 className="font-semibold text-yellow-800 mb-1">Task plan awaiting admin approval</h4>
-                <p className="text-sm text-yellow-700">You can edit tasks until approval.</p>
+                <p className="text-sm text-yellow-700">Editing is locked until the admin approves or rejects the plan.</p>
               </div>
             </div>
           </div>

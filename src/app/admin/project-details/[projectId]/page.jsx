@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import { showError, showWarning } from "@/utils/alerts";
@@ -51,20 +51,9 @@ export default function AdminProjectDetailsPage() {
   const [currentAdmin, setCurrentAdmin] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
 
-  useEffect(() => {
-    const adminData = checkAdminAuth();
-    if (!adminData) {
-      router.push("/login?redirect=/admin/project-details/" + projectId);
-      return;
-    }
-
-    setCurrentAdmin(adminData);
-    fetchProjectDetails();
-  }, [projectId, router]);
-
-  const fetchProjectDetails = async () => {
+  const fetchProjectDetails = useCallback(async ({ silent = false } = {}) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError(null);
 
       const { data: projectData, error: projectError } = await supabase
@@ -88,26 +77,75 @@ export default function AdminProjectDetailsPage() {
     } catch (err) {
       setError(err.message || "Failed to load project details.");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  };
+  }, [projectId]);
+
+  useEffect(() => {
+    const adminData = checkAdminAuth();
+    if (!adminData) {
+      router.push("/login?redirect=/admin/project-details/" + projectId);
+      return;
+    }
+
+    setCurrentAdmin(adminData);
+    fetchProjectDetails();
+
+    // Realtime: auto-refresh when developer submits task plan (projects row updates)
+    const channel = supabase
+      .channel(`admin-project-details-${projectId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "projects",
+          filter: `id=eq.${projectId}`,
+        },
+        () => {
+          // Fetch latest project + tasks so button states update immediately
+          fetchProjectDetails({ silent: true });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [projectId, router, fetchProjectDetails]);
 
   const handleApprovePlan = async () => {
     if (!currentAdmin) return;
 
+    const currentStatus = project?.task_plan_status || "draft";
+    const isSubmitted = Boolean(project?.task_plan_submitted ?? project?.task_plan_submitted_at);
+
+    if (!isSubmitted || currentStatus !== "pending") {
+      showWarning(
+        "Task plan not submitted",
+        "Approve/Reject is disabled until the developer saves the task plan."
+      );
+      return;
+    }
+
     try {
       setProcessing(true);
-      const { error: updateError } = await supabase
-        .from("projects")
-        .update({
-          task_plan_status: "approved",
-          task_plan_reviewed_at: new Date().toISOString(),
-          task_plan_reviewed_by: currentAdmin.id,
-          task_plan_rejection_reason: null
-        })
-        .eq("id", projectId);
 
-      if (updateError) throw updateError;
+      const res = await fetch("/api/task-plan/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          adminId: currentAdmin.id,
+          adminEmail: currentAdmin.email,
+          action: "approve",
+        }),
+      });
+
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || "Failed to approve task plan");
+      }
       await fetchProjectDetails();
     } catch (err) {
       showError("Approval failed", `Failed to approve task plan: ${err.message}`);
@@ -118,6 +156,17 @@ export default function AdminProjectDetailsPage() {
 
   const handleRejectPlan = async () => {
     if (!currentAdmin) return;
+
+    const currentStatus = project?.task_plan_status || "draft";
+    const isSubmitted = Boolean(project?.task_plan_submitted ?? project?.task_plan_submitted_at);
+
+    if (!isSubmitted || currentStatus !== "pending") {
+      showWarning(
+        "Task plan not submitted",
+        "Approve/Reject is disabled until the developer saves the task plan."
+      );
+      return;
+    }
     if (!rejectionReason.trim()) {
       showWarning("Missing reason", "Please provide a rejection reason.");
       return;
@@ -125,17 +174,23 @@ export default function AdminProjectDetailsPage() {
 
     try {
       setProcessing(true);
-      const { error: updateError } = await supabase
-        .from("projects")
-        .update({
-          task_plan_status: "rejected",
-          task_plan_reviewed_at: new Date().toISOString(),
-          task_plan_reviewed_by: currentAdmin.id,
-          task_plan_rejection_reason: rejectionReason.trim()
-        })
-        .eq("id", projectId);
 
-      if (updateError) throw updateError;
+      const res = await fetch("/api/task-plan/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          adminId: currentAdmin.id,
+          adminEmail: currentAdmin.email,
+          action: "reject",
+          rejectionReason: rejectionReason.trim(),
+        }),
+      });
+
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || "Failed to reject task plan");
+      }
       await fetchProjectDetails();
     } catch (err) {
       showError("Rejection failed", `Failed to reject task plan: ${err.message}`);
@@ -162,7 +217,10 @@ export default function AdminProjectDetailsPage() {
       .trim();
   };
 
-  const isPlanApproved = project?.task_plan_status === "approved";
+  const taskPlanStatus = project?.task_plan_status || "draft";
+  const taskPlanSubmitted = Boolean(project?.task_plan_submitted ?? project?.task_plan_submitted_at);
+  const canReviewPlan = taskPlanSubmitted && taskPlanStatus === "pending";
+  const isPlanApproved = taskPlanStatus === "approved";
 
   if (loading) {
     return (
@@ -217,8 +275,9 @@ export default function AdminProjectDetailsPage() {
                 <p><span className="font-medium">Email:</span> {project?.assigned_developer_email || "N/A"}</p>
                 <p><span className="font-medium">Deadline:</span> {formatDate(project?.deadline)}</p>
                 <p><span className="font-medium">Created:</span> {formatDate(project?.created_at)}</p>
-                <p><span className="font-medium">Status:</span> {project?.task_plan_status || "not submitted"}</p>
-                <p><span className="font-medium">Submitted:</span> {formatDate(project?.task_plan_submitted_at)}</p>
+                <p><span className="font-medium">Plan status:</span> {taskPlanStatus}</p>
+                <p><span className="font-medium">Submitted:</span> {taskPlanSubmitted ? "Yes" : "No"}</p>
+                <p><span className="font-medium">Submitted at:</span> {formatDate(project?.task_plan_submitted_at)}</p>
                 <p><span className="font-medium">Reviewed:</span> {formatDate(project?.task_plan_reviewed_at)}</p>
               </div>
               {project?.task_plan_rejection_reason && (
@@ -233,11 +292,16 @@ export default function AdminProjectDetailsPage() {
               <div className="space-y-3">
                 <button
                   onClick={handleApprovePlan}
-                  disabled={processing || isPlanApproved}
+                  disabled={processing || isPlanApproved || !canReviewPlan}
                   className="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 disabled:opacity-50"
                 >
                   {isPlanApproved ? "Task Plan Approved" : "Approve Task Plan"}
                 </button>
+                {!canReviewPlan && !isPlanApproved && (
+                  <div className="text-xs text-gray-600 bg-gray-50 border rounded-lg p-3">
+                    Approve/Reject will be enabled after the developer clicks “Save Task Plan”.
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Rejection Reason</label>
                   <textarea
@@ -246,12 +310,12 @@ export default function AdminProjectDetailsPage() {
                     onChange={(e) => setRejectionReason(e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2"
                     placeholder="Explain why the plan is rejected"
-                    disabled={isPlanApproved}
+                    disabled={isPlanApproved || !canReviewPlan}
                   />
                 </div>
                 <button
                   onClick={handleRejectPlan}
-                  disabled={processing || isPlanApproved}
+                  disabled={processing || isPlanApproved || !canReviewPlan}
                   className="w-full bg-red-600 text-white py-2 rounded-lg hover:bg-red-700 disabled:opacity-50"
                 >
                   Reject Task Plan
