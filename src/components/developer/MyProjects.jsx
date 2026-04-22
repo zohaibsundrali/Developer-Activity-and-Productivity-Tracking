@@ -1,6 +1,6 @@
 "use client";
 import { useState } from 'react';
-import { showInfo } from "@/utils/alerts";
+import { showInfo, showWarning } from "@/utils/alerts";
 
 export default function MyProjects({ 
   assignedProjects, 
@@ -9,6 +9,11 @@ export default function MyProjects({
 }) {
   const [sortBy, setSortBy] = useState('recent');
   const [filterStatus, setFilterStatus] = useState('all');
+
+  const [showMetricsModal, setShowMetricsModal] = useState(false);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metricsError, setMetricsError] = useState("");
+  const [metricsData, setMetricsData] = useState(null);
 
   const formatDate = (dateString) => {
     if (!dateString) return 'Not set';
@@ -54,6 +59,42 @@ export default function MyProjects({
   const handleSubmitWork = (project) => {
     showInfo("Submit work", `Submit work for project: ${project.name}.`);
     // You can implement actual submission logic here
+  };
+
+  const handleViewMetrics = async (project) => {
+    if (!project?.id) return;
+
+    if (!user?.id) {
+      showWarning("Not logged in", "Please login again to view metrics.");
+      return;
+    }
+
+    try {
+      setMetricsLoading(true);
+      setMetricsError("");
+      setMetricsData(null);
+      setShowMetricsModal(true);
+
+      // Developer-side metrics must be scoped to the logged-in developer.
+      // API will enforce this using auth cookies.
+      const url = `/api/productivity?type=project&projectId=${project.id}`;
+      const res = await fetch(url);
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data.success) {
+        setMetricsError(data.error || "Failed to load productivity metrics.");
+        return;
+      }
+
+      setMetricsData({
+        ...data,
+        project,
+      });
+    } catch (err) {
+      setMetricsError("Error loading productivity metrics. Please try again.");
+    } finally {
+      setMetricsLoading(false);
+    }
   };
 
   // Filter projects based on status
@@ -198,6 +239,105 @@ export default function MyProjects({
 
       {/* Projects Grid */}
       <div className="p-6">
+        {/* Metrics / Productivity Modal (Developer view) */}
+        {showMetricsModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-6 rounded-xl shadow-xl max-w-xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-4">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900">Project Productivity</h3>
+                  {metricsData?.project?.name && (
+                    <p className="text-sm text-gray-500 mt-1">{metricsData.project.name}</p>
+                  )}
+                </div>
+                <button
+                  onClick={() => {
+                    setShowMetricsModal(false);
+                    setMetricsData(null);
+                    setMetricsError("");
+                  }}
+                  className="text-gray-500 hover:text-gray-700 text-xl"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {metricsLoading ? (
+                <div className="py-10 text-center">
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#009578]"></div>
+                  <p className="mt-3 text-gray-500 text-sm">Loading productivity metrics...</p>
+                </div>
+              ) : metricsError ? (
+                <div className="py-6">
+                  <div className="bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-700">
+                    {metricsError}
+                  </div>
+                </div>
+              ) : metricsData ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-white rounded-xl border p-4 text-center shadow-sm">
+                      <div className="text-2xl font-bold text-gray-800">{metricsData.totalTasks}</div>
+                      <div className="text-xs text-gray-500 mt-1">Total Tasks</div>
+                    </div>
+                    <div className="bg-green-50 rounded-xl border border-green-200 p-4 text-center shadow-sm">
+                      <div className="text-2xl font-bold text-green-600">{metricsData.summary?.onTime || 0}</div>
+                      <div className="text-xs text-green-700 mt-1">On Time</div>
+                      <div className="text-[11px] text-green-600">+{metricsData.summary?.onTime || 0} pts</div>
+                    </div>
+                    <div className="bg-red-50 rounded-xl border border-red-200 p-4 text-center shadow-sm">
+                      <div className="text-2xl font-bold text-red-600">{metricsData.summary?.late || 0}</div>
+                      <div className="text-xs text-red-700 mt-1">Late</div>
+                      <div className="text-[11px] text-red-600">-{metricsData.summary?.late || 0} pts</div>
+                    </div>
+                    <div
+                      className={`rounded-xl border p-4 text-center shadow-sm ${
+                        parseFloat(metricsData.productivityPercentage || 0) >= 80
+                          ? "bg-green-50 border-green-200"
+                          : parseFloat(metricsData.productivityPercentage || 0) >= 50
+                          ? "bg-yellow-50 border-yellow-200"
+                          : "bg-red-50 border-red-200"
+                      }`}
+                    >
+                      <div
+                        className={`text-2xl font-bold ${
+                          parseFloat(metricsData.productivityPercentage || 0) >= 80
+                            ? "text-green-600"
+                            : parseFloat(metricsData.productivityPercentage || 0) >= 50
+                            ? "text-yellow-600"
+                            : "text-red-600"
+                        }`}
+                      >
+                        {metricsData.productivityPercentage || 0}%
+                      </div>
+                      <div className="text-xs text-gray-600 mt-1">Productivity</div>
+                      <div className="text-[11px] text-gray-500">
+                        Points:{" "}
+                        {metricsData.productivityPoints >= 0
+                          ? `+${metricsData.productivityPoints}`
+                          : metricsData.productivityPoints}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-700">
+                    <p className="mb-1">
+                      <span className="font-semibold">Completed:</span> {metricsData.summary?.completed || 0} ·{" "}
+                      <span className="font-semibold text-green-700">On Time:</span> {metricsData.summary?.onTime || 0} ·{" "}
+                      <span className="font-semibold text-red-700">Late:</span> {metricsData.summary?.late || 0} ·{" "}
+                      <span className="font-semibold">Pending:</span>{" "}
+                      {(metricsData.summary?.pending || 0) +
+                        (metricsData.summary?.inProgress || 0) +
+                        (metricsData.summary?.awaiting || 0)}{" "}
+                      · <span className="font-semibold">Rejected:</span> {metricsData.summary?.rejected || 0}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
+
         {sortedProjects.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
             {sortedProjects.map(project => {
@@ -328,7 +468,17 @@ export default function MyProjects({
 
                     {/* Action Buttons */}
                     <div className="flex space-x-3">
-                      <button 
+                      <button
+                        onClick={() => handleViewMetrics(project)}
+                        className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-all font-medium text-sm flex items-center justify-center"
+                        title="View Productivity"
+                      >
+                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                        Metrics
+                      </button>
+                      <button
                         onClick={() => handleViewProject(project)}
                         className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 text-white py-2 px-4 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all font-medium text-sm flex items-center justify-center"
                       >
@@ -338,7 +488,6 @@ export default function MyProjects({
                         </svg>
                         View Details
                       </button>
-                    
                     </div>
                   </div>
                 </div>

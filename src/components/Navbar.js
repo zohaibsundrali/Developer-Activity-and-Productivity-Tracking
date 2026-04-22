@@ -125,6 +125,7 @@ export default function Navbar() {
     document.cookie = "admin_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
     document.cookie = "developer_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
     document.cookie = "admin_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    document.cookie = "developer_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
     
     setIsLoggedIn(false);
     setUser(null);

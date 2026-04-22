@@ -236,6 +236,17 @@ function DeveloperDashboardContent() {
     }
     
     setUser(authUser);
+
+    // Ensure cookies exist for middleware + API scoping (supports existing sessions)
+    try {
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + 30);
+      document.cookie = `developer_auth=true; expires=${expiryDate.toUTCString()}; path=/`;
+      document.cookie = `developer_id=${authUser.id}; expires=${expiryDate.toUTCString()}; path=/`;
+    } catch {
+      // ignore
+    }
+
     fetchDeveloperData(authUser);
     
     // Request notification permission
@@ -428,6 +439,7 @@ function DeveloperDashboardContent() {
     localStorage.removeItem("developerUser");
     // Clear cookies bhi agar hain
     document.cookie = "developer_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    document.cookie = "developer_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
     
     // Redirect to login
     router.push("/login");

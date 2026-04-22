@@ -211,8 +211,11 @@ export default function LoginPage() {
         // Dispatch auth-change event to update Navbar
         window.dispatchEvent(new Event('auth-change'));
         
-        // Set cookie for middleware
-        document.cookie = "developer_auth=true; path=/";
+        // Set cookie for middleware + API scoping (30 days expiry)
+        const expiryDate = new Date();
+        expiryDate.setDate(expiryDate.getDate() + 30);
+        document.cookie = `developer_auth=true; expires=${expiryDate.toUTCString()}; path=/`;
+        document.cookie = `developer_id=${userData.id}; expires=${expiryDate.toUTCString()}; path=/`;
         
         // Give time for event to propagate before redirecting
         setTimeout(() => {

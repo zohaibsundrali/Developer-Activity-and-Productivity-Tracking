@@ -6,6 +6,30 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
+function getCookieValue(request, name) {
+  try {
+    const viaCookiesApi = request?.cookies?.get?.(name);
+    if (viaCookiesApi?.value) return viaCookiesApi.value;
+    if (typeof viaCookiesApi === 'string') return viaCookiesApi;
+  } catch {
+    // ignore
+  }
+
+  const cookieHeader = request?.headers?.get?.('cookie') || '';
+  if (!cookieHeader) return null;
+
+  const parts = cookieHeader.split(';').map((p) => p.trim());
+  for (const part of parts) {
+    if (!part) continue;
+    const eqIdx = part.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = part.slice(0, eqIdx).trim();
+    if (key !== name) continue;
+    return decodeURIComponent(part.slice(eqIdx + 1));
+  }
+  return null;
+}
+
 /**
  * PRODUCTIVITY CALCULATION API
  * 
@@ -32,15 +56,60 @@ export async function GET(request) {
     const projectId = searchParams.get('projectId');
     const type = searchParams.get('type') || 'project'; // 'project', 'developer', 'overall'
 
+    const isAdminViewer = Boolean(getCookieValue(request, 'admin_auth'));
+    const isDeveloperViewer = !isAdminViewer && Boolean(getCookieValue(request, 'developer_auth'));
+    const cookieDeveloperId = getCookieValue(request, 'developer_id');
+
+    // Developer viewers must be scoped to their own ID from cookie
+    const effectiveDeveloperId = isDeveloperViewer ? cookieDeveloperId : developerId;
+
+    if (isDeveloperViewer && !effectiveDeveloperId) {
+      return NextResponse.json(
+        { error: 'Unauthorized: developer session missing.' },
+        { status: 401 }
+      );
+    }
+
+    // Developers cannot access overall/global metrics
+    if (isDeveloperViewer && type === 'overall') {
+      return NextResponse.json(
+        { error: 'Forbidden' },
+        { status: 403 }
+      );
+    }
+
     // Project-specific productivity
     if (type === 'project' && projectId) {
-      const productivity = await calculateProjectProductivity(projectId, developerId);
+      // Enforce: developers can only see metrics for projects assigned to them
+      if (isDeveloperViewer) {
+        const { data: project, error: projectError } = await supabase
+          .from('projects')
+          .select('id, assigned_developer_id')
+          .eq('id', projectId)
+          .single();
+
+        if (projectError || !project) {
+          return NextResponse.json(
+            { error: 'Project not found' },
+            { status: 404 }
+          );
+        }
+
+        if (!project.assigned_developer_id || String(project.assigned_developer_id) !== String(effectiveDeveloperId)) {
+          return NextResponse.json(
+            { error: 'Forbidden' },
+            { status: 403 }
+          );
+        }
+      }
+
+      const productivity = await calculateProjectProductivity(projectId, effectiveDeveloperId);
       return NextResponse.json({ success: true, ...productivity });
     }
 
     // Developer's overall productivity
-    if (type === 'developer' && developerId) {
-      const productivity = await calculateDeveloperProductivity(developerId);
+    if (type === 'developer' && effectiveDeveloperId) {
+      const productivity = await calculateDeveloperProductivity(effectiveDeveloperId);
       return NextResponse.json({ success: true, ...productivity });
     }
 
