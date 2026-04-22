@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from '@supabase/supabase-js';
 import AdminGanttChart from "@/components/admin/AdminGanttChart";
+import { isSessionExpired, clearAdminSession } from "@/utils/sessionPolicy";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -21,17 +22,13 @@ const checkAdminAuth = () => {
 
     // Verify it's actually an admin
     if (userData.role !== 'admin') {
-      localStorage.removeItem("adminUser");
+      clearAdminSession();
       return false;
     }
 
-    // Session expiry check (24 hours)
-    const loginTime = new Date(userData.loginTime);
-    const currentTime = new Date();
-    const hoursDiff = (currentTime - loginTime) / (1000 * 60 * 60);
-
-    if (hoursDiff > 24) {
-      localStorage.removeItem("adminUser");
+    // Session expiry check (7 days sliding inactivity)
+    if (isSessionExpired(userData)) {
+      clearAdminSession();
       return false;
     }
 

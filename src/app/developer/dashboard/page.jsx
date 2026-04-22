@@ -7,6 +7,7 @@ import Navigation from "@/components/developer/Navigation";
 import DashboardOverview from "@/components/developer/DashboardOverview";
 import MyProjects from "@/components/developer/MyProjects";
 import ProjectDetails from "@/components/developer/ProjectDetails";
+import { isSessionExpired, clearDeveloperSession, touchDeveloperSession } from "@/utils/sessionPolicy";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -22,19 +23,16 @@ const checkAuth = () => {
 
   try {
     const userData = JSON.parse(developerUser);
-    
-    // Session expiry check (24 hours)
-    const loginTime = new Date(userData.loginTime);
-    const currentTime = new Date();
-    const hoursDiff = (currentTime - loginTime) / (1000 * 60 * 60);
-    
-    if (hoursDiff > 24) {
-      localStorage.removeItem("developerUser");
+
+    // Sliding inactivity expiry check (7 days)
+    if (isSessionExpired(userData)) {
+      clearDeveloperSession();
       return false;
     }
     
     return userData;
   } catch (error) {
+    clearDeveloperSession();
     return false;
   }
 };
@@ -51,7 +49,7 @@ const withAuth = (WrappedComponent) => {
         const user = checkAuth();
         if (!user) {
           // Clear any existing auth data
-          localStorage.removeItem("developerUser");
+          clearDeveloperSession();
           // Redirect to login
           router.push("/login");
         } else {
@@ -73,9 +71,8 @@ const withAuth = (WrappedComponent) => {
       const handleBeforeUnload = () => {
         const user = checkAuth();
         if (user) {
-          // Update last activity time
-          user.lastActivity = new Date().toISOString();
-          localStorage.setItem("developerUser", JSON.stringify(user));
+          // Update last activity + refresh cookies
+          touchDeveloperSession(user);
         }
       };
 
@@ -237,12 +234,9 @@ function DeveloperDashboardContent() {
     
     setUser(authUser);
 
-    // Ensure cookies exist for middleware + API scoping (supports existing sessions)
+    // Ensure cookies exist for middleware + API scoping.
     try {
-      const expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + 30);
-      document.cookie = `developer_auth=true; expires=${expiryDate.toUTCString()}; path=/`;
-      document.cookie = `developer_id=${authUser.id}; expires=${expiryDate.toUTCString()}; path=/`;
+      touchDeveloperSession(authUser);
     } catch {
       // ignore
     }
@@ -253,13 +247,6 @@ function DeveloperDashboardContent() {
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
-    
-    // Auto logout after 30 minutes of inactivity
-    const inactivityTimeout = setTimeout(() => {
-      handleLogout();
-    }, 30 * 60 * 1000);
-
-    return () => clearTimeout(inactivityTimeout);
   }, [router]);
 
   // Setup realtime notifications

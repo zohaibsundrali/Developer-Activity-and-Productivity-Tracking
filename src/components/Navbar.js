@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { isSessionExpired, clearAdminSession, clearDeveloperSession } from '@/utils/sessionPolicy';
 
 const navItems = [
   { name: 'Overview', href: '/' }
@@ -38,6 +39,13 @@ export default function Navbar() {
           const adminData = JSON.parse(adminDataStr);
           
           if (adminData && typeof adminData === 'object') {
+            if (isSessionExpired(adminData)) {
+              clearAdminSession();
+              setIsLoggedIn(false);
+              setUser(null);
+              setUserRole(null);
+              return;
+            }
             setIsLoggedIn(true);
             setUser(adminData);
             setUserRole(USER_TYPES.ADMIN);
@@ -53,6 +61,13 @@ export default function Navbar() {
           const developerData = JSON.parse(developerDataStr);
           
           if (developerData && typeof developerData === 'object') {
+            if (isSessionExpired(developerData)) {
+              clearDeveloperSession();
+              setIsLoggedIn(false);
+              setUser(null);
+              setUserRole(null);
+              return;
+            }
             setIsLoggedIn(true);
             setUser(developerData);
             setUserRole(USER_TYPES.DEVELOPER);

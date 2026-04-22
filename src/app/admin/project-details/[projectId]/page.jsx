@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import { showError, showWarning } from "@/utils/alerts";
+import { isSessionExpired, clearAdminSession } from "@/utils/sessionPolicy";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -19,16 +20,12 @@ const checkAdminAuth = () => {
     const userData = JSON.parse(adminUser);
 
     if (userData.role !== "admin") {
-      localStorage.removeItem("adminUser");
+      clearAdminSession();
       return false;
     }
 
-    const loginTime = new Date(userData.loginTime);
-    const currentTime = new Date();
-    const hoursDiff = (currentTime - loginTime) / (1000 * 60 * 60);
-
-    if (hoursDiff > 24) {
-      localStorage.removeItem("adminUser");
+    if (isSessionExpired(userData)) {
+      clearAdminSession();
       return false;
     }
 

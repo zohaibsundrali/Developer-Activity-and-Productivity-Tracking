@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import emailjs from "@emailjs/browser";
 import { showInfo, showPre, showSuccess } from "@/utils/alerts";
+import { SESSION_MAX_AGE_DAYS } from "@/utils/sessionPolicy";
 
 export default function AdminRegistration() {
   const [formData, setFormData] = useState({
@@ -276,8 +277,25 @@ const handleRegister = async (e) => {
       }
 
       // Store user session
-      localStorage.setItem("adminUser", JSON.stringify(data[0]));
+      const nowIso = new Date().toISOString();
+      const adminSession = {
+        ...data[0],
+        role: 'admin',
+        loginTime: nowIso,
+        lastActivity: nowIso,
+      };
+      localStorage.setItem("adminUser", JSON.stringify(adminSession));
       localStorage.setItem("adminToken", "admin-authenticated");
+
+      // Set cookies for middleware (7 days expiry)
+      try {
+        const expiryDate = new Date();
+        expiryDate.setDate(expiryDate.getDate() + SESSION_MAX_AGE_DAYS);
+        document.cookie = `admin_auth=true; expires=${expiryDate.toUTCString()}; path=/`;
+        document.cookie = `admin_id=${adminSession.id}; expires=${expiryDate.toUTCString()}; path=/`;
+      } catch {
+        // ignore
+      }
       
       showSuccess("Registration complete", "Registration successful. Redirecting to dashboard.");
       router.push("/admin/dashboard");

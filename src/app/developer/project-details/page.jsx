@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabaseClient';
 import TaskCompletionModal from "@/components/developer/TaskCompletionModal";
 import { showError, showInfo, showWarning } from "@/utils/alerts";
+import { isSessionExpired, clearDeveloperSession } from '@/utils/sessionPolicy';
 
 export default function ProjectDetailsPage() {
   const router = useRouter();
@@ -145,6 +146,13 @@ export default function ProjectDetailsPage() {
         if (storedUser) {
           try {
             const userData = JSON.parse(storedUser);
+
+            // Enforce global session policy (7 days sliding inactivity)
+            if (isSessionExpired(userData)) {
+              clearDeveloperSession();
+              router.push('/login');
+              return;
+            }
             
             // Set from localStorage immediately for better UX
             setCurrentDeveloper({
@@ -187,15 +195,10 @@ export default function ProjectDetailsPage() {
             setCurrentDeveloper(developer);
           }
           
-          // Update localStorage with fresh data
-          localStorage.setItem("developerUser", JSON.stringify({
-            user: user,
-            timestamp: new Date().toISOString()
-          }));
         } else {
           // If no user found and no localStorage, redirect to login
           if (!storedUser) {
-            router.push('/developer/login');
+            router.push('/login');
           }
         }
       } catch (err) {

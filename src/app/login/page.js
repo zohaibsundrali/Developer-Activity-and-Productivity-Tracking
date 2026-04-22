@@ -1,8 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from '@supabase/supabase-js';
 import { useRouter } from "next/navigation";
+import { SESSION_MAX_AGE_DAYS } from "@/utils/sessionPolicy";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -10,6 +11,7 @@ const supabase = createClient(
 );
 
 export default function LoginPage() {
+  const [mounted, setMounted] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("developer");
@@ -19,6 +21,10 @@ export default function LoginPage() {
   const [verificationCode, setVerificationCode] = useState("");
   const [userData, setUserData] = useState(null);
   const router = useRouter();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // New function to go back to home/starting page
   const handleGoToHome = () => {
@@ -192,9 +198,9 @@ export default function LoginPage() {
         // Dispatch auth-change event to update Navbar
         window.dispatchEvent(new Event('auth-change'));
         
-        // Set cookie for middleware (30 days expiry)
+        // Set cookie for middleware (7 days expiry)
         const expiryDate = new Date();
-        expiryDate.setDate(expiryDate.getDate() + 30);
+        expiryDate.setDate(expiryDate.getDate() + SESSION_MAX_AGE_DAYS);
         document.cookie = `admin_auth=true; expires=${expiryDate.toUTCString()}; path=/`;
         
         // Set additional security cookie
@@ -211,9 +217,9 @@ export default function LoginPage() {
         // Dispatch auth-change event to update Navbar
         window.dispatchEvent(new Event('auth-change'));
         
-        // Set cookie for middleware + API scoping (30 days expiry)
+        // Set cookie for middleware + API scoping (7 days expiry)
         const expiryDate = new Date();
-        expiryDate.setDate(expiryDate.getDate() + 30);
+        expiryDate.setDate(expiryDate.getDate() + SESSION_MAX_AGE_DAYS);
         document.cookie = `developer_auth=true; expires=${expiryDate.toUTCString()}; path=/`;
         document.cookie = `developer_id=${userData.id}; expires=${expiryDate.toUTCString()}; path=/`;
         
@@ -255,6 +261,12 @@ export default function LoginPage() {
     setVerificationCode("");
     setError("");
   };
+
+  if (!mounted) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-[#009578]" />
+    );
+  }
 
   if (verificationStep) {
     return (

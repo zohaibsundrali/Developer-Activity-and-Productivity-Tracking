@@ -11,6 +11,7 @@ import ViewDevelopers from "@/components/admin/ViewDevelopers";
 import DeveloperActivity from "@/components/admin/DeveloperActivity";
 import TaskReviewPanel from "@/components/admin/TaskReviewPanel";
 import ProductivityDashboard from "@/components/admin/ProductivityDashboard";
+import { isSessionExpired, clearAdminSession } from "@/utils/sessionPolicy";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -29,18 +30,13 @@ const checkAdminAuth = () => {
     
     // Verify it's actually an admin
     if (userData.role !== 'admin') {
-      localStorage.removeItem("adminUser");
+      clearAdminSession();
       return false;
     }
     
-    // Session expiry check (24 hours)
-    const loginTime = new Date(userData.loginTime);
-    const currentTime = new Date();
-    const hoursDiff = (currentTime - loginTime) / (1000 * 60 * 60);
-    
-    if (hoursDiff > 24) {
-      localStorage.removeItem("adminUser");
-      document.cookie = "admin_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    // Session expiry check (7 days)
+    if (isSessionExpired(userData)) {
+      clearAdminSession();
       return false;
     }
     
@@ -82,37 +78,15 @@ const withAdminAuth = (WrappedComponent) => {
       };
 
       // Auto logout after inactivity
-      let inactivityTimer;
-      const resetInactivityTimer = () => {
-        clearTimeout(inactivityTimer);
-        inactivityTimer = setTimeout(() => {
-          handleLogout();
-        }, 30 * 60 * 1000); // 30 minutes
-      };
-
-      // Event listeners for activity
-      const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
-      
-      activityEvents.forEach(event => {
-        window.addEventListener(event, resetInactivityTimer);
-      });
-
-      resetInactivityTimer(); // Start timer
-
       window.addEventListener("storage", handleStorageChange);
 
       return () => {
-        clearTimeout(inactivityTimer);
-        activityEvents.forEach(event => {
-          window.removeEventListener(event, resetInactivityTimer);
-        });
         window.removeEventListener("storage", handleStorageChange);
       };
     }, [router]);
 
     const handleLogout = () => {
-      localStorage.removeItem("adminUser");
-      document.cookie = "admin_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      clearAdminSession();
       router.push("/login");
     };
 
