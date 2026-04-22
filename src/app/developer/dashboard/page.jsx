@@ -7,6 +7,7 @@ import Navigation from "@/components/developer/Navigation";
 import DashboardOverview from "@/components/developer/DashboardOverview";
 import MyProjects from "@/components/developer/MyProjects";
 import ProjectDetails from "@/components/developer/ProjectDetails";
+import Account from "@/components/developer/Account";
 import { isSessionExpired, clearDeveloperSession, touchDeveloperSession } from "@/utils/sessionPolicy";
 
 const supabase = createClient(
@@ -461,6 +462,8 @@ function DeveloperDashboardContent() {
     switch (activeSection) {
       case "projects":
         return <MyProjects {...contentProps} />;
+      case "account":
+        return <Account user={user} />;
       case "overview":
       default:
         return <DashboardOverview {...contentProps} />;

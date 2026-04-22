@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from '@supabase/supabase-js';
+import bcrypt from "bcryptjs";
 import { useRouter } from "next/navigation";
 import { SESSION_MAX_AGE_DAYS } from "@/utils/sessionPolicy";
 
@@ -9,6 +10,16 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
+
+const isBcryptHash = (value) => typeof value === "string" && /^\$2[aby]\$\d{2}\$/.test(value);
+
+const verifyPassword = (inputPassword, storedPassword) => {
+  if (typeof storedPassword !== "string") return false;
+  if (isBcryptHash(storedPassword)) {
+    return bcrypt.compareSync(inputPassword, storedPassword);
+  }
+  return storedPassword === inputPassword;
+};
 
 export default function LoginPage() {
   const [mounted, setMounted] = useState(false);
@@ -101,10 +112,9 @@ export default function LoginPage() {
           .from('admin_users')
           .select('*')
           .eq('email', email)
-          .eq('password', password)
-          .single();
+          .maybeSingle();
 
-        if (adminError || !adminData) {
+        if (adminError || !adminData || !verifyPassword(password, adminData.password)) {
           throw new Error('Invalid admin credentials');
         }
 
@@ -129,10 +139,9 @@ export default function LoginPage() {
           .from('developers')
           .select('*')
           .eq('email', email)
-          .eq('password', password)
-          .single();
+          .maybeSingle();
 
-        if (developerError || !developerData) {
+        if (developerError || !developerData || !verifyPassword(password, developerData.password)) {
           throw new Error('Invalid developer credentials');
         }
 
