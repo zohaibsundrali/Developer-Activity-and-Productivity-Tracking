@@ -11,6 +11,7 @@ import {
   Cell,
   ReferenceLine,
   Legend,
+  LabelList,
 } from "recharts";
 
 /**
@@ -25,10 +26,27 @@ import {
  * - Productivity points display
  * - Real-time updates via Supabase subscriptions
  */
-export default function AdminGanttChart({ tasks, projectName, developers }) {
+export default function AdminGanttChart({ tasks, projectName, developers, showProgress = false }) {
   const [viewMode, setViewMode] = useState("chart"); // chart, list, table
   const [filterStatus, setFilterStatus] = useState("all"); // all, pending, in_progress, completed, etc.
   const [filterDeveloper, setFilterDeveloper] = useState("all");
+
+  const statusProgress = {
+    completed: 100,
+    awaiting_approval: 80,
+    in_progress: 50,
+    pending: 0,
+    rejected: 0,
+  };
+
+  const getProgressPercent = (task) => {
+    const explicit = task?.progress_percentage;
+    if (explicit !== undefined && explicit !== null && explicit !== "") {
+      const n = Number(explicit);
+      if (Number.isFinite(n)) return Math.max(0, Math.min(100, Math.round(n)));
+    }
+    return statusProgress[task?.status] ?? 0;
+  };
 
   // Status colors mapped to task statuses
   const statusColors = {
@@ -90,6 +108,11 @@ export default function AdminGanttChart({ tasks, projectName, developers }) {
       const startDay = Math.ceil((startDate - minDate) / (1000 * 60 * 60 * 24));
       const duration = Math.max(1, Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1);
 
+      const progressPercent = getProgressPercent(task);
+      const progressDurationRaw = (duration * progressPercent) / 100;
+      const progressDuration = Math.max(0, Math.min(duration, Math.round(progressDurationRaw * 10) / 10));
+      const remainingDuration = Math.max(0, Math.round((duration - progressDuration) * 10) / 10);
+
       // Calculate if completed on time
       let isOnTime = null;
       let completionStatus = null;
@@ -117,7 +140,10 @@ export default function AdminGanttChart({ tasks, projectName, developers }) {
         name: task.task_title || 'Untitled Task',
         start: startDay,
         duration: duration,
+        progressDuration,
+        remainingDuration,
         status: task.status || 'pending',
+        progressPercent,
         isOnTime: isOnTime,
         completionStatus: completionStatus,
         productivityPoints: task.productivity_points || 0,
@@ -131,6 +157,26 @@ export default function AdminGanttChart({ tasks, projectName, developers }) {
       };
     });
   }, [filteredTasks, developers]);
+
+  const ProgressLabel = ({ x, y, width, height, value }) => {
+    if (!showProgress) return null;
+    const pct = Number(value);
+    if (!Number.isFinite(pct)) return null;
+    if (width < 28) return null;
+
+    return (
+      <text
+        x={x + width / 2}
+        y={y + height / 2 + 4}
+        textAnchor="middle"
+        fill="#ffffff"
+        fontSize={11}
+        fontWeight={700}
+      >
+        {pct}%
+      </text>
+    );
+  };
 
   // Calculate today's position on the chart
   const todayPosition = useMemo(() => {
@@ -192,6 +238,9 @@ export default function AdminGanttChart({ tasks, projectName, developers }) {
             <p><span className="font-medium">Start:</span> {data.startDate}</p>
             <p><span className="font-medium">End:</span> {data.endDate}</p>
             <p><span className="font-medium">Duration:</span> {data.duration} days</p>
+            {showProgress && (
+              <p><span className="font-medium">Progress:</span> {data.progressPercent}%</p>
+            )}
             <p className="capitalize">
               <span className="font-medium">Status:</span>{" "}
               <span className={`font-semibold ${
@@ -433,15 +482,43 @@ export default function AdminGanttChart({ tasks, projectName, developers }) {
                     {/* Invisible bar for offset (start position) */}
                     <Bar dataKey="start" stackId="a" fill="transparent" />
 
-                    {/* Duration bar (actual task timeline) */}
-                    <Bar dataKey="duration" stackId="a" radius={[4, 4, 4, 4]}>
-                      {chartData.map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={statusColors[entry.status] || statusColors.pending}
-                        />
-                      ))}
-                    </Bar>
+                    {showProgress ? (
+                      <>
+                        {/* Filled progress segment */}
+                        <Bar dataKey="progressDuration" stackId="a">
+                          {chartData.map((entry, index) => (
+                            <Cell
+                              key={`progress-cell-${index}`}
+                              fill={statusColors[entry.status] || statusColors.pending}
+                              radius={entry.remainingDuration === 0 ? [4, 4, 4, 4] : [4, 0, 0, 4]}
+                            />
+                          ))}
+                        </Bar>
+
+                        {/* Remaining segment (same color, lighter) */}
+                        <Bar dataKey="remainingDuration" stackId="a">
+                          {chartData.map((entry, index) => (
+                            <Cell
+                              key={`remaining-cell-${index}`}
+                              fill={statusColors[entry.status] || statusColors.pending}
+                              fillOpacity={0.25}
+                              radius={entry.progressDuration === 0 ? [4, 4, 4, 4] : [0, 4, 4, 0]}
+                            />
+                          ))}
+                          <LabelList dataKey="progressPercent" content={<ProgressLabel />} />
+                        </Bar>
+                      </>
+                    ) : (
+                      /* Default Admin duration bar */
+                      <Bar dataKey="duration" stackId="a" radius={[4, 4, 4, 4]}>
+                        {chartData.map((entry, index) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={statusColors[entry.status] || statusColors.pending}
+                          />
+                        ))}
+                      </Bar>
+                    )}
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -466,6 +543,9 @@ export default function AdminGanttChart({ tasks, projectName, developers }) {
                   <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Start</th>
                   <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">End</th>
                   <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Duration</th>
+                  {showProgress && (
+                    <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Progress</th>
+                  )}
                   <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Status</th>
                   <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Completion</th>
                   <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Points</th>
@@ -489,6 +569,9 @@ export default function AdminGanttChart({ tasks, projectName, developers }) {
                     <td className="px-4 py-3 text-center text-sm text-gray-600">{task.startDate}</td>
                     <td className="px-4 py-3 text-center text-sm text-gray-600">{task.endDate}</td>
                     <td className="px-4 py-3 text-center text-sm text-gray-600">{task.duration} days</td>
+                    {showProgress && (
+                      <td className="px-4 py-3 text-center text-sm text-gray-600">{task.progressPercent}%</td>
+                    )}
                     <td className="px-4 py-3 text-center">
                       <span
                         className="px-2.5 py-1 rounded-full text-xs font-medium"

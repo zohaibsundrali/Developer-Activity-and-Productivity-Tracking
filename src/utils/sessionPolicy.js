@@ -92,6 +92,13 @@ function touchStoredSession(storageKey, authCookieName, idCookieName, existingSe
     lastActivity: nowIso
   };
 
+  // Ensure we always have a stable top-level id for cookie scoping.
+  // Some session shapes store the ID under `user.id` (e.g. Supabase auth session).
+  const sessionId = updated?.id ?? updated?.user?.id ?? updated?.user_id;
+  if (updated?.id == null && sessionId != null) {
+    updated.id = sessionId;
+  }
+
   try {
     localStorage.setItem(storageKey, JSON.stringify(updated));
   } catch {
@@ -100,8 +107,8 @@ function touchStoredSession(storageKey, authCookieName, idCookieName, existingSe
 
   const expiryDate = new Date(Date.now() + SESSION_MAX_AGE_MS + COOKIE_GRACE_MS);
   setCookie(authCookieName, 'true', expiryDate);
-  if (updated.id != null) {
-    setCookie(idCookieName, updated.id, expiryDate);
+  if (sessionId != null) {
+    setCookie(idCookieName, sessionId, expiryDate);
   }
 
   return updated;

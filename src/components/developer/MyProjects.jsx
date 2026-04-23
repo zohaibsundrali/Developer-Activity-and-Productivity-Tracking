@@ -1,5 +1,6 @@
 "use client";
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { showInfo, showWarning } from "@/utils/alerts";
 
 export default function MyProjects({ 
@@ -7,6 +8,7 @@ export default function MyProjects({
   onViewProjectDetails, // ✅ Added prop for navigation
   user 
 }) {
+  const router = useRouter();
   const [sortBy, setSortBy] = useState('recent');
   const [filterStatus, setFilterStatus] = useState('all');
 
@@ -59,6 +61,11 @@ export default function MyProjects({
   const handleSubmitWork = (project) => {
     showInfo("Submit work", `Submit work for project: ${project.name}.`);
     // You can implement actual submission logic here
+  };
+
+  const handleViewTimeline = (project) => {
+    if (!project?.id) return;
+    router.push(`/developer/gantt-chart/${project.id}`);
   };
 
   const handleViewMetrics = async (project) => {
@@ -466,29 +473,39 @@ export default function MyProjects({
                       </div>
                     )}
 
-                    {/* Action Buttons */}
-                    <div className="flex space-x-3">
+                    {/* Action Buttons (match Admin: Metrics + Timeline, then View Detail) */}
+                    <div className="grid grid-cols-2 gap-2">
                       <button
                         onClick={() => handleViewMetrics(project)}
-                        className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-all font-medium text-sm flex items-center justify-center"
+                        className="bg-green-500 text-white py-2 px-2 rounded text-xs hover:bg-green-600 transition-colors flex items-center justify-center"
                         title="View Productivity"
                       >
-                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                         </svg>
                         Metrics
                       </button>
                       <button
-                        onClick={() => handleViewProject(project)}
-                        className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 text-white py-2 px-4 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all font-medium text-sm flex items-center justify-center"
+                        onClick={() => handleViewTimeline(project)}
+                        className="bg-purple-500 text-white py-2 px-2 rounded text-xs hover:bg-purple-600 transition-colors flex items-center justify-center"
+                        title="View Gantt Chart Timeline"
                       >
-                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
-                        View Details
+                        Timeline
                       </button>
                     </div>
+                    <button
+                      onClick={() => handleViewProject(project)}
+                      className="mt-2 w-full bg-blue-600 text-white py-2 px-2 rounded text-xs hover:bg-blue-700 transition-colors flex items-center justify-center"
+                      title="View Project Details"
+                    >
+                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      View Detail
+                    </button>
                   </div>
                 </div>
               );
