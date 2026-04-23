@@ -1,13 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
-import bcrypt from 'bcryptjs';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-const isBcryptHash = (value) =>
-  typeof value === 'string' && /^\$2[aby]\$\d{2}\$/.test(value);
 
 const normalizeString = (value) => (typeof value === 'string' ? value.trim() : '');
 
@@ -74,23 +70,15 @@ export async function POST(request) {
     }
 
     const storedPassword = developer.password;
-
-    let currentPasswordValid = false;
-    if (isBcryptHash(storedPassword)) {
-      currentPasswordValid = bcrypt.compareSync(currentPassword, storedPassword);
-    } else {
-      currentPasswordValid = typeof storedPassword === 'string' && storedPassword === currentPassword;
-    }
+    const currentPasswordValid = typeof storedPassword === 'string' && storedPassword === currentPassword;
 
     if (!currentPasswordValid) {
       return jsonError('Current password is incorrect.', 400);
     }
 
-    const hashedPassword = bcrypt.hashSync(newPassword, 12);
-
     const { error: updateError } = await supabase
       .from('developers')
-      .update({ password: hashedPassword })
+      .update({ password: newPassword })
       .eq('id', developerId);
 
     if (updateError) {

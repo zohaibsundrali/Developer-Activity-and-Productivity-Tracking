@@ -353,8 +353,14 @@ export default function DeveloperGanttChartPage() {
           </div>
         </div>
 
-        {/* Gantt Chart Component (same UI as Admin, but shows progress %) */}
-        <AdminGanttChart tasks={tasks} projectName={project.name} developers={developers} showProgress />
+        {/* Gantt Chart Component (same UI as Admin, but hides developer selector in developer view) */}
+        <AdminGanttChart
+          tasks={tasks}
+          projectName={project.name}
+          developers={developers}
+          showProgress
+          showDeveloperFilter={false}
+        />
 
         {/* Assigned Developers (will be just the current dev in this view) */}
         {Object.keys(developers).length > 0 && (

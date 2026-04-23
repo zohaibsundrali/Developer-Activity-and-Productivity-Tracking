@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { showError, showSuccess, showWarning } from "@/utils/alerts";
 
 export default function AddDeveloper({ user, developers: initialDevelopers, onRefresh, supabase }) {
@@ -14,12 +14,7 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
   const [loading, setLoading] = useState(true);
   const [missingColumns, setMissingColumns] = useState(false);
 
-  // Fetch current admin's developers on component mount
-  useEffect(() => {
-    fetchAdminDevelopers();
-  }, []);
-
-  const fetchAdminDevelopers = async () => {
+  const fetchAdminDevelopers = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -68,7 +63,16 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase]);
+
+  // Fetch current admin's developers on component mount
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void fetchAdminDevelopers();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [fetchAdminDevelopers]);
 
   const handleAddDeveloper = async (e) => {
     e.preventDefault();
@@ -119,6 +123,7 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
       const developerData = {
         name: newDeveloper.name.trim(),
         email: newDeveloper.email.trim(),
+        // Development/testing only: store password as plain text.
         password: newDeveloper.password,
         status: 'active',
         projects_count: 0,
@@ -148,6 +153,7 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
           const simplifiedData = {
             name: newDeveloper.name.trim(),
             email: newDeveloper.email.trim(),
+            // Development/testing only: store password as plain text.
             password: newDeveloper.password,
             status: 'active',
             projects_count: 0,

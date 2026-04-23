@@ -20,7 +20,7 @@ export default function DeveloperActivity() {
   const [currentAdmin, setCurrentAdmin] = useState(null);
   const [developers, setDevelopers] = useState([]);
   const [selectedDeveloper, setSelectedDeveloper] = useState("");
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toLocaleDateString("en-CA"));
   const [timeRange, setTimeRange] = useState("today");
   const [loading, setLoading] = useState(false);
   const [fetchingDevelopers, setFetchingDevelopers] = useState(false);
@@ -93,10 +93,10 @@ export default function DeveloperActivity() {
 
   // ─── Date Filter ───
   const getDateFilter = useCallback(() => {
-    const start = new Date(selectedDate);
-    const end = new Date(selectedDate);
-    start.setHours(0, 0, 0, 0);
-    end.setHours(23, 59, 59, 999);
+    const [yy, mm, dd] = String(selectedDate).split("-").map(Number);
+    // Build the range using *local* time to avoid UTC date drift.
+    const start = new Date(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0);
+    const end = new Date(yy, (mm || 1) - 1, dd || 1, 23, 59, 59, 999);
     if (timeRange === "week") start.setDate(start.getDate() - 7);
     if (timeRange === "month") start.setMonth(start.getMonth() - 1);
     return { start: start.toISOString(), end: end.toISOString() };
@@ -111,9 +111,9 @@ export default function DeveloperActivity() {
     const { start, end } = getDateFilter();
     const devId = dev.id;
     const devEmail = dev.email;
-    const dayStart = new Date(selectedDate);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(dayStart);
+    const [yy, mm, dd] = String(selectedDate).split("-").map(Number);
+    const dayStart = new Date(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0);
+    const dayEnd = new Date(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0);
     dayEnd.setDate(dayEnd.getDate() + 1);
 
     try {
@@ -124,7 +124,7 @@ export default function DeveloperActivity() {
         devId ? `developer_id.eq.${devId}` : null,
       ].filter(Boolean).join(",");
 
-      const [sessionsRes, mouseRes, keyboardApiRes, appRes, screenshotRes, todayTotalRes] = await Promise.all([
+      const [sessionsRes, mouseRes, keyboardApiRes, appRes, screenshotRes, screenshotCreatedAtRes, todayTotalRes] = await Promise.all([
         // Match sessions for this developer by email, user_id, or developer_id
         supabase
           .from("productivity_sessions")
@@ -136,7 +136,19 @@ export default function DeveloperActivity() {
         supabase.from("mouse_activities").select("id, session_id, developer_id, developer_name, timestamp, activity_status, active_percentage, idle_percentage, created_at").eq("developer_id", devId).gte("created_at", start).lte("created_at", end).order("timestamp", { ascending: false }),
         fetch(`/api/keyboard-stats?developerId=${encodeURIComponent(devId)}&email=${encodeURIComponent(devEmail)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`).then(r => r.json()),
         supabase.from("app_usage").select("id, session_id, user_email, app_name, app_name_raw, window_title, start_time, end_time, duration_seconds, duration_minutes, tracked_at, created_at, is_new_app, user_login").eq("user_email", devEmail).gte("tracked_at", start).lte("tracked_at", end).order("tracked_at", { ascending: false }),
-        supabase.from("screenshots").select("id, developer_id, developer_email, filename, public_url, storage_path, width, height, size_kb, mime_type, app_active, timestamp, created_at").or(`developer_id.eq.${devId},developer_email.eq.${devEmail}`).gte("timestamp", start).lte("timestamp", end).order("timestamp", { ascending: false }),
+        // Screenshots schema has varied; select '*' and normalize client-side.
+        supabase.from("screenshots").select("*")
+          .or(`developer_id.eq.${devId},developer_email.eq.${devEmail}`)
+          .gte("timestamp", start)
+          .lt("timestamp", end)
+          .order("timestamp", { ascending: false }),
+        // Fallback for rows missing `timestamp`: use created_at but keep the same date range.
+        supabase.from("screenshots").select("*")
+          .or(`developer_id.eq.${devId},developer_email.eq.${devEmail}`)
+          .gte("created_at", start)
+          .lt("created_at", end)
+          .order("created_at", { ascending: false })
+          .limit(200),
         devEmail
           ? supabase
               .from("productivity_sessions")
@@ -151,7 +163,10 @@ export default function DeveloperActivity() {
       let finalMouse = mouseRes.data || [];
       let finalKeyboard = keyboardApiRes.data || [];
       let finalApp = appRes.data || [];
-      let finalScreenshots = screenshotRes.data || [];
+
+      let screenshotRows = screenshotRes.data || [];
+      let screenshotCreatedAtRows = screenshotCreatedAtRes.data || [];
+      let finalScreenshots = [];
 
       const todayTotal = (todayTotalRes?.data || []).reduce(
         (sum, row) => sum + (Number(row.total_duration) || 0),
@@ -173,7 +188,7 @@ export default function DeveloperActivity() {
 
       // Fallback to email if developer_id returned nothing
       if (!finalSessions.length && !finalMouse.length) {
-        const [s2, m2, a2, ss2] = await Promise.all([
+        const [s2, m2, a2, ss2, ss2CreatedAt] = await Promise.all([
           supabase
             .from("productivity_sessions")
             .select("*")
@@ -183,54 +198,50 @@ export default function DeveloperActivity() {
             .order("start_time", { ascending: false }),
           supabase.from("mouse_activities").select("id, session_id, developer_id, developer_name, timestamp, activity_status, active_percentage, idle_percentage, created_at").eq("email", devEmail).gte("created_at", start).lte("created_at", end).order("timestamp", { ascending: false }),
           supabase.from("app_usage").select("id, session_id, user_email, app_name, app_name_raw, window_title, start_time, end_time, duration_seconds, duration_minutes, tracked_at, created_at, is_new_app, user_login").eq("user_email", devEmail).gte("tracked_at", start).lte("tracked_at", end).order("tracked_at", { ascending: false }),
-          supabase.from("screenshots").select("id, developer_id, developer_email, filename, public_url, storage_path, width, height, size_kb, mime_type, app_active, timestamp, created_at").or(`developer_id.eq.${devId},developer_email.eq.${devEmail}`).gte("timestamp", start).lte("timestamp", end).order("timestamp", { ascending: false }),
+          supabase.from("screenshots").select("*")
+            .or(`developer_id.eq.${devId},developer_email.eq.${devEmail}`)
+            .gte("timestamp", start)
+            .lt("timestamp", end)
+            .order("timestamp", { ascending: false }),
+          supabase.from("screenshots").select("*")
+            .or(`developer_id.eq.${devId},developer_email.eq.${devEmail}`)
+            .gte("created_at", start)
+            .lt("created_at", end)
+            .order("created_at", { ascending: false })
+            .limit(200),
         ]);
         finalSessions = s2.data || [];
         finalMouse = m2.data || [];
         finalApp = a2.data || [];
-        finalScreenshots = ss2.data || [];
+        screenshotRows = ss2.data || [];
+        screenshotCreatedAtRows = ss2CreatedAt.data || [];
       }
 
       // Keyboard data already fetched via API route with all fallbacks built-in
 
-      // Independent screenshot fallback: try by developer_email with created_at, then without date filter
-      if (!finalScreenshots.length) {
-        const { data: ssEmail, error: ssEmailErr } = await supabase.from("screenshots")
-          .select("id, developer_id, developer_email, filename, public_url, storage_path, width, height, size_kb, mime_type, app_active, timestamp, created_at")
-          .eq("developer_email", devEmail)
-          .gte("created_at", start).lte("created_at", end)
-          .order("timestamp", { ascending: false });
-        if (ssEmail?.length) finalScreenshots = ssEmail;
-      }
-      if (!finalScreenshots.length) {
-        const { data: ssAll, error: ssAllErr } = await supabase.from("screenshots")
-          .select("id, developer_id, developer_email, filename, public_url, storage_path, width, height, size_kb, mime_type, app_active, timestamp, created_at")
-          .or(`developer_id.eq.${devId},developer_email.eq.${devEmail}`)
-          .order("timestamp", { ascending: false })
-          .limit(50);
-        if (ssAll?.length) finalScreenshots = ssAll;
-      }
-      // Final diagnostic: try completely unfiltered to check RLS
-      if (!finalScreenshots.length) {
-        const { data: ssDiag, error: ssDiagErr } = await supabase.from("screenshots")
-          .select("id, developer_email, developer_id, public_url, timestamp")
-          .order("timestamp", { ascending: false })
-          .limit(5);
-        if (ssDiag?.length) {
-          // Refetch with the actual developer_email from the screenshot
-          const actualEmail = ssDiag[0]?.developer_email;
-          const actualDevId = ssDiag[0]?.developer_id;
-          if (actualEmail || actualDevId) {
-            const filters = [actualDevId && `developer_id.eq.${actualDevId}`, actualEmail && `developer_email.eq.${actualEmail}`].filter(Boolean).join(",");
-            const { data: ssFixed } = await supabase.from("screenshots")
-              .select("id, developer_id, developer_email, filename, public_url, storage_path, width, height, size_kb, mime_type, app_active, timestamp, created_at")
-              .or(filters)
-              .order("timestamp", { ascending: false })
-              .limit(100);
-            if (ssFixed?.length) finalScreenshots = ssFixed;
-          }
-        }
-      }
+      // Normalize + strictly filter screenshots to the selected range.
+      // Also require a real image URL so the UI never shows count-only/placeholder rows.
+      const startMs = new Date(start).getTime();
+      const endMs = new Date(end).getTime();
+      const merged = new Map();
+      [...(screenshotRows || []), ...(screenshotCreatedAtRows || [])].forEach((r) => {
+        const key = r?.id || `${r?.developer_id || ""}-${r?.created_at || ""}-${r?.timestamp || ""}`;
+        if (!merged.has(key)) merged.set(key, r);
+      });
+      finalScreenshots = Array.from(merged.values())
+        .map((r) => {
+          const imageUrl = r?.public_url || r?.image_url || r?.thumbnail_url || r?.publicUrl || null;
+          const ts = r?.timestamp || r?.created_at || null;
+          return { ...r, public_url: imageUrl, _display_ts: ts };
+        })
+        .filter((r) => {
+          if (!r.public_url) return false;
+          if (!r._display_ts) return false;
+          const t = new Date(r._display_ts).getTime();
+          if (Number.isNaN(t)) return false;
+          return t >= startMs && t < endMs;
+        })
+        .sort((a, b) => new Date(b._display_ts).getTime() - new Date(a._display_ts).getTime());
 
       // Detect active session
       const active = finalSessions.find(s => s.status === "active") || null;
@@ -365,6 +376,27 @@ export default function DeveloperActivity() {
     }
     const dev = developers.find(d => d.id === selectedDeveloper);
     if (!dev) return;
+
+    const { start, end } = getDateFilter();
+    const startMs = new Date(start).getTime();
+    const endMs = new Date(end).getTime();
+
+    const normalizeRow = (row) => {
+      const imageUrl = row?.public_url || row?.image_url || row?.thumbnail_url || row?.publicUrl || null;
+      const ts = row?.timestamp || row?.created_at || null;
+      return { ...row, public_url: imageUrl, _display_ts: ts };
+    };
+
+    const shouldInclude = (row) => {
+      const imageUrl = row?.public_url || row?.image_url || row?.thumbnail_url || row?.publicUrl;
+      if (!imageUrl) return false;
+      const ts = row?.timestamp || row?.created_at;
+      if (!ts) return false;
+      const t = new Date(ts).getTime();
+      if (Number.isNaN(t)) return false;
+      return t >= startMs && t < endMs;
+    };
+
     const ssChannel = supabase
       .channel("screenshots-realtime")
       .on("postgres_changes", {
@@ -373,7 +405,12 @@ export default function DeveloperActivity() {
         table: "screenshots",
         filter: `developer_id=eq.${dev.id}`,
       }, (payload) => {
-        setScreenshots(prev => [payload.new, ...prev]);
+        if (!shouldInclude(payload.new)) return;
+        const row = normalizeRow(payload.new);
+        setScreenshots(prev => {
+          if (row.id && prev.some(s => s.id === row.id)) return prev;
+          return [row, ...prev];
+        });
         setLastUpdated(new Date());
       })
       .on("postgres_changes", {
@@ -382,16 +419,18 @@ export default function DeveloperActivity() {
         table: "screenshots",
         filter: `developer_email=eq.${dev.email}`,
       }, (payload) => {
+        if (!shouldInclude(payload.new)) return;
+        const row = normalizeRow(payload.new);
         setScreenshots(prev => {
-          if (prev.some(s => s.id === payload.new.id)) return prev;
-          return [payload.new, ...prev];
+          if (row.id && prev.some(s => s.id === row.id)) return prev;
+          return [row, ...prev];
         });
         setLastUpdated(new Date());
       })
       .subscribe();
     screenshotChannelRef.current = ssChannel;
     return () => { supabase.removeChannel(ssChannel); };
-  }, [selectedDeveloper, developers]);
+  }, [selectedDeveloper, developers, getDateFilter]);
 
   // ─── Computed Metrics ───
   const developer = developers.find(d => d.id === selectedDeveloper);
@@ -1430,14 +1469,17 @@ export default function DeveloperActivity() {
                     <p className="mt-2 text-yellow-600">Common causes: RLS policy blocking reads, developer_id/email mismatch, or date filter excluding data.</p>
                     <button
                       onClick={async () => {
-                        const { data, error } = await supabase.from("screenshots").select("id, developer_id, developer_email, public_url, timestamp").limit(5);
+                        const { data, error } = await supabase
+                          .from("screenshots")
+                          .select("id, developer_id, developer_email, public_url, image_url, thumbnail_url, timestamp, created_at")
+                          .limit(5);
                         showPre(
                           "Screenshot diagnostics",
                           error
                             ? `RLS Error: ${error.message}`
                             : `Found ${data?.length || 0} total screenshots.\n${
                                 data?.length
-                                  ? `Sample: developer_email=${data[0].developer_email}, developer_id=${data[0].developer_id}`
+                                  ? `Sample: developer_email=${data[0].developer_email}, developer_id=${data[0].developer_id}, has_url=${Boolean(data[0].public_url || data[0].image_url || data[0].thumbnail_url)}`
                                   : "Table is empty."
                               }`,
                           error ? "error" : "info"
@@ -1482,7 +1524,13 @@ export default function DeveloperActivity() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-gray-500 text-center py-8">No screenshots found for selected period</p>
+                  <p className="text-gray-500 text-center py-8">
+                    {(() => {
+                      const todayStr = new Date().toLocaleDateString("en-CA");
+                      if (timeRange === "today" && selectedDate === todayStr) return "No screenshots available for today";
+                      return "No screenshots found for selected period";
+                    })()}
+                  </p>
                 )}
               </div>
 

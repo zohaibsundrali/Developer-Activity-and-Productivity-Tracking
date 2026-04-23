@@ -250,6 +250,7 @@ const handleRegister = async (e) => {
             full_name: formData.fullName, // Preserves spaces
             company: formData.company, // Preserves spaces
             email: formData.email,
+            // Development/testing only: store password as plain text.
             password: formData.password,
             is_verified: true,
             role: "admin",

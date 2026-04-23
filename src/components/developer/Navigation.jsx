@@ -66,8 +66,8 @@ export default function Navigation({
           <div className="flex items-center">
             <div className="flex items-center space-x-2 text-sm text-gray-500">
               <div className="flex items-center">
-                <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div>
-                <span>Live updates active</span>
+                {/* <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div> */}
+                {/* <span>Live updates active</span> */}
               </div>
             </div>
           </div>

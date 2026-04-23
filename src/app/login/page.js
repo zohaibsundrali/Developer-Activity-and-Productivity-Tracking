@@ -1,8 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { createClient } from '@supabase/supabase-js';
-import bcrypt from "bcryptjs";
 import { useRouter } from "next/navigation";
 import { SESSION_MAX_AGE_DAYS } from "@/utils/sessionPolicy";
 
@@ -11,18 +10,12 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-const isBcryptHash = (value) => typeof value === "string" && /^\$2[aby]\$\d{2}\$/.test(value);
-
 const verifyPassword = (inputPassword, storedPassword) => {
   if (typeof storedPassword !== "string") return false;
-  if (isBcryptHash(storedPassword)) {
-    return bcrypt.compareSync(inputPassword, storedPassword);
-  }
   return storedPassword === inputPassword;
 };
 
 export default function LoginPage() {
-  const [mounted, setMounted] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("developer");
@@ -32,10 +25,6 @@ export default function LoginPage() {
   const [verificationCode, setVerificationCode] = useState("");
   const [userData, setUserData] = useState(null);
   const router = useRouter();
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   // New function to go back to home/starting page
   const handleGoToHome = () => {
@@ -271,12 +260,6 @@ export default function LoginPage() {
     setError("");
   };
 
-  if (!mounted) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-[#009578]" />
-    );
-  }
-
   if (verificationStep) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#009578] text-black">
@@ -298,7 +281,7 @@ export default function LoginPage() {
           {/* Instructions */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
             <p className="text-sm text-blue-800 text-center">
-              We've sent a 4-digit verification code to <strong>{email}</strong>
+              We&apos;ve sent a 4-digit verification code to <strong>{email}</strong>
             </p>
             <p className="text-xs text-blue-600 text-center mt-2">
               Check your inbox and spam folder
@@ -456,7 +439,7 @@ export default function LoginPage() {
 
         {/* Signup link */}
         <p className="text-center text-sm mt-4">
-          Don't have an account?{" "}
+          Don&apos;t have an account?{" "}
           <Link
             href="/admin/registration"
             className="text-[#009578] hover:text-[#0e7762] font-medium"

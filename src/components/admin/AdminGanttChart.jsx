@@ -26,7 +26,13 @@ import {
  * - Productivity points display
  * - Real-time updates via Supabase subscriptions
  */
-export default function AdminGanttChart({ tasks, projectName, developers, showProgress = false }) {
+export default function AdminGanttChart({
+  tasks,
+  projectName,
+  developers,
+  showProgress = false,
+  showDeveloperFilter = true,
+}) {
   const [viewMode, setViewMode] = useState("chart"); // chart, list, table
   const [filterStatus, setFilterStatus] = useState("all"); // all, pending, in_progress, completed, etc.
   const [filterDeveloper, setFilterDeveloper] = useState("all");
@@ -353,7 +359,7 @@ export default function AdminGanttChart({ tasks, projectName, developers, showPr
             </select>
           </div>
 
-          {developers && Object.keys(developers).length > 0 && (
+          {showDeveloperFilter && developers && Object.keys(developers).length > 0 && (
             <div>
               <label className="text-sm font-medium text-gray-700 mr-2">Developer:</label>
               <select
@@ -369,7 +375,7 @@ export default function AdminGanttChart({ tasks, projectName, developers, showPr
             </div>
           )}
 
-          {(filterStatus !== "all" || filterDeveloper !== "all") && (
+          {(filterStatus !== "all" || (showDeveloperFilter && filterDeveloper !== "all")) && (
             <button
               onClick={() => {
                 setFilterStatus("all");
