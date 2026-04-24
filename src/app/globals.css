@@ -16,6 +16,20 @@ body {
   font-family: 'Lato', sans-serif;
 }
 
+html,
+body {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+  height: auto;
+}
+
 .swal2-pre {
   margin: 0;
   text-align: left;
@@ -77,6 +91,7 @@ body {
   * {
     border-color: hsl(var(--border));
     outline-color: hsl(var(--ring) / 0.5);
+    min-width: 0;
   }
   body {
     @apply bg-background text-foreground;

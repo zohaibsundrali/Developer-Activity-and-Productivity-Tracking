@@ -141,7 +141,7 @@ export default function Timesheet({ user }) {
       </div>
 
       {/* Productivity Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl border p-4 text-center shadow-sm">
           <div className="text-3xl font-bold text-gray-800">{totalTasks}</div>
           <div className="text-sm text-gray-500 mt-1">Total Tasks</div>
@@ -166,7 +166,8 @@ export default function Timesheet({ user }) {
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex space-x-2 border-b">
+      <div className="-mx-4 px-4 sm:mx-0 sm:px-0 border-b">
+        <div className="flex gap-2 overflow-x-auto whitespace-nowrap">
         {[
           { key: "all", label: `All (${tasks.length})` },
           { key: "pending", label: `Active (${tasks.filter(t => ["pending","in_progress","awaiting_approval"].includes(t.status)).length})` },
@@ -176,7 +177,7 @@ export default function Timesheet({ user }) {
           <button
             key={tab.key}
             onClick={() => setFilter(tab.key)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap flex-shrink-0 ${
               filter === tab.key
                 ? "border-[#009578] text-[#009578]"
                 : "border-transparent text-gray-500 hover:text-gray-700"
@@ -185,6 +186,7 @@ export default function Timesheet({ user }) {
             {tab.label}
           </button>
         ))}
+        </div>
       </div>
 
       {/* Tasks Table */}
@@ -193,7 +195,7 @@ export default function Timesheet({ user }) {
       ) : (
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 text-sm">
+            <table className="w-full min-w-[900px] divide-y divide-gray-200 text-sm">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold text-gray-600">#</th>
@@ -215,7 +217,9 @@ export default function Timesheet({ user }) {
                     <tr key={task.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3 text-gray-400 font-mono">{i + 1}</td>
                       <td className="px-4 py-3">
-                        <div className="font-medium text-gray-800">{task.task_title}</div>
+                        <div className="font-medium text-gray-800 break-words max-w-[28rem]">
+                          {task.task_title}
+                        </div>
                         {task.rejection_reason && (
                           <div className="text-xs text-red-600 mt-1">
                             Rejected: {task.rejection_reason}

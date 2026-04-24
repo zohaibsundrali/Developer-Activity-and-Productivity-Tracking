@@ -340,7 +340,7 @@ ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
             <p className="text-xs text-gray-500 mt-1">Password must be at least 6 characters long</p>
           </div>
           
-          <div className="flex space-x-3">
+          <div className="flex flex-col sm:flex-row gap-3">
             <button 
               type="submit"
               disabled={isAddingDeveloper || !currentAdmin}
@@ -348,7 +348,7 @@ ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
                 isAddingDeveloper || !currentAdmin
                   ? 'bg-gray-400 cursor-not-allowed' 
                   : 'bg-[#009578] hover:bg-[#0e7762]'
-              } text-white`}
+              } text-white w-full sm:flex-1`}
             >
               {!currentAdmin ? 'Please Login' : isAddingDeveloper ? 'Adding...' : 'Add Developer'}
             </button>
@@ -369,7 +369,7 @@ ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
           
           {developers.length > 0 ? (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
+              <table className="w-full min-w-[720px] divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -610,7 +610,7 @@ ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
         
         {developers.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="w-full min-w-[720px] divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">

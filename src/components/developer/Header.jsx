@@ -16,11 +16,11 @@ export default function Header({
   return (
     <header className="bg-white shadow">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center py-4">
+        <div className="flex flex-col gap-4 py-4 md:flex-row md:items-center md:justify-between">
 
           {/* Left side - Welcome message */}
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold text-gray-900 sm:text-2xl break-words">
               Welcome, {user?.name || 'Developer'}!
             </h1>
             <p className="text-gray-600">
@@ -29,7 +29,7 @@ export default function Header({
           </div>
 
           {/* Right side - User info + Notifications */}
-          <div className="flex items-center space-x-4">
+          <div className="flex flex-wrap items-center gap-3 md:justify-end">
 
             {/* Notification Dropdown */}
             <NotificationDropdown
@@ -42,10 +42,10 @@ export default function Header({
             />
 
             {/* User dropdown */}
-            <div className="flex items-center space-x-3">
-              <div className="text-right hidden md:block">
+            <div className="flex items-center gap-3">
+              <div className="text-right hidden md:block min-w-0">
                 <p className="text-sm font-medium text-gray-900">{user?.name}</p>
-                <p className="text-xs text-gray-500">{user?.email}</p>
+                <p className="text-xs text-gray-500 truncate max-w-[18rem]">{user?.email}</p>
               </div>
 
               <div className="relative">
@@ -58,7 +58,7 @@ export default function Header({
               <button
                 onClick={onLogout}
                 className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md
-                  transition-colors text-sm font-medium"
+                  transition-colors text-sm font-medium whitespace-nowrap"
               >
                 Logout
               </button>

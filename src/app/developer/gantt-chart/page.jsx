@@ -10,8 +10,16 @@ export default function GanttChartPage() {
   const [tasks, setTasks] = useState([]);
   const [ganttData, setGanttData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isNarrowScreen, setIsNarrowScreen] = useState(false);
 
   const projectId = searchParams.get('projectId');
+
+  useEffect(() => {
+    const update = () => setIsNarrowScreen(window.innerWidth < 640);
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
 
   useEffect(() => {
     if (!projectId) {
@@ -163,26 +171,26 @@ export default function GanttChartPage() {
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center">
+        <div className="flex flex-col gap-4 mb-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <button
               onClick={handleBack}
-              className="flex items-center text-gray-600 hover:text-gray-800 mr-4 bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-all"
+              className="flex items-center text-gray-600 hover:text-gray-800 bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-all w-fit"
             >
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
               Back to Project
             </button>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Project Gantt Chart</h1>
+            <div className="min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 break-words">Project Gantt Chart</h1>
               <p className="text-gray-600 mt-1">Visual timeline showing exact dates for each task</p>
             </div>
           </div>
           
           <button
             onClick={handleExportData}
-            className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors font-medium flex items-center"
+            className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors font-medium flex items-center justify-center w-full sm:w-auto"
           >
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -245,80 +253,84 @@ export default function GanttChartPage() {
           
           {ganttData.length > 1 ? (
             <div className="border rounded-lg overflow-hidden">
-              <Chart
-                width={'100%'}
-                height={'600px'}
-                chartType="Gantt"
-                loader={<div className="flex justify-center items-center h-32">Loading Gantt Chart...</div>}
-                data={ganttData}
-                options={{
-                  height: 600,
-                  gantt: {
-                    trackHeight: 40,
-                    barHeight: 30,
-                    labelMaxWidth: 400,
-                    criticalPathEnabled: false,
-                    innerGridTrack: { fill: '#f8fafc' },
-                    innerGridDarkTrack: { fill: '#e2e8f0' },
-                    arrow: {
-                      angle: 100,
-                      width: 2,
-                      color: '#6e6e6e',
-                      radius: 0,
-                    },
-                    palette: [
-                      {
-                        color: '#3B82F6', // Blue
-                        dark: '#1D4ED8',
-                        light: '#93C5FD',
+              <div className="overflow-x-auto">
+                <div className="min-w-[900px]">
+                  <Chart
+                    width={'100%'}
+                    height={isNarrowScreen ? '420px' : '600px'}
+                    chartType="Gantt"
+                    loader={<div className="flex justify-center items-center h-32">Loading Gantt Chart...</div>}
+                    data={ganttData}
+                    options={{
+                      height: isNarrowScreen ? 420 : 600,
+                      gantt: {
+                        trackHeight: isNarrowScreen ? 30 : 40,
+                        barHeight: isNarrowScreen ? 22 : 30,
+                        labelMaxWidth: isNarrowScreen ? 220 : 400,
+                        criticalPathEnabled: false,
+                        innerGridTrack: { fill: '#f8fafc' },
+                        innerGridDarkTrack: { fill: '#e2e8f0' },
+                        arrow: {
+                          angle: 100,
+                          width: 2,
+                          color: '#6e6e6e',
+                          radius: 0,
+                        },
+                        palette: [
+                          {
+                            color: '#3B82F6', // Blue
+                            dark: '#1D4ED8',
+                            light: '#93C5FD',
+                          },
+                          {
+                            color: '#10B981', // Green
+                            dark: '#047857',
+                            light: '#6EE7B7',
+                          },
+                          {
+                            color: '#F59E0B', // Amber
+                            dark: '#D97706',
+                            light: '#FCD34D',
+                          },
+                          {
+                            color: '#EF4444', // Red
+                            dark: '#DC2626',
+                            light: '#FCA5A5',
+                          },
+                          {
+                            color: '#8B5CF6', // Purple
+                            dark: '#7C3AED',
+                            light: '#C4B5FD',
+                          },
+                        ],
                       },
-                      {
-                        color: '#10B981', // Green
-                        dark: '#047857',
-                        light: '#6EE7B7',
+                      backgroundColor: '#ffffff',
+                      chartArea: {
+                        left: isNarrowScreen ? 220 : 400,
+                        top: 60,
+                        width: '70%',
+                        height: '85%'
                       },
-                      {
-                        color: '#F59E0B', // Amber
-                        dark: '#D97706',
-                        light: '#FCD34D',
+                      hAxis: {
+                        format: 'MMM dd, yyyy', // Date format
+                        gridlines: {
+                          count: -1,
+                          color: '#e5e7eb'
+                        },
+                        minorGridlines: {
+                          count: 0
+                        }
                       },
-                      {
-                        color: '#EF4444', // Red
-                        dark: '#DC2626',
-                        light: '#FCA5A5',
-                      },
-                      {
-                        color: '#8B5CF6', // Purple
-                        dark: '#7C3AED',
-                        light: '#C4B5FD',
-                      },
-                    ],
-                  },
-                  backgroundColor: '#ffffff',
-                  chartArea: {
-                    left: 400,
-                    top: 60,
-                    width: '70%',
-                    height: '85%'
-                  },
-                  hAxis: {
-                    format: 'MMM dd, yyyy', // Date format
-                    gridlines: {
-                      count: -1,
-                      color: '#e5e7eb'
-                    },
-                    minorGridlines: {
-                      count: 0
-                    }
-                  },
-                  vAxis: {
-                    textStyle: {
-                      fontSize: 12
-                    }
-                  }
-                }}
-                rootProps={{ 'data-testid': '1' }}
-              />
+                      vAxis: {
+                        textStyle: {
+                          fontSize: isNarrowScreen ? 10 : 12
+                        }
+                      }
+                    }}
+                    rootProps={{ 'data-testid': '1' }}
+                  />
+                </div>
+              </div>
             </div>
           ) : (
             <div className="text-center py-12 border-2 border-dashed border-gray-300 rounded-lg">
@@ -335,7 +347,7 @@ export default function GanttChartPage() {
         <div className="bg-white rounded-lg shadow-lg p-6">
           <h2 className="text-xl font-semibold text-gray-800 mb-4">Task Details with Dates</h2>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="w-full min-w-[900px] divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -366,8 +378,8 @@ export default function GanttChartPage() {
                   
                   return (
                     <tr key={task.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{task.title}</div>
+                      <td className="px-6 py-4">
+                        <div className="text-sm font-medium text-gray-900 break-words max-w-[28rem]">{task.title}</div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="text-sm text-gray-500 max-w-xs truncate">{task.description}</div>

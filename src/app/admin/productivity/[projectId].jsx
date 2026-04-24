@@ -159,9 +159,10 @@ export default function ProjectProductivityPage() {
       <div className="mt-6">
         <h3 className="text-lg font-semibold mb-4">Task Timeline (Gantt Chart)</h3>
         <div className="bg-gray-50 border rounded-lg p-4 overflow-x-auto">
+          <div className="min-w-[900px]">
           {/* Timeline Header */}
           <div className="flex mb-2">
-            <div className="w-48 flex-shrink-0 font-medium">Task / Developer</div>
+            <div className="w-40 sm:w-48 flex-shrink-0 font-medium">Task / Developer</div>
             <div className="flex-1 relative">
               <div className="flex">
                 {Array.from({ length: totalDays }).map((_, index) => {
@@ -198,7 +199,7 @@ export default function ProjectProductivityPage() {
               
               return (
                 <div key={task.id} className="flex items-center">
-                  <div className="w-48 flex-shrink-0">
+                  <div className="w-40 sm:w-48 flex-shrink-0">
                     <div className="font-medium text-sm truncate">{task.task}</div>
                     <div className="text-xs text-gray-500">{task.developer}</div>
                   </div>
@@ -254,6 +255,7 @@ export default function ProjectProductivityPage() {
               <div className="w-0.5 h-4 bg-red-500 mr-2"></div>
               <span className="text-sm">Today</span>
             </div>
+          </div>
           </div>
         </div>
       </div>
@@ -316,18 +318,18 @@ export default function ProjectProductivityPage() {
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center space-x-4">
+        <div className="flex flex-col gap-4 mb-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
             <button
               onClick={handleBackToProjects}
-              className="flex items-center text-gray-600 hover:text-gray-800 bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-all"
+              className="flex items-center text-gray-600 hover:text-gray-800 bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-all w-fit"
             >
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
               Back to Projects
             </button>
-            <div>
+            <div className="min-w-0">
               <h1 className="text-2xl font-bold text-gray-900">Project Productivity</h1>
               <p className="text-sm text-gray-500">
                 Admin: {currentAdmin?.name || currentAdmin?.email}
@@ -337,7 +339,7 @@ export default function ProjectProductivityPage() {
           
           <button
             onClick={handleRefresh}
-            className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors flex items-center"
+            className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center w-full sm:w-auto"
           >
             <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -437,7 +439,7 @@ export default function ProjectProductivityPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full border-collapse">
+                <table className="w-full min-w-[900px] border-collapse">
                   <thead>
                     <tr className="bg-gray-100">
                       <th className="border p-3 text-left">Task Title</th>

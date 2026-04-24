@@ -497,7 +497,7 @@ export default function TaskReviewPanel({ currentAdmin }) {
       {/* Review Modal */}
       {showModal && selectedSubmission && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-lg">
+          <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
             <div
               className={`p-4 rounded-t-xl ${
                 modalAction === "approve" ? "bg-green-500" : "bg-red-500"
@@ -511,7 +511,7 @@ export default function TaskReviewPanel({ currentAdmin }) {
               </p>
             </div>
 
-            <div className="p-6">
+            <div className="p-6 overflow-y-auto">
               {modalAction === "approve" ? (
                 <div>
                   <p className="text-gray-600 mb-4">
@@ -562,7 +562,7 @@ export default function TaskReviewPanel({ currentAdmin }) {
               )}
             </div>
 
-            <div className="flex space-x-3 p-4 bg-gray-50 rounded-b-xl">
+            <div className="flex flex-col sm:flex-row gap-3 p-4 bg-gray-50 rounded-b-xl">
               <button
                 onClick={() => {
                   setShowModal(false);

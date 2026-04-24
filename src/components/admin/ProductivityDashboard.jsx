@@ -257,7 +257,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
             <h3 className="text-lg font-semibold">Developer Rankings</h3>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full min-w-[1000px]">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">
@@ -611,7 +611,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
             <h3 className="text-lg font-semibold">Task-by-Task Analysis</h3>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full min-w-[900px]">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">

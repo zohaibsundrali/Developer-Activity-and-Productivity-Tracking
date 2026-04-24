@@ -178,14 +178,14 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
     <div className="bg-white rounded-xl shadow-lg overflow-hidden">
       {/* Header */}
       <div className="bg-gradient-to-r from-purple-500 to-purple-600 p-6">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <h3 className="text-xl font-bold text-white">
               {projectName || "Project"} - Gantt Chart
             </h3>
             <p className="text-white/80 text-sm mt-1">Visual timeline of all tasks</p>
           </div>
-          <div className="flex space-x-2">
+          <div className="flex gap-2">
             <button
               onClick={() => setViewMode("chart")}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
@@ -241,7 +241,7 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
       </div>
 
       {/* Content */}
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         {viewMode === "chart" ? (
           <>
             {/* Legend */}
@@ -257,58 +257,60 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
             </div>
 
             {/* Gantt Chart */}
-            <div className="h-96">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={chartData}
-                  layout="vertical"
-                  barSize={24}
-                  margin={{ top: 20, right: 30, left: 150, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis
-                    type="number"
-                    domain={[0, 'dataMax + 5']}
-                    tickFormatter={(value) => `Day ${value}`}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={140}
-                    tick={{ fontSize: 12 }}
-                  />
-                  <Tooltip content={<CustomTooltip />} />
-                  
-                  {/* Today line */}
-                  {todayPosition && (
-                    <ReferenceLine
-                      x={todayPosition}
-                      stroke="#ef4444"
-                      strokeDasharray="5 5"
-                      label={{ value: 'Today', fill: '#ef4444', fontSize: 12 }}
+            <div className="overflow-x-auto">
+              <div className="h-96 min-w-[700px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={chartData}
+                    layout="vertical"
+                    barSize={24}
+                    margin={{ top: 20, right: 30, left: 150, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                    <XAxis
+                      type="number"
+                      domain={[0, 'dataMax + 5']}
+                      tickFormatter={(value) => `Day ${value}`}
                     />
-                  )}
-
-                  {/* Invisible bar for offset */}
-                  <Bar dataKey="start" stackId="a" fill="transparent" />
-                  
-                  {/* Duration bar */}
-                  <Bar dataKey="duration" stackId="a" radius={[4, 4, 4, 4]}>
-                    {chartData.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={statusColors[entry.status] || statusColors.pending}
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      width={140}
+                      tick={{ fontSize: 12 }}
+                    />
+                    <Tooltip content={<CustomTooltip />} />
+                    
+                    {/* Today line */}
+                    {todayPosition && (
+                      <ReferenceLine
+                        x={todayPosition}
+                        stroke="#ef4444"
+                        strokeDasharray="5 5"
+                        label={{ value: 'Today', fill: '#ef4444', fontSize: 12 }}
                       />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+                    )}
+
+                    {/* Invisible bar for offset */}
+                    <Bar dataKey="start" stackId="a" fill="transparent" />
+                    
+                    {/* Duration bar */}
+                    <Bar dataKey="duration" stackId="a" radius={[4, 4, 4, 4]}>
+                      {chartData.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={statusColors[entry.status] || statusColors.pending}
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           </>
         ) : (
           /* List View */
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full min-w-[900px]">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Task</th>

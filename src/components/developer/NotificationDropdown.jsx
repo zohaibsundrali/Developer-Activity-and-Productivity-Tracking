@@ -144,8 +144,8 @@ export default function NotificationDropdown({
 
       {/* Dropdown Modal */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-96 bg-white shadow-2xl rounded-lg
-          border border-gray-200 z-50 max-h-[600px] flex flex-col"
+        <div className="absolute right-0 mt-2 w-[min(24rem,calc(100vw-2rem))] bg-white shadow-2xl rounded-lg
+          border border-gray-200 z-50 max-h-[70vh] flex flex-col"
           style={{ animation: 'slideDown 0.2s ease-out' }}
         >
           {/* Header */}

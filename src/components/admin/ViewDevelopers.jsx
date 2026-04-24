@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Swal from "sweetalert2";
 import { showError, showInfo, showPre, showSuccess, showWarning } from "@/utils/alerts";
 
@@ -17,33 +17,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
   // Ref used as a guard so the deletion handler cannot be entered twice concurrently.
   const deletionInProgressRef = useRef(false);
 
-  // Fetch admin's added developers on component mount
-  useEffect(() => {
-    fetchAdminDevelopers();
-  }, []);
-
-  // Keep the table in sync in real-time across tabs/sessions.
-  useEffect(() => {
-    if (!supabase || !currentAdmin) return;
-
-    const channel = supabase
-      .channel(`admin-developers-${currentAdmin.id || currentAdmin.email}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'developers' },
-        () => {
-          fetchAdminDevelopers();
-          if (onRefresh) onRefresh();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [supabase, currentAdmin, onRefresh]);
-
-  const fetchAdminDevelopers = async () => {
+  const fetchAdminDevelopers = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -84,7 +58,33 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
     } finally {
       setLoading(false);
     }
-  };
+  }, [initialDevelopers, supabase]);
+
+  // Fetch admin's added developers on component mount
+  useEffect(() => {
+    fetchAdminDevelopers();
+  }, [fetchAdminDevelopers]);
+
+  // Keep the table in sync in real-time across tabs/sessions.
+  useEffect(() => {
+    if (!supabase || !currentAdmin) return;
+
+    const channel = supabase
+      .channel(`admin-developers-${currentAdmin.id || currentAdmin.email}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'developers' },
+        () => {
+          fetchAdminDevelopers();
+          if (onRefresh) onRefresh();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, currentAdmin, onRefresh, fetchAdminDevelopers]);
 
   const escapeHtml = (value = "") =>
     value
@@ -556,7 +556,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
 
       {/* Developers Table */}
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
+        <table className="w-full min-w-[950px] divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">

@@ -262,7 +262,7 @@ export default function TaskCompletionModal({
 
           {/* Task Details */}
           <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-            <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               <div>
                 <span className="text-gray-500">Start Date:</span>
                 <p className="font-medium">
@@ -302,15 +302,15 @@ export default function TaskCompletionModal({
               />
 
               {selectedFile ? (
-                <div className="flex items-center justify-center">
+                <div className="flex items-center justify-center min-w-0">
                   <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mr-3">
                     <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                         d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
-                  <div className="text-left">
-                    <p className="font-medium text-gray-800">{selectedFile.name}</p>
+                  <div className="text-left min-w-0">
+                    <p className="font-medium text-gray-800 truncate max-w-[14rem] sm:max-w-[22rem]">{selectedFile.name}</p>
                     <p className="text-sm text-gray-500">{formatFileSize(selectedFile.size)}</p>
                   </div>
                   <button

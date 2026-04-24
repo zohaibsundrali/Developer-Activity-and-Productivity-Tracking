@@ -599,12 +599,12 @@ const debugCheckNotifications = async () => {
    
 
       {/* Header with Add Project Button and Admin Info */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-2xl font-bold">My Projects</h2>
          
         </div>
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <button
             onClick={fetchAdminData}
             className="bg-gray-100 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-200 transition-colors text-sm flex items-center"
@@ -630,7 +630,7 @@ const debugCheckNotifications = async () => {
 
       {/* Add Project Modal */}
       {showAddProject && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold">Add New Project</h3>
@@ -795,8 +795,8 @@ const debugCheckNotifications = async () => {
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full mx-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold text-red-600">Delete Project</h3>
               <button
@@ -880,7 +880,7 @@ const debugCheckNotifications = async () => {
 
       {/* Metrics / Productivity Modal */}
       {showMetricsModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white p-6 rounded-xl shadow-xl max-w-xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <div>
@@ -917,7 +917,7 @@ const debugCheckNotifications = async () => {
             ) : metricsData ? (
               <div className="space-y-4">
                 {/* Summary cards similar to developer timesheet */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="bg-white rounded-xl border p-4 text-center shadow-sm">
                     <div className="text-2xl font-bold text-gray-800">{metricsData.totalTasks}</div>
                     <div className="text-xs text-gray-500 mt-1">Total Tasks</div>

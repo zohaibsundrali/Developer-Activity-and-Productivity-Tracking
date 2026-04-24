@@ -14,14 +14,14 @@ export default function Header({
   return (
     <header className="bg-white shadow">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center py-6">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">
+        <div className="flex flex-col gap-4 py-4 sm:py-6 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold text-gray-900 sm:text-2xl lg:text-3xl break-words">
               Developer Activity and Productivity Tracking
             </h1>
           </div>
 
-          <div className="flex items-center space-x-4">
+          <div className="flex flex-wrap items-center gap-3 md:justify-end">
             {/* Notification Dropdown */}
             <NotificationDropdown
               notifications={notifications || []}
@@ -32,12 +32,16 @@ export default function Header({
               isLoadingMore={isLoadingMoreNotifications}
             />
 
-            <span className="text-gray-700 font-medium">{user?.full_name}</span>
-            <span className="text-gray-500">|</span>
-            <span className="text-gray-600">{user?.company}</span>
+            <span className="text-gray-700 font-medium truncate max-w-[16rem] sm:max-w-[20rem]">
+              {user?.full_name}
+            </span>
+            <span className="text-gray-500 hidden sm:inline">|</span>
+            <span className="text-gray-600 truncate max-w-[16rem] hidden sm:inline">
+              {user?.company}
+            </span>
             <button
               onClick={onLogout}
-              className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+              className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors whitespace-nowrap"
             >
               Logout
             </button>

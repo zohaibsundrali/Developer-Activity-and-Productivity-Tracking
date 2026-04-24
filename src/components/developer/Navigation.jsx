@@ -25,7 +25,8 @@ export default function Navigation({
     <nav className="bg-white shadow">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between">
-          <div className="flex space-x-8">
+          <div className="-mx-4 px-4 sm:mx-0 sm:px-0 flex-1">
+            <div className="flex gap-2 sm:gap-6 overflow-x-auto whitespace-nowrap">
             {navItems.map((item) => {
               const badgeCount = getBadgeCount(item.id);
               const isActive = activeSection === item.id;
@@ -60,6 +61,7 @@ export default function Navigation({
                 </button>
               );
             })}
+            </div>
           </div>
           
           {/* Real-time indicator */}
