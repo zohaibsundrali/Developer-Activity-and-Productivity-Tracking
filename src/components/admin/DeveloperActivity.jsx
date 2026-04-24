@@ -26,6 +26,62 @@ export default function DeveloperActivity() {
   const [fetchingDevelopers, setFetchingDevelopers] = useState(false);
   const [viewMode, setViewMode] = useState("overview");
 
+  // Parse DB timestamps safely.
+  // Supabase can return `timestamp` (without timezone) which JS treats as local time.
+  // To keep date filtering stable, treat timezone-less timestamps as UTC.
+  const parseDbTimeMs = useCallback((value) => {
+    if (!value) return Number.NaN;
+    if (typeof value === "number") return Number.isFinite(value) ? value : Number.NaN;
+    if (value instanceof Date) return value.getTime();
+
+    const s = String(value).trim();
+    if (!s) return Number.NaN;
+
+    // Postgres timestamptz often arrives like: "YYYY-MM-DD HH:MM:SS.ffffff+00".
+    // JS Date parsing of that format is inconsistent across runtimes, so normalize to ISO.
+    // - Use 'T' separator
+    // - Trim fractional seconds to milliseconds
+    // - Normalize offset to "+HH:MM"
+    const pgTzMatch = s.match(
+      /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(\.(\d+))?([+-]\d{2})(?::?(\d{2}))?$/
+    );
+    if (pgTzMatch) {
+      const datePart = pgTzMatch[1];
+      const timePart = pgTzMatch[2];
+      const fracDigits = pgTzMatch[4] || "";
+      const msDigits = fracDigits ? fracDigits.slice(0, 3).padEnd(3, "0") : "";
+      const fracPart = msDigits ? `.${msDigits}` : "";
+      const offHour = pgTzMatch[5];
+      const offMin = pgTzMatch[6] || "00";
+      const offset = `${offHour}:${offMin}`;
+      const isoLike = `${datePart}T${timePart}${fracPart}${offset}`;
+      const t = new Date(isoLike).getTime();
+      return Number.isNaN(t) ? Number.NaN : t;
+    }
+
+    // ISO with timezone (Z or ±HH:MM)
+    if (/\dT\d.*(Z|[+-]\d{2}:\d{2})$/.test(s)) {
+      const t = new Date(s).getTime();
+      return Number.isNaN(t) ? Number.NaN : t;
+    }
+
+    // Postgres timestamp (no tz): "YYYY-MM-DD HH:MM:SS(.sss)" -> treat as UTC
+    if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(s)) {
+      const isoLike = s.replace(" ", "T") + "Z";
+      const t = new Date(isoLike).getTime();
+      return Number.isNaN(t) ? Number.NaN : t;
+    }
+
+    // Date-only -> treat as UTC start-of-day
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+      const t = new Date(s + "T00:00:00.000Z").getTime();
+      return Number.isNaN(t) ? Number.NaN : t;
+    }
+
+    const t = new Date(s).getTime();
+    return Number.isNaN(t) ? Number.NaN : t;
+  }, []);
+
   // Data states for each table
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
@@ -273,17 +329,17 @@ export default function DeveloperActivity() {
       finalScreenshots = Array.from(merged.values())
         .map((r) => {
           const imageUrl = r?.public_url || r?.image_url || r?.thumbnail_url || r?.publicUrl || null;
-          const ts = r?.timestamp || r?.created_at || null;
-          return { ...r, public_url: imageUrl, _display_ts: ts };
+          const displayTs = r?.timestamp || r?.created_at || null;
+          const displayMsRaw = parseDbTimeMs(displayTs);
+          const displayMs = Number.isNaN(displayMsRaw) ? parseDbTimeMs(r?.created_at) : displayMsRaw;
+          return { ...r, public_url: imageUrl, _display_ts: displayTs, _display_ms: displayMs };
         })
         .filter((r) => {
           if (!r.public_url) return false;
-          if (!r._display_ts) return false;
-          const t = new Date(r._display_ts).getTime();
-          if (Number.isNaN(t)) return false;
-          return t >= startMs && t < endMs;
+          if (r._display_ms == null || Number.isNaN(r._display_ms)) return false;
+          return r._display_ms >= startMs && r._display_ms < endMs;
         })
-        .sort((a, b) => new Date(b._display_ts).getTime() - new Date(a._display_ts).getTime());
+        .sort((a, b) => (b._display_ms || 0) - (a._display_ms || 0));
 
       // Detect active session
       const active = finalSessions.find(s => s.status === "active") || null;
@@ -437,16 +493,19 @@ export default function DeveloperActivity() {
 
     const normalizeRow = (row) => {
       const imageUrl = row?.public_url || row?.image_url || row?.thumbnail_url || row?.publicUrl || null;
-      const ts = row?.timestamp || row?.created_at || null;
-      return { ...row, public_url: imageUrl, _display_ts: ts };
+      const displayTs = row?.timestamp || row?.created_at || null;
+      const displayMsRaw = parseDbTimeMs(displayTs);
+      const displayMs = Number.isNaN(displayMsRaw) ? parseDbTimeMs(row?.created_at) : displayMsRaw;
+      return { ...row, public_url: imageUrl, _display_ts: displayTs, _display_ms: displayMs };
     };
 
     const shouldInclude = (row) => {
       const imageUrl = row?.public_url || row?.image_url || row?.thumbnail_url || row?.publicUrl;
       if (!imageUrl) return false;
-      const ts = row?.timestamp || row?.created_at;
-      if (!ts) return false;
-      const t = new Date(ts).getTime();
+      const displayTs = row?.timestamp || row?.created_at;
+      if (!displayTs) return false;
+      const tRaw = parseDbTimeMs(displayTs);
+      const t = Number.isNaN(tRaw) ? parseDbTimeMs(row?.created_at) : tRaw;
       if (Number.isNaN(t)) return false;
       return t >= startMs && t < endMs;
     };
@@ -484,7 +543,7 @@ export default function DeveloperActivity() {
       .subscribe();
     screenshotChannelRef.current = ssChannel;
     return () => { supabase.removeChannel(ssChannel); };
-  }, [selectedDeveloper, developers, getDateFilter]);
+  }, [selectedDeveloper, developers, getDateFilter, parseDbTimeMs]);
 
   // ─── Computed Metrics ───
   const developer = developers.find(d => d.id === selectedDeveloper);
@@ -646,12 +705,27 @@ export default function DeveloperActivity() {
     return `${m} min ${s} sec`;
   };
   const fmtDateTime = (iso) => {
-    if (!iso) return "N/A";
-    return new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const t = parseDbTimeMs(iso);
+    if (Number.isNaN(t)) return "N/A";
+    return new Date(t).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
   };
   const fmtTime = (iso) => {
-    if (!iso) return "N/A";
-    return new Date(iso).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const t = parseDbTimeMs(iso);
+    if (Number.isNaN(t)) return "N/A";
+    return new Date(t).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  };
+
+  // Screenshots: show time exactly as stored (no timezone conversion).
+  // Example input: "2026-04-24 05:53:04.978197+00" -> "05:53:04"
+  const fmtDbExactTime = (value) => {
+    if (!value) return "N/A";
+    const s = String(value).trim();
+    const m = s.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})/);
+    if (m) return m[2];
+    // If the value is already just a time string, keep it.
+    const timeOnly = s.match(/^(\d{2}:\d{2}:\d{2})/);
+    if (timeOnly) return timeOnly[1];
+    return s;
   };
   const prodColor = (s) => (s >= 80 ? "text-green-600" : s >= 60 ? "text-yellow-600" : "text-red-600");
   const prodBg = (s) => (s >= 80 ? "bg-green-100" : s >= 60 ? "bg-yellow-100" : "bg-red-100");
@@ -1504,15 +1578,16 @@ export default function DeveloperActivity() {
                       <div className="bg-green-100 p-3 rounded-lg mr-3"><span className="text-xl">🟢</span></div>
                       <div>
                         <p className="text-xs text-gray-500">Latest Capture</p>
-                        <p className="text-sm font-bold text-gray-800">{fmtTime((screenshots[0].timestamp || screenshots[0].created_at) || "")}</p>
+                        <p className="text-sm font-bold text-gray-800">{fmtDbExactTime((screenshots[0].timestamp || screenshots[0].created_at) || "")}</p>
                       </div>
                     </div>
+                    
                   </div>
                 )}
               </div>
 
               {/* Debug Info (shown when 0 screenshots) */}
-              {screenshots.length === 0 && developer && (
+              {/* {screenshots.length === 0 && developer && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                   <h4 className="text-sm font-semibold text-yellow-800 mb-2">Debug: No screenshots found</h4>
                   <div className="text-xs text-yellow-700 space-y-1">
@@ -1545,7 +1620,7 @@ export default function DeveloperActivity() {
                     </button>
                   </div>
                 </div>
-              )}
+              )} */}
 
               {/* Screenshot Gallery */}
               <div className="bg-gray-50 p-6 rounded-lg">
@@ -1567,7 +1642,7 @@ export default function DeveloperActivity() {
                               <p className="text-xs font-medium text-blue-700 truncate">{ss.app_active}</p>
                             </div>
                           )}
-                          <p className="text-xs text-gray-600">{fmtDateTime(ss.timestamp || ss.created_at)}</p>
+                          <p className="text-xs text-gray-600">{fmtDbExactTime(ss.timestamp || ss.created_at)}</p>
                           <div className="flex items-center justify-between">
                             {ss.size_kb && <span className="text-xs text-gray-400">{Number(ss.size_kb).toFixed(0)} KB</span>}
                             {ss.width && ss.height && <span className="text-xs text-gray-400">{ss.width}×{ss.height}</span>}
@@ -1597,7 +1672,7 @@ export default function DeveloperActivity() {
                       <div key={ss.id || i} className={`flex items-center gap-4 p-3 bg-white rounded-lg border hover:shadow-sm transition-shadow cursor-pointer ${i === 0 ? "border-pink-300 bg-pink-50" : ""}`}
                         onClick={() => setSelectedScreenshot(ss)}>
                         <div className="flex-shrink-0 w-16 text-center">
-                          <p className="text-sm font-bold text-gray-700">{fmtTime(ss.timestamp || ss.created_at)}</p>
+                          <p className="text-sm font-bold text-gray-700">{fmtDbExactTime(ss.timestamp || ss.created_at)}</p>
                           {i === 0 && <span className="text-xs text-pink-600">Latest</span>}
                         </div>
                         <div className="w-px h-12 bg-gray-300"></div>
@@ -1676,7 +1751,7 @@ export default function DeveloperActivity() {
                           </div>
                           <div>
                             <p className="text-xs text-gray-500 uppercase tracking-wide">Timestamp</p>
-                            <p className="text-sm font-medium text-gray-800">{fmtDateTime(ss.timestamp || ss.created_at)}</p>
+                            <p className="text-sm font-medium text-gray-800">{fmtDbExactTime(ss.timestamp || ss.created_at)}</p>
                           </div>
                           <div>
                             <p className="text-xs text-gray-500 uppercase tracking-wide">Resolution</p>
