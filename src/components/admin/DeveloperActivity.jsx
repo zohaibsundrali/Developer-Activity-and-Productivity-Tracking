@@ -92,19 +92,38 @@ export default function DeveloperActivity() {
   }, [currentAdmin, fetchAdminDevelopers]);
 
   // ─── Date Filter ───
-  const getDateFilter = useCallback(() => {
+    const getDateFilter = useCallback(() => {
     const [yy, mm, dd] = String(selectedDate).split("-").map(Number);
-    // Build the range using *local* time to avoid UTC date drift.
-    const start = new Date(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0);
-    const end = new Date(yy, (mm || 1) - 1, dd || 1, 23, 59, 59, 999);
-    if (timeRange === "week") start.setDate(start.getDate() - 7);
-    if (timeRange === "month") start.setMonth(start.getMonth() - 1);
-    return { start: start.toISOString(), end: end.toISOString() };
+
+    // Use UTC boundaries so "YYYY-MM-DD" matches tracked_at::date in DB (typically UTC).
+    // This prevents timezone shifts that can pull in previous day's records.
+    const baseStartUtc = new Date(Date.UTC(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0));
+    const baseEndUtc = new Date(Date.UTC(yy, (mm || 1) - 1, dd || 1, 23, 59, 59, 999));
+
+    if (timeRange === "week") {
+      baseStartUtc.setUTCDate(baseStartUtc.getUTCDate() - 6);
+    }
+    if (timeRange === "month") {
+      baseStartUtc.setUTCDate(baseStartUtc.getUTCDate() - 29);
+    }
+
+    const startISO = baseStartUtc.toISOString();
+    const endISO = baseEndUtc.toISOString();
+
+    console.log("[DateFilter][UTC]", {
+      selectedDate,
+      timeRange,
+      start: startISO,
+      end: endISO,
+    });
+
+    return { start: startISO, end: endISO };
   }, [selectedDate, timeRange]);
 
   // ─── Fetch All Activity Data (with active session detection) ───
   const fetchDeveloperActivity = useCallback(async (silent = false) => {
-    const dev = developers.find(d => d.id === selectedDeveloper);
+    const dev
+     = developers.find(d => d.id === selectedDeveloper);
     if (!dev) return;
     if (!silent) setLoading(true);
 
@@ -112,9 +131,9 @@ export default function DeveloperActivity() {
     const devId = dev.id;
     const devEmail = dev.email;
     const [yy, mm, dd] = String(selectedDate).split("-").map(Number);
-    const dayStart = new Date(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0);
-    const dayEnd = new Date(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0);
-    dayEnd.setDate(dayEnd.getDate() + 1);
+    const dayStart = new Date(Date.UTC(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0));
+    const dayEnd = new Date(Date.UTC(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0));
+    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
 
     try {
       // Fetch all 5 tables in parallel (keyboard via API route to bypass RLS)
@@ -161,7 +180,30 @@ export default function DeveloperActivity() {
 
       let finalSessions = sessionsRes.data || [];
       let finalMouse = mouseRes.data || [];
-      let finalKeyboard = keyboardApiRes.data || [];
+      // Handle keyboard API response
+      let finalKeyboard = [];
+      if (keyboardApiRes && keyboardApiRes.data) {
+        finalKeyboard = keyboardApiRes.data;
+      } else if (Array.isArray(keyboardApiRes)) {
+        finalKeyboard = keyboardApiRes;
+      }
+      console.log("[Keyboard] API response:", keyboardApiRes);
+      console.log("[Keyboard] Source:", keyboardApiRes?.source, "Count:", finalKeyboard.length);
+      if (keyboardApiRes?.source && keyboardApiRes.source !== "primary-date-filtered" && keyboardApiRes.source !== "range-bounded") {
+        console.warn("[Keyboard] Unexpected source (possible fallback/unfiltered response):", keyboardApiRes.source);
+      }
+
+      // Strict client-side date validation to prevent cross-day leakage (timezone or backend issues).
+      const kbStartMs = new Date(start).getTime();
+      const kbEndMs = new Date(end).getTime();
+      finalKeyboard = (finalKeyboard || [])
+        .filter((row) => {
+          const t = new Date(row?.tracked_at).getTime();
+          if (Number.isNaN(t)) return false;
+          return t >= kbStartMs && t <= kbEndMs;
+        })
+        .sort((a, b) => new Date(b.tracked_at).getTime() - new Date(a.tracked_at).getTime());
+
       let finalApp = appRes.data || [];
 
       let screenshotRows = screenshotRes.data || [];
@@ -313,6 +355,16 @@ export default function DeveloperActivity() {
     }
     const dev = developers.find(d => d.id === selectedDeveloper);
     if (!dev) return;
+
+    const { start, end } = getDateFilter();
+    const startMs = new Date(start).getTime();
+    const endMs = new Date(end).getTime();
+    const inRange = (row) => {
+      const t = new Date(row?.tracked_at).getTime();
+      if (Number.isNaN(t)) return false;
+      return t >= startMs && t <= endMs;
+    };
+
     const kbChannel = supabase
       .channel("keyboard-stats-realtime")
       .on("postgres_changes", {
@@ -321,6 +373,7 @@ export default function DeveloperActivity() {
         table: "keyboard_stats",
         filter: `developer_id=eq.${dev.id}`,
       }, (payload) => {
+        if (!inRange(payload.new)) return;
         setKeyboardData(prev => [payload.new, ...prev]);
         setLastUpdated(new Date());
       })
@@ -331,6 +384,7 @@ export default function DeveloperActivity() {
         // Some trackers only populate developer_email; listen to that as well
         filter: `developer_email=eq.${dev.email}`,
       }, (payload) => {
+        if (!inRange(payload.new)) return;
         setKeyboardData(prev => {
           if (prev.some(k => k.id === payload.new.id)) return prev;
           return [payload.new, ...prev];
@@ -340,7 +394,7 @@ export default function DeveloperActivity() {
       .subscribe();
     keyboardChannelRef.current = kbChannel;
     return () => { supabase.removeChannel(kbChannel); };
-  }, [selectedDeveloper, developers]);
+  }, [selectedDeveloper, developers, getDateFilter]);
 
   // ─── Supabase Realtime for app_usage ───
   const appChannelRef = useRef(null);
