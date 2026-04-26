@@ -1113,22 +1113,14 @@ export default function DeveloperActivity() {
                     <thead className="bg-gray-100 sticky top-0">
                       <tr>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Timestamp</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Active %</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Idle %</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Session</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Developer</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {mouseData.slice(0, 50).map((r, i) => (
                         <tr key={r.id || i} className={`hover:bg-gray-50 ${i === 0 ? "bg-green-50" : ""}`}>
                           <td className="px-4 py-3 text-sm text-gray-600">{fmtDateTime(r.timestamp || r.created_at)}</td>
-                          <td className="px-4 py-3">
-                            <span className={`px-2 py-1 rounded text-xs font-medium ${statusColor(r.activity_status)}`}>
-                              {r.activity_status || "—"}
-                            </span>
-                          </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
                               <div className="w-16 bg-gray-200 rounded-full h-2">
@@ -1145,8 +1137,6 @@ export default function DeveloperActivity() {
                               <span className="text-sm font-medium text-red-600">{(r.idle_percentage || 0).toFixed(1)}%</span>
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-xs text-gray-400 font-mono">{r.session_id ? String(r.session_id).slice(-8) : "—"}</td>
-                          <td className="px-4 py-3 text-xs text-gray-500">{r.developer_name || "—"}</td>
                         </tr>
                       ))}
                     </tbody>
