@@ -1001,7 +1001,7 @@ export default function DeveloperActivity() {
                 <StatCard icon="🖱️" label="Mouse Records" value={mouseData.length} bg="bg-blue-100" />
                 <StatCard icon="📈" label="Avg Active %" value={`${avgMouseActive.toFixed(1)}%`} bg="bg-green-100" />
                 <StatCard icon="📉" label="Avg Idle %" value={`${avgMouseIdle.toFixed(1)}%`} bg="bg-red-100" />
-                <div className="bg-white p-4 rounded-lg border shadow-sm">
+                {/* <div className="bg-white p-4 rounded-lg border shadow-sm">
                   <div className="flex items-center">
                     <div className={`p-3 rounded-lg mr-3 ${statusColor(latestMouseStatus)}`}><span className="text-xl">🎯</span></div>
                     <div>
@@ -1011,7 +1011,7 @@ export default function DeveloperActivity() {
                       </p>
                     </div>
                   </div>
-                </div>
+                </div> */}
               </div>
 
               {/* Active Session Mouse Summary */}
@@ -1075,33 +1075,6 @@ export default function DeveloperActivity() {
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
-
-                  {/* Status Breakdown */}
-                  <div className="bg-gray-50 p-6 rounded-lg">
-                    <h3 className="text-lg font-semibold mb-4">Status Breakdown</h3>
-                    {(() => {
-                      const statusMap = {};
-                      mouseData.forEach(r => {
-                        const s = r.activity_status || "Unknown";
-                        statusMap[s] = (statusMap[s] || 0) + 1;
-                      });
-                      return (
-                        <div className="space-y-3">
-                          {Object.entries(statusMap).map(([status, count]) => (
-                            <div key={status} className="flex items-center justify-between p-3 bg-white rounded border">
-                              <div className="flex items-center gap-2">
-                                <span className={`px-2 py-1 rounded text-xs font-medium ${statusColor(status)}`}>{status}</span>
-                              </div>
-                              <div className="text-right">
-                                <span className="text-sm font-bold text-gray-700">{count}</span>
-                                <span className="text-xs text-gray-400 ml-1">({((count / mouseData.length) * 100).toFixed(0)}%)</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })()}
-                  </div>
                 </div>
               )}
 
@@ -1120,7 +1093,7 @@ export default function DeveloperActivity() {
                     <tbody className="bg-white divide-y divide-gray-200">
                       {mouseData.slice(0, 50).map((r, i) => (
                         <tr key={r.id || i} className={`hover:bg-gray-50 ${i === 0 ? "bg-green-50" : ""}`}>
-                          <td className="px-4 py-3 text-sm text-gray-600">{fmtDateTime(r.timestamp || r.created_at)}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{fmtDateTime(r.created_at)}</td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
                               <div className="w-16 bg-gray-200 rounded-full h-2">
