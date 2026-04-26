@@ -914,8 +914,8 @@ export default function DeveloperActivity() {
                   value={formatHHMMSS(todayTotalSeconds)}
                   bg="bg-teal-100"
                 />
-                <StatCard icon="⏱️" label="Today Active Time" value={fmtDuration(totalActiveTime)} bg="bg-green-100" />
-                <StatCard icon="⏸️" label="Idle Time" value={fmtDuration(totalIdleTime)} bg="bg-red-100" />
+                {/* <StatCard icon="⏱️" label="Today Active Time" value={fmtDuration(totalActiveTime)} bg="bg-green-100" /> */}
+                {/* <StatCard icon="⏸️" label="Idle Time" value={fmtDuration(totalIdleTime)} bg="bg-red-100" /> */}
                 <StatCard icon="🖱️" label="Mouse Active %" value={`${avgMouseActive.toFixed(1)}%`} bg="bg-blue-100" />
                 <StatCard icon="🎯" label="Kb Activity %" value={`${avgKeyboardActivity.toFixed(1)}%`} bg="bg-indigo-100" />
                 <StatCard icon="📸" label="Screenshots" value={screenshots.length} bg="bg-pink-100" />
