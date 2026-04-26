@@ -196,7 +196,7 @@ export default function DeveloperActivity() {
       const sessionFilters = [
         devEmail ? `user_email.eq.${devEmail}` : null,
         dev.user_id ? `user_id.eq.${dev.user_id}` : null,
-        devId ? `developer_id.eq.${devId}` : null,
+        // devId ? `developer_id.eq.${devId}` : null,
       ].filter(Boolean).join(",");
 
       const [sessionsRes, mouseRes, keyboardApiRes, appRes, screenshotRes, screenshotCreatedAtRes, todayTotalRes] = await Promise.all([
@@ -208,7 +208,7 @@ export default function DeveloperActivity() {
           .gte("start_time", start)
           .lt("start_time", end)
           .order("start_time", { ascending: false }),
-        supabase.from("mouse_activities").select("id, session_id, developer_id, developer_name, timestamp, activity_status, active_percentage, idle_percentage, created_at").eq("developer_id", devId).gte("created_at", start).lte("created_at", end).order("timestamp", { ascending: false }),
+        supabase.from("mouse_activities").select("id, session_id, developer_id, developer_name, timestamp, activity_status, active_percentage, idle_percentage, created_at").eq("developer_id", devId).gte("timestamp", start).lte("timestamp", end).order("timestamp", { ascending: false }),
         fetch(`/api/keyboard-stats?developerId=${encodeURIComponent(devId)}&email=${encodeURIComponent(devEmail)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`).then(r => r.json()),
         supabase.from("app_usage").select("id, session_id, user_email, app_name, app_name_raw, window_title, start_time, end_time, duration_seconds, duration_minutes, tracked_at, created_at, is_new_app, user_login").eq("user_email", devEmail).gte("tracked_at", start).lte("tracked_at", end).order("tracked_at", { ascending: false }),
         // Screenshots schema has varied; select '*' and normalize client-side.
@@ -294,7 +294,7 @@ export default function DeveloperActivity() {
             .gte("start_time", start)
             .lt("start_time", end)
             .order("start_time", { ascending: false }),
-          supabase.from("mouse_activities").select("id, session_id, developer_id, developer_name, timestamp, activity_status, active_percentage, idle_percentage, created_at").eq("email", devEmail).gte("created_at", start).lte("created_at", end).order("timestamp", { ascending: false }),
+          supabase.from("mouse_activities").select("id, session_id, developer_id, developer_name, timestamp, activity_status, active_percentage, idle_percentage, created_at").eq("email", devEmail).gte("timestamp", start).lte("timestamp", end).order("timestamp", { ascending: false }),
           supabase.from("app_usage").select("id, session_id, user_email, app_name, app_name_raw, window_title, start_time, end_time, duration_seconds, duration_minutes, tracked_at, created_at, is_new_app, user_login").eq("user_email", devEmail).gte("tracked_at", start).lte("tracked_at", end).order("tracked_at", { ascending: false }),
           supabase.from("screenshots").select("*")
             .or(`developer_id.eq.${devId},developer_email.eq.${devEmail}`)
@@ -859,7 +859,7 @@ export default function DeveloperActivity() {
             <option value="keyboard">Keyboard Activity</option>
             <option value="apps">App Usage</option>
             <option value="screenshots">Screenshots</option>
-            <option value="timeline">Session Timeline</option>
+            {/* <option value="timeline">Session Timeline</option> */}
           </select>
         </div>
 
@@ -922,7 +922,7 @@ export default function DeveloperActivity() {
               </div>
 
               {/* Productivity Chart */}
-              {sessionChartData.length > 0 && (
+              {/* {sessionChartData.length > 0 && (
                 <div className="bg-gray-50 p-6 rounded-lg">
                   <h3 className="text-lg font-semibold mb-4">Productivity per Session</h3>
                   <ResponsiveContainer width="100%" height={300}>
@@ -938,7 +938,7 @@ export default function DeveloperActivity() {
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-              )}
+              )} */}
 
               {/* Top Apps + App Pie side by side */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -967,6 +967,7 @@ export default function DeveloperActivity() {
                   ) : <p className="text-gray-500 text-center py-4">No app usage data</p>}
                 </div>
 
+                {/* App Usage Distribution Pie Chart */}
                 {appPieData.length > 0 && (
                   <div className="bg-gray-50 p-6 rounded-lg">
                     <h3 className="text-lg font-semibold mb-4">App Usage Distribution</h3>
@@ -983,9 +984,7 @@ export default function DeveloperActivity() {
                         >
                           {appPieData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
                         </Pie>
-                        {/* v is in minutes; show as "X min Y sec" */}
-                        <Tooltip formatter={(v) => fmtMinutesToMinSec(v)} />
-                        <Tooltip formatter={(v) => `${Number(v).toFixed(1)} min`} />
+                        {/* Tooltip component removed - no hover info will display */}
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
@@ -1358,8 +1357,28 @@ export default function DeveloperActivity() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <StatCard icon="💻" label="Apps Used" value={totalAppsUsed} bg="bg-blue-100" />
                 <StatCard icon="📊" label="Usage Records" value={appUsageData.length} bg="bg-green-100" />
-                <StatCard icon="⏱️" label="Total Active Time" value={`${totalAppActiveMinutes.toFixed(1)} min`} bg="bg-purple-100" />
-                {currentApp && (
+                <StatCard 
+                      icon="⏱️" 
+                      label="Total Active Time" 
+                      value={(() => {
+                        const totalSeconds = totalAppActiveMinutes * 60;
+                        
+                        if (totalSeconds < 60) {
+                          return `${Math.round(totalSeconds)} sec`;
+                        } else if (totalSeconds < 3600) {
+                          const mins = Math.floor(totalSeconds / 60);
+                          const secs = Math.round(totalSeconds % 60);
+                          return `${mins} min ${secs} sec`;
+                        } else {
+                          const hours = Math.floor(totalSeconds / 3600);
+                          const mins = Math.floor((totalSeconds % 3600) / 60);
+                          const secs = Math.round(totalSeconds % 60);
+                          return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+                        }
+                      })()} 
+                      bg="bg-purple-100" 
+                    />
+                {/* {currentApp && (
                   <div className="bg-white p-4 rounded-lg border shadow-sm">
                     <div className="flex items-center">
                       <div className="bg-orange-100 p-3 rounded-lg mr-3"><span className="text-xl">🟢</span></div>
@@ -1369,11 +1388,11 @@ export default function DeveloperActivity() {
                       </div>
                     </div>
                   </div>
-                )}
+                )} */}
               </div>
 
               {/* Live Application Tracker */}
-              {currentApp && (
+              {/* {currentApp && (
                 <div className="bg-gradient-to-r from-orange-50 to-amber-50 p-6 rounded-lg border border-orange-200">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -1393,7 +1412,7 @@ export default function DeveloperActivity() {
                     </div>
                   </div>
                 </div>
-              )}
+              )} */}
 
               {/* Active Session App Summary */}
               {activeSession && sessionAppData.length > 0 && (
@@ -1463,7 +1482,7 @@ export default function DeveloperActivity() {
                         <Pie data={appPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
                           {appPieData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
                         </Pie>
-                        <Tooltip formatter={(v) => `${Number(v).toFixed(1)} min`} />
+                        {/* <Tooltip formatter={(v) => `${Number(v).toFixed(1)} min`} /> */}
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
@@ -1477,7 +1496,28 @@ export default function DeveloperActivity() {
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis type="number" />
                         <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 12 }} />
-                        <Tooltip formatter={(v) => `${Number(v).toFixed(1)} min`} />
+                        <Tooltip 
+                          formatter={(v) => {
+                            // Convert minutes to seconds for calculation
+                            const totalSeconds = v * 60;
+                            
+                            if (totalSeconds < 60) {
+                              // Less than 1 minute - show seconds
+                              return `${Math.round(totalSeconds)} sec`;
+                            } else if (totalSeconds < 3600) {
+                              // Less than 1 hour - show minutes and seconds
+                              const minutes = Math.floor(totalSeconds / 60);
+                              const seconds = Math.round(totalSeconds % 60);
+                              return `${minutes} min ${seconds} sec`;
+                            } else {
+                              // Greater than or equal to 1 hour - show HH:MM:SS
+                              const hours = Math.floor(totalSeconds / 3600);
+                              const minutes = Math.floor((totalSeconds % 3600) / 60);
+                              const seconds = Math.round(totalSeconds % 60);
+                              return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                            }
+                          }}
+                        />
                         <Bar dataKey="minutes" name="Minutes" fill="#009578" radius={[0,4,4,0]} />
                       </BarChart>
                     </ResponsiveContainer>
@@ -1494,44 +1534,58 @@ export default function DeveloperActivity() {
                       <tr>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Application</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Window Title</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Start Time</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">End Time</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duration</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">New?</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Session</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {appUsageData.slice(0, 50).map((r, i) => (
-                        <tr key={r.id || i} className={`hover:bg-gray-50 ${i === 0 ? "bg-orange-50" : ""}`}>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center">
-                              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
-                                <span className="text-blue-600 text-sm">{i === 0 ? "🟢" : "📱"}</span>
+                      {appUsageData.slice(0, 50).map((r, i) => {
+                        // Format duration based on total seconds
+                        const formatDurationDisplay = (minutes, seconds) => {
+                          const totalSeconds = (minutes * 60) + (seconds || 0);
+                          
+                          if (totalSeconds < 60) {
+                            return `${Math.round(totalSeconds)} sec`;
+                          } else if (totalSeconds < 3600) {
+                            const mins = Math.floor(totalSeconds / 60);
+                            const secs = Math.round(totalSeconds % 60);
+                            return `${mins} min ${secs} sec`;
+                          } else {
+                            const hours = Math.floor(totalSeconds / 3600);
+                            const mins = Math.floor((totalSeconds % 3600) / 60);
+                            const secs = Math.round(totalSeconds % 60);
+                            return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+                          }
+                        };
+
+                        const durationMinutes = r.duration_minutes || 0;
+                        const durationSeconds = r.duration_seconds || 0;
+                        const formattedDuration = formatDurationDisplay(durationMinutes, durationSeconds);
+                        
+                        return (
+                          <tr key={r.id || i} className="hover:bg-gray-50">
+                            <td className="px-4 py-3">
+                              <div className="flex items-center">
+                                <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
+                                  <span className="text-blue-600 text-sm">📱</span>
+                                </div>
+                                <div>
+                                  <p className="text-sm font-medium text-gray-900 truncate max-w-[180px]">{r.app_name}</p>
+                                  {r.app_name_raw && r.app_name_raw !== r.app_name && (
+                                    <p className="text-xs text-gray-400 truncate max-w-[180px]">{r.app_name_raw}</p>
+                                  )}
+                                </div>
                               </div>
-                              <div>
-                                <p className="text-sm font-medium text-gray-900 truncate max-w-[180px]">{r.app_name}</p>
-                                {r.app_name_raw && r.app_name_raw !== r.app_name && (
-                                  <p className="text-xs text-gray-400 truncate max-w-[180px]">{r.app_name_raw}</p>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600 truncate max-w-[200px]">{r.window_title || "—"}</td>
-                          <td className="px-4 py-3 text-sm text-gray-500">{fmtDateTime(r.start_time)}</td>
-                          <td className="px-4 py-3 text-sm text-gray-500">{fmtDateTime(r.end_time)}</td>
-                          <td className="px-4 py-3">
-                            <div>
-                              <span className="text-sm font-medium text-gray-800">{(r.duration_minutes || 0).toFixed(1)} min</span>
-                              <span className="text-xs text-gray-400 ml-1">({(r.duration_seconds || 0).toFixed(0)}s)</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            {r.is_new_app && <span className="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded font-medium">NEW</span>}
-                          </td>
-                          <td className="px-4 py-3 text-xs text-gray-400 font-mono">{r.session_id ? String(r.session_id).slice(-8) : "—"}</td>
-                        </tr>
-                      ))}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600 truncate max-w-[200px]">{r.window_title || "—"}</td>
+                            <td className="px-4 py-3">
+                              <span className="text-sm font-medium text-gray-800">{formattedDuration}</span>
+                              {((durationMinutes * 60) + durationSeconds) >= 60 && (
+                                <span className="text-xs text-gray-400 ml-1">({durationMinutes.toFixed(1)} min)</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1698,7 +1752,7 @@ export default function DeveloperActivity() {
               )}
 
               {/* App Distribution for Screenshots */}
-              {screenshots.length > 0 && (() => {
+              {/* {screenshots.length > 0 && (() => {
                 const appCounts = {};
                 screenshots.forEach(ss => {
                   const app = ss.app_active || "Unknown";
@@ -1722,7 +1776,7 @@ export default function DeveloperActivity() {
                     </ResponsiveContainer>
                   </div>
                 );
-              })()}
+              })()} */}
 
               {/* Screenshot Details Modal */}
               {selectedScreenshot && (() => {
@@ -1779,7 +1833,7 @@ export default function DeveloperActivity() {
           )}
 
           {/* ==================== SESSION TIMELINE ==================== */}
-          {viewMode === "timeline" && (
+          {/* {viewMode === "timeline" && (
             <div className="bg-white p-6 rounded-lg border shadow-sm">
               <h3 className="text-lg font-semibold mb-4">Session Timeline ({sessions.length})</h3>
               <div className="space-y-4 max-h-[600px] overflow-y-auto">
@@ -1824,13 +1878,13 @@ export default function DeveloperActivity() {
                           {session.status || "completed"}
                         </span>
                       </div>
-                      {session.apps_used && (
+                      {session.app_usage_summary && (
                         <div className="mt-3 pt-3 border-t">
                           <p className="text-sm font-medium text-gray-700 mb-1">Apps:</p>
                           <div className="flex flex-wrap gap-1">
                             {(() => {
                               try {
-                                const parsed = typeof session.apps_used === "string" ? JSON.parse(session.apps_used) : session.apps_used;
+                                const parsed = typeof session.app_usage_summary === "string" ? JSON.parse(session.app_usage_summary) : session.app_usage_summary;
                                 const apps = parsed.top_apps || (Array.isArray(parsed) ? parsed : []);
                                 return apps.slice(0, 5).map((app, i) => (
                                   <span key={i} className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">{app}</span>
@@ -1849,7 +1903,7 @@ export default function DeveloperActivity() {
                 )}
               </div>
             </div>
-          )}
+          )} */}
         </div>
       )}
 
