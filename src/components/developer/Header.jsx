@@ -23,9 +23,9 @@ export default function Header({
             <h1 className="text-xl font-bold text-gray-900 sm:text-2xl break-words">
               Welcome, {user?.name || 'Developer'}!
             </h1>
-            <p className="text-gray-600">
+            {/* <p className="text-gray-600">
               {assignedProjects?.length || 0} Assigned Projects
-            </p>
+            </p> */}
           </div>
 
           {/* Right side - User info + Notifications */}

@@ -16,29 +16,23 @@ export default function Navigation({
     onSectionChange(section);
   };
 
-  const getBadgeCount = (section) => {
-    if (section === "projects") return assignedProjectsCount;
-    return null;
-  };
-
   return (
-    <nav className="bg-white shadow">
+    <nav className="bg-white shadow-sm mb-2.5">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between">
           <div className="-mx-4 px-4 sm:mx-0 sm:px-0 flex-1">
-            <div className="flex gap-2 sm:gap-6 overflow-x-auto whitespace-nowrap">
+            <div className="flex gap-2 py-3 sm:py-4 sm:gap-4 lg:gap-6 overflow-x-auto whitespace-nowrap">
             {navItems.map((item) => {
-              const badgeCount = getBadgeCount(item.id);
               const isActive = activeSection === item.id;
               
               return (
                 <button
                   key={item.id}
                   onClick={() => handleNavigation(item.id)}
-                  className={`flex items-center px-1 py-4 text-sm font-medium border-b-2 transition-colors ${
+                  className={`px-3 py-2 rounded-md text-sm font-medium relative whitespace-nowrap flex-shrink-0 flex items-center transition-colors ${
                     isActive
-                      ? 'border-[#009578] text-[#009578]'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? "bg-[#009578] text-white"
+                      : "text-gray-600 hover:text-[#009578]"
                   }`}
                 >
                   <svg
@@ -51,13 +45,6 @@ export default function Navigation({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={item.icon} />
                   </svg>
                   {item.label}
-                  
-                  {/* Badge for counts */}
-                  {badgeCount > 0 && (
-                    <span className="ml-2 px-2 py-1 text-xs rounded-full font-bold bg-[#009578] text-white">
-                      {badgeCount > 99 ? '99+' : badgeCount}
-                    </span>
-                  )}
                 </button>
               );
             })}

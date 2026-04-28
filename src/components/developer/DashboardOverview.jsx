@@ -1,12 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+import { useCallback, useEffect, useState } from "react";
+import { supabase } from "@/utils/supabaseClient";
 
 export default function DashboardTimeTracking({ user }) {
   const [dailyTotals, setDailyTotals] = useState({});
@@ -15,50 +10,74 @@ export default function DashboardTimeTracking({ user }) {
   const [recentProjects, setRecentProjects] = useState([]);
   const [todayTrackedTime, setTodayTrackedTime] = useState("00:00:00");
 
+  const userId = user?.id || null;
+  const userEmail = user?.email || null;
+
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
 
   // ⏱ Minutes → HH:MM
-  const formatMinutes = (mins) => {
+  const formatMinutes = useCallback((mins) => {
     const h = Math.floor(mins / 60);
     const m = mins % 60;
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-  };
+  }, []);
 
   // ⏱ Seconds → HH:MM:SS
-  const formatSeconds = (totalSeconds) => {
+  const formatSeconds = useCallback((totalSeconds) => {
     const h = Math.floor(totalSeconds / 3600);
     const m = Math.floor((totalSeconds % 3600) / 60);
     const s = Math.floor(totalSeconds % 60);
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  };
+  }, []);
 
   // ⏱ Fetch Today's Tracked Time
-  const loadTodayTrackedTime = async () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Start of today
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1); // Start of tomorrow
+  const loadTodayTrackedTime = useCallback(async () => {
+    if (!userId && !userEmail) return;
 
-    const { data, error } = await supabase
+    // Match Admin behavior: use local date components but build UTC boundaries.
+    const now = new Date();
+    const yy = now.getFullYear();
+    const mm = now.getMonth() + 1;
+    const dd = now.getDate();
+    const dayStart = new Date(Date.UTC(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0));
+    const dayEnd = new Date(Date.UTC(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0));
+    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+
+    // Use the same filter that works in the Sessions page.
+    // Fallback to ids only if email isn't available.
+    let query = supabase
       .from("productivity_sessions")
       .select("total_duration")
-      .eq("developer_id", user.id)
-      .gte("start_time", today.toISOString())
-      .lt("start_time", tomorrow.toISOString());
+      .gte("start_time", dayStart.toISOString())
+      .lt("start_time", dayEnd.toISOString());
+
+    if (userEmail) {
+      query = query.eq("user_email", userEmail);
+    } else if (userId) {
+      query = query.or(`user_id.eq.${userId},developer_id.eq.${userId}`);
+    } else {
+      return;
+    }
+
+    const { data, error } = await query;
 
     if (!error && data) {
       const totalSeconds = data.reduce((sum, session) => sum + (Number(session.total_duration) || 0), 0);
       setTodayTrackedTime(formatSeconds(totalSeconds));
+    } else if (error) {
+      // Keep UI stable; surface details for debugging.
+      console.error("[Developer Dashboard] Failed to load today's tracked time:", error);
     }
-  };
+  }, [userId, userEmail, formatSeconds]);
 
   // 📊 Fetch time data
-  const loadTimeData = async () => {
+  const loadTimeData = useCallback(async () => {
+    if (!userId) return;
     const { data, error } = await supabase
       .from("time_entries")
       .select("*")
-      .eq("user_id", user.id);
+      .eq("user_id", userId);
 
     if (error) {
       return;
@@ -97,24 +116,31 @@ export default function DashboardTimeTracking({ user }) {
       }))
     );
     setTotalTime(formatMinutes(totalMinutes));
-  };
+  }, [userId, currentMonth, currentYear, formatMinutes]);
 
   // 📁 Recent Projects
-  const loadProjects = async () => {
+  const loadProjects = useCallback(async () => {
+    if (!userId) return;
     const { data } = await supabase
       .from("projects")
       .select("id, name")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .limit(5);
 
     setRecentProjects(data || []);
-  };
+  }, [userId]);
 
   // 🔴 REAL-TIME SUBSCRIPTION
   useEffect(() => {
-    loadTimeData();
-    loadProjects();
-    loadTodayTrackedTime();
+    if (!userId && !userEmail) return;
+
+    const initialLoadTimer = setTimeout(() => {
+      void Promise.all([
+        loadTimeData(),
+        loadProjects(),
+        loadTodayTrackedTime(),
+      ]);
+    }, 0);
 
     const channel = supabase
       .channel("time-tracking-realtime")
@@ -130,8 +156,11 @@ export default function DashboardTimeTracking({ user }) {
       )
       .subscribe();
 
-    return () => supabase.removeChannel(channel);
-  }, []);
+    return () => {
+      clearTimeout(initialLoadTimer);
+      supabase.removeChannel(channel);
+    };
+  }, [userId, userEmail, loadProjects, loadTimeData, loadTodayTrackedTime]);
 
   const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
 
@@ -211,8 +240,8 @@ export default function DashboardTimeTracking({ user }) {
 
       {/* RIGHT PANEL */}
       <div className="bg-white rounded-lg shadow p-6">
-        <div className="mb-6 mb-4">
-          <h3 className="text-lg font-semibold mb-2">Today's Tracked Time</h3>
+        <div className="mb-6">
+          <h3 className="text-lg font-semibold mb-2">Today’s Tracked Time</h3>
           <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-center">
             <p className="text-3xl font-bold text-blue-600">{todayTrackedTime}</p>
             <p className="text-sm text-gray-500 mt-1">Completed Sessions</p>
