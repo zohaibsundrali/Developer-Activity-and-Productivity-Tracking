@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
 
 export default function DashboardTimeTracking({ user }) {
@@ -12,6 +12,9 @@ export default function DashboardTimeTracking({ user }) {
 
   const userId = user?.id || null;
   const userEmail = user?.email || null;
+
+  // Debounce realtime-driven refreshes (multiple events can fire quickly).
+  const refreshDebounceRef = useRef(null);
 
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
@@ -134,31 +137,66 @@ export default function DashboardTimeTracking({ user }) {
   useEffect(() => {
     if (!userId && !userEmail) return;
 
-    const initialLoadTimer = setTimeout(() => {
-      void Promise.all([
-        loadTimeData(),
-        loadProjects(),
-        loadTodayTrackedTime(),
-      ]);
-    }, 0);
+    const scheduleRefresh = () => {
+      if (refreshDebounceRef.current) {
+        clearTimeout(refreshDebounceRef.current);
+      }
 
-    const channel = supabase
-      .channel("time-tracking-realtime")
+      refreshDebounceRef.current = setTimeout(() => {
+        void Promise.all([
+          loadTimeData(),
+          loadProjects(),
+          loadTodayTrackedTime(),
+        ]);
+      }, 250);
+    };
+
+    // Initial load
+    const initialLoadTimer = setTimeout(scheduleRefresh, 0);
+
+    // Realtime subscriptions (scoped to this developer where possible)
+    const timeEntriesChannel = supabase
+      .channel(`dev-dashboard-time-entries:${userId || "anon"}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "time_entries" },
-        () => loadTimeData()
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "productivity_sessions" },
-        () => loadTodayTrackedTime()
+        {
+          event: "*",
+          schema: "public",
+          table: "time_entries",
+          ...(userId ? { filter: `user_id=eq.${userId}` } : {}),
+        },
+        scheduleRefresh
       )
       .subscribe();
 
+    const sessionsChannel = supabase
+      .channel(`dev-dashboard-sessions:${userEmail || userId || "anon"}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "productivity_sessions",
+          ...(userEmail ? { filter: `user_email=eq.${userEmail}` } : {}),
+        },
+        scheduleRefresh
+      )
+      .subscribe();
+
+    // Polling fallback (mirrors Admin's approach for resilience)
+    const pollId = setInterval(scheduleRefresh, 10_000);
+
     return () => {
       clearTimeout(initialLoadTimer);
-      supabase.removeChannel(channel);
+      clearInterval(pollId);
+
+      if (refreshDebounceRef.current) {
+        clearTimeout(refreshDebounceRef.current);
+        refreshDebounceRef.current = null;
+      }
+
+      supabase.removeChannel(timeEntriesChannel);
+      supabase.removeChannel(sessionsChannel);
     };
   }, [userId, userEmail, loadProjects, loadTimeData, loadTodayTrackedTime]);
 
