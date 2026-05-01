@@ -7,6 +7,32 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   AreaChart, Area,
 } from "recharts";
+import {
+  BarChart3,
+  Calendar,
+  Camera,
+  CheckCircle2,
+  Clock,
+  Clock1,
+  Clock2,
+  Eye,
+  Gauge,
+  Hourglass,
+  Keyboard,
+  LockKeyhole,
+  Monitor,
+  MousePointer2,
+  Pause,
+  CircleDot,
+  Search,
+  Target,
+  Timer,
+  TrendingDown,
+  TrendingUp,
+  Type,
+  User,
+  XCircle,
+} from "lucide-react";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -15,6 +41,7 @@ const supabase = createClient(
 
 const CHART_COLORS = ["#009578", "#0ea5e9", "#8b5cf6", "#f59e0b", "#ef4444", "#10b981", "#6366f1", "#ec4899"];
 const POLL_INTERVAL = 10_000; // 10 seconds
+const MOUSE_PAGE_SIZE = 50;
 
 export default function DeveloperActivity() {
   const [currentAdmin, setCurrentAdmin] = useState(null);
@@ -118,6 +145,9 @@ export default function DeveloperActivity() {
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
   const [mouseData, setMouseData] = useState([]);
+  const [mousePage, setMousePage] = useState(1);
+  const [mouseTotalCount, setMouseTotalCount] = useState(0);
+  const [mousePageLoading, setMousePageLoading] = useState(false);
   const [keyboardData, setKeyboardData] = useState([]);
   const [appUsageData, setAppUsageData] = useState([]);
   const [screenshots, setScreenshots] = useState([]);
@@ -182,13 +212,15 @@ export default function DeveloperActivity() {
   }, [currentAdmin, fetchAdminDevelopers]);
 
   // ─── Date Filter ───
-    const getDateFilter = useCallback(() => {
+  const getDateFilter = useCallback(() => {
     const [yy, mm, dd] = String(selectedDate).split("-").map(Number);
 
     // Use UTC boundaries so "YYYY-MM-DD" matches tracked_at::date in DB (typically UTC).
-    // This prevents timezone shifts that can pull in previous day's records.
-    const baseStartUtc = new Date(Date.UTC(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0));
-    const baseEndUtc = new Date(Date.UTC(yy, (mm || 1) - 1, dd || 1, 23, 59, 59, 999));
+    // Treat the window as: [startInclusive, endExclusive)
+    const selectedDayStartUtc = new Date(Date.UTC(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0));
+    const baseStartUtc = new Date(selectedDayStartUtc);
+    const endExclusiveUtc = new Date(selectedDayStartUtc);
+    endExclusiveUtc.setUTCDate(endExclusiveUtc.getUTCDate() + 1);
 
     if (timeRange === "week") {
       baseStartUtc.setUTCDate(baseStartUtc.getUTCDate() - 6);
@@ -198,7 +230,7 @@ export default function DeveloperActivity() {
     }
 
     const startISO = baseStartUtc.toISOString();
-    const endISO = baseEndUtc.toISOString();
+    const endISO = endExclusiveUtc.toISOString();
 
     console.log("[DateFilter][UTC]", {
       selectedDate,
@@ -221,15 +253,17 @@ export default function DeveloperActivity() {
     const devId = dev.id;
     const devEmail = dev.email;
     const [yy, mm, dd] = String(selectedDate).split("-").map(Number);
-    const dayStart = new Date(Date.UTC(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0));
-    const dayEnd = new Date(Date.UTC(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0));
-    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+
+    const rangeDays = timeRange === "today" ? 1 : timeRange === "week" ? 7 : 30;
 
     // Login activity is reported in Pakistan timezone (Asia/Karachi) but stored as UTC timestamps.
-    // Filter by the selected *Pakistan* date by converting PK midnight to UTC.
+    // Filter by the selected *Pakistan* date range by converting PK midnight to UTC.
     const PK_OFFSET_MS = 5 * 60 * 60 * 1000; // Asia/Karachi is UTC+5 (no DST)
-    const pkDayStartUtc = new Date(Date.UTC(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0) - PK_OFFSET_MS);
-    const pkDayEndUtc = new Date(pkDayStartUtc.getTime() + 24 * 60 * 60 * 1000);
+    const selectedUtcMidnight = new Date(Date.UTC(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0));
+    const rangeStartUtcMidnight = new Date(selectedUtcMidnight);
+    rangeStartUtcMidnight.setUTCDate(rangeStartUtcMidnight.getUTCDate() - (rangeDays - 1));
+    const pkRangeStartUtc = new Date(rangeStartUtcMidnight.getTime() - PK_OFFSET_MS);
+    const pkRangeEndUtc = new Date(selectedUtcMidnight.getTime() + 24 * 60 * 60 * 1000 - PK_OFFSET_MS);
 
     try {
       // Fetch all 5 tables in parallel (keyboard via API route to bypass RLS)
@@ -239,7 +273,7 @@ export default function DeveloperActivity() {
         // devId ? `developer_id.eq.${devId}` : null,
       ].filter(Boolean).join(",");
 
-      const [sessionsRes, mouseRes, keyboardApiRes, appRes, screenshotRes, screenshotCreatedAtRes, todayTotalRes] = await Promise.all([
+      const [sessionsRes, keyboardApiRes, appRes, screenshotRes, screenshotCreatedAtRes, todayTotalRes] = await Promise.all([
         // Match sessions for this developer by email, user_id, or developer_id
         supabase
           .from("productivity_sessions")
@@ -248,9 +282,8 @@ export default function DeveloperActivity() {
           .gte("start_time", start)
           .lt("start_time", end)
           .order("start_time", { ascending: false }),
-        supabase.from("mouse_activities").select("id, session_id, developer_id, developer_name, timestamp, activity_status, active_percentage, idle_percentage, created_at").eq("developer_id", devId).gte("timestamp", start).lte("timestamp", end).order("timestamp", { ascending: false }),
         fetch(`/api/keyboard-stats?developerId=${encodeURIComponent(devId)}&email=${encodeURIComponent(devEmail)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`).then(r => r.json()),
-        supabase.from("app_usage").select("id, session_id, user_email, app_name, app_name_raw, window_title, start_time, end_time, duration_seconds, duration_minutes, tracked_at, created_at, is_new_app, user_login").eq("user_email", devEmail).gte("tracked_at", start).lte("tracked_at", end).order("tracked_at", { ascending: false }),
+        supabase.from("app_usage").select("id, session_id, user_email, app_name, app_name_raw, window_title, start_time, end_time, duration_seconds, duration_minutes, tracked_at, created_at, is_new_app, user_login").eq("user_email", devEmail).gte("tracked_at", start).lt("tracked_at", end).order("tracked_at", { ascending: false }),
         // Screenshots schema has varied; select '*' and normalize client-side.
         supabase.from("screenshots").select("*")
           .or(`developer_id.eq.${devId},developer_email.eq.${devEmail}`)
@@ -269,8 +302,8 @@ export default function DeveloperActivity() {
               .from("productivity_sessions")
               .select("total_duration")
               .eq("user_email", devEmail)
-              .gte("start_time", dayStart.toISOString())
-              .lt("start_time", dayEnd.toISOString())
+            .gte("start_time", start)
+            .lt("start_time", end)
           : Promise.resolve({ data: [], error: null }),
       ]);
 
@@ -288,8 +321,8 @@ export default function DeveloperActivity() {
       };
 
       const fetchLoginsSafe = async () => {
-        const startIso = pkDayStartUtc.toISOString();
-        const endIso = pkDayEndUtc.toISOString();
+        const startIso = pkRangeStartUtc.toISOString();
+        const endIso = pkRangeEndUtc.toISOString();
         const attempts = [
           // Preferred: keyed by developer_id + login_time
           () => supabase.from("developer_logins").select("*").eq("developer_id", devId).gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }),
@@ -320,9 +353,9 @@ export default function DeveloperActivity() {
 
       const loginRes = await fetchLoginsSafe();
       let finalLogins = Array.isArray(loginRes?.data) ? loginRes.data : [];
-      // Ensure scoped to the selected developer and PK day (in case we hit a wide fallback query).
-      const pkStartMs = pkDayStartUtc.getTime();
-      const pkEndMs = pkDayEndUtc.getTime();
+      // Ensure scoped to the selected developer and PK day range (in case we hit a wide fallback query).
+      const pkStartMs = pkRangeStartUtc.getTime();
+      const pkEndMs = pkRangeEndUtc.getTime();
       finalLogins = finalLogins
         .filter(matchesDeveloperLoginRow)
         .map((r) => ({ row: r, ms: loginRowTimeMs(r) }))
@@ -331,7 +364,6 @@ export default function DeveloperActivity() {
         .map((x) => x.row);
 
       let finalSessions = sessionsRes.data || [];
-      let finalMouse = mouseRes.data || [];
       // Handle keyboard API response
       let finalKeyboard = [];
       if (keyboardApiRes && keyboardApiRes.data) {
@@ -352,7 +384,7 @@ export default function DeveloperActivity() {
         .filter((row) => {
           const t = new Date(row?.tracked_at).getTime();
           if (Number.isNaN(t)) return false;
-          return t >= kbStartMs && t <= kbEndMs;
+          return t >= kbStartMs && t < kbEndMs;
         })
         .sort((a, b) => new Date(b.tracked_at).getTime() - new Date(a.tracked_at).getTime());
 
@@ -380,9 +412,9 @@ export default function DeveloperActivity() {
         if (sByCreatedAt?.length) finalSessions = sByCreatedAt;
       }
 
-      // Fallback to email if developer_id returned nothing
-      if (!finalSessions.length && !finalMouse.length) {
-        const [s2, m2, a2, ss2, ss2CreatedAt] = await Promise.all([
+      // Fallback to email if sessions returned nothing
+      if (!finalSessions.length) {
+        const [s2, a2, ss2, ss2CreatedAt] = await Promise.all([
           supabase
             .from("productivity_sessions")
             .select("*")
@@ -390,8 +422,7 @@ export default function DeveloperActivity() {
             .gte("start_time", start)
             .lt("start_time", end)
             .order("start_time", { ascending: false }),
-          supabase.from("mouse_activities").select("id, session_id, developer_id, developer_name, timestamp, activity_status, active_percentage, idle_percentage, created_at").eq("email", devEmail).gte("timestamp", start).lte("timestamp", end).order("timestamp", { ascending: false }),
-          supabase.from("app_usage").select("id, session_id, user_email, app_name, app_name_raw, window_title, start_time, end_time, duration_seconds, duration_minutes, tracked_at, created_at, is_new_app, user_login").eq("user_email", devEmail).gte("tracked_at", start).lte("tracked_at", end).order("tracked_at", { ascending: false }),
+          supabase.from("app_usage").select("id, session_id, user_email, app_name, app_name_raw, window_title, start_time, end_time, duration_seconds, duration_minutes, tracked_at, created_at, is_new_app, user_login").eq("user_email", devEmail).gte("tracked_at", start).lt("tracked_at", end).order("tracked_at", { ascending: false }),
           supabase.from("screenshots").select("*")
             .or(`developer_id.eq.${devId},developer_email.eq.${devEmail}`)
             .gte("timestamp", start)
@@ -405,7 +436,6 @@ export default function DeveloperActivity() {
             .limit(200),
         ]);
         finalSessions = s2.data || [];
-        finalMouse = m2.data || [];
         finalApp = a2.data || [];
         screenshotRows = ss2.data || [];
         screenshotCreatedAtRows = ss2CreatedAt.data || [];
@@ -442,7 +472,6 @@ export default function DeveloperActivity() {
       setActiveSession(active);
 
       setSessions(finalSessions);
-      setMouseData(finalMouse);
       setKeyboardData(finalKeyboard);
       setAppUsageData(finalApp);
       setScreenshots(finalScreenshots);
@@ -454,6 +483,69 @@ export default function DeveloperActivity() {
       if (!silent) setLoading(false);
     }
   }, [selectedDeveloper, developers, getDateFilter, selectedDate, loginRowTimeMs]);
+
+  // ─── Mouse Activity (server-side pagination) ───
+  const fetchMousePage = useCallback(async ({ page = 1, silent = false } = {}) => {
+    const dev = developers.find(d => d.id === selectedDeveloper);
+    if (!dev) return;
+
+    const { start, end } = getDateFilter();
+    const from = (page - 1) * MOUSE_PAGE_SIZE;
+    const to = from + MOUSE_PAGE_SIZE - 1;
+
+    if (!silent) setMousePageLoading(true);
+    try {
+      const baseSelect = "id, session_id, developer_id, developer_name, timestamp, activity_status, active_percentage, idle_percentage, created_at";
+
+      let res = await supabase
+        .from("mouse_activities")
+        .select(baseSelect, { count: "exact" })
+        .eq("developer_id", dev.id)
+        .gte("created_at", start)
+        .lt("created_at", end)
+        .order("created_at", { ascending: false })
+        .range(from, to);
+
+      let rows = Array.isArray(res?.data) ? res.data : [];
+      let total = typeof res?.count === "number" ? res.count : rows.length;
+
+      // Fallback: some schemas may use email instead of developer_id.
+      if (!rows.length && dev.email) {
+        res = await supabase
+          .from("mouse_activities")
+          .select(baseSelect, { count: "exact" })
+          .eq("email", dev.email)
+          .gte("created_at", start)
+          .lt("created_at", end)
+          .order("created_at", { ascending: false })
+          .range(from, to);
+        rows = Array.isArray(res?.data) ? res.data : [];
+        total = typeof res?.count === "number" ? res.count : rows.length;
+      }
+
+      setMouseData(rows);
+      setMouseTotalCount(total);
+      setMousePage(page);
+    } catch (e) {
+      // Silently handle mouse paging errors
+      setMouseData([]);
+      setMouseTotalCount(0);
+      setMousePage(1);
+    } finally {
+      if (!silent) setMousePageLoading(false);
+    }
+  }, [developers, selectedDeveloper, getDateFilter]);
+
+  // Reset mouse pagination when filters change.
+  useEffect(() => {
+    if (!selectedDeveloper) {
+      setMouseData([]);
+      setMouseTotalCount(0);
+      setMousePage(1);
+      return;
+    }
+    fetchMousePage({ page: 1, silent: true });
+  }, [selectedDeveloper, selectedDate, timeRange, fetchMousePage]);
 
   // Initial fetch + re-fetch on filter changes
   useEffect(() => {
@@ -480,6 +572,15 @@ export default function DeveloperActivity() {
     const dev = developers.find(d => d.id === selectedDeveloper);
     if (!dev) return;
 
+    const { start, end } = getDateFilter();
+    const startMs = new Date(start).getTime();
+    const endMs = new Date(end).getTime();
+    const inRange = (row) => {
+      const t = parseDbTimeMs(row?.created_at ?? row?.timestamp ?? null);
+      if (Number.isNaN(t)) return false;
+      return t >= startMs && t < endMs;
+    };
+
     const channel = supabase
       .channel("mouse-activity-realtime")
       .on("postgres_changes", {
@@ -488,7 +589,11 @@ export default function DeveloperActivity() {
         table: "mouse_activities",
         filter: `developer_id=eq.${dev.id}`,
       }, (payload) => {
-        setMouseData(prev => [payload.new, ...prev]);
+        if (!inRange(payload?.new)) return;
+        setMouseTotalCount((c) => (typeof c === "number" ? c + 1 : c));
+        if (mousePage === 1) {
+          setMouseData(prev => [payload.new, ...prev].slice(0, MOUSE_PAGE_SIZE));
+        }
         setLastUpdated(new Date());
       })
       .subscribe();
@@ -497,7 +602,7 @@ export default function DeveloperActivity() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [selectedDeveloper, developers]);
+  }, [selectedDeveloper, developers, getDateFilter, parseDbTimeMs, mousePage]);
 
   // ─── Supabase Realtime for keyboard_stats ───
   const keyboardChannelRef = useRef(null);
@@ -653,8 +758,12 @@ export default function DeveloperActivity() {
 
     const [yy, mm, dd] = String(selectedDate).split("-").map(Number);
     const PK_OFFSET_MS = 5 * 60 * 60 * 1000;
-    const pkDayStartUtcMs = Date.UTC(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0) - PK_OFFSET_MS;
-    const pkDayEndUtcMs = pkDayStartUtcMs + 24 * 60 * 60 * 1000;
+    const rangeDays = timeRange === "today" ? 1 : timeRange === "week" ? 7 : 30;
+    const selectedUtcMidnightMs = Date.UTC(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0);
+    const rangeStartUtcMidnight = new Date(selectedUtcMidnightMs);
+    rangeStartUtcMidnight.setUTCDate(rangeStartUtcMidnight.getUTCDate() - (rangeDays - 1));
+    const pkRangeStartUtcMs = rangeStartUtcMidnight.getTime() - PK_OFFSET_MS;
+    const pkRangeEndUtcMs = selectedUtcMidnightMs + 24 * 60 * 60 * 1000 - PK_OFFSET_MS;
 
     const matchesDeveloper = (row) => {
       if (!row) return false;
@@ -666,10 +775,10 @@ export default function DeveloperActivity() {
       return false;
     };
 
-    const inSelectedPkDay = (row) => {
+    const inPkRange = (row) => {
       const ms = loginRowTimeMs(row);
       if (Number.isNaN(ms)) return false;
-      return ms >= pkDayStartUtcMs && ms < pkDayEndUtcMs;
+      return ms >= pkRangeStartUtcMs && ms < pkRangeEndUtcMs;
     };
 
     const channel = supabase
@@ -681,7 +790,7 @@ export default function DeveloperActivity() {
       }, (payload) => {
         const row = payload?.new;
         if (!matchesDeveloper(row)) return;
-        if (!inSelectedPkDay(row)) return;
+        if (!inPkRange(row)) return;
         setLoginRecords((prev) => {
           if (row?.id && prev.some((r) => r.id === row.id)) return prev;
           const next = [row, ...prev];
@@ -698,13 +807,15 @@ export default function DeveloperActivity() {
 
     loginChannelRef.current = channel;
     return () => { supabase.removeChannel(channel); };
-  }, [selectedDeveloper, developers, selectedDate, loginRowTimeMs]);
+  }, [selectedDeveloper, developers, selectedDate, timeRange, loginRowTimeMs]);
 
   // ─── Computed Metrics ───
   const developer = developers.find(d => d.id === selectedDeveloper);
   const hasData = sessions.length || mouseData.length || keyboardData.length || appUsageData.length || screenshots.length || loginRecords.length;
 
   const { start: rangeStart, end: rangeEnd } = getDateFilter();
+  const rangeDays = timeRange === "today" ? 1 : timeRange === "week" ? 7 : 30;
+  const rangeLabel = timeRange === "today" ? "Today" : timeRange === "week" ? "Last 7 Days" : "Last 30 Days";
 
   // Aggregate durations from productivity_sessions for the selected date/range
   const totalActiveTime = sessions.reduce((s, r) => s + (Number(r.active_duration) || 0), 0);
@@ -997,14 +1108,14 @@ export default function DeveloperActivity() {
       {/* Filters */}
       <div className="mb-6 bg-white rounded-xl p-5 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
         <div className="flex items-center gap-2 mb-4">
-          <span className="text-lg" aria-hidden="true">🔍</span>
+          <Search className="h-5 w-5 text-gray-500" aria-hidden="true" />
           <h3 className="text-base font-semibold text-gray-900">Filters</h3>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-base" aria-hidden="true">👨‍💻</span>
+              <User className="h-4 w-4 text-gray-500" aria-hidden="true" />
               <label htmlFor="developer-filter" className="text-sm font-medium text-gray-600">Select Developer</label>
             </div>
             <select
@@ -1054,7 +1165,7 @@ export default function DeveloperActivity() {
 
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-base" aria-hidden="true">📅</span>
+              <Calendar className="h-4 w-4 text-gray-500" aria-hidden="true" />
               <label htmlFor="date-filter" className="text-sm font-medium text-gray-600">Date</label>
             </div>
             <input
@@ -1069,7 +1180,7 @@ export default function DeveloperActivity() {
 
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-base" aria-hidden="true">⏱️</span>
+              <Timer className="h-4 w-4 text-gray-500" aria-hidden="true" />
               <label htmlFor="time-range-filter" className="text-sm font-medium text-gray-600">Time Range</label>
             </div>
             <select
@@ -1087,7 +1198,7 @@ export default function DeveloperActivity() {
 
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-base" aria-hidden="true">👁️</span>
+              <Eye className="h-4 w-4 text-gray-500" aria-hidden="true" />
               <label htmlFor="view-mode-filter" className="text-sm font-medium text-gray-600">View Mode</label>
             </div>
             <select
@@ -1152,16 +1263,16 @@ export default function DeveloperActivity() {
               {/* Summary Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                 <StatCard
-                  icon="⏳"
+                  icon={<Hourglass className="h-5 w-5 text-gray-700" aria-hidden="true" />}
                   label="Today's Total Time"
                   value={formatHHMMSS(todayTotalSeconds)}
                   bg="bg-teal-100"
                 />
-                {/* <StatCard icon="⏱️" label="Today Active Time" value={fmtDuration(totalActiveTime)} bg="bg-green-100" /> */}
-                {/* <StatCard icon="⏸️" label="Idle Time" value={fmtDuration(totalIdleTime)} bg="bg-red-100" /> */}
-                <StatCard icon="🖱️" label="Mouse Active %" value={`${avgMouseActive.toFixed(1)}%`} bg="bg-blue-100" />
-                <StatCard icon="🎯" label="Kb Activity %" value={`${avgKeyboardActivity.toFixed(1)}%`} bg="bg-indigo-100" />
-                <StatCard icon="📸" label="Screenshots" value={screenshots.length} bg="bg-pink-100" />
+                {/* <StatCard icon={<Timer className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Today Active Time" value={fmtDuration(totalActiveTime)} bg="bg-green-100" /> */}
+                {/* <StatCard icon={<Pause className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Idle Time" value={fmtDuration(totalIdleTime)} bg="bg-red-100" /> */}
+                <StatCard icon={<MousePointer2 className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Mouse Active %" value={`${avgMouseActive.toFixed(1)}%`} bg="bg-blue-100" />
+                <StatCard icon={<Target className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Kb Activity %" value={`${avgKeyboardActivity.toFixed(1)}%`} bg="bg-indigo-100" />
+                <StatCard icon={<Camera className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Screenshots" value={screenshots.length} bg="bg-pink-100" />
               </div>
 
               {/* Productivity Chart */}
@@ -1241,12 +1352,12 @@ export default function DeveloperActivity() {
             <div className="space-y-6">
               {/* Mouse Summary Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard icon="🖱️" label="Mouse Records" value={mouseData.length} bg="bg-blue-100" />
-                <StatCard icon="📈" label="Avg Active %" value={`${avgMouseActive.toFixed(1)}%`} bg="bg-green-100" />
-                <StatCard icon="📉" label="Avg Idle %" value={`${avgMouseIdle.toFixed(1)}%`} bg="bg-red-100" />
+                <StatCard icon={<MousePointer2 className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Mouse Records" value={mouseData.length} bg="bg-blue-100" />
+                <StatCard icon={<TrendingUp className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Avg Active %" value={`${avgMouseActive.toFixed(1)}%`} bg="bg-green-100" />
+                <StatCard icon={<TrendingDown className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Avg Idle %" value={`${avgMouseIdle.toFixed(1)}%`} bg="bg-red-100" />
                 {/* <div className="bg-white p-4 rounded-lg border shadow-sm">
                   <div className="flex items-center">
-                    <div className={`p-3 rounded-lg mr-3 ${statusColor(latestMouseStatus)}`}><span className="text-xl">🎯</span></div>
+                    <div className={`p-3 rounded-lg mr-3 ${statusColor(latestMouseStatus)}`}><span className="text-xl">Status</span></div>
                     <div>
                       <p className="text-xs text-gray-500">Current Status</p>
                       <p className={`text-lg font-bold ${latestMouseStatus.toLowerCase() === "active" ? "text-green-700" : latestMouseStatus.toLowerCase() === "idle" ? "text-yellow-700" : "text-gray-600"}`}>
@@ -1323,7 +1434,37 @@ export default function DeveloperActivity() {
 
               {/* Mouse Activity Timeline Table */}
               <div className="bg-gray-50 p-6 rounded-lg">
-                <h3 className="text-lg font-semibold mb-4">Mouse Activity Timeline ({mouseData.length})</h3>
+                <div className="flex items-start justify-between gap-4 mb-4">
+                  <h3 className="text-lg font-semibold">Mouse Activity Timeline</h3>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="px-3 py-1.5 rounded border bg-white text-sm disabled:opacity-50"
+                      onClick={() => fetchMousePage({ page: Math.max(1, mousePage - 1) })}
+                      disabled={mousePageLoading || mousePage <= 1}
+                    >
+                      Previous
+                    </button>
+                    <button
+                      type="button"
+                      className="px-3 py-1.5 rounded border bg-white text-sm disabled:opacity-50"
+                      onClick={() => fetchMousePage({ page: mousePage + 1 })}
+                      disabled={mousePageLoading || (mousePage * MOUSE_PAGE_SIZE) >= mouseTotalCount}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+
+                <p className="text-sm text-gray-600 mb-3">
+                  {(() => {
+                    const total = mouseTotalCount || 0;
+                    if (!total) return "Showing 0 to 0 of 0";
+                    const startIdx = (mousePage - 1) * MOUSE_PAGE_SIZE + 1;
+                    const endIdx = Math.min(mousePage * MOUSE_PAGE_SIZE, total);
+                    return `Showing ${startIdx} to ${endIdx} of ${total}`;
+                  })()}
+                </p>
                 <div className="overflow-x-auto max-h-96 overflow-y-auto">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-100 sticky top-0">
@@ -1334,7 +1475,7 @@ export default function DeveloperActivity() {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {mouseData.slice(0, 50).map((r, i) => (
+                      {mouseData.map((r, i) => (
                         <tr key={r.id || i} className={`hover:bg-gray-50 ${i === 0 ? "bg-green-50" : ""}`}>
                           <td className="px-4 py-3 text-sm text-gray-600">{fmtDateTime(r.created_at)}</td>
                           <td className="px-4 py-3">
@@ -1358,7 +1499,7 @@ export default function DeveloperActivity() {
                     </tbody>
                   </table>
                 </div>
-                {mouseData.length > 50 && <p className="text-center text-sm text-gray-500 mt-3">Showing 50 of {mouseData.length} records</p>}
+                {mousePageLoading && <p className="text-center text-sm text-gray-500 mt-3">Loading…</p>}
               </div>
             </div>
           )}
@@ -1367,13 +1508,17 @@ export default function DeveloperActivity() {
           {viewMode === "logins" && (
             <div className="space-y-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard icon="🔐" label="Today's Login Count" value={todaysLoginCount} bg="bg-emerald-100" />
-                <StatCard icon="🕐" label="First Login" value={firstLoginTime} bg="bg-blue-100" />
-                <StatCard icon="🕑" label="Second Login" value={secondLoginTime} bg="bg-indigo-100" />
+                <StatCard icon={<LockKeyhole className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Today's Login Count" value={todaysLoginCount} bg="bg-emerald-100" />
+                <StatCard icon={<Clock1 className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="First Login" value={firstLoginTime} bg="bg-blue-100" />
+                <StatCard icon={<Clock2 className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Second Login" value={secondLoginTime} bg="bg-indigo-100" />
                 <div className="bg-white p-4 rounded-lg border shadow-sm">
                   <div className="flex items-center">
                     <div className={`${dailyLoginStatus === "Blocked" ? "bg-red-100" : "bg-green-100"} p-3 rounded-lg mr-3`}>
-                      <span className="text-xl">✅</span>
+                      {dailyLoginStatus === "Blocked" ? (
+                        <XCircle className="h-5 w-5 text-gray-700" aria-hidden="true" />
+                      ) : (
+                        <CheckCircle2 className="h-5 w-5 text-gray-700" aria-hidden="true" />
+                      )}
                     </div>
                     <div>
                       <p className="text-xs text-gray-500">Login Status</p>
@@ -1388,7 +1533,9 @@ export default function DeveloperActivity() {
 
                 {loginRecords.length === 0 ? (
                   <div className="bg-white rounded-lg border p-8 text-center">
-                    <div className="text-4xl mb-4">🔐</div>
+                    <div className="mb-4 flex justify-center">
+                      <LockKeyhole className="h-10 w-10 text-gray-400" aria-hidden="true" />
+                    </div>
                     <h4 className="text-lg font-semibold text-gray-700 mb-2">No Login Activity Recorded</h4>
                     <p className="text-gray-500">No login records found for this developer on {selectedDate}.</p>
                   </div>
@@ -1428,7 +1575,9 @@ export default function DeveloperActivity() {
               {/* No Data Fallback */}
               {keyboardData.length === 0 && (
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
-                  <div className="text-4xl mb-4">⌨️</div>
+                  <div className="mb-4 flex justify-center">
+                    <Keyboard className="h-10 w-10 text-gray-400" aria-hidden="true" />
+                  </div>
                   <h3 className="text-lg font-semibold text-gray-700 mb-2">No Keyboard Activity Recorded</h3>
                   <p className="text-gray-500">No keyboard activity data found for this session or date range.</p>
                   <p className="text-sm text-gray-400 mt-2">Keyboard stats will appear here once the desktop tracker records typing activity.</p>
@@ -1439,12 +1588,14 @@ export default function DeveloperActivity() {
               {keyboardData.length > 0 && (
               <>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard icon="⌨️" label="Total Keystrokes" value={totalKeystrokes.toLocaleString()} bg="bg-purple-100" />
-                <StatCard icon="📝" label="Avg WPM" value={avgWPM.toFixed(1)} bg="bg-green-100" />
-                <StatCard icon="🎯" label="Activity Score" value={avgKeyboardScore.toFixed(1)} bg="bg-yellow-100" />
+                <StatCard icon={<Keyboard className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Total Keystrokes" value={totalKeystrokes.toLocaleString()} bg="bg-purple-100" />
+                <StatCard icon={<Gauge className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Avg WPM" value={avgWPM.toFixed(1)} bg="bg-green-100" />
+                <StatCard icon={<Target className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Activity Score" value={avgKeyboardScore.toFixed(1)} bg="bg-yellow-100" />
                 <div className="bg-white p-4 rounded-lg border shadow-sm">
                   <div className="flex items-center">
-                    <div className="bg-indigo-100 p-3 rounded-lg mr-3"><span className="text-xl">📊</span></div>
+                    <div className="bg-indigo-100 p-3 rounded-lg mr-3 flex items-center justify-center">
+                      <BarChart3 className="h-5 w-5 text-gray-700" aria-hidden="true" />
+                    </div>
                     <div>
                       <p className="text-xs text-gray-500">Keyboard Activity %</p>
                       <p className="text-lg font-bold text-indigo-700">{avgKeyboardActivity.toFixed(1)}%</p>
@@ -1455,10 +1606,10 @@ export default function DeveloperActivity() {
 
               {/* Keyboard Performance Stats */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard icon="⏱️" label="Active Time" value={`${totalKbActiveTime.toFixed(1)} min`} bg="bg-green-100" />
-                <StatCard icon="⏸️" label="Idle Time" value={`${totalKbIdleTime.toFixed(1)} min`} bg="bg-red-100" />
-                <StatCard icon="🔤" label="Unique Keys" value={totalUniqueKeys.toLocaleString()} bg="bg-blue-100" />
-                <StatCard icon="⏲️" label="Total Time" value={`${totalKbTime.toFixed(1)} min`} bg="bg-gray-100" />
+                <StatCard icon={<Timer className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Active Time" value={`${totalKbActiveTime.toFixed(1)} min`} bg="bg-green-100" />
+                <StatCard icon={<Pause className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Idle Time" value={`${totalKbIdleTime.toFixed(1)} min`} bg="bg-red-100" />
+                <StatCard icon={<Type className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Unique Keys" value={totalUniqueKeys.toLocaleString()} bg="bg-blue-100" />
+                <StatCard icon={<Clock className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Total Time" value={`${totalKbTime.toFixed(1)} min`} bg="bg-gray-100" />
               </div>
 
               {/* Active Session Keyboard Summary */}
@@ -1620,10 +1771,10 @@ export default function DeveloperActivity() {
             <div className="space-y-6">
               {/* App Usage Summary Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard icon="💻" label="Apps Used" value={totalAppsUsed} bg="bg-blue-100" />
-                <StatCard icon="📊" label="Usage Records" value={appUsageData.length} bg="bg-green-100" />
+                <StatCard icon={<Monitor className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Apps Used" value={totalAppsUsed} bg="bg-blue-100" />
+                <StatCard icon={<BarChart3 className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Usage Records" value={appUsageData.length} bg="bg-green-100" />
                 <StatCard 
-                      icon="⏱️" 
+                      icon={<Clock className="h-5 w-5 text-gray-700" aria-hidden="true" />} 
                       label="Total Active Time" 
                       value={(() => {
                         const totalSeconds = totalAppActiveMinutes * 60;
@@ -1646,7 +1797,7 @@ export default function DeveloperActivity() {
                 {/* {currentApp && (
                   <div className="bg-white p-4 rounded-lg border shadow-sm">
                     <div className="flex items-center">
-                      <div className="bg-orange-100 p-3 rounded-lg mr-3"><span className="text-xl">🟢</span></div>
+                      <div className="bg-orange-100 p-3 rounded-lg mr-3"><span className="text-sm font-medium text-gray-700">Active</span></div>
                       <div>
                         <p className="text-xs text-gray-500">Currently Active</p>
                         <p className="text-sm font-bold text-gray-800 truncate max-w-[140px]">{currentApp.app_name}</p>
@@ -1831,7 +1982,7 @@ export default function DeveloperActivity() {
                             <td className="px-4 py-3">
                               <div className="flex items-center">
                                 <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
-                                  <span className="text-blue-600 text-sm">📱</span>
+                                  <Monitor className="h-4 w-4 text-blue-600" aria-hidden="true" />
                                 </div>
                                 <div>
                                   <p className="text-sm font-medium text-gray-900 truncate max-w-[180px]">{r.app_name}</p>
@@ -1890,11 +2041,13 @@ export default function DeveloperActivity() {
             <div className="space-y-6">
               {/* Screenshot Summary Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard icon="📸" label="Total Screenshots" value={screenshots.length} bg="bg-pink-100" />
+                <StatCard icon={<Camera className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Total Screenshots" value={screenshots.length} bg="bg-pink-100" />
                 {screenshots.length > 0 && (
                   <div className="bg-white p-4 rounded-lg border shadow-sm">
                     <div className="flex items-center">
-                      <div className="bg-green-100 p-3 rounded-lg mr-3"><span className="text-xl">🟢</span></div>
+                      <div className="bg-green-100 p-3 rounded-lg mr-3 flex items-center justify-center">
+                        <CircleDot className="h-5 w-5 text-gray-700" aria-hidden="true" />
+                      </div>
                       <div>
                         <p className="text-xs text-gray-500">Latest Capture</p>
                         <p className="text-sm font-bold text-gray-800">{fmtDbExactTime((screenshots[0].timestamp || screenshots[0].created_at) || "")}</p>
@@ -1957,7 +2110,7 @@ export default function DeveloperActivity() {
                         <div className="p-3 space-y-1">
                           {ss.app_active && (
                             <div className="flex items-center gap-1">
-                              <span className="text-xs">📱</span>
+                              <Monitor className="h-3 w-3 text-blue-700" aria-hidden="true" />
                               <p className="text-xs font-medium text-blue-700 truncate">{ss.app_active}</p>
                             </div>
                           )}
@@ -2126,12 +2279,12 @@ export default function DeveloperActivity() {
                             </span>
                             {(session.mouse_events > 0 || session.mouse_clicks > 0) && (
                               <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs">
-                                🖱️ {session.mouse_events || session.mouse_clicks || 0}
+                                Mouse: {session.mouse_events || session.mouse_clicks || 0}
                               </span>
                             )}
                             {(session.keyboard_events > 0 || session.keystrokes > 0) && (
                               <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-xs">
-                                ⌨️ {session.keyboard_events || session.keystrokes || 0}
+                                Keyboard: {session.keyboard_events || session.keystrokes || 0}
                               </span>
                             )}
                           </div>
@@ -2217,7 +2370,7 @@ function StatCard({ icon, label, value, bg }) {
   return (
     <div className="bg-white p-4 rounded-lg border shadow-sm">
       <div className="flex items-center">
-        <div className={`${bg} p-3 rounded-lg mr-3`}><span className="text-xl">{icon}</span></div>
+        <div className={`${bg} p-3 rounded-lg mr-3 flex items-center justify-center`}>{icon}</div>
         <div>
           <p className="text-xs text-gray-500">{label}</p>
           <p className="text-lg font-bold text-gray-800">{value}</p>
