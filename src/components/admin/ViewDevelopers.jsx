@@ -17,6 +17,61 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
   // Ref used as a guard so the deletion handler cannot be entered twice concurrently.
   const deletionInProgressRef = useRef(false);
 
+  const withAssignedProjectCounts = useCallback(
+    async (devs) => {
+      const safeDevs = Array.isArray(devs) ? devs : [];
+      if (safeDevs.length === 0) return [];
+
+      // If we can't query, fall back to any precomputed counts if present.
+      if (!supabase) {
+        return safeDevs.map((d) => ({
+          ...d,
+          assigned_projects_count:
+            typeof d.assigned_projects_count === "number"
+              ? d.assigned_projects_count
+              : typeof d.projects_count === "number"
+                ? d.projects_count
+                : 0,
+        }));
+      }
+
+      const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
+      const developerEmails = Array.from(
+        new Set(safeDevs.map((d) => normalizeEmail(d?.email)).filter(Boolean))
+      );
+      if (developerEmails.length === 0) {
+        return safeDevs.map((d) => ({ ...d, assigned_projects_count: 0 }));
+      }
+
+      // Single aggregated query:
+      // Returns rows like: [{ assigned_developer_email: 'a@b.com', count: 3 }, ...]
+      const { data, error } = await supabase
+        .from("projects")
+        .select("assigned_developer_email, count:id")
+        .in("assigned_developer_email", developerEmails);
+
+      if (error) {
+        // If aggregation isn't supported in this environment, fail soft to 0.
+        console.warn("[ViewDevelopers] Failed to aggregate project counts:", error);
+        return safeDevs.map((d) => ({ ...d, assigned_projects_count: 0 }));
+      }
+
+      const countsByEmail = {};
+      for (const row of data || []) {
+        const key = normalizeEmail(row?.assigned_developer_email);
+        if (!key) continue;
+        const value = Number(row?.count);
+        countsByEmail[key] = Number.isFinite(value) ? value : 0;
+      }
+
+      return safeDevs.map((d) => ({
+        ...d,
+        assigned_projects_count: countsByEmail[normalizeEmail(d?.email)] ?? 0,
+      }));
+    },
+    [supabase]
+  );
+
   const fetchAdminDevelopers = useCallback(async () => {
     try {
       setLoading(true);
@@ -37,7 +92,8 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
           dev.added_by === adminData.id || 
           dev.added_by_admin === adminData.email
         );
-        setDevelopers(filteredDevelopers);
+        const hydrated = await withAssignedProjectCounts(filteredDevelopers);
+        setDevelopers(hydrated);
       } 
       // Option 2: Fetch directly from Supabase
       else if (supabase) {
@@ -48,8 +104,9 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
           .order('created_at', { ascending: false });
 
         if (error) throw error;
-        
-        setDevelopers(data || []);
+
+        const hydrated = await withAssignedProjectCounts(data || []);
+        setDevelopers(hydrated);
       }
       
     } catch (error) {
@@ -58,7 +115,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
     } finally {
       setLoading(false);
     }
-  }, [initialDevelopers, supabase]);
+  }, [initialDevelopers, supabase, withAssignedProjectCounts]);
 
   // Fetch admin's added developers on component mount
   useEffect(() => {
@@ -69,11 +126,26 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
   useEffect(() => {
     if (!supabase || !currentAdmin) return;
 
-    const channel = supabase
-      .channel(`admin-developers-${currentAdmin.id || currentAdmin.email}`)
+    const base = `admin-developers-${currentAdmin.id || currentAdmin.email}`;
+
+    const developersChannel = supabase
+      .channel(`${base}-developers`)
       .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'developers' },
+        "postgres_changes",
+        { event: "*", schema: "public", table: "developers" },
+        () => {
+          fetchAdminDevelopers();
+          if (onRefresh) onRefresh();
+        }
+      )
+      .subscribe();
+
+    // Also refresh when projects change so the per-developer counts stay current.
+    const projectsChannel = supabase
+      .channel(`${base}-projects`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "projects" },
         () => {
           fetchAdminDevelopers();
           if (onRefresh) onRefresh();
@@ -82,7 +154,8 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(developersChannel);
+      supabase.removeChannel(projectsChannel);
     };
   }, [supabase, currentAdmin, onRefresh, fetchAdminDevelopers]);
 
@@ -114,7 +187,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
         Name: ${developer.name}
         Email: ${developer.email}
         Status: ${developer.status}
-        Projects: ${developer.projects_count || 0}
+        Projects: ${developer.assigned_projects_count ?? developer.projects_count ?? 0}
         Join Date: ${formatDate(developer.created_at)}
         Added By: ${developer.added_by_name || currentAdmin?.name || 'Admin'}
         Added On: ${formatDate(developer.created_at)}
@@ -391,70 +464,6 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
     }
   };
 
-  const toggleDeveloperStatus = async (developerId) => {
-    const developer = developers.find(dev => dev.id === developerId);
-    
-    if (!developer) {
-      showWarning("Not found", "Developer not found.");
-      return;
-    }
-    
-    // Check if current admin is the one who added this developer
-    if (currentAdmin && 
-        developer.added_by !== currentAdmin.id && 
-        developer.added_by_admin !== currentAdmin.email) {
-      showWarning("Permission denied", "You can only modify developers you added.");
-      return;
-    }
-    
-    const newStatus = developer.status === 'active' ? 'inactive' : 'active';
-    
-    const statusConfirm = await Swal.fire({
-      title: "Change status?",
-      text: `Change ${developer.name}'s status to ${newStatus}?`,
-      icon: "question",
-      showCancelButton: true,
-      confirmButtonText: "Yes, change",
-      cancelButtonText: "Cancel",
-    });
-    if (!statusConfirm.isConfirmed) return;
-    
-    try {
-      const { error } = await supabase
-        .from('developers')
-        .update({ 
-          status: newStatus,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', developerId);
-
-      if (error) throw error;
-
-      // Add notification
-      await supabase
-        .from('notifications')
-        .insert([
-          {
-            message: `Developer "${developer.name}" status changed to ${newStatus}`,
-            type: newStatus === 'active' ? 'success' : 'warning',
-            admin_id: currentAdmin?.id,
-            admin_email: currentAdmin?.email,
-            developer_id: developerId
-          }
-        ]);
-
-      // Refresh the developers list
-      await fetchAdminDevelopers();
-      
-      showSuccess(
-        "Status updated",
-        `Developer status changed to ${newStatus} successfully.`
-      );
-      
-    } catch (error) {
-      showError("Update failed", `Error updating developer status: ${error.message}`);
-    }
-  };
 
   // Loading state
   if (loading) {
@@ -481,9 +490,6 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
       </div>
     );
   }
-
-  const activeDevelopers = developers.filter(d => d.status === 'active');
-  const inactiveDevelopers = developers.filter(d => d.status === 'inactive');
 
   return (
     <div className="bg-white p-6 rounded-lg shadow">
@@ -556,7 +562,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
 
       {/* Developers Table */}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[950px] divide-y divide-gray-200">
+        <table className="w-full min-w-[820px] divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -564,9 +570,6 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Email
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Projects
@@ -595,21 +598,8 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {developer.email}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <button
-                    onClick={() => toggleDeveloperStatus(developer.id)}
-                    className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full cursor-pointer transition-colors ${
-                      developer.status === 'active' 
-                        ? 'bg-green-100 text-green-800 hover:bg-green-200' 
-                        : 'bg-red-100 text-red-800 hover:bg-red-200'
-                    }`}
-                    title="Click to change status"
-                  >
-                    {developer.status}
-                  </button>
-                </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  <span className="font-medium">{developer.projects_count || 0}</span>
+                  <span className="font-medium">{developer.assigned_projects_count ?? developer.projects_count ?? 0}</span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {formatDate(developer.created_at)}
