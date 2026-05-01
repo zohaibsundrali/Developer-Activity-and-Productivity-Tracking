@@ -82,6 +82,38 @@ export default function DeveloperActivity() {
     return Number.isNaN(t) ? Number.NaN : t;
   }, []);
 
+  // Normalize developer login timestamps across possible column names.
+  const loginRowTimeMs = useCallback((row) => {
+    if (!row) return Number.NaN;
+    const v =
+      row.login_time ??
+      row.login_at ??
+      row.logged_in_at ??
+      row.timestamp ??
+      row.created_at ??
+      row.createdAt ??
+      null;
+    return parseDbTimeMs(v);
+  }, [parseDbTimeMs]);
+
+  const loginRowStatus = useCallback((row) => {
+    if (!row) return "Allowed";
+
+    // Prefer explicit boolean columns when present.
+    if (typeof row.is_blocked === "boolean") return row.is_blocked ? "Blocked" : "Allowed";
+    if (typeof row.blocked === "boolean") return row.blocked ? "Blocked" : "Allowed";
+    if (typeof row.is_allowed === "boolean") return row.is_allowed ? "Allowed" : "Blocked";
+    if (typeof row.allowed === "boolean") return row.allowed ? "Allowed" : "Blocked";
+
+    const raw = row.login_status ?? row.status ?? row.result ?? null;
+    if (raw == null) return "Allowed";
+
+    const s = String(raw).trim().toLowerCase();
+    if (["blocked", "block", "deny", "denied", "not_allowed", "not allowed", "false", "0"].includes(s)) return "Blocked";
+    if (["allowed", "allow", "permitted", "true", "1"].includes(s)) return "Allowed";
+    return s.includes("block") || s.includes("deny") ? "Blocked" : "Allowed";
+  }, []);
+
   // Data states for each table
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
@@ -91,12 +123,14 @@ export default function DeveloperActivity() {
   const [screenshots, setScreenshots] = useState([]);
   const [selectedScreenshot, setSelectedScreenshot] = useState(null);
   const [todayTotalSeconds, setTodayTotalSeconds] = useState(0);
+  const [loginRecords, setLoginRecords] = useState([]);
 
   // Real-time state
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
   const pollRef = useRef(null);
   const realtimeChannelRef = useRef(null);
+  const loginChannelRef = useRef(null);
 
   // ─── Admin Auth ───
   useEffect(() => {
@@ -191,6 +225,12 @@ export default function DeveloperActivity() {
     const dayEnd = new Date(Date.UTC(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0));
     dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
 
+    // Login activity is reported in Pakistan timezone (Asia/Karachi) but stored as UTC timestamps.
+    // Filter by the selected *Pakistan* date by converting PK midnight to UTC.
+    const PK_OFFSET_MS = 5 * 60 * 60 * 1000; // Asia/Karachi is UTC+5 (no DST)
+    const pkDayStartUtc = new Date(Date.UTC(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0) - PK_OFFSET_MS);
+    const pkDayEndUtc = new Date(pkDayStartUtc.getTime() + 24 * 60 * 60 * 1000);
+
     try {
       // Fetch all 5 tables in parallel (keyboard via API route to bypass RLS)
       const sessionFilters = [
@@ -233,6 +273,62 @@ export default function DeveloperActivity() {
               .lt("start_time", dayEnd.toISOString())
           : Promise.resolve({ data: [], error: null }),
       ]);
+
+      // Fetch login records in a guarded way so login table issues never break productivity tracking.
+      const matchesDeveloperLoginRow = (row) => {
+        if (!row) return false;
+        if (devId && (row.developer_id === devId || row.developerId === devId || row.user_id === devId || row.userId === devId)) return true;
+        if (devEmail && (
+          row.developer_email === devEmail ||
+          row.user_email === devEmail ||
+          row.email === devEmail ||
+          row.userEmail === devEmail
+        )) return true;
+        return false;
+      };
+
+      const fetchLoginsSafe = async () => {
+        const startIso = pkDayStartUtc.toISOString();
+        const endIso = pkDayEndUtc.toISOString();
+        const attempts = [
+          // Preferred: keyed by developer_id + login_time
+          () => supabase.from("developer_logins").select("*").eq("developer_id", devId).gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }),
+          // Fallback: keyed by email + login_time
+          () => supabase.from("developer_logins").select("*").eq("developer_email", devEmail).gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }),
+          () => supabase.from("developer_logins").select("*").eq("user_email", devEmail).gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }),
+          () => supabase.from("developer_logins").select("*").eq("email", devEmail).gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }),
+          // Fallback: some schemas may only have created_at
+          () => supabase.from("developer_logins").select("*").eq("developer_id", devId).gte("created_at", startIso).lt("created_at", endIso).order("created_at", { ascending: true }),
+          () => supabase.from("developer_logins").select("*").eq("developer_email", devEmail).gte("created_at", startIso).lt("created_at", endIso).order("created_at", { ascending: true }),
+          // Last resort: date-bounded fetch then client-side filter
+          () => supabase.from("developer_logins").select("*").gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }).limit(500),
+          () => supabase.from("developer_logins").select("*").gte("created_at", startIso).lt("created_at", endIso).order("created_at", { ascending: true }).limit(500),
+        ];
+
+        let lastError = null;
+        for (const run of attempts) {
+          try {
+            const res = await run();
+            if (!res?.error) return res;
+            lastError = res.error;
+          } catch (e) {
+            lastError = e;
+          }
+        }
+        return { data: [], error: lastError };
+      };
+
+      const loginRes = await fetchLoginsSafe();
+      let finalLogins = Array.isArray(loginRes?.data) ? loginRes.data : [];
+      // Ensure scoped to the selected developer and PK day (in case we hit a wide fallback query).
+      const pkStartMs = pkDayStartUtc.getTime();
+      const pkEndMs = pkDayEndUtc.getTime();
+      finalLogins = finalLogins
+        .filter(matchesDeveloperLoginRow)
+        .map((r) => ({ row: r, ms: loginRowTimeMs(r) }))
+        .filter((x) => !Number.isNaN(x.ms) && x.ms >= pkStartMs && x.ms < pkEndMs)
+        .sort((a, b) => a.ms - b.ms)
+        .map((x) => x.row);
 
       let finalSessions = sessionsRes.data || [];
       let finalMouse = mouseRes.data || [];
@@ -350,13 +446,14 @@ export default function DeveloperActivity() {
       setKeyboardData(finalKeyboard);
       setAppUsageData(finalApp);
       setScreenshots(finalScreenshots);
+      setLoginRecords(finalLogins);
       setLastUpdated(new Date());
     } catch (err) {
       // Silently handle fetch errors
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [selectedDeveloper, developers, getDateFilter]);
+  }, [selectedDeveloper, developers, getDateFilter, selectedDate, loginRowTimeMs]);
 
   // Initial fetch + re-fetch on filter changes
   useEffect(() => {
@@ -545,9 +642,67 @@ export default function DeveloperActivity() {
     return () => { supabase.removeChannel(ssChannel); };
   }, [selectedDeveloper, developers, getDateFilter, parseDbTimeMs]);
 
+  // ─── Supabase Realtime for developer_logins ───
+  useEffect(() => {
+    if (loginChannelRef.current) {
+      supabase.removeChannel(loginChannelRef.current);
+      loginChannelRef.current = null;
+    }
+    const dev = developers.find(d => d.id === selectedDeveloper);
+    if (!dev) return;
+
+    const [yy, mm, dd] = String(selectedDate).split("-").map(Number);
+    const PK_OFFSET_MS = 5 * 60 * 60 * 1000;
+    const pkDayStartUtcMs = Date.UTC(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0) - PK_OFFSET_MS;
+    const pkDayEndUtcMs = pkDayStartUtcMs + 24 * 60 * 60 * 1000;
+
+    const matchesDeveloper = (row) => {
+      if (!row) return false;
+      if (row.developer_id && row.developer_id === dev.id) return true;
+      if (row.developer_email && row.developer_email === dev.email) return true;
+      if (row.user_email && row.user_email === dev.email) return true;
+      if (row.email && row.email === dev.email) return true;
+      if (row.user_login && row.user_login === dev.email) return true;
+      return false;
+    };
+
+    const inSelectedPkDay = (row) => {
+      const ms = loginRowTimeMs(row);
+      if (Number.isNaN(ms)) return false;
+      return ms >= pkDayStartUtcMs && ms < pkDayEndUtcMs;
+    };
+
+    const channel = supabase
+      .channel("developer-logins-realtime")
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "developer_logins",
+      }, (payload) => {
+        const row = payload?.new;
+        if (!matchesDeveloper(row)) return;
+        if (!inSelectedPkDay(row)) return;
+        setLoginRecords((prev) => {
+          if (row?.id && prev.some((r) => r.id === row.id)) return prev;
+          const next = [row, ...prev];
+          // Keep chronological order for summary (first/second login).
+          return next
+            .map((r) => ({ row: r, ms: loginRowTimeMs(r) }))
+            .filter((x) => !Number.isNaN(x.ms))
+            .sort((a, b) => a.ms - b.ms)
+            .map((x) => x.row);
+        });
+        setLastUpdated(new Date());
+      })
+      .subscribe();
+
+    loginChannelRef.current = channel;
+    return () => { supabase.removeChannel(channel); };
+  }, [selectedDeveloper, developers, selectedDate, loginRowTimeMs]);
+
   // ─── Computed Metrics ───
   const developer = developers.find(d => d.id === selectedDeveloper);
-  const hasData = sessions.length || mouseData.length || keyboardData.length || appUsageData.length || screenshots.length;
+  const hasData = sessions.length || mouseData.length || keyboardData.length || appUsageData.length || screenshots.length || loginRecords.length;
 
   const { start: rangeStart, end: rangeEnd } = getDateFilter();
 
@@ -715,6 +870,44 @@ export default function DeveloperActivity() {
     return new Date(t).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   };
 
+  const fmtPkDate = (iso) => {
+    const t = parseDbTimeMs(iso);
+    if (Number.isNaN(t)) return "N/A";
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Karachi",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }).format(new Date(t));
+  };
+
+  const fmtPkTime12 = (iso) => {
+    const t = parseDbTimeMs(iso);
+    if (Number.isNaN(t)) return "N/A";
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Karachi",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    }).format(new Date(t));
+  };
+
+  const getLoginDisplayValue = (row) =>
+    row?.login_time ?? row?.login_at ?? row?.logged_in_at ?? row?.timestamp ?? row?.created_at ?? null;
+
+  const loginChrono = loginRecords
+    .map((r) => ({ row: r, ms: loginRowTimeMs(r) }))
+    .filter((x) => !Number.isNaN(x.ms))
+    .sort((a, b) => a.ms - b.ms);
+  const todaysLoginCount = loginChrono.length;
+  const firstLoginRow = loginChrono[0]?.row || null;
+  const secondLoginRow = loginChrono[1]?.row || null;
+  const firstLoginTime = firstLoginRow ? fmtPkTime12(getLoginDisplayValue(firstLoginRow)) : "—";
+  const secondLoginTime = secondLoginRow ? fmtPkTime12(getLoginDisplayValue(secondLoginRow)) : "—";
+  // Dashboard status rule (display-only): 0-1 logins => Allowed, 2+ logins => Blocked.
+  // A developer is allowed a maximum of 2 logins per day.
+  const dailyLoginStatus = todaysLoginCount >= 2 ? "Blocked" : "Allowed";
+
   // Screenshots: show time exactly as stored (no timezone conversion).
   // Example input: "2026-04-24 05:53:04.978197+00" -> "05:53:04"
   const fmtDbExactTime = (value) => {
@@ -859,6 +1052,7 @@ export default function DeveloperActivity() {
             <option value="keyboard">Keyboard Activity</option>
             <option value="apps">App Usage</option>
             <option value="screenshots">Screenshots</option>
+            <option value="logins">Login Activity</option>
             {/* <option value="timeline">Session Timeline</option> */}
           </select>
         </div>
@@ -900,7 +1094,7 @@ export default function DeveloperActivity() {
       )}
 
       {/* Main Content */}
-      {developer && hasData && !loading && (
+      {developer && !loading && (hasData || viewMode === "logins") && (
         <div className="space-y-6">
 
           {/* ==================== OVERVIEW ==================== */}
@@ -1116,6 +1310,65 @@ export default function DeveloperActivity() {
                   </table>
                 </div>
                 {mouseData.length > 50 && <p className="text-center text-sm text-gray-500 mt-3">Showing 50 of {mouseData.length} records</p>}
+              </div>
+            </div>
+          )}
+
+          {/* ==================== LOGIN ACTIVITY ==================== */}
+          {viewMode === "logins" && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <StatCard icon="🔐" label="Today's Login Count" value={todaysLoginCount} bg="bg-emerald-100" />
+                <StatCard icon="🕐" label="First Login" value={firstLoginTime} bg="bg-blue-100" />
+                <StatCard icon="🕑" label="Second Login" value={secondLoginTime} bg="bg-indigo-100" />
+                <div className="bg-white p-4 rounded-lg border shadow-sm">
+                  <div className="flex items-center">
+                    <div className={`${dailyLoginStatus === "Blocked" ? "bg-red-100" : "bg-green-100"} p-3 rounded-lg mr-3`}>
+                      <span className="text-xl">✅</span>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">Login Status</p>
+                      <p className={`text-lg font-bold ${dailyLoginStatus === "Blocked" ? "text-red-700" : "text-green-700"}`}>{dailyLoginStatus}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 p-6 rounded-lg">
+                <h3 className="text-lg font-semibold mb-4">Developer Login Activity ({loginRecords.length})</h3>
+
+                {loginRecords.length === 0 ? (
+                  <div className="bg-white rounded-lg border p-8 text-center">
+                    <div className="text-4xl mb-4">🔐</div>
+                    <h4 className="text-lg font-semibold text-gray-700 mb-2">No Login Activity Recorded</h4>
+                    <p className="text-gray-500">No login records found for this developer on {selectedDate}.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-100 sticky top-0">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Developer</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Login Date</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Login Time</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {loginChrono.map(({ row }, i) => {
+                          const ts = getLoginDisplayValue(row);
+                          const devName = row?.developer_name || row?.name || developer?.name || "—";
+                          return (
+                            <tr key={row?.id || i} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 text-sm text-gray-700">{devName}</td>
+                              <td className="px-4 py-3 text-sm text-gray-600">{fmtPkDate(ts)}</td>
+                              <td className="px-4 py-3 text-sm font-medium text-gray-800">{fmtPkTime12(ts)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1871,7 +2124,7 @@ export default function DeveloperActivity() {
       )}
 
       {/* No Data State */}
-      {!loading && selectedDeveloper && !hasData && (
+      {!loading && selectedDeveloper && !hasData && viewMode !== "logins" && (
         <div className="text-center py-12">
           <svg className="w-16 h-16 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 17h6l2 2V7a2 2 0 00-2-2H9a2 2 0 00-2 2v12l2-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v8" />
