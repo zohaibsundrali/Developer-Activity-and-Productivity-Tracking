@@ -995,69 +995,118 @@ export default function DeveloperActivity() {
       </div>
 
       {/* Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Select Developer</label>
-          <select value={selectedDeveloper} onChange={(e) => setSelectedDeveloper(e.target.value)}
-            className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]" disabled={!currentAdmin || fetchingDevelopers}>
-            <option value="">Choose Developer</option>
-            {fetchingDevelopers ? (
-              <option value="" disabled>Loading developers...</option>
-            ) : (
-              developers.map(dev => (
-                <option key={dev.id} value={dev.id}>{dev.name} ({dev.email})</option>
-              ))
+      <div className="mb-6 bg-white rounded-xl p-5 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-lg" aria-hidden="true">🔍</span>
+          <h3 className="text-base font-semibold text-gray-900">Filters</h3>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-base" aria-hidden="true">👨‍💻</span>
+              <label htmlFor="developer-filter" className="text-sm font-medium text-gray-600">Select Developer</label>
+            </div>
+            <select
+              id="developer-filter"
+              value={selectedDeveloper}
+              onChange={(e) => setSelectedDeveloper(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#009578] focus:border-[#009578] transition"
+              disabled={!currentAdmin || fetchingDevelopers}
+            >
+              <option value="">Choose Developer</option>
+              {fetchingDevelopers ? (
+                <option value="" disabled>Loading developers...</option>
+              ) : (
+                developers.map(dev => (
+                  <option key={dev.id} value={dev.id}>{dev.name} ({dev.email})</option>
+                ))
+              )}
+            </select>
+
+            {!currentAdmin && (
+              <div className="mt-2">
+                <p className="text-xs text-red-500">Please login to view developers</p>
+                <button
+                  onClick={() => window.location.href = "/login"}
+                  className="text-xs text-blue-500 hover:text-blue-700 underline"
+                >
+                  Go to Login
+                </button>
+              </div>
             )}
-          </select>
-          {!currentAdmin && (
-            <div className="mt-1">
-              <p className="text-xs text-red-500">Please login to view developers</p>
-              <button onClick={() => window.location.href = "/login"} className="text-xs text-blue-500 hover:text-blue-700 underline">Go to Login</button>
+            {currentAdmin && fetchingDevelopers && <p className="text-xs text-gray-500 mt-2">Loading developers...</p>}
+            {currentAdmin && !fetchingDevelopers && developers.length === 0 && (
+              <div className="mt-2">
+                <p className="text-xs text-yellow-500">No developers added by you yet</p>
+                <button
+                  onClick={() => window.location.href = "/admin/dashboard?section=add-developer"}
+                  className="text-xs text-green-600 hover:text-green-800 underline"
+                >
+                  Add Developers
+                </button>
+              </div>
+            )}
+            {currentAdmin && !fetchingDevelopers && developers.length > 0 && (
+              <p className="text-xs text-gray-500 mt-2">Showing {developers.length} developer{developers.length !== 1 ? "s" : ""} added by you</p>
+            )}
+          </div>
+
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-base" aria-hidden="true">📅</span>
+              <label htmlFor="date-filter" className="text-sm font-medium text-gray-600">Date</label>
             </div>
-          )}
-          {currentAdmin && fetchingDevelopers && <p className="text-xs text-gray-500 mt-1">Loading developers...</p>}
-          {currentAdmin && !fetchingDevelopers && developers.length === 0 && (
-            <div className="mt-1">
-              <p className="text-xs text-yellow-500">No developers added by you yet</p>
-              <button onClick={() => window.location.href = "/admin/dashboard?section=add-developer"} className="text-xs text-green-600 hover:text-green-800 underline">Add Developers</button>
+            <input
+              id="date-filter"
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#009578] focus:border-[#009578] transition"
+              disabled={!selectedDeveloper}
+            />
+          </div>
+
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-base" aria-hidden="true">⏱️</span>
+              <label htmlFor="time-range-filter" className="text-sm font-medium text-gray-600">Time Range</label>
             </div>
-          )}
-          {currentAdmin && !fetchingDevelopers && developers.length > 0 && (
-            <p className="text-xs text-gray-500 mt-1">Showing {developers.length} developer{developers.length !== 1 ? "s" : ""} added by you</p>
-          )}
-        </div>
+            <select
+              id="time-range-filter"
+              value={timeRange}
+              onChange={(e) => setTimeRange(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#009578] focus:border-[#009578] transition"
+              disabled={!selectedDeveloper}
+            >
+              <option value="today">Today</option>
+              <option value="week">Last 7 Days</option>
+              <option value="month">Last 30 Days</option>
+            </select>
+          </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
-          <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}
-            className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]" disabled={!selectedDeveloper} />
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-base" aria-hidden="true">👁️</span>
+              <label htmlFor="view-mode-filter" className="text-sm font-medium text-gray-600">View Mode</label>
+            </div>
+            <select
+              id="view-mode-filter"
+              value={viewMode}
+              onChange={(e) => setViewMode(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#009578] focus:border-[#009578] transition"
+              disabled={!selectedDeveloper}
+            >
+              <option value="overview">Overview</option>
+              <option value="mouse">Mouse Activity</option>
+              <option value="keyboard">Keyboard Activity</option>
+              <option value="apps">App Usage</option>
+              <option value="screenshots">Screenshots</option>
+              <option value="logins">Login Activity</option>
+              {/* <option value="timeline">Session Timeline</option> */}
+            </select>
+          </div>
         </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Time Range</label>
-          <select value={timeRange} onChange={(e) => setTimeRange(e.target.value)}
-            className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]" disabled={!selectedDeveloper}>
-            <option value="today">Today</option>
-            <option value="week">Last 7 Days</option>
-            <option value="month">Last 30 Days</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">View Mode</label>
-          <select value={viewMode} onChange={(e) => setViewMode(e.target.value)}
-            className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]" disabled={!selectedDeveloper}>
-            <option value="overview">Overview</option>
-            <option value="mouse">Mouse Activity</option>
-            <option value="keyboard">Keyboard Activity</option>
-            <option value="apps">App Usage</option>
-            <option value="screenshots">Screenshots</option>
-            <option value="logins">Login Activity</option>
-            {/* <option value="timeline">Session Timeline</option> */}
-          </select>
-        </div>
-
-       
       </div>
 
       {/* Active Session Banner */}
