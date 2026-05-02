@@ -1152,14 +1152,14 @@ const debugCheckNotifications = async () => {
           {adminDevelopers.length === 0 ? (
             <div className="mb-6">
               <p className="text-gray-400 text-sm mb-4">You need to add developers first</p>
-              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md max-w-md mx-auto">
+              {/* <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md max-w-md mx-auto">
                 <p className="text-sm text-yellow-700 mb-3">
                   <span className="font-medium">Step 1:</span> Go to "Add Developer" section and add your first developer
                 </p>
                 <p className="text-sm text-yellow-700">
                   <span className="font-medium">Step 2:</span> Come back here to create your first project
                 </p>
-              </div>
+              </div> */}
             </div>
           ) : (
             <p className="text-gray-400 text-sm mb-6">Start by creating your first project</p>

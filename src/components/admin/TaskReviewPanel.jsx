@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { showError, showSuccess, showWarning } from "@/utils/alerts";
 
@@ -11,6 +11,7 @@ const supabase = createClient(
 export default function TaskReviewPanel({ currentAdmin }) {
   const [loading, setLoading] = useState(true);
   const [submissions, setSubmissions] = useState([]);
+  const [submissionsCount, setSubmissionsCount] = useState(0);
   const [selectedSubmission, setSelectedSubmission] = useState(null);
   const [reviewStatus, setReviewStatus] = useState("pending"); // pending, reviewed
   const [reviewComments, setReviewComments] = useState("");
@@ -19,14 +20,7 @@ export default function TaskReviewPanel({ currentAdmin }) {
   const [showModal, setShowModal] = useState(false);
   const [modalAction, setModalAction] = useState(null); // 'approve' or 'reject'
 
-  // Fetch submissions on mount and when status filter changes
-  useEffect(() => {
-    if (currentAdmin?.id) {
-      fetchSubmissions();
-    }
-  }, [currentAdmin, reviewStatus]);
-
-  const fetchSubmissions = async () => {
+  const fetchSubmissions = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch(
@@ -36,15 +30,29 @@ export default function TaskReviewPanel({ currentAdmin }) {
 
       if (data.success) {
         setSubmissions(data.reviews || []);
+        setSubmissionsCount(
+          typeof data.count === "number" ? data.count : (data.reviews || []).length
+        );
       } else {
         console.error("Failed to fetch submissions:", data.error);
+        setSubmissions([]);
+        setSubmissionsCount(0);
       }
     } catch (error) {
       console.error("Fetch error:", error);
+      setSubmissions([]);
+      setSubmissionsCount(0);
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentAdmin?.id, reviewStatus]);
+
+  // Fetch submissions on mount and when status filter changes
+  useEffect(() => {
+    if (currentAdmin?.id) {
+      fetchSubmissions();
+    }
+  }, [currentAdmin?.id, reviewStatus, fetchSubmissions]);
 
   const handleReview = async (action) => {
     if (!selectedSubmission) return;
@@ -215,9 +223,9 @@ export default function TaskReviewPanel({ currentAdmin }) {
           }`}
         >
           Pending Reviews
-          {reviewStatus === "pending" && submissions.length > 0 && (
+          {reviewStatus === "pending" && submissionsCount > 0 && (
             <span className="ml-2 bg-white/20 px-2 py-0.5 rounded-full text-sm">
-              {submissions.length}
+              {submissionsCount}
             </span>
           )}
         </button>
@@ -230,6 +238,11 @@ export default function TaskReviewPanel({ currentAdmin }) {
           }`}
         >
           Review History
+          {reviewStatus === "reviewed" && submissionsCount > 0 && (
+            <span className="ml-2 bg-white/20 px-2 py-0.5 rounded-full text-sm">
+              {submissionsCount}
+            </span>
+          )}
         </button>
         <button
           onClick={fetchSubmissions}
