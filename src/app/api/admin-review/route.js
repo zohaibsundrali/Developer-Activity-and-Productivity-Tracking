@@ -60,6 +60,29 @@ export async function POST(request) {
       );
     }
 
+    // Authorization: ensure this admin owns the project this task belongs to.
+    // This prevents one admin from reviewing another admin's project submissions.
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, admin_id')
+      .eq('id', task.project_id)
+      .single();
+
+    if (projectError || !project) {
+      console.error('Admin review project lookup error:', projectError);
+      return NextResponse.json(
+        { error: 'Project not found for task' },
+        { status: 404 }
+      );
+    }
+
+    if (project.admin_id && project.admin_id !== adminId) {
+      return NextResponse.json(
+        { error: 'Not authorized to review submissions for this project' },
+        { status: 403 }
+      );
+    }
+
     // Get submission
     const { data: submission, error: subError } = await supabase
       .from('task_submissions')
@@ -292,41 +315,89 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') || 'pending';
+    const adminId = searchParams.get('adminId');
 
-    // Base query: include related task, developer, and project info
-    let query = supabase
-      .from('task_submissions')
-      .select(`
-        *,
-        developer_tasks (
-          id,
-          task_title,
-          task_description,
-          start_date,
-          end_date,
-          status
-        ),
-        developers (
-          id,
-          name,
-          email
-        ),
-        projects (
-          id,
-          name,
-          deadline
-        )
-      `)
-      .order('submitted_at', { ascending: false });
-
-    // Filter by review status for the UI tabs
-    if (status === 'pending') {
-      query = query.eq('review_status', 'pending');
-    } else if (status === 'reviewed') {
-      query = query.in('review_status', ['approved', 'rejected']);
+    if (!adminId) {
+      return NextResponse.json(
+        { error: 'Missing required query param: adminId' },
+        { status: 400 }
+      );
     }
 
-    const { data, error } = await query;
+    // Build queries per tab.
+    // IMPORTANT: For "reviewed" history we must *not* require an INNER join
+    // on projects, otherwise legacy submissions with missing/NULL project_id
+    // (or deleted projects) will be dropped and history will look like 0.
+    let query;
+    if (status === 'pending') {
+      query = supabase
+        .from('task_submissions')
+        .select(
+          `
+          *,
+          developer_tasks (
+            id,
+            task_title,
+            task_description,
+            start_date,
+            end_date,
+            status
+          ),
+          developers (
+            id,
+            name,
+            email
+          ),
+          projects!inner (
+            id,
+            name,
+            deadline,
+            admin_id
+          )
+        `,
+          { count: 'exact' }
+        )
+        .eq('review_status', 'pending')
+        .eq('projects.admin_id', adminId)
+        .order('submitted_at', { ascending: false });
+    } else if (status === 'reviewed') {
+      query = supabase
+        .from('task_submissions')
+        .select(
+          `
+          *,
+          developer_tasks (
+            id,
+            task_title,
+            task_description,
+            start_date,
+            end_date,
+            status
+          ),
+          developers (
+            id,
+            name,
+            email
+          ),
+          projects (
+            id,
+            name,
+            deadline
+          )
+        `,
+          { count: 'exact' }
+        )
+        .in('review_status', ['approved', 'rejected'])
+        .eq('reviewed_by', adminId)
+        .order('submitted_at', { ascending: false });
+    } else {
+      return NextResponse.json(
+        { error: 'Invalid status. Must be "pending" or "reviewed"' },
+        { status: 400 }
+      );
+    }
+
+    const { data, error, count } = await query;
 
     if (error) {
       return NextResponse.json(
@@ -371,7 +442,8 @@ export async function GET(request) {
 
     return NextResponse.json({
       success: true,
-      reviews: enrichedData
+      reviews: enrichedData,
+      count: typeof count === 'number' ? count : (enrichedData?.length || 0)
     });
 
   } catch (error) {
