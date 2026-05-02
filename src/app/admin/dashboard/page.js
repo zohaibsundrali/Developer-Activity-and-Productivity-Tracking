@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from "@/utils/supabaseClient";
 import Header from "@/components/admin/Header";
 import Navigation from "@/components/admin/Navigation";
 import DashboardOverview from "@/components/admin/DashboardOverview";
@@ -13,16 +13,11 @@ import TaskReviewPanel from "@/components/admin/TaskReviewPanel";
 import ProductivityDashboard from "@/components/admin/ProductivityDashboard";
 import { isSessionExpired, clearAdminSession } from "@/utils/sessionPolicy";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
-
 // Authentication check function for admin
 const checkAdminAuth = () => {
   if (typeof window === 'undefined') return false;
   
-  const adminUser = localStorage.getItem("adminUser");
+  const adminUser = sessionStorage.getItem("adminUser");
   if (!adminUser) return false;
 
   try {
@@ -57,9 +52,7 @@ const withAdminAuth = (WrappedComponent) => {
       const authCheck = () => {
         const user = checkAdminAuth();
         if (!user) {
-          // Clear any existing auth data
-          localStorage.removeItem("adminUser");
-          document.cookie = "admin_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+          clearAdminSession();
           // Redirect to login
           router.push("/login?redirect=" + encodeURIComponent(window.location.pathname));
         } else {
@@ -375,8 +368,7 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
     if (parentLogout) {
       parentLogout();
     } else {
-      localStorage.removeItem("adminUser");
-      document.cookie = "admin_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      clearAdminSession();
       router.push("/login");
     }
   };

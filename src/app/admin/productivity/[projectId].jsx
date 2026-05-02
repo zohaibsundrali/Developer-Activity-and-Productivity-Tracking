@@ -27,7 +27,7 @@ export default function ProjectProductivityPage() {
       setLoading(true);
       
       // Get admin from localStorage
-      const adminData = JSON.parse(localStorage.getItem("adminUser"));
+      const adminData = JSON.parse(sessionStorage.getItem("adminUser"));
       if (!adminData) {
         router.push('/admin/login');
         return;

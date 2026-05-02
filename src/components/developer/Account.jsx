@@ -79,6 +79,7 @@ export default function Account({ user }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          developerId: user?.id,
           currentPassword,
           newPassword,
           confirmNewPassword

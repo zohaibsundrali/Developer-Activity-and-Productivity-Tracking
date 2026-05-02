@@ -19,7 +19,7 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
       setLoading(true);
       
       // Get current admin from localStorage
-      const adminData = JSON.parse(localStorage.getItem("adminUser"));
+      const adminData = JSON.parse(sessionStorage.getItem("adminUser"));
       setCurrentAdmin(adminData);
       
       if (!adminData) {
@@ -490,19 +490,19 @@ ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
       </div>
       
       {/* Developer Stats */}
-      {developers.length > 0 && (
+      {/* {developers.length > 0 && (
         <div className="mb-6 grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
             <p className="text-sm text-gray-600">Total Developers</p>
             <p className="text-2xl font-bold">{developers.length}</p>
-          </div>
-          <div className="bg-green-50 p-4 rounded-lg border border-green-100">
+          </div> */}
+          {/* <div className="bg-green-50 p-4 rounded-lg border border-green-100">
             <p className="text-sm text-gray-600">Active</p>
             <p className="text-2xl font-bold">
               {developers.filter(d => d.status === 'active').length}
             </p>
-          </div>
-          <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-100">
+          </div> */}
+          {/* <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-100">
             <p className="text-sm text-gray-600">Inactive</p>
             <p className="text-2xl font-bold">
               {developers.filter(d => d.status === 'inactive').length}
@@ -513,9 +513,9 @@ ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
             <p className="text-2xl font-bold">
               {developers.filter(d => (d.projects_count || 0) > 0).length}
             </p>
-          </div>
-        </div>
-      )}
+          </div> */}
+        {/* </div>
+      )} */}
       
       <form onSubmit={handleAddDeveloper} className="space-y-4 max-w-md mb-8">
         <div>

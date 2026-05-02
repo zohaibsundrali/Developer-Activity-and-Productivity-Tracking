@@ -1,14 +1,9 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from "@/utils/supabaseClient";
 import { useRouter } from "next/navigation";
 import { SESSION_MAX_AGE_DAYS } from "@/utils/sessionPolicy";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
 
 const verifyPassword = (inputPassword, storedPassword) => {
   if (typeof storedPassword !== "string") return false;
@@ -191,7 +186,9 @@ export default function LoginPage() {
 
       // After successful admin verification
       if (role === "admin") {
-        localStorage.setItem("adminUser", JSON.stringify(userSession));
+        sessionStorage.setItem("adminUser", JSON.stringify(userSession));
+        // Remove legacy shared storage to prevent cross-tab user bleed
+        localStorage.removeItem("adminUser");
         
         // Dispatch auth-change event to update Navbar
         window.dispatchEvent(new Event('auth-change'));
@@ -210,7 +207,9 @@ export default function LoginPage() {
         }, 100);
       }
       else {
-        localStorage.setItem("developerUser", JSON.stringify(userSession));
+        sessionStorage.setItem("developerUser", JSON.stringify(userSession));
+        // Remove legacy shared storage to prevent cross-tab user bleed
+        localStorage.removeItem("developerUser");
         
         // Dispatch auth-change event to update Navbar
         window.dispatchEvent(new Event('auth-change'));

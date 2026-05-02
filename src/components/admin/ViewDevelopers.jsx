@@ -77,7 +77,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
       setLoading(true);
       
       // Get current admin from localStorage
-      const adminData = JSON.parse(localStorage.getItem("adminUser"));
+      const adminData = JSON.parse(sessionStorage.getItem("adminUser"));
       setCurrentAdmin(adminData);
       
       if (!adminData) {

@@ -60,8 +60,9 @@ export async function GET(request) {
     const isDeveloperViewer = !isAdminViewer && Boolean(getCookieValue(request, 'developer_auth'));
     const cookieDeveloperId = getCookieValue(request, 'developer_id');
 
-    // Developer viewers must be scoped to their own ID from cookie
-    const effectiveDeveloperId = isDeveloperViewer ? cookieDeveloperId : developerId;
+    // Developer viewers should be scoped to the current tab's session.
+    // Prefer an explicit developerId param (from sessionStorage) and fall back to cookie for legacy callers.
+    const effectiveDeveloperId = isDeveloperViewer ? (developerId || cookieDeveloperId) : developerId;
 
     if (isDeveloperViewer && !effectiveDeveloperId) {
       return NextResponse.json(

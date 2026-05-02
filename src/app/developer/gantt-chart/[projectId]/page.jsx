@@ -1,19 +1,14 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/utils/supabaseClient";
 import AdminGanttChart from "@/components/admin/AdminGanttChart";
 import { isSessionExpired, clearDeveloperSession, touchDeveloperSession } from "@/utils/sessionPolicy";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
 
 const checkDeveloperAuth = () => {
   if (typeof window === "undefined") return false;
 
-  const developerUser = localStorage.getItem("developerUser");
+  const developerUser = sessionStorage.getItem("developerUser");
   if (!developerUser) return false;
 
   try {
@@ -121,7 +116,7 @@ export default function DeveloperGanttChartPage() {
       setLoading(true);
       setError(null);
 
-      const res = await fetch(`/api/developer-gantt?projectId=${projectId}`, {
+      const res = await fetch(`/api/developer-gantt?projectId=${projectId}&developerId=${encodeURIComponent(String(developerId || ''))}`, {
         credentials: 'include',
       });
       const data = await res.json().catch(() => ({}));

@@ -36,6 +36,7 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get('projectId');
+    const developerIdParam = searchParams.get('developerId');
 
     if (!projectId) {
       return NextResponse.json({ success: false, error: 'Missing projectId' }, { status: 400 });
@@ -44,7 +45,7 @@ export async function GET(request) {
     // Authorize strictly as developer. Note: admin_auth may coexist in the same browser;
     // for this endpoint we only care that developer_auth + developer_id are present.
     const isDeveloperViewer = Boolean(getCookieValue(request, 'developer_auth'));
-    const developerId = getCookieValue(request, 'developer_id');
+    const developerId = developerIdParam || getCookieValue(request, 'developer_id');
 
     if (!isDeveloperViewer || !developerId) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });

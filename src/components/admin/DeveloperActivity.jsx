@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/utils/supabaseClient";
 import { showPre } from "@/utils/alerts";
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
@@ -34,11 +34,6 @@ import {
   XCircle,
 } from "lucide-react";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
-
 const CHART_COLORS = ["#009578", "#0ea5e9", "#8b5cf6", "#f59e0b", "#ef4444", "#10b981", "#6366f1", "#ec4899"];
 const POLL_INTERVAL = 10_000; // 10 seconds
 const MOUSE_PAGE_SIZE = 50;
@@ -47,11 +42,18 @@ export default function DeveloperActivity() {
   const [currentAdmin, setCurrentAdmin] = useState(null);
   const [developers, setDevelopers] = useState([]);
   const [selectedDeveloper, setSelectedDeveloper] = useState("");
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toLocaleDateString("en-CA"));
+  const [selectedDate, setSelectedDate] = useState("");
   const [timeRange, setTimeRange] = useState("today");
   const [loading, setLoading] = useState(false);
   const [fetchingDevelopers, setFetchingDevelopers] = useState(false);
   const [viewMode, setViewMode] = useState("overview");
+
+  // Avoid hydration mismatches by setting any time-based defaults after mount.
+  useEffect(() => {
+    if (!selectedDate) {
+      setSelectedDate(new Date().toLocaleDateString("en-CA"));
+    }
+  }, [selectedDate]);
 
   // Parse DB timestamps safely.
   // Supabase can return `timestamp` (without timezone) which JS treats as local time.
@@ -166,7 +168,7 @@ export default function DeveloperActivity() {
   useEffect(() => {
     const getCurrentAdmin = () => {
       try {
-        const adminData = JSON.parse(localStorage.getItem("adminUser"));
+        const adminData = JSON.parse(sessionStorage.getItem("adminUser"));
         setCurrentAdmin(adminData && adminData.email ? adminData : null);
       } catch {
         setCurrentAdmin(null);
@@ -1054,7 +1056,7 @@ export default function DeveloperActivity() {
 
   const refreshAdminData = () => {
     try {
-      const adminData = JSON.parse(localStorage.getItem("adminUser"));
+      const adminData = JSON.parse(sessionStorage.getItem("adminUser"));
       if (adminData) { setCurrentAdmin(adminData); fetchAdminDevelopers(); }
     } catch (err) {
       // Silently handle error

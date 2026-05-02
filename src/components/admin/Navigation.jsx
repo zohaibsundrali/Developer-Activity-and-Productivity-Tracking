@@ -12,7 +12,7 @@ export default function Navigation({ notificationCount }) {
     { id: "overview", label: "Overview" },
     { id: "all-projects", label: "All Projects" },
     { id: "task-reviews", label: "Task Reviews" },
-    { id: "productivity", label: "Productivity" },
+    // { id: "productivity", label: "Productivity" },
     { id: "add-developer", label: "Add Developer" },
     { id: "developer-activity", label: "Developer Activity" },
     { id: "view-developers", label: "View Developers" }

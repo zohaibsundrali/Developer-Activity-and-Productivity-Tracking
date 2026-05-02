@@ -8,7 +8,7 @@ export default function DashboardOverview({ user, developers, projects, notifica
     pendingNotifications: 0
   });
   const [loading, setLoading] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   useEffect(() => {
     if (user && developers && projects && notifications) {
@@ -19,7 +19,7 @@ export default function DashboardOverview({ user, developers, projects, notifica
   const calculateRealTimeStats = () => {
     try {
       // Get current admin from localStorage (more reliable)
-      const currentAdmin = JSON.parse(localStorage.getItem("adminUser")) || user;
+      const currentAdmin = JSON.parse(sessionStorage.getItem("adminUser")) || user;
       const adminId = currentAdmin?.id;
       const adminEmail = currentAdmin?.email;
 
@@ -76,7 +76,7 @@ export default function DashboardOverview({ user, developers, projects, notifica
     try {
       setLoading(true);
 
-      const currentAdmin = JSON.parse(localStorage.getItem("adminUser")) || user;
+      const currentAdmin = JSON.parse(sessionStorage.getItem("adminUser")) || user;
       const adminId = currentAdmin?.id;
       const adminEmail = currentAdmin?.email;
 

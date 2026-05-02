@@ -5,6 +5,8 @@ import {
   isSessionExpired,
   clearAdminSession,
   clearDeveloperSession,
+  getStoredAdminSession,
+  getStoredDeveloperSession,
   touchAdminSession,
   touchDeveloperSession
 } from '@/utils/sessionPolicy';
@@ -51,49 +53,34 @@ export function AuthProvider({ children }) {
   // Centralized authentication check
   const checkAuth = useCallback(() => {
     try {
-      // Primary auth keys used by the app
-      const adminDataStr = localStorage.getItem(STORAGE_KEYS.ADMIN);
-      const developerDataStr = localStorage.getItem(STORAGE_KEYS.DEVELOPER);
-
-      if (adminDataStr) {
-        try {
-          const adminData = JSON.parse(adminDataStr);
-          if (adminData && typeof adminData === 'object') {
-            if (isSessionExpired(adminData)) {
-              clearAdminSession();
-            } else {
-              const touched = maybeTouch('admin', adminData) || adminData;
-              setIsLoggedIn(true);
-              setUser(touched);
-              return true;
-            }
-          }
-        } catch {
+      // Primary auth keys used by the app (per-tab session storage)
+      const adminData = getStoredAdminSession();
+      if (adminData && typeof adminData === 'object') {
+        if (isSessionExpired(adminData)) {
           clearAdminSession();
+        } else {
+          const touched = maybeTouch('admin', adminData) || adminData;
+          setIsLoggedIn(true);
+          setUser(touched);
+          return true;
         }
       }
 
-      if (developerDataStr) {
-        try {
-          const developerData = JSON.parse(developerDataStr);
-          if (developerData && typeof developerData === 'object') {
-            if (isSessionExpired(developerData)) {
-              clearDeveloperSession();
-            } else {
-              const touched = maybeTouch('developer', developerData) || developerData;
-              setIsLoggedIn(true);
-              setUser(touched);
-              return true;
-            }
-          }
-        } catch {
+      const developerData = getStoredDeveloperSession();
+      if (developerData && typeof developerData === 'object') {
+        if (isSessionExpired(developerData)) {
           clearDeveloperSession();
+        } else {
+          const touched = maybeTouch('developer', developerData) || developerData;
+          setIsLoggedIn(true);
+          setUser(touched);
+          return true;
         }
       }
 
       // Backwards-compatibility: legacy token/user_data keys
-      const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
-      const userDataStr = localStorage.getItem(STORAGE_KEYS.USER);
+      const token = sessionStorage.getItem(STORAGE_KEYS.TOKEN);
+      const userDataStr = sessionStorage.getItem(STORAGE_KEYS.USER);
       
       if (token && userDataStr) {
         try {
@@ -106,13 +93,13 @@ export function AuthProvider({ children }) {
               return true;
             }
 
-            localStorage.removeItem(STORAGE_KEYS.TOKEN);
-            localStorage.removeItem(STORAGE_KEYS.USER);
+            sessionStorage.removeItem(STORAGE_KEYS.TOKEN);
+            sessionStorage.removeItem(STORAGE_KEYS.USER);
           }
         } catch (parseError) {
           // Invalid user data
-          localStorage.removeItem(STORAGE_KEYS.TOKEN);
-          localStorage.removeItem(STORAGE_KEYS.USER);
+          sessionStorage.removeItem(STORAGE_KEYS.TOKEN);
+          sessionStorage.removeItem(STORAGE_KEYS.USER);
         }
       }
       
@@ -132,8 +119,8 @@ export function AuthProvider({ children }) {
 
   // Login function
   const login = useCallback((token, userData) => {
-    localStorage.setItem(STORAGE_KEYS.TOKEN, token);
-    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
+    sessionStorage.setItem(STORAGE_KEYS.TOKEN, token);
+    sessionStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
     setIsLoggedIn(true);
     setUser(userData);
     
@@ -143,8 +130,8 @@ export function AuthProvider({ children }) {
 
   // Logout function
   const logout = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEYS.TOKEN);
-    localStorage.removeItem(STORAGE_KEYS.USER);
+    sessionStorage.removeItem(STORAGE_KEYS.TOKEN);
+    sessionStorage.removeItem(STORAGE_KEYS.USER);
     clearAdminSession();
     clearDeveloperSession();
     setIsLoggedIn(false);
@@ -166,25 +153,11 @@ export function AuthProvider({ children }) {
       checkAuth();
     };
     
-    // Listen for storage changes (from other tabs/windows)
-    const handleStorageChange = (e) => {
-      if (
-        e.key === STORAGE_KEYS.TOKEN ||
-        e.key === STORAGE_KEYS.USER ||
-        e.key === STORAGE_KEYS.ADMIN ||
-        e.key === STORAGE_KEYS.DEVELOPER
-      ) {
-        handleAuthStateChange();
-      }
-    };
-    
     // Add event listeners
     window.addEventListener('auth-state-changed', handleAuthStateChange);
-    window.addEventListener('storage', handleStorageChange);
     
     return () => {
       window.removeEventListener('auth-state-changed', handleAuthStateChange);
-      window.removeEventListener('storage', handleStorageChange);
     };
   }, [checkAuth]);
 

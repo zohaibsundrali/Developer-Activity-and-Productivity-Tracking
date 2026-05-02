@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/utils/supabaseClient";
 import {
   BarChart,
   Bar,
@@ -16,11 +16,6 @@ import {
   LineChart,
   Line,
 } from "recharts";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
 
 const COLORS = ["#009578", "#0ea5e9", "#f59e0b", "#ef4444", "#8b5cf6", "#10b981"];
 

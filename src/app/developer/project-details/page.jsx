@@ -141,7 +141,7 @@ export default function ProjectDetailsPage() {
         setDeveloperLoading(true);
         
         // First, check localStorage for user session
-        const storedUser = localStorage.getItem("developerUser");
+        const storedUser = sessionStorage.getItem("developerUser");
         
         if (storedUser) {
           try {
@@ -286,7 +286,7 @@ export default function ProjectDetailsPage() {
       
       // If developer not in state, try localStorage
       if (!developerToUse || !developerToUse.id) {
-        const storedUser = localStorage.getItem("developerUser");
+        const storedUser = sessionStorage.getItem("developerUser");
         if (storedUser) {
           try {
             const userData = JSON.parse(storedUser);

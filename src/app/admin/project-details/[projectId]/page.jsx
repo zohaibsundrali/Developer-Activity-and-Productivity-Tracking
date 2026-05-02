@@ -1,19 +1,14 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/utils/supabaseClient";
 import { showError, showWarning } from "@/utils/alerts";
 import { isSessionExpired, clearAdminSession } from "@/utils/sessionPolicy";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
 
 const checkAdminAuth = () => {
   if (typeof window === "undefined") return false;
 
-  const adminUser = localStorage.getItem("adminUser");
+  const adminUser = sessionStorage.getItem("adminUser");
   if (!adminUser) return false;
 
   try {

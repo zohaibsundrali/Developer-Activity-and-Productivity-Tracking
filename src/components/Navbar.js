@@ -31,8 +31,8 @@ export default function Navbar() {
   // FIXED: Enhanced authentication check with better debugging
   const checkAuthStatus = () => {
     try {
-      const adminDataStr = localStorage.getItem(STORAGE_KEYS.ADMIN);
-      const developerDataStr = localStorage.getItem(STORAGE_KEYS.DEVELOPER);
+      const adminDataStr = sessionStorage.getItem(STORAGE_KEYS.ADMIN);
+      const developerDataStr = sessionStorage.getItem(STORAGE_KEYS.DEVELOPER);
       
       if (adminDataStr) {
         try {
@@ -100,15 +100,8 @@ export default function Navbar() {
       checkAuthStatus();
     };
 
-    const handleStorageChange = (e) => {
-      if (e.key === STORAGE_KEYS.ADMIN || e.key === STORAGE_KEYS.DEVELOPER) {
-        checkAuthStatus();
-      }
-    };
-
     // Add event listeners
     window.addEventListener('auth-change', handleAuthChange);
-    window.addEventListener('storage', handleStorageChange);
     
     // Close profile menu when clicking outside
     const handleClickOutside = (event) => {
@@ -121,7 +114,6 @@ export default function Navbar() {
     
     return () => {
       window.removeEventListener('auth-change', handleAuthChange);
-      window.removeEventListener('storage', handleStorageChange);
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
@@ -133,14 +125,8 @@ export default function Navbar() {
 
   // Clear auth data
   const clearAuthData = () => {
-    localStorage.removeItem(STORAGE_KEYS.ADMIN);
-    localStorage.removeItem(STORAGE_KEYS.DEVELOPER);
-    
-    // Clear cookies
-    document.cookie = "admin_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-    document.cookie = "developer_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-    document.cookie = "admin_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-    document.cookie = "developer_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    clearAdminSession();
+    clearDeveloperSession();
     
     setIsLoggedIn(false);
     setUser(null);

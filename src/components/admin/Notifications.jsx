@@ -18,7 +18,7 @@ export default function Notifications({
   useEffect(() => {
     const fetchAdminData = () => {
       try {
-        const adminData = JSON.parse(localStorage.getItem("adminUser"));
+        const adminData = JSON.parse(sessionStorage.getItem("adminUser"));
         
         if (adminData) {
           setCurrentAdmin(adminData);

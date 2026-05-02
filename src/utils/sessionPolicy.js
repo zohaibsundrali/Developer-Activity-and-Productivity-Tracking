@@ -34,22 +34,55 @@ function expireCookie(name) {
   }
 }
 
-export function clearAdminSession() {
+function safeRemove(storage, key) {
   try {
-    localStorage.removeItem('adminUser');
+    storage?.removeItem(key);
   } catch {
     // ignore
   }
+}
+
+function safeGet(storage, key) {
+  try {
+    return storage?.getItem(key) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function safeSet(storage, key, value) {
+  try {
+    storage?.setItem(key, value);
+  } catch {
+    // ignore
+  }
+}
+
+function getPrimaryStorage() {
+  if (typeof window === 'undefined') return null;
+  // sessionStorage is per-tab, which prevents cross-account bleed between tabs.
+  return window.sessionStorage;
+}
+
+function getLegacyStorage() {
+  if (typeof window === 'undefined') return null;
+  return window.localStorage;
+}
+
+export function clearAdminSession() {
+  const primary = getPrimaryStorage();
+  const legacy = getLegacyStorage();
+  safeRemove(primary, 'adminUser');
+  safeRemove(legacy, 'adminUser');
   expireCookie('admin_auth');
   expireCookie('admin_id');
 }
 
 export function clearDeveloperSession() {
-  try {
-    localStorage.removeItem('developerUser');
-  } catch {
-    // ignore
-  }
+  const primary = getPrimaryStorage();
+  const legacy = getLegacyStorage();
+  safeRemove(primary, 'developerUser');
+  safeRemove(legacy, 'developerUser');
   expireCookie('developer_auth');
   expireCookie('developer_id');
 }
@@ -72,11 +105,14 @@ function setCookie(name, value, expires) {
 function touchStoredSession(storageKey, authCookieName, idCookieName, existingSession) {
   if (typeof window === 'undefined') return null;
 
+  const primary = getPrimaryStorage();
+  const legacy = getLegacyStorage();
+
   let session = existingSession;
   if (!session) {
+    const raw = safeGet(primary, storageKey) || safeGet(legacy, storageKey);
+    if (!raw) return null;
     try {
-      const raw = localStorage.getItem(storageKey);
-      if (!raw) return null;
       session = JSON.parse(raw);
     } catch {
       return null;
@@ -99,11 +135,9 @@ function touchStoredSession(storageKey, authCookieName, idCookieName, existingSe
     updated.id = sessionId;
   }
 
-  try {
-    localStorage.setItem(storageKey, JSON.stringify(updated));
-  } catch {
-    // ignore
-  }
+  // Write to per-tab storage; remove legacy shared storage to avoid cross-tab bleed.
+  safeSet(primary, storageKey, JSON.stringify(updated));
+  safeRemove(legacy, storageKey);
 
   const expiryDate = new Date(Date.now() + SESSION_MAX_AGE_MS + COOKIE_GRACE_MS);
   setCookie(authCookieName, 'true', expiryDate);
@@ -120,4 +154,42 @@ export function touchAdminSession(existingAdminSession) {
 
 export function touchDeveloperSession(existingDeveloperSession) {
   return touchStoredSession('developerUser', 'developer_auth', 'developer_id', existingDeveloperSession);
+}
+
+export function getStoredAdminSession() {
+  const primary = getPrimaryStorage();
+  const raw = safeGet(primary, 'adminUser');
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function getStoredDeveloperSession() {
+  const primary = getPrimaryStorage();
+  const raw = safeGet(primary, 'developerUser');
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredAdminSession(sessionObj) {
+  const primary = getPrimaryStorage();
+  const legacy = getLegacyStorage();
+  if (!primary) return;
+  safeSet(primary, 'adminUser', JSON.stringify(sessionObj));
+  safeRemove(legacy, 'adminUser');
+}
+
+export function setStoredDeveloperSession(sessionObj) {
+  const primary = getPrimaryStorage();
+  const legacy = getLegacyStorage();
+  if (!primary) return;
+  safeSet(primary, 'developerUser', JSON.stringify(sessionObj));
+  safeRemove(legacy, 'developerUser');
 }

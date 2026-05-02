@@ -36,7 +36,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
       setFetchingProjects(true);
       
       // Get admin from localStorage
-      const adminData = JSON.parse(localStorage.getItem("adminUser"));
+      const adminData = JSON.parse(sessionStorage.getItem("adminUser"));
       
       if (!adminData) {
         setCurrentAdmin(null);

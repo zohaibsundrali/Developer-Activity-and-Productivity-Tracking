@@ -83,8 +83,7 @@ export default function MyProjects({
       setShowMetricsModal(true);
 
       // Developer-side metrics must be scoped to the logged-in developer.
-      // API will enforce this using auth cookies.
-      const url = `/api/productivity?type=project&projectId=${project.id}`;
+      const url = `/api/productivity?type=project&projectId=${project.id}&developerId=${encodeURIComponent(String(user.id))}`;
       const res = await fetch(url);
       const data = await res.json().catch(() => ({}));
 

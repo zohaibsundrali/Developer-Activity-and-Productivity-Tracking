@@ -285,8 +285,10 @@ const handleRegister = async (e) => {
         loginTime: nowIso,
         lastActivity: nowIso,
       };
-      localStorage.setItem("adminUser", JSON.stringify(adminSession));
-      localStorage.setItem("adminToken", "admin-authenticated");
+      sessionStorage.setItem("adminUser", JSON.stringify(adminSession));
+      // Remove legacy shared storage to prevent cross-tab user bleed
+      localStorage.removeItem("adminUser");
+      sessionStorage.setItem("adminToken", "admin-authenticated");
 
       // Set cookies for middleware (7 days expiry)
       try {

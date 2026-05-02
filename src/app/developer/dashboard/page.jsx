@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from "@/utils/supabaseClient";
 import Header from "@/components/developer/Header";
 import Navigation from "@/components/developer/Navigation";
 import DashboardOverview from "@/components/developer/DashboardOverview";
@@ -10,16 +10,11 @@ import ProjectDetails from "@/components/developer/ProjectDetails";
 import Account from "@/components/developer/Account";
 import { isSessionExpired, clearDeveloperSession, touchDeveloperSession } from "@/utils/sessionPolicy";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
-
 // Authentication check karne ka function
 const checkAuth = () => {
   if (typeof window === 'undefined') return false;
   
-  const developerUser = localStorage.getItem("developerUser");
+  const developerUser = sessionStorage.getItem("developerUser");
   if (!developerUser) return false;
 
   try {
@@ -423,11 +418,7 @@ function DeveloperDashboardContent() {
   };
 
   const handleLogout = () => {
-    // Clear all auth data
-    localStorage.removeItem("developerUser");
-    // Clear cookies bhi agar hain
-    document.cookie = "developer_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-    document.cookie = "developer_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    clearDeveloperSession();
     
     // Redirect to login
     router.push("/login");

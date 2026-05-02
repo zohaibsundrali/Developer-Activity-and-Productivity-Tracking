@@ -20,15 +20,16 @@ export async function POST(request) {
       );
     }
 
+    const body = await request.json().catch(() => ({}));
+    const bodyDeveloperId = normalizeString(body?.developerId);
+
     const cookieStore = await cookies();
     const isLoggedIn = Boolean(cookieStore.get('developer_auth')?.value);
-    const developerId = normalizeString(cookieStore.get('developer_id')?.value);
+    const developerId = bodyDeveloperId || normalizeString(cookieStore.get('developer_id')?.value);
 
     if (!isLoggedIn || !developerId) {
       return jsonError('Unauthorized.', 401);
     }
-
-    const body = await request.json().catch(() => ({}));
     const currentPassword = normalizeString(body?.currentPassword);
     const newPassword = normalizeString(body?.newPassword);
     const confirmNewPassword = normalizeString(body?.confirmNewPassword);
