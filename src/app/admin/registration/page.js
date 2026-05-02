@@ -482,9 +482,7 @@ const handleRegister = async (e) => {
               >
                 {loading ? "Resending..." : "Resend Verification Code"}
               </button>
-              <p className="text-xs text-gray-500 mt-2">
-                Code expires in 10 minutes
-              </p>
+          
             </div>
           </form>
         )}

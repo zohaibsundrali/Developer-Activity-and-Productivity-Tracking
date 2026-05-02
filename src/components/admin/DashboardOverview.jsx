@@ -196,9 +196,7 @@ export default function DashboardOverview({ user, developers, projects, notifica
         </div>
       </div>
       
-      <p className="text-gray-600 mb-8 text-left">
-        Here's your personal dashboard showing statistics for developers and projects managed by you.
-      </p>
+
       
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">

@@ -252,18 +252,6 @@ export default function DeveloperActivity() {
     const { start, end } = getDateFilter();
     const devId = dev.id;
     const devEmail = dev.email;
-    const [yy, mm, dd] = String(selectedDate).split("-").map(Number);
-
-    const rangeDays = timeRange === "today" ? 1 : timeRange === "week" ? 7 : 30;
-
-    // Login activity is reported in Pakistan timezone (Asia/Karachi) but stored as UTC timestamps.
-    // Filter by the selected *Pakistan* date range by converting PK midnight to UTC.
-    const PK_OFFSET_MS = 5 * 60 * 60 * 1000; // Asia/Karachi is UTC+5 (no DST)
-    const selectedUtcMidnight = new Date(Date.UTC(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0));
-    const rangeStartUtcMidnight = new Date(selectedUtcMidnight);
-    rangeStartUtcMidnight.setUTCDate(rangeStartUtcMidnight.getUTCDate() - (rangeDays - 1));
-    const pkRangeStartUtc = new Date(rangeStartUtcMidnight.getTime() - PK_OFFSET_MS);
-    const pkRangeEndUtc = new Date(selectedUtcMidnight.getTime() + 24 * 60 * 60 * 1000 - PK_OFFSET_MS);
 
     try {
       // Fetch all 5 tables in parallel (keyboard via API route to bypass RLS)
@@ -321,8 +309,8 @@ export default function DeveloperActivity() {
       };
 
       const fetchLoginsSafe = async () => {
-        const startIso = pkRangeStartUtc.toISOString();
-        const endIso = pkRangeEndUtc.toISOString();
+        const startIso = start;
+        const endIso = end;
         const attempts = [
           // Preferred: keyed by developer_id + login_time
           () => supabase.from("developer_logins").select("*").eq("developer_id", devId).gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }),
@@ -353,13 +341,13 @@ export default function DeveloperActivity() {
 
       const loginRes = await fetchLoginsSafe();
       let finalLogins = Array.isArray(loginRes?.data) ? loginRes.data : [];
-      // Ensure scoped to the selected developer and PK day range (in case we hit a wide fallback query).
-      const pkStartMs = pkRangeStartUtc.getTime();
-      const pkEndMs = pkRangeEndUtc.getTime();
+      // Ensure scoped to the selected developer and selected date/time-range window.
+      const startMs = new Date(start).getTime();
+      const endMs = new Date(end).getTime();
       finalLogins = finalLogins
         .filter(matchesDeveloperLoginRow)
         .map((r) => ({ row: r, ms: loginRowTimeMs(r) }))
-        .filter((x) => !Number.isNaN(x.ms) && x.ms >= pkStartMs && x.ms < pkEndMs)
+        .filter((x) => !Number.isNaN(x.ms) && x.ms >= startMs && x.ms < endMs)
         .sort((a, b) => a.ms - b.ms)
         .map((x) => x.row);
 
@@ -445,8 +433,6 @@ export default function DeveloperActivity() {
 
       // Normalize + strictly filter screenshots to the selected range.
       // Also require a real image URL so the UI never shows count-only/placeholder rows.
-      const startMs = new Date(start).getTime();
-      const endMs = new Date(end).getTime();
       const merged = new Map();
       [...(screenshotRows || []), ...(screenshotCreatedAtRows || [])].forEach((r) => {
         const key = r?.id || `${r?.developer_id || ""}-${r?.created_at || ""}-${r?.timestamp || ""}`;
@@ -620,7 +606,7 @@ export default function DeveloperActivity() {
     const inRange = (row) => {
       const t = new Date(row?.tracked_at).getTime();
       if (Number.isNaN(t)) return false;
-      return t >= startMs && t <= endMs;
+      return t >= startMs && t < endMs;
     };
 
     const kbChannel = supabase
@@ -663,6 +649,14 @@ export default function DeveloperActivity() {
     }
     const dev = developers.find(d => d.id === selectedDeveloper);
     if (!dev) return;
+    const { start, end } = getDateFilter();
+    const startMs = new Date(start).getTime();
+    const endMs = new Date(end).getTime();
+    const inRange = (row) => {
+      const t = parseDbTimeMs(row?.tracked_at ?? row?.created_at ?? null);
+      if (Number.isNaN(t)) return false;
+      return t >= startMs && t < endMs;
+    };
     const appChannel = supabase
       .channel("app-usage-realtime")
       .on("postgres_changes", {
@@ -671,13 +665,14 @@ export default function DeveloperActivity() {
         table: "app_usage",
         filter: `user_email=eq.${dev.email}`,
       }, (payload) => {
+        if (!inRange(payload?.new)) return;
         setAppUsageData(prev => [payload.new, ...prev]);
         setLastUpdated(new Date());
       })
       .subscribe();
     appChannelRef.current = appChannel;
     return () => { supabase.removeChannel(appChannel); };
-  }, [selectedDeveloper, developers]);
+  }, [selectedDeveloper, developers, getDateFilter, parseDbTimeMs]);
 
   // ─── Supabase Realtime for screenshots ───
   const screenshotChannelRef = useRef(null);
@@ -756,14 +751,9 @@ export default function DeveloperActivity() {
     const dev = developers.find(d => d.id === selectedDeveloper);
     if (!dev) return;
 
-    const [yy, mm, dd] = String(selectedDate).split("-").map(Number);
-    const PK_OFFSET_MS = 5 * 60 * 60 * 1000;
-    const rangeDays = timeRange === "today" ? 1 : timeRange === "week" ? 7 : 30;
-    const selectedUtcMidnightMs = Date.UTC(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0);
-    const rangeStartUtcMidnight = new Date(selectedUtcMidnightMs);
-    rangeStartUtcMidnight.setUTCDate(rangeStartUtcMidnight.getUTCDate() - (rangeDays - 1));
-    const pkRangeStartUtcMs = rangeStartUtcMidnight.getTime() - PK_OFFSET_MS;
-    const pkRangeEndUtcMs = selectedUtcMidnightMs + 24 * 60 * 60 * 1000 - PK_OFFSET_MS;
+    const { start, end } = getDateFilter();
+    const startMs = new Date(start).getTime();
+    const endMs = new Date(end).getTime();
 
     const matchesDeveloper = (row) => {
       if (!row) return false;
@@ -775,10 +765,10 @@ export default function DeveloperActivity() {
       return false;
     };
 
-    const inPkRange = (row) => {
+    const inSelectedRange = (row) => {
       const ms = loginRowTimeMs(row);
       if (Number.isNaN(ms)) return false;
-      return ms >= pkRangeStartUtcMs && ms < pkRangeEndUtcMs;
+      return ms >= startMs && ms < endMs;
     };
 
     const channel = supabase
@@ -790,7 +780,7 @@ export default function DeveloperActivity() {
       }, (payload) => {
         const row = payload?.new;
         if (!matchesDeveloper(row)) return;
-        if (!inPkRange(row)) return;
+        if (!inSelectedRange(row)) return;
         setLoginRecords((prev) => {
           if (row?.id && prev.some((r) => r.id === row.id)) return prev;
           const next = [row, ...prev];
@@ -807,7 +797,7 @@ export default function DeveloperActivity() {
 
     loginChannelRef.current = channel;
     return () => { supabase.removeChannel(channel); };
-  }, [selectedDeveloper, developers, selectedDate, timeRange, loginRowTimeMs]);
+  }, [selectedDeveloper, developers, selectedDate, timeRange, loginRowTimeMs, getDateFilter]);
 
   // ─── Computed Metrics ───
   const developer = developers.find(d => d.id === selectedDeveloper);
@@ -827,7 +817,7 @@ export default function DeveloperActivity() {
   const totalDurationSeconds = sessions
     .filter((r) => {
       if (!r.start_time || r.total_duration == null) return false;
-      const ts = new Date(r.start_time).getTime();
+      const ts = parseDbTimeMs(r.start_time);
       return !Number.isNaN(ts) && ts >= rangeStartTime && ts < rangeEndTime;
     })
     .reduce((sum, r) => sum + Number(r.total_duration || 0), 0);
