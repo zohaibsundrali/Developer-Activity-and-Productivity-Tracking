@@ -11,15 +11,16 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const developerId = searchParams.get("developerId");
+    const userId = searchParams.get("userId");
     const email = searchParams.get("email");
     const start = searchParams.get("start");
     const end = searchParams.get("end");
 
-    console.log("[keyboard-stats] Request params:", { developerId, email, start, end });
+    console.log("[keyboard-stats] Request params:", { developerId, userId, email, start, end });
 
-    if (!developerId && !email) {
+    if (!developerId && !email && !userId) {
       return NextResponse.json(
-        { error: "developerId or email required" },
+        { error: "developerId, userId, or email required" },
         { status: 400 }
       );
     }
@@ -55,8 +56,9 @@ export async function GET(request) {
 
     // Build OR filters
     const filterParts = [];
-    if (developerId) filterParts.push(`developer_id.eq.${developerId}`);
-    if (email) filterParts.push(`user_email.eq.${email}`);
+    if (developerId && developerId !== "undefined" && developerId !== "null") filterParts.push(`developer_id.eq.${developerId}`);
+    if (userId && userId !== "undefined" && userId !== "null") filterParts.push(`developer_id.eq.${userId}`);
+    if (email && email !== "undefined" && email !== "null") filterParts.push(`user_email.eq.${email}`);
     const orFilter = filterParts.join(",");
 
     // Query strictly within the requested date range

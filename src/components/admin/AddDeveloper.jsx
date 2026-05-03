@@ -2,6 +2,158 @@
 import { useState, useEffect, useCallback } from "react";
 import { showError, showSuccess, showWarning } from "@/utils/alerts";
 
+const formatDate = (dateString) => {
+  if (!dateString) return 'Recently';
+  return new Date(dateString).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+};
+
+const DeveloperForm = ({
+  newDeveloper,
+  handleInputChange,
+  handleAddDeveloper,
+  isAddingDeveloper,
+  currentAdmin
+}) => (
+  <form onSubmit={handleAddDeveloper} className="space-y-4 max-w-md mb-8">
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        Full Name *
+      </label>
+      <input
+        type="text"
+        name="name"
+        value={newDeveloper.name}
+        onChange={handleInputChange}
+        className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]"
+        placeholder="Enter developer's full name"
+        required
+        disabled={isAddingDeveloper || !currentAdmin}
+      />
+    </div>
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        Email *
+      </label>
+      <input
+        type="email"
+        name="email"
+        value={newDeveloper.email}
+        onChange={handleInputChange}
+        className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]"
+        placeholder="Enter developer's email"
+        required
+        disabled={isAddingDeveloper || !currentAdmin}
+      />
+    </div>
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        Password *
+      </label>
+      <input
+        type="password"
+        name="password"
+        value={newDeveloper.password}
+        onChange={handleInputChange}
+        className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]"
+        placeholder="Set developer password"
+        required
+        minLength="6"
+        disabled={isAddingDeveloper || !currentAdmin}
+      />
+      <p className="text-xs text-gray-500 mt-1">Password must be at least 6 characters long</p>
+    </div>
+
+    <div className="flex flex-col sm:flex-row gap-3">
+      <button
+        type="submit"
+        disabled={isAddingDeveloper || !currentAdmin}
+        className={`flex-1 py-2 px-4 rounded-md transition-colors ${isAddingDeveloper || !currentAdmin
+          ? 'bg-gray-400 cursor-not-allowed'
+          : 'bg-[#009578] hover:bg-[#0e7762]'
+          } text-white w-full sm:flex-1`}
+      >
+        {!currentAdmin ? 'Please Login' : isAddingDeveloper ? 'Adding...' : 'Add Developer'}
+      </button>
+    </div>
+  </form>
+);
+
+const DeveloperTable = ({ developers, missingColumns }) => (
+  <div className="border-t pt-6">
+    <div className="flex justify-between items-center mb-4">
+      <div>
+        <h3 className="text-lg font-semibold">
+          {!missingColumns ? 'Your Developers' : 'All Developers'}
+          {developers.length > 0 && (
+            <span className="ml-2 text-sm font-normal text-gray-500">
+              ({developers.length} total)
+            </span>
+          )}
+        </h3>
+      </div>
+    </div>
+
+    {developers.length > 0 ? (
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[720px] divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Name
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Email
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Projects
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Added On
+              </th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {developers.map(developer => (
+              <tr key={developer.id} className="hover:bg-gray-50">
+                <td className="px-4 py-3 whitespace-nowrap">
+                  <div className="text-sm font-medium text-gray-900">
+                    {developer.name}
+                  </div>
+                </td>
+                <td className="px-4 py-3 whitespace-nowrap">
+                  <div className="text-sm text-gray-600">
+                    {developer.email}
+                  </div>
+                </td>
+
+                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                  <span className="font-medium">{developer.projects_count || 0}</span>
+                </td>
+                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                  {formatDate(developer.created_at)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    ) : (
+      <div className="text-center py-8">
+        <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13 0c1.013 0 1.827.833 1.827 1.86 0 1.03-.814 1.86-1.827 1.86s-1.827-.83-1.827-1.86c0-1.027.814-1.86 1.827-1.86z" />
+        </svg>
+        <p className="text-gray-500 text-lg mb-2">
+          {!missingColumns ? 'No developers added by you yet' : 'No developers found'}
+        </p>
+      </div>
+    )}
+  </div>
+);
+
 export default function AddDeveloper({ user, developers: initialDevelopers, onRefresh, supabase }) {
   const [newDeveloper, setNewDeveloper] = useState({
     name: "",
@@ -17,17 +169,17 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
   const fetchAdminDevelopers = useCallback(async () => {
     try {
       setLoading(true);
-      
+
       // Get current admin from localStorage
       const adminData = JSON.parse(sessionStorage.getItem("adminUser"));
       setCurrentAdmin(adminData);
-      
+
       if (!adminData) {
         showWarning("Login required", "Admin not logged in.");
         setDevelopers([]);
         return;
       }
-      
+
       // Try to fetch developers added by this admin
       try {
         const { data, error } = await supabase
@@ -39,14 +191,14 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
         if (error) {
           // If columns don't exist, fetch all developers
           setMissingColumns(true);
-          
+
           const { data: allData, error: allError } = await supabase
             .from('developers')
             .select('*')
             .order('created_at', { ascending: false });
 
           if (allError) throw allError;
-          
+
           setDevelopers(allData || []);
         } else {
           setMissingColumns(false);
@@ -56,7 +208,7 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
         setMissingColumns(true);
         setDevelopers([]);
       }
-      
+
     } catch (error) {
       showError("Load failed", `Error loading developers: ${error.message}`);
       setDevelopers([]);
@@ -76,12 +228,12 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
 
   const handleAddDeveloper = async (e) => {
     e.preventDefault();
-    
+
     if (!currentAdmin) {
       showWarning("Login required", "Admin not logged in.");
       return;
     }
-    
+
     if (!newDeveloper.name.trim() || !newDeveloper.email.trim() || !newDeveloper.password.trim()) {
       showWarning("Validation error", "Please fill in all fields.");
       return;
@@ -160,14 +312,14 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
             company: user?.company || 'Unknown Company',
             created_at: new Date().toISOString()
           };
-          
+
           const { data: retryData, error: retryError } = await supabase
             .from('developers')
             .insert([simplifiedData])
             .select();
 
           if (retryError) throw retryError;
-          
+
           insertedData = retryData; // Assign to let variable
           setMissingColumns(true);
         } else {
@@ -208,7 +360,7 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
       });
 
       showSuccess("Saved", "Developer added successfully.");
-      
+
     } catch (error) {
       showError("Save failed", `Error adding developer: ${error.message}`);
     } finally {
@@ -222,15 +374,6 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
       ...prev,
       [name]: value
     }));
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'Recently';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
   };
 
   // Show warning about missing columns
@@ -251,11 +394,11 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
                 </h3>
                 <div className="mt-2 text-sm text-yellow-700">
                   <p>
-                    To enable admin isolation (each admin seeing only their own developers), 
+                    To enable admin isolation (each admin seeing only their own developers),
                     please run this SQL in Supabase SQL Editor:
                   </p>
                   <pre className="mt-2 bg-yellow-100 p-2 rounded text-xs overflow-x-auto">
-{`ALTER TABLE developers 
+                    {`ALTER TABLE developers 
 ADD COLUMN IF NOT EXISTS added_by UUID,
 ADD COLUMN IF NOT EXISTS added_by_admin TEXT,
 ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
@@ -268,17 +411,12 @@ ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
             </div>
           </div>
         </div>
-        
+
         <div className="flex justify-between items-center mb-6">
           <div>
             <h2 className="text-2xl font-bold">Add Developer</h2>
-            {/* {currentAdmin && (
-              <p className="text-sm text-gray-500">
-                Admin: {currentAdmin.name || currentAdmin.email}
-              </p>
-            )} */}
           </div>
-          
+
           <button
             onClick={fetchAdminDevelopers}
             className="bg-gray-100 text-gray-700 px-3 py-2 rounded-md hover:bg-gray-200 transition-colors text-sm flex items-center"
@@ -290,148 +428,16 @@ ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
             Refresh
           </button>
         </div>
-        
-        <form onSubmit={handleAddDeveloper} className="space-y-4 max-w-md mb-8">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Full Name *
-            </label>
-            <input 
-              type="text" 
-              name="name"
-              value={newDeveloper.name}
-              onChange={handleInputChange}
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]"
-              placeholder="Enter developer's full name"
-              required
-              disabled={isAddingDeveloper || !currentAdmin}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email *
-            </label>
-            <input 
-              type="email" 
-              name="email"
-              value={newDeveloper.email}
-              onChange={handleInputChange}
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]"
-              placeholder="Enter developer's email"
-              required
-              disabled={isAddingDeveloper || !currentAdmin}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Password *
-            </label>
-            <input 
-              type="password" 
-              name="password"
-              value={newDeveloper.password}
-              onChange={handleInputChange}
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]"
-              placeholder="Set temporary password"
-              required
-              minLength="6"
-              disabled={isAddingDeveloper || !currentAdmin}
-            />
-            <p className="text-xs text-gray-500 mt-1">Password must be at least 6 characters long</p>
-          </div>
-          
-          <div className="flex flex-col sm:flex-row gap-3">
-            <button 
-              type="submit"
-              disabled={isAddingDeveloper || !currentAdmin}
-              className={`flex-1 py-2 px-4 rounded-md transition-colors ${
-                isAddingDeveloper || !currentAdmin
-                  ? 'bg-gray-400 cursor-not-allowed' 
-                  : 'bg-[#009578] hover:bg-[#0e7762]'
-              } text-white w-full sm:flex-1`}
-            >
-              {!currentAdmin ? 'Please Login' : isAddingDeveloper ? 'Adding...' : 'Add Developer'}
-            </button>
-          </div>
-        </form>
-        
-        <div className="border-t pt-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold">
-              All Developers
-              {developers.length > 0 && (
-                <span className="ml-2 text-sm font-normal text-gray-500">
-                  ({developers.length} total)
-                </span>
-              )}
-            </h3>
-          </div>
-          
-          {developers.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Name
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Email
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Projects
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Added On
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {developers.map(developer => (
-                    <tr key={developer.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          {developer.name}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="text-sm text-gray-600">
-                          {developer.email}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span className={`inline-flex text-xs leading-5 font-semibold rounded-full px-2 py-1 ${
-                          developer.status === 'active' 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-red-100 text-red-800'
-                        }`}>
-                          {developer.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                        {developer.projects_count || 0}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                        {formatDate(developer.created_at)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13 0c1.013 0 1.827.833 1.827 1.86 0 1.03-.814 1.86-1.827 1.86s-1.827-.83-1.827-1.86c0-1.027.814-1.86 1.827-1.86z" />
-              </svg>
-              <p className="text-gray-500 text-lg mb-2">No developers added yet</p>
-              {/* <p className="text-gray-400 text-sm">Add your first developer using the form above</p> */}
-            </div>
-          )}
-        </div>
+
+        <DeveloperForm
+          newDeveloper={newDeveloper}
+          handleInputChange={handleInputChange}
+          handleAddDeveloper={handleAddDeveloper}
+          isAddingDeveloper={isAddingDeveloper}
+          currentAdmin={currentAdmin}
+        />
+
+        <DeveloperTable developers={developers} missingColumns={missingColumns} />
       </div>
     );
   }
@@ -467,16 +473,8 @@ ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
       <div className="flex justify-between items-center mb-6">
         <div>
           <h2 className="text-2xl font-bold">Add Developer</h2>
-          {/* {currentAdmin && (
-            <p className="text-sm text-gray-500">
-              Admin: {currentAdmin.name || currentAdmin.email}
-              {!missingColumns && (
-                <span className="ml-2 text-green-600">✓ Isolated Mode</span>
-              )}
-            </p>
-          )} */}
         </div>
-        
+
         <button
           onClick={fetchAdminDevelopers}
           className="bg-gray-100 text-gray-700 px-3 py-2 rounded-md hover:bg-gray-200 transition-colors text-sm flex items-center"
@@ -488,203 +486,16 @@ ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
           Refresh
         </button>
       </div>
-      
-      {/* Developer Stats */}
-      {/* {developers.length > 0 && (
-        <div className="mb-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-            <p className="text-sm text-gray-600">Total Developers</p>
-            <p className="text-2xl font-bold">{developers.length}</p>
-          </div> */}
-          {/* <div className="bg-green-50 p-4 rounded-lg border border-green-100">
-            <p className="text-sm text-gray-600">Active</p>
-            <p className="text-2xl font-bold">
-              {developers.filter(d => d.status === 'active').length}
-            </p>
-          </div> */}
-          {/* <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-100">
-            <p className="text-sm text-gray-600">Inactive</p>
-            <p className="text-2xl font-bold">
-              {developers.filter(d => d.status === 'inactive').length}
-            </p>
-          </div>
-          <div className="bg-purple-50 p-4 rounded-lg border border-purple-100">
-            <p className="text-sm text-gray-600">With Projects</p>
-            <p className="text-2xl font-bold">
-              {developers.filter(d => (d.projects_count || 0) > 0).length}
-            </p>
-          </div> */}
-        {/* </div>
-      )} */}
-      
-      <form onSubmit={handleAddDeveloper} className="space-y-4 max-w-md mb-8">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Full Name *
-          </label>
-          <input 
-            type="text" 
-            name="name"
-            value={newDeveloper.name}
-            onChange={handleInputChange}
-            className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]"
-            placeholder="Enter developer's full name"
-            required
-            disabled={isAddingDeveloper || !currentAdmin}
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Email *
-          </label>
-          <input 
-            type="email" 
-            name="email"
-            value={newDeveloper.email}
-            onChange={handleInputChange}
-            className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]"
-            placeholder="Enter developer's email"
-            required
-            disabled={isAddingDeveloper || !currentAdmin}
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Password *
-          </label>
-          <input 
-            type="password" 
-            name="password"
-            value={newDeveloper.password}
-            onChange={handleInputChange}
-            className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]"
-            placeholder="Set temporary password"
-            required
-            minLength="6"
-            disabled={isAddingDeveloper || !currentAdmin}
-          />
-          <p className="text-xs text-gray-500 mt-1">Password must be at least 6 characters long</p>
-        </div>
-        
-        <div className="p-3 bg-gray-50 rounded-md">
-          <p className="text-sm text-gray-600">
-            <span className="font-medium">Note:</span> This developer will be linked to your admin account
-            {!missingColumns && " and only visible to you"}
-          </p>
-        </div>
-        
-        <div className="flex space-x-3">
-          <button 
-            type="submit"
-            disabled={isAddingDeveloper || !currentAdmin}
-            className={`flex-1 py-2 px-4 rounded-md transition-colors ${
-              isAddingDeveloper || !currentAdmin
-                ? 'bg-gray-400 cursor-not-allowed' 
-                : 'bg-[#009578] hover:bg-[#0e7762]'
-            } text-white`}
-          >
-            {!currentAdmin ? 'Please Login' : isAddingDeveloper ? 'Adding...' : 'Add Developer'}
-          </button>
-        </div>
-      </form>
-      
-      {/* Developers List */}
-      <div className="border-t pt-6">
-        <div className="flex justify-between items-center mb-4">
-          <div>
-            <h3 className="text-lg font-semibold">
-              {!missingColumns ? 'Your Developers' : 'All Developers'}
-              {developers.length > 0 && (
-                <span className="ml-2 text-sm font-normal text-gray-500">
-                  ({developers.length} total)
-                </span>
-              )}
-            </h3>
-            {!missingColumns && developers.length > 0 && (
-              <p className="text-sm text-gray-500 mt-1">
-                Only developers added by you are shown
-              </p>
-            )}
-          </div>
-        </div>
-        
-        {developers.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Name
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Email
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Projects
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Added On
-                  </th>
-                  {!missingColumns && (
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Added By
-                    </th>
-                  )}
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {developers.map(developer => (
-                  <tr key={developer.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
-                        {developer.name}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="text-sm text-gray-600">
-                        {developer.email}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className={`inline-flex text-xs leading-5 font-semibold rounded-full px-2 py-1 ${
-                        developer.status === 'active' 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {developer.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                      <span className="font-medium">{developer.projects_count || 0}</span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                      {formatDate(developer.created_at)}
-                    </td>
-                    {!missingColumns && developer.added_by_name && (
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                        {developer.added_by_name}
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="text-center py-8">
-            <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13 0c1.013 0 1.827.833 1.827 1.86 0 1.03-.814 1.86-1.827 1.86s-1.827-.83-1.827-1.86c0-1.027.814-1.86 1.827-1.86z" />
-            </svg>
-            <p className="text-gray-500 text-lg mb-2">
-              {!missingColumns ? 'No developers added by you yet' : 'No developers found'}
-            </p>
-            {/* <p className="text-gray-400 text-sm">Add your first developer using the form above</p> */}
-          </div>
-        )}
-      </div>
+
+      <DeveloperForm
+        newDeveloper={newDeveloper}
+        handleInputChange={handleInputChange}
+        handleAddDeveloper={handleAddDeveloper}
+        isAddingDeveloper={isAddingDeveloper}
+        currentAdmin={currentAdmin}
+      />
+
+      <DeveloperTable developers={developers} missingColumns={missingColumns} />
     </div>
   );
 }

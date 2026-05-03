@@ -272,7 +272,7 @@ export default function DeveloperActivity() {
           .gte("start_time", start)
           .lt("start_time", end)
           .order("start_time", { ascending: false }),
-        fetch(`/api/keyboard-stats?developerId=${encodeURIComponent(devId)}&email=${encodeURIComponent(devEmail)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`).then(r => r.json()),
+        fetch(`/api/keyboard-stats?developerId=${encodeURIComponent(devId || "")}&userId=${encodeURIComponent(dev.user_id || "")}&email=${encodeURIComponent(devEmail || "")}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`).then(r => r.json()),
         supabase.from("app_usage").select("id, session_id, user_email, app_name, app_name_raw, window_title, start_time, end_time, duration_seconds, duration_minutes, tracked_at, created_at, is_new_app, user_login").eq("user_email", devEmail).gte("tracked_at", start).lt("tracked_at", end).order("tracked_at", { ascending: false }),
         // Screenshots schema has varied; select '*' and normalize client-side.
         supabase.from("screenshots").select("*")
@@ -485,13 +485,16 @@ export default function DeveloperActivity() {
     try {
       const baseSelect = "id, session_id, developer_id, developer_name, timestamp, activity_status, active_percentage, idle_percentage, created_at";
 
+      const mouseDeveloperFilters = [`developer_id.eq.${dev.id}`];
+      if (dev.user_id) mouseDeveloperFilters.push(`developer_id.eq.${dev.user_id}`);
+
       let res = await supabase
         .from("mouse_activities")
         .select(baseSelect, { count: "exact" })
-        .eq("developer_id", dev.id)
-        .gte("created_at", start)
-        .lt("created_at", end)
-        .order("created_at", { ascending: false })
+        .or(mouseDeveloperFilters.join(","))
+        .gte("timestamp", start)
+        .lt("timestamp", end)
+        .order("timestamp", { ascending: false })
         .range(from, to);
 
       let rows = Array.isArray(res?.data) ? res.data : [];
@@ -503,9 +506,9 @@ export default function DeveloperActivity() {
           .from("mouse_activities")
           .select(baseSelect, { count: "exact" })
           .eq("email", dev.email)
-          .gte("created_at", start)
-          .lt("created_at", end)
-          .order("created_at", { ascending: false })
+          .gte("timestamp", start)
+          .lt("timestamp", end)
+          .order("timestamp", { ascending: false })
           .range(from, to);
         rows = Array.isArray(res?.data) ? res.data : [];
         total = typeof res?.count === "number" ? res.count : rows.length;
@@ -569,22 +572,29 @@ export default function DeveloperActivity() {
       return t >= startMs && t < endMs;
     };
 
-    const channel = supabase
-      .channel("mouse-activity-realtime")
-      .on("postgres_changes", {
+    let channel = supabase.channel("mouse-activity-realtime");
+    const mouseFilters = [`developer_id=eq.${dev.id}`];
+    if (dev.user_id) mouseFilters.push(`developer_id=eq.${dev.user_id}`);
+
+    mouseFilters.forEach(f => {
+      channel = channel.on("postgres_changes", {
         event: "INSERT",
         schema: "public",
         table: "mouse_activities",
-        filter: `developer_id=eq.${dev.id}`,
+        filter: f,
       }, (payload) => {
         if (!inRange(payload?.new)) return;
         setMouseTotalCount((c) => (typeof c === "number" ? c + 1 : c));
         if (mousePage === 1) {
-          setMouseData(prev => [payload.new, ...prev].slice(0, MOUSE_PAGE_SIZE));
+          setMouseData(prev => {
+            if (prev.some(m => m.id === payload.new.id)) return prev;
+            return [payload.new, ...prev].slice(0, MOUSE_PAGE_SIZE);
+          });
         }
         setLastUpdated(new Date());
-      })
-      .subscribe();
+      });
+    });
+    channel.subscribe();
 
     realtimeChannelRef.current = channel;
     return () => {
@@ -611,24 +621,17 @@ export default function DeveloperActivity() {
       return t >= startMs && t < endMs;
     };
 
-    const kbChannel = supabase
-      .channel("keyboard-stats-realtime")
-      .on("postgres_changes", {
+    let kbChannel = supabase.channel("keyboard-stats-realtime");
+    const kbFilters = [`developer_id=eq.${dev.id}`];
+    if (dev.user_id) kbFilters.push(`developer_id=eq.${dev.user_id}`);
+    if (dev.email) kbFilters.push(`user_email=eq.${dev.email}`);
+
+    kbFilters.forEach(f => {
+      kbChannel = kbChannel.on("postgres_changes", {
         event: "INSERT",
         schema: "public",
         table: "keyboard_stats",
-        filter: `developer_id=eq.${dev.id}`,
-      }, (payload) => {
-        if (!inRange(payload.new)) return;
-        setKeyboardData(prev => [payload.new, ...prev]);
-        setLastUpdated(new Date());
-      })
-      .on("postgres_changes", {
-        event: "INSERT",
-        schema: "public",
-        table: "keyboard_stats",
-        // Some trackers only populate developer_email; listen to that as well
-        filter: `developer_email=eq.${dev.email}`,
+        filter: f,
       }, (payload) => {
         if (!inRange(payload.new)) return;
         setKeyboardData(prev => {
@@ -636,8 +639,9 @@ export default function DeveloperActivity() {
           return [payload.new, ...prev];
         });
         setLastUpdated(new Date());
-      })
-      .subscribe();
+      });
+    });
+    kbChannel.subscribe();
     keyboardChannelRef.current = kbChannel;
     return () => { supabase.removeChannel(kbChannel); };
   }, [selectedDeveloper, developers, getDateFilter]);

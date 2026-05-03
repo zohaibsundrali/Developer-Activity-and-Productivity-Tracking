@@ -16,72 +16,11 @@ export default function LoginPage() {
   const [role, setRole] = useState("developer");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [verificationStep, setVerificationStep] = useState(false);
-  const [verificationCode, setVerificationCode] = useState("");
-  const [userData, setUserData] = useState(null);
   const router = useRouter();
 
   // New function to go back to home/starting page
   const handleGoToHome = () => {
     router.push("/");
-  };
-
-  const generateVerificationCode = () => {
-    return Math.floor(1000 + Math.random() * 9000).toString(); // 4-digit code
-  };
-
-  const sendVerificationEmail = async (email, code, userName, role, company = "") => {
-    try {
-      const response = await fetch('/api/send-verification', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: email,
-          userName: userName,
-          company: company || "Developer Activity Tracking System",
-          code: code,
-          type: "login", // Add type to distinguish between registration and login
-          role: role
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to send verification email');
-      }
-
-      // Store verification data in localStorage
-      const verificationData = {
-        email,
-        code,
-        timestamp: new Date().getTime(),
-        role,
-        userName
-      };
-      
-      localStorage.setItem(`verification_${email}`, JSON.stringify(verificationData));
-      
-      return true;
-    } catch (error) {
-      
-      // Fallback: Store in localStorage and show code to user
-      const verificationData = {
-        email,
-        code,
-        timestamp: new Date().getTime(),
-        role,
-        userName
-      };
-      
-      localStorage.setItem(`verification_${email}`, JSON.stringify(verificationData));
-      
-     
-      
-      return true;
-    }
   };
 
   const handleLogin = async (e) => {
@@ -90,6 +29,7 @@ export default function LoginPage() {
     setError("");
 
     try {
+      let loggedInData = null;
       if (role === "admin") {
         // Admin login logic
         const { data: adminData, error: adminError } = await supabase
@@ -101,22 +41,7 @@ export default function LoginPage() {
         if (adminError || !adminData || !verifyPassword(password, adminData.password)) {
           throw new Error('Invalid admin credentials');
         }
-
-        // Generate and send verification code
-        const verificationCode = generateVerificationCode();
-        const emailSent = await sendVerificationEmail(
-          email, 
-          verificationCode, 
-          adminData.full_name, 
-          'admin',
-          adminData.company
-        );
-        
-        if (emailSent) {
-          setUserData(adminData);
-          setVerificationStep(true);
-        }
-
+        loggedInData = adminData;
       } else {
         // Developer login logic
         const { data: developerData, error: developerError } = await supabase
@@ -128,227 +53,51 @@ export default function LoginPage() {
         if (developerError || !developerData || !verifyPassword(password, developerData.password)) {
           throw new Error('Invalid developer credentials');
         }
-
-        // Generate and send verification code
-        const verificationCode = generateVerificationCode();
-        const emailSent = await sendVerificationEmail(
-          email, 
-          verificationCode, 
-          developerData.name, 
-          'developer',
-          developerData.company
-        );
-        
-        if (emailSent) {
-          setUserData(developerData);
-          setVerificationStep(true);
-        }
-      }
-    } catch (error) {
-      setError(error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVerification = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-
-    try {
-      const storedVerification = localStorage.getItem(`verification_${email}`);
-      if (!storedVerification) {
-        throw new Error('Verification session expired. Please login again.');
+        loggedInData = developerData;
       }
 
-      const verificationData = JSON.parse(storedVerification);
-      
-      // Check if code is expired (10 minutes)
-      const isExpired = (new Date().getTime() - verificationData.timestamp) > 10 * 60 * 1000;
-      if (isExpired) {
-        localStorage.removeItem(`verification_${email}`);
-        throw new Error('Verification code expired. Please login again.');
-      }
-
-      // Check if code matches
-      if (verificationData.code !== verificationCode) {
-        throw new Error('Invalid verification code');
-      }
-
-      // Verification successful - store user data
+      // User session details
       const userSession = {
-        ...userData,
+        ...loggedInData,
         role: role,
         loginTime: new Date().toISOString(),
         lastActivity: new Date().toISOString()
       };
 
-      // After successful admin verification
       if (role === "admin") {
         sessionStorage.setItem("adminUser", JSON.stringify(userSession));
-        // Remove legacy shared storage to prevent cross-tab user bleed
         localStorage.removeItem("adminUser");
         
-        // Dispatch auth-change event to update Navbar
         window.dispatchEvent(new Event('auth-change'));
         
-        // Set cookie for middleware (7 days expiry)
         const expiryDate = new Date();
         expiryDate.setDate(expiryDate.getDate() + SESSION_MAX_AGE_DAYS);
         document.cookie = `admin_auth=true; expires=${expiryDate.toUTCString()}; path=/`;
+        document.cookie = `admin_id=${loggedInData.id}; expires=${expiryDate.toUTCString()}; path=/; HttpOnly; Secure`;
         
-        // Set additional security cookie
-        document.cookie = `admin_id=${userData.id}; expires=${expiryDate.toUTCString()}; path=/; HttpOnly; Secure`;
-        
-        // Give time for event to propagate before redirecting
         setTimeout(() => {
           router.push("/admin/dashboard");
         }, 100);
-      }
-      else {
+      } else {
         sessionStorage.setItem("developerUser", JSON.stringify(userSession));
-        // Remove legacy shared storage to prevent cross-tab user bleed
         localStorage.removeItem("developerUser");
         
-        // Dispatch auth-change event to update Navbar
         window.dispatchEvent(new Event('auth-change'));
         
-        // Set cookie for middleware + API scoping (7 days expiry)
         const expiryDate = new Date();
         expiryDate.setDate(expiryDate.getDate() + SESSION_MAX_AGE_DAYS);
         document.cookie = `developer_auth=true; expires=${expiryDate.toUTCString()}; path=/`;
-        document.cookie = `developer_id=${userData.id}; expires=${expiryDate.toUTCString()}; path=/`;
+        document.cookie = `developer_id=${loggedInData.id}; expires=${expiryDate.toUTCString()}; path=/`;
         
-        // Give time for event to propagate before redirecting
         setTimeout(() => {
           router.push("/developer/dashboard");
         }, 100);
       }
-
-      // Clean up verification data
-      localStorage.removeItem(`verification_${email}`);
-
     } catch (error) {
       setError(error.message);
-    } finally {
       setLoading(false);
     }
   };
-
-  const handleResendCode = async () => {
-    setLoading(true);
-    setError("");
-
-    try {
-      const newCode = generateVerificationCode();
-      const userName = role === "admin" ? userData.full_name : userData.name;
-      const company = role === "admin" ? userData.company : userData.company;
-      
-      await sendVerificationEmail(email, newCode, userName, role, company);
-    } catch (error) {
-      setError('Failed to resend code: ' + error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleBackToLogin = () => {
-    setVerificationStep(false);
-    setVerificationCode("");
-    setError("");
-  };
-
-  if (verificationStep) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-[#009578] text-black">
-        <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-lg relative">
-          {/* Back Arrow to Home */}
-          <button
-            onClick={handleGoToHome}
-            className="absolute top-4 left-4 text-gray-600 hover:text-gray-800 transition duration-200"
-            title="Go to Home"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-          </button>
-          
-          {/* Heading */}
-          <h2 className="text-2xl font-bold text-center mb-6">Verify Your Email</h2>
-          
-          {/* Instructions */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-            <p className="text-sm text-blue-800 text-center">
-              We&apos;ve sent a 4-digit verification code to <strong>{email}</strong>
-            </p>
-            <p className="text-xs text-blue-600 text-center mt-2">
-              Check your inbox and spam folder
-            </p>
-          </div>
-
-          {/* Verification Form */}
-          <form onSubmit={handleVerification} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Enter 4-Digit Verification Code
-              </label>
-              <input
-                type="text"
-                value={verificationCode}
-                onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                placeholder="1234"
-                className="w-full p-3 rounded-lg bg-white text-black border border-gray-500 text-center text-xl tracking-widest"
-                required
-                maxLength={4}
-                pattern="\d{4}"
-              />
-              <p className="text-xs text-gray-500 mt-2 text-center">
-                Enter the 4-digit code sent to your email
-              </p>
-            </div>
-
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                <p className="text-sm text-red-800 text-center">{error}</p>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading || verificationCode.length !== 4}
-              className={`w-full p-3 rounded-lg font-semibold transition duration-200 text-white ${
-                loading || verificationCode.length !== 4
-                  ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-[#009578] hover:bg-[#0e7762]'
-              }`}
-            >
-              {loading ? 'Verifying...' : 'Verify & Login'}
-            </button>
-
-            <div className="flex justify-between mt-4">
-              <button
-                type="button"
-                onClick={handleBackToLogin}
-                className="text-sm text-gray-600 hover:text-gray-800"
-              >
-                ← Back to Login
-              </button>
-              
-              <button
-                type="button"
-                onClick={handleResendCode}
-                disabled={loading}
-                className="text-sm text-[#009578] hover:text-[#0e7762] font-medium"
-              >
-                {loading ? 'Sending...' : 'Resend Code'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-[#009578] text-black">
