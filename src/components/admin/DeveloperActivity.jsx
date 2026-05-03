@@ -1926,27 +1926,10 @@ export default function DeveloperActivity() {
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {appUsageData.slice(0, 50).map((r, i) => {
-                        // Format duration based on total seconds
-                        const formatDurationDisplay = (minutes, seconds) => {
-                          const totalSeconds = (minutes * 60) + (seconds || 0);
-
-                          if (totalSeconds < 60) {
-                            return `${Math.round(totalSeconds)} sec`;
-                          } else if (totalSeconds < 3600) {
-                            const mins = Math.floor(totalSeconds / 60);
-                            const secs = Math.round(totalSeconds % 60);
-                            return `${mins} min ${secs} sec`;
-                          } else {
-                            const hours = Math.floor(totalSeconds / 3600);
-                            const mins = Math.floor((totalSeconds % 3600) / 60);
-                            const secs = Math.round(totalSeconds % 60);
-                            return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-                          }
-                        };
-
+                        // Use the same duration logic as Overview's Top Applications:
+                        // fmtMinutesToMinSec converts decimal minutes → "X min Y sec"
                         const durationMinutes = r.duration_minutes || 0;
-                        const durationSeconds = r.duration_seconds || 0;
-                        const formattedDuration = formatDurationDisplay(durationMinutes, durationSeconds);
+                        const formattedDuration = fmtMinutesToMinSec(durationMinutes);
 
                         return (
                           <tr key={r.id || i} className="hover:bg-gray-50">
@@ -1965,10 +1948,7 @@ export default function DeveloperActivity() {
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-600 truncate max-w-[200px]">{r.window_title || "—"}</td>
                             <td className="px-4 py-3">
-                              <span className="text-sm font-medium text-gray-800">{formattedDuration}</span>
-                              {((durationMinutes * 60) + durationSeconds) >= 60 && (
-                                <span className="text-xs text-gray-400 ml-1">({durationMinutes.toFixed(1)} min)</span>
-                              )}
+                              <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs whitespace-nowrap">{formattedDuration}</span>
                             </td>
                           </tr>
                         );
