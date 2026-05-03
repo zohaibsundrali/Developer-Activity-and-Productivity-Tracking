@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Admin approves or rejects a task submission
 export async function POST(request) {
@@ -61,10 +61,10 @@ export async function POST(request) {
     }
 
     // Authorization: ensure this admin owns the project this task belongs to.
-    // This prevents one admin from reviewing another admin's project submissions.
+    // The projects table uses created_by / added_by for ownership — there is no admin_id column.
     const { data: project, error: projectError } = await supabase
       .from('projects')
-      .select('id, admin_id')
+      .select('id, created_by, added_by')
       .eq('id', task.project_id)
       .single();
 
@@ -76,7 +76,11 @@ export async function POST(request) {
       );
     }
 
-    if (project.admin_id && project.admin_id !== adminId) {
+    const isOwner =
+      project.created_by === adminId ||
+      project.added_by === adminId;
+
+    if (!isOwner) {
       return NextResponse.json(
         { error: 'Not authorized to review submissions for this project' },
         { status: 403 }
@@ -155,7 +159,7 @@ export async function POST(request) {
     }
 
     // Create admin review record
-    await supabase
+    const { error: adminReviewError } = await supabase
       .from('admin_reviews')
       .insert({
         admin_id: adminId,
@@ -177,6 +181,10 @@ export async function POST(request) {
         submission_date: submission.submitted_at,
         reviewed_at: reviewedAt
       });
+
+    if (adminReviewError) {
+      console.error('Admin review insert error:', adminReviewError);
+    }
 
     // Create activity log
     await supabase
@@ -307,10 +315,6 @@ async function updateProductivityMetrics(developerId, projectId) {
 }
 
 // Get pending or reviewed submissions for admin
-// Note: For a solo setup we deliberately keep this simple and
-// return all submissions filtered only by review_status. This
-// avoids issues where project/admin relationships are misaligned
-// and ensures the Task Review panel always shows developer work.
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -324,11 +328,32 @@ export async function GET(request) {
       );
     }
 
-    // Build queries per tab.
-    // IMPORTANT: For "reviewed" history we must *not* require an INNER join
-    // on projects, otherwise legacy submissions with missing/NULL project_id
-    // (or deleted projects) will be dropped and history will look like 0.
+    // Step 1: Resolve all project IDs that belong to this admin.
+    // The projects table uses created_by / added_by to track ownership
+    // (there is no admin_id column), so we query both fields.
+    const { data: adminProjects, error: projectsError } = await supabase
+      .from('projects')
+      .select('id')
+      .or(`created_by.eq.${adminId},added_by.eq.${adminId}`);
+
+    if (projectsError) {
+      console.error('Admin projects lookup error:', projectsError);
+      return NextResponse.json(
+        { error: 'Failed to resolve admin projects: ' + projectsError.message },
+        { status: 500 }
+      );
+    }
+
+    const projectIds = (adminProjects || []).map((p) => p.id);
+
+    // If the admin has no projects yet, return an empty list immediately.
+    if (projectIds.length === 0) {
+      return NextResponse.json({ success: true, reviews: [], count: 0 });
+    }
+
+    // Step 2: Query task_submissions filtered by those project IDs.
     let query;
+
     if (status === 'pending') {
       query = supabase
         .from('task_submissions')
@@ -348,18 +373,18 @@ export async function GET(request) {
             name,
             email
           ),
-          projects!inner (
+          projects (
             id,
             name,
-            deadline,
-            admin_id
+            deadline
           )
-        `,
+          `,
           { count: 'exact' }
         )
         .eq('review_status', 'pending')
-        .eq('projects.admin_id', adminId)
+        .in('project_id', projectIds)
         .order('submitted_at', { ascending: false });
+
     } else if (status === 'reviewed') {
       query = supabase
         .from('task_submissions')
@@ -384,12 +409,13 @@ export async function GET(request) {
             name,
             deadline
           )
-        `,
+          `,
           { count: 'exact' }
         )
         .in('review_status', ['approved', 'rejected'])
-        .eq('reviewed_by', adminId)
+        .in('project_id', projectIds)
         .order('submitted_at', { ascending: false });
+
     } else {
       return NextResponse.json(
         { error: 'Invalid status. Must be "pending" or "reviewed"' },
@@ -400,15 +426,15 @@ export async function GET(request) {
     const { data, error, count } = await query;
 
     if (error) {
+      console.error('Task submissions fetch error:', error);
       return NextResponse.json(
         { error: 'Failed to fetch reviews: ' + error.message },
         { status: 500 }
       );
     }
 
-    // Get activity logs and screenshots for each submission
+    // Step 3: Enrich each submission with activity logs and screenshots.
     const enrichedData = await Promise.all((data || []).map(async (submission) => {
-      // Recent activity logs for this task/project/developer
       const { data: activityLogs } = await supabase
         .from('activity_logs')
         .select('*')
@@ -417,7 +443,6 @@ export async function GET(request) {
         .order('created_at', { ascending: false })
         .limit(10);
 
-      // Tracker screenshots (if table exists)
       let screenshots = [];
       try {
         const { data: screenshotData } = await supabase
@@ -426,10 +451,8 @@ export async function GET(request) {
           .or(`developer_id.eq.${submission.developer_id},developer_email.eq.${submission.developers?.email}`)
           .order('timestamp', { ascending: false })
           .limit(5);
-
         screenshots = screenshotData || [];
-      } catch (e) {
-        // If screenshots table doesn't exist, just skip it
+      } catch (_e) {
         screenshots = [];
       }
 

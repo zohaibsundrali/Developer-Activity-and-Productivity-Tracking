@@ -873,7 +873,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
           <div className="bg-white p-6 rounded-xl shadow-xl max-w-xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <div>
-                <h3 className="text-xl font-bold text-gray-900">Project Productivity</h3>
+                <h3 className="text-xl font-bold text-gray-900">Developer Productivity</h3>
                 {metricsData?.project?.name && (
                   <p className="text-sm text-gray-500 mt-1">
                     {metricsData.project.name}

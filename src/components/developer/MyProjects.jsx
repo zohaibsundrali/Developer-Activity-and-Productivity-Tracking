@@ -3,10 +3,10 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { showInfo, showWarning } from "@/utils/alerts";
 
-export default function MyProjects({ 
-  assignedProjects, 
+export default function MyProjects({
+  assignedProjects,
   onViewProjectDetails, // ✅ Added prop for navigation
-  user 
+  user
 }) {
   const router = useRouter();
   const [sortBy, setSortBy] = useState('recent');
@@ -32,7 +32,7 @@ export default function MyProjects({
     const now = new Date();
     const date = new Date(dateString);
     const seconds = Math.floor((now - date) / 1000);
-    
+
     if (seconds < 60) return 'Just now';
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
     if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
@@ -130,15 +130,15 @@ export default function MyProjects({
   });
 
   // Calculate statistics
-  const activeProjectsCount = assignedProjects.filter(p => 
+  const activeProjectsCount = assignedProjects.filter(p =>
     p.status === 'active' || p.status === 'in_progress'
   ).length;
-  
-  const completedProjectsCount = assignedProjects.filter(p => 
+
+  const completedProjectsCount = assignedProjects.filter(p =>
     p.status === 'completed' || p.status === 'done'
   ).length;
-  
-  const pendingProjectsCount = assignedProjects.filter(p => 
+
+  const pendingProjectsCount = assignedProjects.filter(p =>
     p.status === 'pending' || p.status === 'assigned'
   ).length;
 
@@ -153,7 +153,7 @@ export default function MyProjects({
               Manage and track all your assigned projects
             </p>
           </div>
-          
+
           <div className="flex items-center space-x-4 mt-4 md:mt-0">
             <div className="text-sm text-gray-600">
               <span className="font-semibold">{assignedProjects.length}</span> total projects
@@ -176,7 +176,7 @@ export default function MyProjects({
               </div>
             </div>
           </div>
-          
+
           <div className="bg-gradient-to-r from-green-50 to-green-100 border border-green-200 rounded-xl p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -190,7 +190,7 @@ export default function MyProjects({
               </div>
             </div>
           </div>
-          
+
           <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -221,7 +221,7 @@ export default function MyProjects({
                 <option value="progress">Progress</option>
               </select>
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
               <select
@@ -236,7 +236,7 @@ export default function MyProjects({
               </select>
             </div>
           </div>
-          
+
           <div className="text-sm text-gray-600">
             Showing <span className="font-semibold">{sortedProjects.length}</span> of {assignedProjects.length} projects
           </div>
@@ -251,7 +251,7 @@ export default function MyProjects({
             <div className="bg-white p-6 rounded-xl shadow-xl max-w-xl w-full mx-4 max-h-[90vh] overflow-y-auto">
               <div className="flex justify-between items-center mb-4">
                 <div>
-                  <h3 className="text-xl font-bold text-gray-900">Project Productivity</h3>
+                  <h3 className="text-xl font-bold text-gray-900">Develper Productivity</h3>
                   {metricsData?.project?.name && (
                     <p className="text-sm text-gray-500 mt-1">{metricsData.project.name}</p>
                   )}
@@ -297,22 +297,20 @@ export default function MyProjects({
                       <div className="text-[11px] text-red-600">-{metricsData.summary?.late || 0} pts</div>
                     </div>
                     <div
-                      className={`rounded-xl border p-4 text-center shadow-sm ${
-                        parseFloat(metricsData.productivityPercentage || 0) >= 80
-                          ? "bg-green-50 border-green-200"
-                          : parseFloat(metricsData.productivityPercentage || 0) >= 50
+                      className={`rounded-xl border p-4 text-center shadow-sm ${parseFloat(metricsData.productivityPercentage || 0) >= 80
+                        ? "bg-green-50 border-green-200"
+                        : parseFloat(metricsData.productivityPercentage || 0) >= 50
                           ? "bg-yellow-50 border-yellow-200"
                           : "bg-red-50 border-red-200"
-                      }`}
+                        }`}
                     >
                       <div
-                        className={`text-2xl font-bold ${
-                          parseFloat(metricsData.productivityPercentage || 0) >= 80
-                            ? "text-green-600"
-                            : parseFloat(metricsData.productivityPercentage || 0) >= 50
+                        className={`text-2xl font-bold ${parseFloat(metricsData.productivityPercentage || 0) >= 80
+                          ? "text-green-600"
+                          : parseFloat(metricsData.productivityPercentage || 0) >= 50
                             ? "text-yellow-600"
                             : "text-red-600"
-                        }`}
+                          }`}
                       >
                         {metricsData.productivityPercentage || 0}%
                       </div>
@@ -349,10 +347,10 @@ export default function MyProjects({
             {sortedProjects.map(project => {
               const assignedDate = project.assigned_at || project.created_at;
               const daysAgo = getTimeAgo(assignedDate);
-              
+
               return (
-                <div 
-                  key={project.id} 
+                <div
+                  key={project.id}
                   className="border border-gray-200 rounded-xl overflow-hidden hover:shadow-lg transition-all duration-300 hover:-translate-y-1 bg-white"
                 >
                   {/* Project Header */}
@@ -361,25 +359,24 @@ export default function MyProjects({
                       <h3 className="text-lg font-bold text-gray-900 line-clamp-1">
                         {project.name}
                       </h3>
-                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
-                        project.status === 'active' || project.status === 'in_progress' 
-                          ? 'bg-green-100 text-green-800' 
-                          : project.status === 'completed' 
+                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${project.status === 'active' || project.status === 'in_progress'
+                        ? 'bg-green-100 text-green-800'
+                        : project.status === 'completed'
                           ? 'bg-blue-100 text-blue-800'
                           : project.status === 'pending' || project.status === 'assigned'
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
                         {project.status?.charAt(0).toUpperCase() + project.status?.slice(1) || 'Pending'}
                       </span>
                     </div>
-                    
+
                     {project.description && (
                       <p className="text-sm text-gray-600 line-clamp-2 mb-4">
                         {project.description}
                       </p>
                     )}
-                    
+
                     {/* Progress Bar */}
                     <div className="mb-2">
                       <div className="flex justify-between text-sm mb-1">
@@ -387,7 +384,7 @@ export default function MyProjects({
                         <span className="font-bold text-blue-600">{project.progress || 0}%</span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div 
+                        <div
                           className="bg-gradient-to-r from-blue-500 to-blue-600 h-2 rounded-full transition-all duration-500"
                           style={{ width: `${project.progress || 0}%` }}
                         ></div>
@@ -409,7 +406,7 @@ export default function MyProjects({
                         </div>
                         <p className="text-xs text-gray-400 mt-1">{daysAgo}</p>
                       </div>
-                      
+
                       {project.deadline && (
                         <div>
                           <p className="text-xs text-gray-500 font-medium mb-1">Deadline</p>
@@ -427,7 +424,7 @@ export default function MyProjects({
                                   const today = new Date();
                                   const diffTime = deadline - today;
                                   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                                  
+
                                   if (diffDays < 0) return 'Overdue';
                                   if (diffDays === 0) return 'Due today';
                                   if (diffDays === 1) return '1 day left';
@@ -519,12 +516,12 @@ export default function MyProjects({
             </div>
             <h3 className="text-xl font-semibold text-gray-900 mb-2">No Projects Found</h3>
             <p className="text-gray-600 max-w-md mx-auto mb-8">
-              {filterStatus === 'all' 
+              {filterStatus === 'all'
                 ? "You haven't been assigned any projects yet. Projects assigned to you will appear here."
                 : `No ${filterStatus} projects found. Try changing the status filter.`
               }
             </p>
-            
+
             {filterStatus !== 'all' && (
               <button
                 onClick={() => setFilterStatus('all')}

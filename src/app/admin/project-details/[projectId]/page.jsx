@@ -232,7 +232,7 @@ export default function AdminProjectDetailsPage() {
           <div className="text-red-500 text-xl mb-4">Error Loading Project</div>
           <p className="text-gray-600 mb-6">{error}</p>
           <button
-            onClick={() => router.push("/admin/dashboard?section=projects")}
+            onClick={() => router.push("/admin/dashboard?section=all-projects")}
             className="bg-[#009578] text-white px-6 py-2 rounded-lg hover:bg-[#0e7762]"
           >
             Back to Projects
