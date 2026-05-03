@@ -407,76 +407,13 @@ export default function DashboardTimeTracking({ user, assignedProjects = [] }) {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      
+
       {/* LEFT PANEL */}
       <div className="lg:col-span-2 bg-white rounded-lg shadow p-6">
-        <h2 className="text-lg font-semibold mb-6">
-          📅 {new Date().toLocaleString("default", { month: "long" })}{" "}
-          {currentYear}
-        </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          
-          {/* TOTAL TIME */}
-          <div className="flex flex-col items-center">
-            <div className="w-40 h-40 rounded-full border-[12px] border-gray-100 flex items-center justify-center">
-              <div className="text-center">
-                <p className="text-2xl font-bold text-blue-600">
-                  {totalTime} h
-                </p>
-                <p className="text-sm text-gray-500">
-                  {recentProjects.length} projects
-                </p>
-              </div>
-            </div>
-          </div>
 
-          {/* CALENDAR */}
-          <div className="md:col-span-2">
-            <p className="text-sm font-medium text-gray-600 mb-2">
-              Daily totals
-            </p>
 
-            <div className="grid grid-cols-7 text-xs text-center gap-y-3">
-              {["M","T","W","T","F","S","S"].map(d => (
-                <span key={d} className="text-gray-400">{d}</span>
-              ))}
 
-              {Array.from({ length: daysInMonth }).map((_, i) => {
-                const day = i + 1;
-                const key = `${currentYear}-${String(currentMonth).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
-
-                return (
-                  <div key={day}>
-                    <p className="text-gray-500">{day}</p>
-                    <p className={`text-xs mt-1 ${
-                      dailyTotals[key] ? "text-blue-600 font-medium" : "text-gray-300"
-                    }`}>
-                      {dailyTotals[key] || "0"}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* WEEKLY TOTALS */}
-        <div className="mt-6">
-          <p className="text-sm font-medium text-gray-600 mb-3">
-            Weekly totals
-          </p>
-          <div className="flex gap-6">
-            {weeklyTotals.map((w, i) => (
-              <div key={i} className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full border-4 border-gray-200 flex items-center justify-center text-xs font-semibold text-blue-600">
-                  {w.hours}
-                </div>
-                <span className="text-sm text-gray-600">{w.label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
 
       {/* RIGHT PANEL */}
@@ -492,9 +429,9 @@ export default function DashboardTimeTracking({ user, assignedProjects = [] }) {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-lg font-semibold">Most recent activity</h3>
-           
+
           </div>
-          
+
         </div>
 
         {recentProjects.length === 0 ? (
