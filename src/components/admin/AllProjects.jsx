@@ -34,17 +34,17 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
   const fetchAdminData = async () => {
     try {
       setFetchingProjects(true);
-      
+
       // Get admin from localStorage
       const adminData = JSON.parse(sessionStorage.getItem("adminUser"));
-      
+
       if (!adminData) {
         setCurrentAdmin(null);
         setProjects([]);
         setAdminDevelopers([]);
         return;
       }
-      
+
       setCurrentAdmin(adminData);
 
       // Fetch projects created by this admin (not assigned_to, but created_by)
@@ -84,7 +84,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
       } else {
         setAdminDevelopers(developersResult.data || []);
       }
-      
+
     } catch (error) {
       showError("Load failed", `Error loading data: ${error.message}`);
       setProjects([]);
@@ -164,87 +164,87 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
   };
 
   // New function to delete project
-const handleConfirmDelete = async () => {
-  if (!projectToDelete) return;
-  
-  setDeleting(true);
-  try {
-    // Delete the project from database
-    const { error } = await supabase
-      .from('projects')
-      .delete()
-      .eq('id', projectToDelete.id);
+  const handleConfirmDelete = async () => {
+    if (!projectToDelete) return;
 
-    if (error) throw error;
+    setDeleting(true);
+    try {
+      // Delete the project from database
+      const { error } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', projectToDelete.id);
 
-    // ✅ Create TWO notifications: one for developer, one for admin
+      if (error) throw error;
 
-    // 1. Notification for Developer (if assigned)
-    if (projectToDelete.assigned_developer_id) {
-      const { error: devNotificationError } = await supabase
+      // ✅ Create TWO notifications: one for developer, one for admin
+
+      // 1. Notification for Developer (if assigned)
+      if (projectToDelete.assigned_developer_id) {
+        const { error: devNotificationError } = await supabase
+          .from('notifications')
+          .insert([
+            {
+              assigned_developer_id: projectToDelete.assigned_developer_id,
+              developer_id: projectToDelete.assigned_developer_id,
+              admin_id: null,
+              admin_email: null,
+              message: `🗑️ Project Deleted: "${projectToDelete.name}" has been deleted by admin.`,
+              type: 'warning',
+              read: false,
+              created_at: new Date().toISOString()
+            }
+          ]);
+
+        if (devNotificationError) {
+          console.error('Developer notification error:', devNotificationError);
+        }
+      }
+
+      // 2. Notification for Admin (confirmation)
+      const { error: adminNotificationError } = await supabase
         .from('notifications')
         .insert([
           {
-            assigned_developer_id: projectToDelete.assigned_developer_id,
-            developer_id: projectToDelete.assigned_developer_id,
-            admin_id: null,
-            admin_email: null,
-            message: `🗑️ Project Deleted: "${projectToDelete.name}" has been deleted by admin.`,
-            type: 'warning',
+            assigned_developer_id: null,
+            developer_id: null,
+            admin_id: currentAdmin.id,
+            admin_email: currentAdmin.email,
+            message: `🗑️ You deleted project "${projectToDelete.name}"`,
+            type: 'info',
             read: false,
             created_at: new Date().toISOString()
           }
         ]);
 
-      if (devNotificationError) {
-        console.error('Developer notification error:', devNotificationError);
+      if (adminNotificationError) {
+        console.error('Admin notification error:', adminNotificationError);
       }
+
+      // Remove the project from state
+      setProjects(projects.filter(p => p.id !== projectToDelete.id));
+
+      // Close modal and reset
+      setShowDeleteModal(false);
+      setProjectToDelete(null);
+
+      showSuccess("Deleted", `Project "${projectToDelete.name}" deleted successfully.`);
+
+    } catch (error) {
+      showError("Delete failed", `Error deleting project: ${error.message}`);
+    } finally {
+      setDeleting(false);
     }
-
-    // 2. Notification for Admin (confirmation)
-    const { error: adminNotificationError } = await supabase
-      .from('notifications')
-      .insert([
-        {
-          assigned_developer_id: null,
-          developer_id: null,
-          admin_id: currentAdmin.id,
-          admin_email: currentAdmin.email,
-          message: `🗑️ You deleted project "${projectToDelete.name}"`,
-          type: 'info',
-          read: false,
-          created_at: new Date().toISOString()
-        }
-      ]);
-
-    if (adminNotificationError) {
-      console.error('Admin notification error:', adminNotificationError);
-    }
-
-    // Remove the project from state
-    setProjects(projects.filter(p => p.id !== projectToDelete.id));
-    
-    // Close modal and reset
-    setShowDeleteModal(false);
-    setProjectToDelete(null);
-    
-    showSuccess("Deleted", `Project "${projectToDelete.name}" deleted successfully.`);
-
-  } catch (error) {
-    showError("Delete failed", `Error deleting project: ${error.message}`);
-  } finally {
-    setDeleting(false);
-  }
-};
+  };
 
   const handleFileUpload = async (file) => {
     try {
       setUploadingFile(true);
-      
+
       // Create unique file name
       const fileExt = file.name.split('.').pop();
       const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
-      
+
       // Upload file to Supabase Storage
       const { data, error } = await supabase.storage
         .from('documents')
@@ -298,161 +298,161 @@ const handleConfirmDelete = async () => {
     }
   };
 
-const handleAddProject = async (e) => {
-  e.preventDefault();
-  
-  if (!currentAdmin) {
-    showWarning("Login required", "Admin not logged in.");
-    return;
-  }
-  
-  if (adminDevelopers.length === 0) {
-    showInfo(
-      "Add developers first",
-      "You need to add developers before creating a project. Go to the Add Developer section."
-    );
-    return;
-  }
-  
-  setLoading(true);
+  const handleAddProject = async (e) => {
+    e.preventDefault();
 
-  try {
-    // Validation
-    if (!newProject.name || !newProject.deadline || !newProject.assigned_developer) {
-      showWarning("Validation error", "Please fill in all required fields.");
+    if (!currentAdmin) {
+      showWarning("Login required", "Admin not logged in.");
       return;
     }
 
-    let fileUrl = null;
-    
-    // Upload file if selected
-    if (newProject.file) {
-      fileUrl = await handleFileUpload(newProject.file);
-      if (!fileUrl) {
-        showError("Upload failed", "File upload failed. Please try again.");
-        return;
-      }
-    }
-
-    // Get assigned developer details from admin's developers
-    const assignedDeveloper = adminDevelopers.find(dev => dev.id === newProject.assigned_developer);
-    
-    if (!assignedDeveloper) {
-      showWarning(
-        "Developer not found",
-        "Selected developer not found in your added developers."
+    if (adminDevelopers.length === 0) {
+      showInfo(
+        "Add developers first",
+        "You need to add developers before creating a project. Go to the Add Developer section."
       );
       return;
     }
-    
-    // Insert project into Supabase with admin assignment
-    const { data, error } = await supabase
-      .from('projects')
-      .insert([
-        {
-          name: newProject.name,
-          deadline: newProject.deadline,
-          description: newProject.description,
-          assigned_developer_id: newProject.assigned_developer,
-          assigned_developer_name: assignedDeveloper.name,
-          assigned_developer_email: assignedDeveloper.email,
-          file_url: fileUrl,
-          file_name: newProject.file ? newProject.file.name : null,
-          progress: 0,
-          developers_count: 1,
-          status: 'active',
-          // Task plan workflow defaults (Admin cannot approve/reject until developer submits)
-          task_plan_submitted: false,
-          task_plan_status: 'draft',
-          task_plan_submitted_at: null,
-          task_plan_reviewed_at: null,
-          task_plan_reviewed_by: null,
-          task_plan_rejection_reason: null,
-          assigned_to: newProject.assigned_developer, // ✅ Fixed: Use developer ID, not admin ID
-          assigned_to_email: assignedDeveloper.email, // ✅ Fixed: Use developer email
-          created_by: currentAdmin.id,
-          added_by: currentAdmin.id, // Store who added this project
-          added_by_admin: currentAdmin.email,
-          created_at: new Date().toISOString()
+
+    setLoading(true);
+
+    try {
+      // Validation
+      if (!newProject.name || !newProject.deadline || !newProject.assigned_developer) {
+        showWarning("Validation error", "Please fill in all required fields.");
+        return;
+      }
+
+      let fileUrl = null;
+
+      // Upload file if selected
+      if (newProject.file) {
+        fileUrl = await handleFileUpload(newProject.file);
+        if (!fileUrl) {
+          showError("Upload failed", "File upload failed. Please try again.");
+          return;
         }
-      ])
-      .select();
+      }
 
-    if (error) throw error;
+      // Get assigned developer details from admin's developers
+      const assignedDeveloper = adminDevelopers.find(dev => dev.id === newProject.assigned_developer);
 
-    const createdProject = data?.[0];
-    if (createdProject?.id && fileUrl) {
-      await generateAiTasks(createdProject.id, fileUrl, newProject.file?.name);
-      await fetchAdminData(); // <-- Add this line
+      if (!assignedDeveloper) {
+        showWarning(
+          "Developer not found",
+          "Selected developer not found in your added developers."
+        );
+        return;
+      }
 
+      // Insert project into Supabase with admin assignment
+      const { data, error } = await supabase
+        .from('projects')
+        .insert([
+          {
+            name: newProject.name,
+            deadline: newProject.deadline,
+            description: newProject.description,
+            assigned_developer_id: newProject.assigned_developer,
+            assigned_developer_name: assignedDeveloper.name,
+            assigned_developer_email: assignedDeveloper.email,
+            file_url: fileUrl,
+            file_name: newProject.file ? newProject.file.name : null,
+            progress: 0,
+            developers_count: 1,
+            status: 'active',
+            // Task plan workflow defaults (Admin cannot approve/reject until developer submits)
+            task_plan_submitted: false,
+            task_plan_status: 'draft',
+            task_plan_submitted_at: null,
+            task_plan_reviewed_at: null,
+            task_plan_reviewed_by: null,
+            task_plan_rejection_reason: null,
+            assigned_to: newProject.assigned_developer, // ✅ Fixed: Use developer ID, not admin ID
+            assigned_to_email: assignedDeveloper.email, // ✅ Fixed: Use developer email
+            created_by: currentAdmin.id,
+            added_by: currentAdmin.id, // Store who added this project
+            added_by_admin: currentAdmin.email,
+            created_at: new Date().toISOString()
+          }
+        ])
+        .select();
+
+      if (error) throw error;
+
+      const createdProject = data?.[0];
+      if (createdProject?.id && fileUrl) {
+        await generateAiTasks(createdProject.id, fileUrl, newProject.file?.name);
+        await fetchAdminData(); // <-- Add this line
+
+      }
+
+      // ✅ Create TWO notifications: one for developer, one for admin
+
+      // 1. Notification for Developer
+      const { error: devNotificationError } = await supabase
+        .from('notifications')
+        .insert([
+          {
+            assigned_developer_id: assignedDeveloper.id,
+            developer_id: assignedDeveloper.id,
+            admin_id: null, // Not for admin dashboard
+            admin_email: null,
+            message: `🎯 New Project Assigned: "${newProject.name}" has been assigned to you. Start working on it now!`,
+            type: 'project_assigned',
+            read: false,
+            created_at: new Date().toISOString()
+          }
+        ]);
+
+      if (devNotificationError) {
+        console.error('Developer notification error:', devNotificationError);
+      }
+
+      // 2. Notification for Admin (confirmation)
+      const { error: adminNotificationError } = await supabase
+        .from('notifications')
+        .insert([
+          {
+            assigned_developer_id: null, // Not for developer dashboard
+            developer_id: null,
+            admin_id: currentAdmin.id,
+            admin_email: currentAdmin.email,
+            message: `✅ Project "${newProject.name}" successfully assigned to ${assignedDeveloper.name}`,
+            type: 'info',
+            read: false,
+            created_at: new Date().toISOString()
+          }
+        ]);
+
+      if (adminNotificationError) {
+        console.error('Admin notification error:', adminNotificationError);
+      }
+
+      // Refresh the projects list
+      await fetchAdminData();
+
+      // Reset form
+      setNewProject({
+        name: "",
+        deadline: "",
+        description: "",
+        assigned_developer: "",
+        file: null
+      });
+
+      setShowAddProject(false);
+      showSuccess(
+        "Project created",
+        `Project "${newProject.name}" added and notification sent to ${assignedDeveloper.name}.`
+      );
+
+    } catch (error) {
+      showError("Save failed", `Error adding project: ${error.message}`);
+    } finally {
+      setLoading(false);
     }
-
-    // ✅ Create TWO notifications: one for developer, one for admin
-
-    // 1. Notification for Developer
-    const { error: devNotificationError } = await supabase
-      .from('notifications')
-      .insert([
-        {
-          assigned_developer_id: assignedDeveloper.id,
-          developer_id: assignedDeveloper.id,
-          admin_id: null, // Not for admin dashboard
-          admin_email: null,
-          message: `🎯 New Project Assigned: "${newProject.name}" has been assigned to you. Start working on it now!`,
-          type: 'project_assigned',
-          read: false,
-          created_at: new Date().toISOString()
-        }
-      ]);
-
-    if (devNotificationError) {
-      console.error('Developer notification error:', devNotificationError);
-    }
-
-    // 2. Notification for Admin (confirmation)
-    const { error: adminNotificationError } = await supabase
-      .from('notifications')
-      .insert([
-        {
-          assigned_developer_id: null, // Not for developer dashboard
-          developer_id: null,
-          admin_id: currentAdmin.id,
-          admin_email: currentAdmin.email,
-          message: `✅ Project "${newProject.name}" successfully assigned to ${assignedDeveloper.name}`,
-          type: 'info',
-          read: false,
-          created_at: new Date().toISOString()
-        }
-      ]);
-
-    if (adminNotificationError) {
-      console.error('Admin notification error:', adminNotificationError);
-    }
-
-    // Refresh the projects list
-    await fetchAdminData();
-
-    // Reset form
-    setNewProject({
-      name: "",
-      deadline: "",
-      description: "",
-      assigned_developer: "",
-      file: null
-    });
-    
-    setShowAddProject(false);
-    showSuccess(
-      "Project created",
-      `Project "${newProject.name}" added and notification sent to ${assignedDeveloper.name}.`
-    );
-
-  } catch (error) {
-    showError("Save failed", `Error adding project: ${error.message}`);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -470,7 +470,7 @@ const handleAddProject = async (e) => {
         showWarning("File too large", "File size must be less than 10MB.");
         return;
       }
-      
+
       // Check file type
       const allowedTypes = [
         'application/pdf',
@@ -478,7 +478,7 @@ const handleAddProject = async (e) => {
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'text/plain'
       ];
-      
+
       if (!allowedTypes.includes(file.type)) {
         showWarning(
           "Invalid file type",
@@ -510,31 +510,31 @@ const handleAddProject = async (e) => {
   };
 
   // Debug function to check notifications table structure
-const debugCheckNotifications = async () => {
-  try {
-    // Check what fields exist in notifications table
-    const { data: columns, error: columnsError } = await supabase
-      .rpc('get_table_columns', { table_name: 'notifications' });
+  const debugCheckNotifications = async () => {
+    try {
+      // Check what fields exist in notifications table
+      const { data: columns, error: columnsError } = await supabase
+        .rpc('get_table_columns', { table_name: 'notifications' });
 
-    if (columnsError) {
-      // Alternative method
-      const { data } = await supabase
+      if (columnsError) {
+        // Alternative method
+        const { data } = await supabase
+          .from('notifications')
+          .select('*')
+          .limit(1);
+      }
+
+      // Check last 5 notifications
+      const { data: recentNotifications } = await supabase
         .from('notifications')
         .select('*')
-        .limit(1);
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+    } catch (error) {
+      // Silently handle error
     }
-
-    // Check last 5 notifications
-    const { data: recentNotifications } = await supabase
-      .from('notifications')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(5);
-
-  } catch (error) {
-    // Silently handle error
-  }
-};
+  };
 
   // Show loading state
   if (fetchingProjects) {
@@ -596,13 +596,13 @@ const debugCheckNotifications = async () => {
   return (
     <div className="bg-white p-6 rounded-lg shadow">
       {/* Debug Button - Temporary */}
-   
+
 
       {/* Header with Add Project Button and Admin Info */}
       <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-2xl font-bold">My Projects</h2>
-         
+
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <button
@@ -700,20 +700,11 @@ const debugCheckNotifications = async () => {
                     required
                   >
                     <option value="">Select Developer (Added by you)</option>
-                    {activeDevelopers.map(developer => (
+                    {adminDevelopers.map(developer => (
                       <option key={developer.id} value={developer.id}>
                         {developer.name} ({developer.email})
                       </option>
                     ))}
-                    {inactiveDevelopers.length > 0 && (
-                      <optgroup label="Inactive Developers">
-                        {inactiveDevelopers.map(developer => (
-                          <option key={developer.id} value={developer.id} disabled>
-                            {developer.name} ({developer.email}) - Inactive
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
                   </select>
                 ) : (
                   <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md">
@@ -722,14 +713,14 @@ const debugCheckNotifications = async () => {
                     </p>
                   </div>
                 )}
-                
+
               </div>
 
-             
+
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Attach Requirements File 
+                  Attach Requirements File
                 </label>
                 <input
                   id="file-input"
@@ -769,16 +760,15 @@ const debugCheckNotifications = async () => {
                 <button
                   type="submit"
                   disabled={loading || uploadingFile || adminDevelopers.length === 0}
-                  className={`flex-1 py-2 px-4 rounded-md transition-colors ${
-                    loading || uploadingFile || adminDevelopers.length === 0
-                      ? 'bg-gray-400 cursor-not-allowed'
-                      : 'bg-[#009578] hover:bg-[#0e7762]'
-                  } text-white`}
+                  className={`flex-1 py-2 px-4 rounded-md transition-colors ${loading || uploadingFile || adminDevelopers.length === 0
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-[#009578] hover:bg-[#0e7762]'
+                    } text-white`}
                 >
-                  {uploadingFile ? 'Uploading File...' : 
-                   loading ? 'Adding...' : 
-                   adminDevelopers.length === 0 ? 'No Developers Available' : 
-                   'Add Project'}
+                  {uploadingFile ? 'Uploading File...' :
+                    loading ? 'Adding...' :
+                      adminDevelopers.length === 0 ? 'No Developers Available' :
+                        'Add Project'}
                 </button>
                 <button
                   type="button"
@@ -824,7 +814,7 @@ const debugCheckNotifications = async () => {
               <p className="text-gray-700 mb-4">
                 Are you sure you want to delete the project <span className="font-bold">"{projectToDelete?.name}"</span>?
               </p>
-              
+
               <div className="p-3 bg-gray-100 rounded-md mb-4">
                 <p className="text-sm text-gray-600">
                   <span className="font-medium">Assigned to:</span> {projectToDelete?.assigned_developer_name || 'No developer assigned'}
@@ -848,11 +838,10 @@ const debugCheckNotifications = async () => {
               <button
                 onClick={handleConfirmDelete}
                 disabled={deleting}
-                className={`flex-1 py-2 px-4 rounded-md transition-colors ${
-                  deleting
-                    ? 'bg-red-400 cursor-not-allowed'
-                    : 'bg-red-600 hover:bg-red-700'
-                } text-white flex items-center justify-center`}
+                className={`flex-1 py-2 px-4 rounded-md transition-colors ${deleting
+                  ? 'bg-red-400 cursor-not-allowed'
+                  : 'bg-red-600 hover:bg-red-700'
+                  } text-white flex items-center justify-center`}
               >
                 {deleting ? (
                   <>
@@ -933,22 +922,20 @@ const debugCheckNotifications = async () => {
                     <div className="text-[11px] text-red-600">-{metricsData.summary?.late || 0} pts</div>
                   </div>
                   <div
-                    className={`rounded-xl border p-4 text-center shadow-sm ${
-                      parseFloat(metricsData.productivityPercentage || 0) >= 80
-                        ? "bg-green-50 border-green-200"
-                        : parseFloat(metricsData.productivityPercentage || 0) >= 50
+                    className={`rounded-xl border p-4 text-center shadow-sm ${parseFloat(metricsData.productivityPercentage || 0) >= 80
+                      ? "bg-green-50 border-green-200"
+                      : parseFloat(metricsData.productivityPercentage || 0) >= 50
                         ? "bg-yellow-50 border-yellow-200"
                         : "bg-red-50 border-red-200"
-                    }`}
+                      }`}
                   >
                     <div
-                      className={`text-2xl font-bold ${
-                        parseFloat(metricsData.productivityPercentage || 0) >= 80
-                          ? "text-green-600"
-                          : parseFloat(metricsData.productivityPercentage || 0) >= 50
+                      className={`text-2xl font-bold ${parseFloat(metricsData.productivityPercentage || 0) >= 80
+                        ? "text-green-600"
+                        : parseFloat(metricsData.productivityPercentage || 0) >= 50
                           ? "text-yellow-600"
                           : "text-red-600"
-                      }`}
+                        }`}
                     >
                       {metricsData.productivityPercentage || 0}%
                     </div>
@@ -994,32 +981,31 @@ const debugCheckNotifications = async () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                 </svg>
               </button>
-              
+
               <div className="flex justify-between items-start mb-2 pr-8">
                 <h3 className="text-lg font-semibold">{project.name}</h3>
-                <span className={`text-xs px-2 py-1 rounded-full ${
-                  project.status === 'active' ? 'bg-green-100 text-green-800' :
+                <span className={`text-xs px-2 py-1 rounded-full ${project.status === 'active' ? 'bg-green-100 text-green-800' :
                   project.status === 'completed' ? 'bg-blue-100 text-blue-800' :
-                  'bg-yellow-100 text-yellow-800'
-                }`}>
+                    'bg-yellow-100 text-yellow-800'
+                  }`}>
                   {project.status}
                 </span>
               </div>
-              
+
               {project.description && (
                 <p className="text-sm text-gray-600 mb-3 line-clamp-2">
                   {project.description}
                 </p>
               )}
-              
+
               <div className="mb-2">
                 <div className="flex justify-between text-sm mb-1">
                   <span>Progress</span>
                   <span>{project.progress}%</span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div 
-                    className="bg-[#009578] h-2 rounded-full" 
+                  <div
+                    className="bg-[#009578] h-2 rounded-full"
                     style={{ width: `${project.progress}%` }}
                   ></div>
                 </div>
@@ -1147,34 +1133,15 @@ const debugCheckNotifications = async () => {
           <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
-          <p className="text-gray-500 text-lg mb-2">No projects assigned to you yet</p>
-          
+
+
           {adminDevelopers.length === 0 ? (
             <div className="mb-6">
               <p className="text-gray-400 text-sm mb-4">You need to add developers first</p>
-              {/* <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md max-w-md mx-auto">
-                <p className="text-sm text-yellow-700 mb-3">
-                  <span className="font-medium">Step 1:</span> Go to "Add Developer" section and add your first developer
-                </p>
-                <p className="text-sm text-yellow-700">
-                  <span className="font-medium">Step 2:</span> Come back here to create your first project
-                </p>
-              </div> */}
             </div>
           ) : (
             <p className="text-gray-400 text-sm mb-6">Start by creating your first project</p>
           )}
-          
-          {
-          adminDevelopers.length === 0 &&  <button
-            onClick={() => setShowAddProject(true)}
-            className="bg-[#009578] text-white px-6 py-3 rounded-lg hover:bg-[#0e7762] transition-colors text-lg"
-            disabled={adminDevelopers.length === 0}
-          >
-           Add Developer First
-          </button>
-          }
-         
         </div>
       )}
     </div>

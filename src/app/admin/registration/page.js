@@ -48,7 +48,7 @@ export default function AdminRegistration() {
     const hasLowerCase = /[a-z]/.test(password);
     const hasNumbers = /\d/.test(password);
     const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
-    
+
     return {
       isValid: password.length >= minLength && hasUpperCase && hasLowerCase && hasNumbers && hasSpecialChar,
       requirements: {
@@ -74,7 +74,7 @@ export default function AdminRegistration() {
       ...prev,
       [field]: sanitizedValue
     }));
-    
+
     if (errors[field]) {
       setErrors(prev => ({
         ...prev,
@@ -90,12 +90,12 @@ export default function AdminRegistration() {
     if (!formData.fullName || formData.fullName.trim() === "") {
       newErrors.fullName = "Full name is required";
     }
-    
+
     // UPDATED: Check if company is empty or contains only whitespace
     if (!formData.company || formData.company.trim() === "") {
       newErrors.company = "Company is required";
     }
-    
+
     if (!formData.email) {
       newErrors.email = "Email is required";
     } else if (!validateEmail(formData.email)) {
@@ -121,83 +121,83 @@ export default function AdminRegistration() {
     return Object.keys(newErrors).length === 0;
   };
 
-const sendVerificationCode = async (userEmail) => {
-  try {
-    const code = Math.floor(1000 + Math.random() * 9000).toString();
-    setGeneratedCode(code);
-    setCodeExpiry(Date.now() + 10 * 60 * 1000);
+  const sendVerificationCode = async (userEmail) => {
+    try {
+      const code = Math.floor(1000 + Math.random() * 9000).toString();
+      setGeneratedCode(code);
+      setCodeExpiry(Date.now() + 10 * 60 * 1000);
 
-    // Use Nodemailer - Most Reliable
-    const response = await fetch('/api/send-verification', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        email: userEmail, // 👈 User ki actual email
-        userName: formData.fullName,
-        company: formData.company,
-        code: code
-      }),
-    });
+      // Use Nodemailer - Most Reliable
+      const response = await fetch('/api/send-verification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: userEmail, // 👈 User ki actual email
+          userName: formData.fullName,
+          company: formData.company,
+          code: code
+        }),
+      });
 
-    const result = await response.json();
+      const result = await response.json();
 
-    if (response.ok && result.success) {
+      if (response.ok && result.success) {
+        setStep(2);
+        return { success: true };
+      } else {
+        throw new Error(result.error || 'Email service unavailable');
+      }
+
+    } catch (error) {
+
+      // Emergency fallback - show code for testing
+      showPre(
+        "Email service unavailable",
+        `EMAIL SERVICE TEMPORARILY UNAVAILABLE\n\nUse this code for testing: ${generatedCode}\n\nThis would be sent to: ${formData.email}`,
+        "warning"
+      );
+
       setStep(2);
       return { success: true };
-    } else {
-      throw new Error(result.error || 'Email service unavailable');
     }
+  };
 
-  } catch (error) {
-    
-    // Emergency fallback - show code for testing
-    showPre(
-      "Email service unavailable",
-      `EMAIL SERVICE TEMPORARILY UNAVAILABLE\n\nUse this code for testing: ${generatedCode}\n\nThis would be sent to: ${formData.email}`,
-      "warning"
-    );
-    
-    setStep(2);
-    return { success: true };
-  }
-};
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setErrors({});
 
-const handleRegister = async (e) => {
-  e.preventDefault();
-  setLoading(true);
-  setErrors({});
-
-  if (!validateForm()) {
-    setLoading(false);
-    return;
-  }
-
-  try {
-    // Check existing email
-    const { data: existing, error: fetchError } = await supabase
-      .from("admin_users")
-      .select("*")
-      .eq("email", formData.email);
-
-    if (fetchError) throw fetchError;
-    
-    if (existing && existing.length > 0) {
-      setErrors({ email: "Email already registered!" });
+    if (!validateForm()) {
       setLoading(false);
       return;
     }
 
-    // 👇 YAHI IMPORTANT CALL HAI
-    await sendVerificationCode(formData.email); // User ki actual email pass karein
-      
-  } catch (error) {
-    setErrors({ general: error.message });
-  } finally {
-    setLoading(false);
-  }
-};
+    try {
+      // Check existing email
+      const { data: existing, error: fetchError } = await supabase
+        .from("admin_users")
+        .select("*")
+        .eq("email", formData.email);
+
+      if (fetchError) throw fetchError;
+
+      if (existing && existing.length > 0) {
+        setErrors({ email: "Email already registered!" });
+        setLoading(false);
+        return;
+      }
+
+      // 👇 YAHI IMPORTANT CALL HAI
+      await sendVerificationCode(formData.email); // User ki actual email pass karein
+
+    } catch (error) {
+      setErrors({ general: error.message });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleResendCode = async () => {
     setLoading(true);
@@ -299,13 +299,13 @@ const handleRegister = async (e) => {
       } catch {
         // ignore
       }
-      
+
       showSuccess("Registration complete", "Registration successful. Redirecting to dashboard.");
       router.push("/admin/dashboard");
 
     } catch (error) {
-      setErrors({ 
-        general: error.message || "Registration failed! Please check console for details." 
+      setErrors({
+        general: error.message || "Registration failed! Please check console for details."
       });
     } finally {
       setVerificationLoading(false);
@@ -394,25 +394,25 @@ const handleRegister = async (e) => {
               />
               {formData.password && (
                 <div className="mt-2 space-y-1">
-                  <PasswordRequirement 
-                    met={formData.password.length >= 8} 
-                    text="At least 8 characters" 
+                  <PasswordRequirement
+                    met={formData.password.length >= 8}
+                    text="At least 8 characters"
                   />
-                  <PasswordRequirement 
-                    met={/[A-Z]/.test(formData.password)} 
-                    text="One uppercase letter" 
+                  <PasswordRequirement
+                    met={/[A-Z]/.test(formData.password)}
+                    text="One uppercase letter"
                   />
-                  <PasswordRequirement 
-                    met={/[a-z]/.test(formData.password)} 
-                    text="One lowercase letter" 
+                  <PasswordRequirement
+                    met={/[a-z]/.test(formData.password)}
+                    text="One lowercase letter"
                   />
-                  <PasswordRequirement 
-                    met={/\d/.test(formData.password)} 
-                    text="One number" 
+                  <PasswordRequirement
+                    met={/\d/.test(formData.password)}
+                    text="One number"
                   />
-                  <PasswordRequirement 
-                    met={/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(formData.password)} 
-                    text="One special character" 
+                  <PasswordRequirement
+                    met={/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(formData.password)}
+                    text="One special character"
                   />
                 </div>
               )}
@@ -441,14 +441,8 @@ const handleRegister = async (e) => {
         ) : (
           <form onSubmit={verifyCodeAndRegister} className="space-y-6">
             <div className="text-center">
-              <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
-                <p className="font-semibold">✓ Verification Code Sent!</p>
-                <p className="text-sm mt-1">
-                  We've sent a 4-digit verification code to:<br />
-                  <strong>{formData.email}</strong>
-                </p>
-              </div>
-              
+
+
               <p className="text-gray-600 mb-4">
                 Please check your email and enter the code below to complete your registration.
               </p>
@@ -484,7 +478,7 @@ const handleRegister = async (e) => {
               >
                 {loading ? "Resending..." : "Resend Verification Code"}
               </button>
-          
+
             </div>
           </form>
         )}

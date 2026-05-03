@@ -51,9 +51,9 @@ export default function DashboardOverview({ user, developers, projects, notifica
 
       // 4. Count unread notifications for this admin
       const pendingNotifications = notifications.filter(notif => {
-        return !notif.read && 
-               (notif.admin_id === adminId || 
-                notif.admin_email === adminEmail);
+        return !notif.read &&
+          (notif.admin_id === adminId ||
+            notif.admin_email === adminEmail);
       }).length;
 
       setRealTimeStats({
@@ -62,7 +62,7 @@ export default function DashboardOverview({ user, developers, projects, notifica
         activeDevelopers,
         pendingNotifications
       });
-      
+
       setLastUpdated(new Date());
     } catch (error) {
       // Silently handle error
@@ -130,7 +130,7 @@ export default function DashboardOverview({ user, developers, projects, notifica
         activeDevelopers,
         pendingNotifications
       });
-      
+
       setLastUpdated(new Date());
     } catch (error) {
       // Silently handle error
@@ -165,13 +165,11 @@ export default function DashboardOverview({ user, developers, projects, notifica
           <h2 className="text-2xl font-bold text-gray-700">
             Dashboard Overview
           </h2>
-          <p className="text-gray-600 mt-2">
-            Welcome back, <span className="font-semibold text-[#009578]">{user?.full_name || user?.name}</span>
-          </p>
+
         </div>
-        
+
         <div className="flex items-center space-x-3">
-          <button 
+          <button
             onClick={fetchRealTimeData}
             disabled={loading}
             className="flex items-center bg-[#009578] text-white px-4 py-2 rounded hover:bg-[#0e7762] transition-colors disabled:opacity-50"
@@ -195,9 +193,9 @@ export default function DashboardOverview({ user, developers, projects, notifica
           </button>
         </div>
       </div>
-      
 
-      
+
+
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
         {/* My Developers Card */}
@@ -258,9 +256,8 @@ export default function DashboardOverview({ user, developers, projects, notifica
               </span>
             )}
           </div>
-          <h3 className={`text-3xl font-bold mb-2 ${
-            realTimeStats.pendingNotifications > 0 ? 'text-red-600' : 'text-gray-800'
-          }`}>
+          <h3 className={`text-3xl font-bold mb-2 ${realTimeStats.pendingNotifications > 0 ? 'text-red-600' : 'text-gray-800'
+            }`}>
             {realTimeStats.pendingNotifications}
           </h3>
           <p className="text-gray-600 font-medium">Pending Notifications</p>
@@ -312,7 +309,7 @@ export default function DashboardOverview({ user, developers, projects, notifica
       </div>
 
       {/* Last Updated */}
-     
+
     </div>
   );
 }
