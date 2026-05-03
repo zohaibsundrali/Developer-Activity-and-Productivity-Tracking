@@ -3,7 +3,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabaseClient';
 import TaskCompletionModal from "@/components/developer/TaskCompletionModal";
-import { showError, showInfo, showWarning } from "@/utils/alerts";
+import { showError, showInfo, showWarning, showSuccess } from "@/utils/alerts";
+import Swal from 'sweetalert2';
 import { isSessionExpired, clearDeveloperSession } from '@/utils/sessionPolicy';
 
 export default function ProjectDetailsPage() {
@@ -411,13 +412,24 @@ export default function ProjectDetailsPage() {
       
       // Step 2: Confirm submission
       const developerName = currentDeveloper?.name || 'You';
-      const confirmMessage = `Are you sure you want to submit these tasks?\n\n` +
-        `Developer: ${developerName}\n` +
-        `Project: ${project.name}\n` +
-        `Total Tasks: ${tasks.length}\n\n` +
+      const confirmHtml = `Are you sure you want to submit these tasks?<br/><br/>` +
+        `Developer: <strong>${developerName}</strong><br/>` +
+        `Project: <strong>${project.name}</strong><br/>` +
+        `Total Tasks: <strong>${tasks.length}</strong><br/><br/>` +
         `This action cannot be undone.`;
       
-      if (!confirm(confirmMessage)) {
+      const confirmResult = await Swal.fire({
+        title: "Confirm Submission",
+        html: confirmHtml,
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Yes, submit tasks",
+        cancelButtonText: "Cancel",
+        confirmButtonColor: "#009578",
+        cancelButtonColor: "#d33"
+      });
+      
+      if (!confirmResult.isConfirmed) {
         return;
       }
       
@@ -941,7 +953,18 @@ export default function ProjectDetailsPage() {
   const handleDeleteTask = async (taskId) => {
     if (!canEditTasks) return;
     
-    if (confirm('Are you sure you want to delete this task?')) {
+    const confirmResult = await Swal.fire({
+      title: "Delete Task?",
+      text: "Are you sure you want to delete this task?",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, delete it",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#d33",
+      cancelButtonColor: "#3085d6"
+    });
+
+    if (confirmResult.isConfirmed) {
       const taskToRemove = tasks.find(task => task.id === taskId);
       setTasks(prev => prev.filter(task => task.id !== taskId));
 

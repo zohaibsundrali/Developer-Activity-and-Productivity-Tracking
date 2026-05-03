@@ -3,18 +3,17 @@ export default function EmployeeMonitoringSection() {
     { icon: '📸', label: 'Screenshots' },
     { icon: '📊', label: 'App Logs' },
     { icon: '⭐', label: 'Activity Score' },
-    { icon: '🔗', label: 'URL Tracking' }
+    { icon: '🔗', label: 'Browser Tracking' }
   ];
 
-const features = [
-  'Track mouse clicks, keyboard activity & screen time',
-  'Monitor apps & websites used by developers',
-  'AI-powered productivity scoring & insights',
-  'Automatic screenshot capture',
-  'Real-time reports with charts & graphs',
-  'Project task assignment & progress tracking',
-  'Secure login with email verification'
-];
+  const features = [
+    'Track mouse clicks, keyboard activity & screen time',
+    'Monitor apps & websites used by developers',
+    'Automatic screenshot capture',
+    'Real-time reports with charts & graphs',
+    'Project task assignment & progress tracking',
+    'Secure login '
+  ];
 
   return (
     <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8">
@@ -22,10 +21,10 @@ const features = [
         <div>
           <h3 className="text-2xl font-bold text-black mb-6">Complete Activity Tracking</h3>
           <p className="text-gray-600 mb-6 font-light leading-relaxed">
-            Monitor everything from screenshots and application usage to visited URLs 
+            Monitor everything from screenshots and application usage to visited URLs
             and activity scores. Get comprehensive reports with detailed insights.
           </p>
-          
+
           <div className="grid grid-cols-2 gap-4 mb-8">
             {monitoringItems.map((item, index) => (
               <div key={index} className="bg-gray-50 p-4 rounded-lg text-center">
@@ -35,7 +34,7 @@ const features = [
             ))}
           </div>
         </div>
-        
+
         <div>
           <h4 className="text-xl font-bold text-black mb-6">Key Monitoring Features</h4>
           <div className="space-y-4">

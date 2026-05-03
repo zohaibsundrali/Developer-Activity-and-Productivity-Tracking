@@ -21,18 +21,18 @@ export default function ProductTourPage() {
         {/* Product Tour Content */}
         <section id="product-tour" className="py-16 px-6 bg-white">
           <div className="container mx-auto max-w-6xl">
-            
+
             {/* Platforms Section */}
             <div id="platforms" className="mb-20">
               <div className="text-center mb-12">
                 <h2 className="text-3xl font-bold text-black mb-4">
-                  Web, Desktop, & Mobile Apps
+                  Website and Desktop App
                 </h2>
                 <p className="text-gray-600 text-lg max-w-3xl mx-auto font-light">
                   Boost productivity across all platforms with our integrated suite
                 </p>
               </div>
-              
+
               <PlatformCards />
             </div>
 
@@ -44,7 +44,7 @@ export default function ProductTourPage() {
                   Easily track time using our intelligent platform across all devices
                 </p>
               </div>
-              
+
               <TimeTrackingSection />
             </div>
 
@@ -56,7 +56,7 @@ export default function ProductTourPage() {
                   Collect and analyze activity data with comprehensive insights
                 </p>
               </div>
-              
+
               <EmployeeMonitoringSection />
             </div>
 
@@ -68,12 +68,12 @@ export default function ProductTourPage() {
                   Create project plans and generate reports
                 </p>
               </div>
-              
+
               <ProjectManagementSection />
             </div>
 
             {/* CTA Section */}
-         
+
           </div>
         </section>
       </main>

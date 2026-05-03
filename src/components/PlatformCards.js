@@ -7,7 +7,7 @@ export default function PlatformCards() {
       features: [
         'Real-time activity monitoring',
         'Interactive reports & analytics',
-        'Team management dashboard'
+        'Project Management System'
       ],
       color: 'green'
     },
@@ -21,22 +21,12 @@ export default function PlatformCards() {
         'Screenshot & app usage tracking'
       ],
       color: 'blue'
-    },
-    {
-      icon: '📱',
-      title: 'Mobile Application',
-      description: 'Track offsite activities with GPS and mobile features',
-      features: [
-        'GPS location tracking',
-        'Mobile time tracking',
-        'Team activity insights'
-      ],
-      color: 'purple'
     }
+
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
       {platforms.map((platform, index) => (
         <div key={index} className="bg-white rounded-xl p-8 shadow-lg border border-gray-200 hover:shadow-xl transition-shadow duration-300">
           <div className="text-5xl mb-6 text-center">{platform.icon}</div>
