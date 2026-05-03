@@ -7,7 +7,7 @@ export default function ProjectProductivityPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.projectId;
-  
+
   const [loading, setLoading] = useState(true);
   const [project, setProject] = useState(null);
   const [developerTasks, setDeveloperTasks] = useState([]);
@@ -25,7 +25,7 @@ export default function ProjectProductivityPage() {
   const fetchProductivityData = async () => {
     try {
       setLoading(true);
-      
+
       // Get admin from localStorage
       const adminData = JSON.parse(sessionStorage.getItem("adminUser"));
       if (!adminData) {
@@ -60,9 +60,9 @@ export default function ProjectProductivityPage() {
         .order('start_date', { ascending: true });
 
       if (tasksError) throw tasksError;
-      
+
       setDeveloperTasks(tasks || []);
-      
+
       // Prepare Gantt chart data
       if (tasks && tasks.length > 0) {
         const ganttChartData = tasks.map(task => ({
@@ -106,20 +106,20 @@ export default function ProjectProductivityPage() {
         lateTasks: 0
       };
     }
-    
+
     const totalTasks = developerTasks.length;
     const completedTasks = developerTasks.filter(t => t.status === 'completed').length;
     const totalHours = developerTasks.reduce((sum, task) => sum + (task.working_hours || 0), 0);
     const averageHoursPerTask = totalTasks > 0 ? totalHours / totalTasks : 0;
     const completionRate = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
-    
+
     const onTimeTasks = developerTasks.filter(task => {
       if (task.status !== 'completed' || !task.end_date) return false;
       const endDate = new Date(task.end_date);
       const today = new Date();
       return endDate <= today;
     }).length;
-    
+
     return {
       totalTasks,
       completedTasks,
@@ -140,122 +140,119 @@ export default function ProjectProductivityPage() {
         </div>
       );
     }
-    
+
     const today = new Date();
-    
+
     // Find the date range for the chart
     const startDates = ganttData.map(d => new Date(d.start));
     const endDates = ganttData.map(d => new Date(d.end));
     const minDate = new Date(Math.min(...startDates));
     const maxDate = new Date(Math.max(...endDates));
-    
+
     // Add padding
     minDate.setDate(minDate.getDate() - 2);
     maxDate.setDate(maxDate.getDate() + 2);
-    
+
     const totalDays = Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24));
-    
+
     return (
       <div className="mt-6">
         <h3 className="text-lg font-semibold mb-4">Task Timeline (Gantt Chart)</h3>
         <div className="bg-gray-50 border rounded-lg p-4 overflow-x-auto">
           <div className="min-w-[900px]">
-          {/* Timeline Header */}
-          <div className="flex mb-2">
-            <div className="w-40 sm:w-48 flex-shrink-0 font-medium">Task / Developer</div>
-            <div className="flex-1 relative">
-              <div className="flex">
-                {Array.from({ length: totalDays }).map((_, index) => {
-                  const date = new Date(minDate);
-                  date.setDate(minDate.getDate() + index);
-                  const isToday = date.toDateString() === today.toDateString();
-                  
-                  return (
-                    <div 
-                      key={index} 
-                      className={`flex-1 text-center text-xs py-1 ${
-                        isToday ? 'bg-blue-100 font-bold' : ''
-                      }`}
-                      style={{ minWidth: '30px' }}
-                    >
-                      {date.getDate()}
-                      <div className="text-xs text-gray-500">
-                        {date.toLocaleDateString('en-US', { weekday: 'short' }).charAt(0)}
+            {/* Timeline Header */}
+            <div className="flex mb-2">
+              <div className="w-40 sm:w-48 flex-shrink-0 font-medium">Task / Developer</div>
+              <div className="flex-1 relative">
+                <div className="flex">
+                  {Array.from({ length: totalDays }).map((_, index) => {
+                    const date = new Date(minDate);
+                    date.setDate(minDate.getDate() + index);
+                    const isToday = date.toDateString() === today.toDateString();
+
+                    return (
+                      <div
+                        key={index}
+                        className={`flex-1 text-center text-xs py-1 ${isToday ? 'bg-blue-100 font-bold' : ''
+                          }`}
+                        style={{ minWidth: '30px' }}
+                      >
+                        {date.getDate()}
+                        <div className="text-xs text-gray-500">
+                          {date.toLocaleDateString('en-US', { weekday: 'short' }).charAt(0)}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             </div>
-          </div>
-          
-          {/* Task Bars */}
-          <div className="space-y-2">
-            {ganttData.map(task => {
-              const startDate = new Date(task.start);
-              const endDate = new Date(task.end);
-              const taskStartDay = Math.ceil((startDate - minDate) / (1000 * 60 * 60 * 24));
-              const taskDuration = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
-              
-              return (
-                <div key={task.id} className="flex items-center">
-                  <div className="w-40 sm:w-48 flex-shrink-0">
-                    <div className="font-medium text-sm truncate">{task.task}</div>
-                    <div className="text-xs text-gray-500">{task.developer}</div>
-                  </div>
-                  <div className="flex-1 relative h-8">
-                    {/* Background Grid */}
-                    <div className="absolute inset-0 flex">
-                      {Array.from({ length: totalDays }).map((_, index) => (
-                        <div 
-                          key={index} 
-                          className={`flex-1 border-l ${index === 0 ? 'border-l-0' : ''} ${
-                            index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-                          }`}
-                        ></div>
-                      ))}
+
+            {/* Task Bars */}
+            <div className="space-y-2">
+              {ganttData.map(task => {
+                const startDate = new Date(task.start);
+                const endDate = new Date(task.end);
+                const taskStartDay = Math.ceil((startDate - minDate) / (1000 * 60 * 60 * 24));
+                const taskDuration = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+
+                return (
+                  <div key={task.id} className="flex items-center">
+                    <div className="w-40 sm:w-48 flex-shrink-0">
+                      <div className="font-medium text-sm truncate">{task.task}</div>
+                      <div className="text-xs text-gray-500">{task.developer}</div>
                     </div>
-                    
-                    {/* Task Bar */}
-                    <div
-                      className={`absolute h-6 rounded-md flex items-center px-2 ${
-                        task.status === 'completed' ? 'bg-green-500' :
-                        task.status === 'in_progress' ? 'bg-blue-500' :
-                        'bg-yellow-500'
-                      } text-white text-xs font-medium`}
-                      style={{
-                        left: `${(taskStartDay / totalDays) * 100}%`,
-                        width: `${(taskDuration / totalDays) * 100}%`,
-                        minWidth: '40px'
-                      }}
-                    >
-                      <span className="truncate">{task.task}</span>
+                    <div className="flex-1 relative h-8">
+                      {/* Background Grid */}
+                      <div className="absolute inset-0 flex">
+                        {Array.from({ length: totalDays }).map((_, index) => (
+                          <div
+                            key={index}
+                            className={`flex-1 border-l ${index === 0 ? 'border-l-0' : ''} ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                              }`}
+                          ></div>
+                        ))}
+                      </div>
+
+                      {/* Task Bar */}
+                      <div
+                        className={`absolute h-6 rounded-md flex items-center px-2 ${task.status === 'completed' ? 'bg-green-500' :
+                          task.status === 'in_progress' ? 'bg-blue-500' :
+                            'bg-yellow-500'
+                          } text-white text-xs font-medium`}
+                        style={{
+                          left: `${(taskStartDay / totalDays) * 100}%`,
+                          width: `${(taskDuration / totalDays) * 100}%`,
+                          minWidth: '40px'
+                        }}
+                      >
+                        <span className="truncate">{task.task}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-          
-          {/* Legend */}
-          <div className="mt-4 flex flex-wrap gap-4">
-            <div className="flex items-center">
-              <div className="w-4 h-4 bg-green-500 rounded mr-2"></div>
-              <span className="text-sm">Completed</span>
+                );
+              })}
             </div>
-            <div className="flex items-center">
-              <div className="w-4 h-4 bg-blue-500 rounded mr-2"></div>
-              <span className="text-sm">In Progress</span>
+
+            {/* Legend */}
+            <div className="mt-4 flex flex-wrap gap-4">
+              <div className="flex items-center">
+                <div className="w-4 h-4 bg-green-500 rounded mr-2"></div>
+                <span className="text-sm">Completed</span>
+              </div>
+              <div className="flex items-center">
+                <div className="w-4 h-4 bg-blue-500 rounded mr-2"></div>
+                <span className="text-sm">In Progress</span>
+              </div>
+              <div className="flex items-center">
+                <div className="w-4 h-4 bg-yellow-500 rounded mr-2"></div>
+                <span className="text-sm">Pending</span>
+              </div>
+              <div className="flex items-center">
+                <div className="w-0.5 h-4 bg-red-500 mr-2"></div>
+                <span className="text-sm">Today</span>
+              </div>
             </div>
-            <div className="flex items-center">
-              <div className="w-4 h-4 bg-yellow-500 rounded mr-2"></div>
-              <span className="text-sm">Pending</span>
-            </div>
-            <div className="flex items-center">
-              <div className="w-0.5 h-4 bg-red-500 mr-2"></div>
-              <span className="text-sm">Today</span>
-            </div>
-          </div>
           </div>
         </div>
       </div>
@@ -336,7 +333,7 @@ export default function ProjectProductivityPage() {
               </p>
             </div>
           </div>
-          
+
           <button
             onClick={handleRefresh}
             className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center w-full sm:w-auto"
@@ -354,11 +351,10 @@ export default function ProjectProductivityPage() {
             <div className="flex justify-between items-start">
               <div>
                 <h1 className="text-2xl font-bold mb-2">{project.name}</h1>
-                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                  project.status === 'active' ? 'bg-green-100 text-green-800' :
+                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${project.status === 'active' ? 'bg-green-100 text-green-800' :
                   project.status === 'completed' ? 'bg-blue-100 text-blue-800' :
-                  'bg-yellow-100 text-yellow-800'
-                }`}>
+                    'bg-yellow-100 text-yellow-800'
+                  }`}>
                   {project.status?.charAt(0).toUpperCase() + project.status?.slice(1)}
                 </span>
               </div>
@@ -368,7 +364,7 @@ export default function ProjectProductivityPage() {
               </div>
             </div>
           </div>
-          
+
           <div className="p-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <div className="bg-gray-50 border rounded-lg p-4">
@@ -389,7 +385,7 @@ export default function ProjectProductivityPage() {
                 <p className="font-semibold text-lg">{project.status?.toUpperCase()}</p>
               </div>
             </div>
-            
+
             {project.description && (
               <div>
                 <h3 className="text-lg font-semibold mb-2">Project Description</h3>
@@ -432,7 +428,7 @@ export default function ProjectProductivityPage() {
         <div className="bg-white rounded-lg shadow-lg overflow-hidden mb-6">
           <div className="p-6">
             <h2 className="text-xl font-bold mb-4">Developer Tasks</h2>
-            
+
             {developerTasks.length === 0 ? (
               <div className="text-center py-8">
                 <p className="text-gray-500">No tasks submitted by the developer yet.</p>
@@ -467,11 +463,10 @@ export default function ProjectProductivityPage() {
                         </td>
                         <td className="border p-3">{task.working_hours || 0} hrs</td>
                         <td className="border p-3">
-                          <span className={`px-2 py-1 rounded-full text-xs ${
-                            task.status === 'completed' ? 'bg-green-100 text-green-800' :
+                          <span className={`px-2 py-1 rounded-full text-xs ${task.status === 'completed' ? 'bg-green-100 text-green-800' :
                             task.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
-                            'bg-yellow-100 text-yellow-800'
-                          }`}>
+                              'bg-yellow-100 text-yellow-800'
+                            }`}>
                             {task.status?.replace('_', ' ') || 'pending'}
                           </span>
                         </td>
@@ -497,7 +492,7 @@ export default function ProjectProductivityPage() {
         <div className="bg-white rounded-lg shadow-lg overflow-hidden">
           <div className="p-6">
             <h2 className="text-xl font-bold mb-4">Productivity Summary</h2>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Task Distribution */}
               <div>
@@ -511,15 +506,15 @@ export default function ProjectProductivityPage() {
                       </span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-3">
-                      <div 
-                        className="bg-green-500 h-3 rounded-full" 
-                        style={{ 
-                          width: `${(productivityMetrics.completedTasks / productivityMetrics.totalTasks) * 100}%` 
+                      <div
+                        className="bg-green-500 h-3 rounded-full"
+                        style={{
+                          width: `${(productivityMetrics.completedTasks / productivityMetrics.totalTasks) * 100}%`
                         }}
                       ></div>
                     </div>
                   </div>
-                  
+
                   <div>
                     <div className="flex justify-between mb-1">
                       <span>In Progress Tasks</span>
@@ -528,15 +523,15 @@ export default function ProjectProductivityPage() {
                       </span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-3">
-                      <div 
-                        className="bg-blue-500 h-3 rounded-full" 
-                        style={{ 
-                          width: `${(developerTasks.filter(t => t.status === 'in_progress').length / productivityMetrics.totalTasks) * 100}%` 
+                      <div
+                        className="bg-blue-500 h-3 rounded-full"
+                        style={{
+                          width: `${(developerTasks.filter(t => t.status === 'in_progress').length / productivityMetrics.totalTasks) * 100}%`
                         }}
                       ></div>
                     </div>
                   </div>
-                  
+
                   <div>
                     <div className="flex justify-between mb-1">
                       <span>Pending Tasks</span>
@@ -545,17 +540,17 @@ export default function ProjectProductivityPage() {
                       </span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-3">
-                      <div 
-                        className="bg-yellow-500 h-3 rounded-full" 
-                        style={{ 
-                          width: `${(developerTasks.filter(t => t.status === 'pending').length / productivityMetrics.totalTasks) * 100}%` 
+                      <div
+                        className="bg-yellow-500 h-3 rounded-full"
+                        style={{
+                          width: `${(developerTasks.filter(t => t.status === 'pending').length / productivityMetrics.totalTasks) * 100}%`
                         }}
                       ></div>
                     </div>
                   </div>
                 </div>
               </div>
-              
+
               {/* Performance Indicators */}
               <div>
                 <h3 className="text-lg font-semibold mb-3">Performance Indicators</h3>
@@ -571,8 +566,8 @@ export default function ProjectProductivityPage() {
                   <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                     <span>On-time Delivery Rate</span>
                     <span className="font-bold text-lg">
-                      {productivityMetrics.totalTasks > 0 ? 
-                        `${Math.round((productivityMetrics.onTimeTasks / productivityMetrics.totalTasks) * 100)}%` : 
+                      {productivityMetrics.totalTasks > 0 ?
+                        `${Math.round((productivityMetrics.onTimeTasks / productivityMetrics.totalTasks) * 100)}%` :
                         '0%'
                       }
                     </span>
@@ -584,15 +579,15 @@ export default function ProjectProductivityPage() {
                 </div>
               </div>
             </div>
-            
+
             {/* Overall Rating */}
             <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
               <h3 className="text-lg font-semibold mb-2 text-blue-800">Overall Productivity Rating</h3>
               <div className="flex items-center">
                 <div className="text-3xl font-bold text-blue-700 mr-4">
                   {productivityMetrics.completionRate >= 80 ? 'Excellent' :
-                   productivityMetrics.completionRate >= 60 ? 'Good' :
-                   productivityMetrics.completionRate >= 40 ? 'Average' : 'Needs Improvement'}
+                    productivityMetrics.completionRate >= 60 ? 'Good' :
+                      productivityMetrics.completionRate >= 40 ? 'Average' : 'Needs Improvement'}
                 </div>
                 <div className="text-sm text-blue-600">
                   Based on task completion rate, on-time delivery, and workload efficiency.

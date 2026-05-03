@@ -62,8 +62,8 @@ export default function GanttChartPage() {
     // Convert tasks to Gantt chart format
     const rows = taskList.map((task, index) => {
       // Start date - agar nahi hai toh assigned date use karo
-      const startDate = task.startDate && task.startDate !== 'null' 
-        ? new Date(task.startDate) 
+      const startDate = task.startDate && task.startDate !== 'null'
+        ? new Date(task.startDate)
         : new Date();
 
       // End date - agar nahi hai toh start date + 7 days
@@ -129,9 +129,9 @@ export default function GanttChartPage() {
   // Calculate project statistics
   const calculateStats = () => {
     if (tasks.length === 0) return { totalTasks: 0, totalHours: 0, dateRange: 'N/A' };
-    
+
     const totalHours = tasks.reduce((sum, task) => sum + (parseInt(task.workingHours) || 0), 0);
-    
+
     // Find earliest start date and latest end date
     const dates = tasks
       .map(task => ({
@@ -146,12 +146,12 @@ export default function GanttChartPage() {
 
     const startDates = dates.map(d => d.start);
     const endDates = dates.map(d => d.end);
-    
+
     const earliestStart = new Date(Math.min(...startDates));
     const latestEnd = new Date(Math.max(...endDates));
-    
+
     const dateRange = `${formatDate(earliestStart)} - ${formatDate(latestEnd)}`;
-    
+
     return { totalTasks: tasks.length, totalHours, dateRange };
   };
 
@@ -187,7 +187,7 @@ export default function GanttChartPage() {
               <p className="text-gray-600 mt-1">Visual timeline showing exact dates for each task</p>
             </div>
           </div>
-          
+
           <button
             onClick={handleExportData}
             className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors font-medium flex items-center justify-center w-full sm:w-auto"
@@ -250,7 +250,7 @@ export default function GanttChartPage() {
             <h2 className="text-xl font-semibold text-gray-800 mb-2">Project Timeline (Date-wise)</h2>
             <p className="text-gray-600">Each bar shows the exact start and end dates for tasks</p>
           </div>
-          
+
           {ganttData.length > 1 ? (
             <div className="border rounded-lg overflow-hidden">
               <div className="overflow-x-auto">
@@ -375,7 +375,7 @@ export default function GanttChartPage() {
                   const startDate = task.startDate && task.startDate !== 'null' ? new Date(task.startDate) : null;
                   const endDate = task.endDate && task.endDate !== 'null' ? new Date(task.endDate) : null;
                   const duration = startDate && endDate ? Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) : 'N/A';
-                  
+
                   return (
                     <tr key={task.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4">
@@ -407,7 +407,7 @@ export default function GanttChartPage() {
                 })}
               </tbody>
             </table>
-            
+
             {tasks.length === 0 && (
               <div className="text-center py-8">
                 <p className="text-gray-500">No tasks available for this project.</p>

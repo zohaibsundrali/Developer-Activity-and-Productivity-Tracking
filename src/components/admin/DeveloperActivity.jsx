@@ -247,7 +247,7 @@ export default function DeveloperActivity() {
   // ─── Fetch All Activity Data (with active session detection) ───
   const fetchDeveloperActivity = useCallback(async (silent = false) => {
     const dev
-     = developers.find(d => d.id === selectedDeveloper);
+      = developers.find(d => d.id === selectedDeveloper);
     if (!dev) return;
     if (!silent) setLoading(true);
 
@@ -289,9 +289,9 @@ export default function DeveloperActivity() {
           .limit(200),
         devEmail
           ? supabase
-              .from("productivity_sessions")
-              .select("total_duration")
-              .eq("user_email", devEmail)
+            .from("productivity_sessions")
+            .select("total_duration")
+            .eq("user_email", devEmail)
             .gte("start_time", start)
             .lt("start_time", end)
           : Promise.resolve({ data: [], error: null }),
@@ -827,7 +827,7 @@ export default function DeveloperActivity() {
       return !Number.isNaN(ts) && ts >= rangeStartTime && ts < rangeEndTime;
     })
     .reduce((sum, r) => sum + Number(r.total_duration || 0), 0);
-    
+
   // Format seconds to HH:MM:SS
   const formatHHMMSS = (totalSeconds) => {
     const h = Math.floor(totalSeconds / 3600);
@@ -1582,182 +1582,157 @@ export default function DeveloperActivity() {
 
               {/* Keyboard Activity Summary Card */}
               {keyboardData.length > 0 && (
-              <>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard icon={<Keyboard className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Total Keystrokes" value={totalKeystrokes.toLocaleString()} bg="bg-purple-100" />
-                <StatCard icon={<Gauge className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Avg WPM" value={avgWPM.toFixed(1)} bg="bg-green-100" />
-                <StatCard icon={<Target className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Activity Score" value={avgKeyboardScore.toFixed(1)} bg="bg-yellow-100" />
-                <div className="bg-white p-4 rounded-lg border shadow-sm">
-                  <div className="flex items-center">
-                    <div className="bg-indigo-100 p-3 rounded-lg mr-3 flex items-center justify-center">
-                      <BarChart3 className="h-5 w-5 text-gray-700" aria-hidden="true" />
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Keyboard Activity %</p>
-                      <p className="text-lg font-bold text-indigo-700">{avgKeyboardActivity.toFixed(1)}%</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Keyboard Performance Stats */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard icon={<Timer className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Active Time" value={`${totalKbActiveTime.toFixed(1)} min`} bg="bg-green-100" />
-                <StatCard icon={<Pause className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Idle Time" value={`${totalKbIdleTime.toFixed(1)} min`} bg="bg-red-100" />
-                <StatCard icon={<Type className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Unique Keys" value={totalUniqueKeys.toLocaleString()} bg="bg-blue-100" />
-                <StatCard icon={<Clock className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Total Time" value={`${totalKbTime.toFixed(1)} min`} bg="bg-gray-100" />
-              </div>
-
-              {/* Active Session Keyboard Summary */}
-              {activeSession && sessionKeyboardData.length > 0 && (
-                <div className="bg-gradient-to-r from-purple-50 to-indigo-50 p-6 rounded-lg border border-purple-200">
-                  <h3 className="text-lg font-semibold mb-4 text-purple-800">
-                    Active Session Keyboard Activity
-                    <span className="text-sm font-normal text-purple-600 ml-2">({sessionKeyboardData.length} records)</span>
-                  </h3>
+                <>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-white p-4 rounded-lg text-center">
-                      <p className="text-2xl font-bold text-purple-600">{sessionTotalKeys.toLocaleString()}</p>
-                      <p className="text-xs text-gray-500">Keystrokes</p>
-                    </div>
-                    <div className="bg-white p-4 rounded-lg text-center">
-                      <p className="text-2xl font-bold text-green-600">{sessionAvgWPM.toFixed(1)}</p>
-                      <p className="text-xs text-gray-500">WPM</p>
-                    </div>
-                    <div className="bg-white p-4 rounded-lg text-center">
-                      <p className="text-2xl font-bold text-indigo-600">{sessionAvgKbActivity.toFixed(1)}%</p>
-                      <p className="text-xs text-gray-500">Activity %</p>
-                    </div>
-                    <div className="bg-white p-4 rounded-lg text-center">
-                      <p className={`text-2xl font-bold ${sessionAvgScore >= 80 ? "text-green-600" : sessionAvgScore >= 60 ? "text-yellow-600" : "text-red-600"}`}>{sessionAvgScore.toFixed(1)}</p>
-                      <p className="text-xs text-gray-500">Score</p>
+                    <StatCard icon={<Keyboard className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Total Keystrokes" value={totalKeystrokes.toLocaleString()} bg="bg-purple-100" />
+                    <StatCard icon={<Gauge className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Avg WPM" value={avgWPM.toFixed(1)} bg="bg-green-100" />
+                    <StatCard icon={<Target className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Activity Score" value={avgKeyboardScore.toFixed(1)} bg="bg-yellow-100" />
+                    <div className="bg-white p-4 rounded-lg border shadow-sm">
+                      <div className="flex items-center">
+                        <div className="bg-indigo-100 p-3 rounded-lg mr-3 flex items-center justify-center">
+                          <BarChart3 className="h-5 w-5 text-gray-700" aria-hidden="true" />
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500">Keyboard Activity %</p>
+                          <p className="text-lg font-bold text-indigo-700">{avgKeyboardActivity.toFixed(1)}%</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
 
-              {/* Keyboard Activity Chart: WPM & Activity % Over Time */}
-              {keyboardChartData.length > 0 && (
-                <div className="bg-gray-50 p-6 rounded-lg">
-                  <h3 className="text-lg font-semibold mb-4">WPM & Activity % Over Time</h3>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={keyboardChartData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="time" />
-                      <YAxis yAxisId="left" />
-                      <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
-                      <Tooltip />
-                      <Legend />
-                      <Line yAxisId="left" type="monotone" dataKey="wpm" name="WPM" stroke="#009578" strokeWidth={2} dot={false} />
-                      <Line yAxisId="right" type="monotone" dataKey="activityPct" name="Activity %" stroke="#8b5cf6" strokeWidth={2} dot={false} />
-                      <Line yAxisId="left" type="monotone" dataKey="score" name="Score" stroke="#f59e0b" strokeWidth={2} dot={false} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
+                  {/* Keyboard Performance Stats */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <StatCard icon={<Timer className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Active Time" value={`${totalKbActiveTime.toFixed(1)} min`} bg="bg-green-100" />
+                    <StatCard icon={<Pause className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Idle Time" value={`${totalKbIdleTime.toFixed(1)} min`} bg="bg-red-100" />
+                    <StatCard icon={<Type className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Unique Keys" value={totalUniqueKeys.toLocaleString()} bg="bg-blue-100" />
+                    <StatCard icon={<Clock className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Total Time" value={`${totalKbTime.toFixed(1)} min`} bg="bg-gray-100" />
+                  </div>
 
-              {/* Keys Pressed Per Minute (from per_minute_summary) */}
-              {perMinuteData.length > 0 && (
-                <div className="bg-gray-50 p-6 rounded-lg">
-                  <h3 className="text-lg font-semibold mb-4">Keys Pressed Per Minute</h3>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <BarChart data={perMinuteData.slice(-30)}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="time" tick={{ fontSize: 11 }} />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Bar dataKey="keys" name="Keys" fill="#8b5cf6" radius={[4,4,0,0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
+                  {/* Active Session Keyboard Summary */}
+                  {activeSession && sessionKeyboardData.length > 0 && (
+                    <div className="bg-gradient-to-r from-purple-50 to-indigo-50 p-6 rounded-lg border border-purple-200">
+                      <h3 className="text-lg font-semibold mb-4 text-purple-800">
+                        Active Session Keyboard Activity
+                        <span className="text-sm font-normal text-purple-600 ml-2">({sessionKeyboardData.length} records)</span>
+                      </h3>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="bg-white p-4 rounded-lg text-center">
+                          <p className="text-2xl font-bold text-purple-600">{sessionTotalKeys.toLocaleString()}</p>
+                          <p className="text-xs text-gray-500">Keystrokes</p>
+                        </div>
+                        <div className="bg-white p-4 rounded-lg text-center">
+                          <p className="text-2xl font-bold text-green-600">{sessionAvgWPM.toFixed(1)}</p>
+                          <p className="text-xs text-gray-500">WPM</p>
+                        </div>
+                        <div className="bg-white p-4 rounded-lg text-center">
+                          <p className="text-2xl font-bold text-indigo-600">{sessionAvgKbActivity.toFixed(1)}%</p>
+                          <p className="text-xs text-gray-500">Activity %</p>
+                        </div>
+                        <div className="bg-white p-4 rounded-lg text-center">
+                          <p className={`text-2xl font-bold ${sessionAvgScore >= 80 ? "text-green-600" : sessionAvgScore >= 60 ? "text-yellow-600" : "text-red-600"}`}>{sessionAvgScore.toFixed(1)}</p>
+                          <p className="text-xs text-gray-500">Score</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
-              {/* Active vs Idle Time Distribution */}
-              {keyboardData.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Keyboard Activity Chart: WPM & Activity % Over Time */}
+                  {keyboardChartData.length > 0 && (
+                    <div className="bg-gray-50 p-6 rounded-lg">
+                      <h3 className="text-lg font-semibold mb-4">WPM & Activity % Over Time</h3>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <LineChart data={keyboardChartData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="time" />
+                          <YAxis yAxisId="left" />
+                          <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+                          <Tooltip />
+                          <Legend />
+                          <Line yAxisId="left" type="monotone" dataKey="wpm" name="WPM" stroke="#009578" strokeWidth={2} dot={false} />
+                          <Line yAxisId="right" type="monotone" dataKey="activityPct" name="Activity %" stroke="#8b5cf6" strokeWidth={2} dot={false} />
+                          <Line yAxisId="left" type="monotone" dataKey="score" name="Score" stroke="#f59e0b" strokeWidth={2} dot={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+
+                  {/* Keys Pressed Per Minute (from per_minute_summary) */}
+
+
+                  {/* Active vs Idle Time Distribution */}
+                  {keyboardData.length > 0 && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="bg-gray-50 p-6 rounded-lg">
+                        <h3 className="text-lg font-semibold mb-4">Active vs Idle Time</h3>
+                        <ResponsiveContainer width="100%" height={250}>
+                          <PieChart>
+                            <Pie data={[
+                              { name: "Active", value: Math.round(totalKbActiveTime * 100) / 100 },
+                              { name: "Idle", value: Math.round(totalKbIdleTime * 100) / 100 }
+                            ]} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90}
+                              label={({ name, value }) => `${name}: ${value.toFixed(1)} min`}>
+                              <Cell fill="#10b981" />
+                              <Cell fill="#ef4444" />
+                            </Pie>
+                            <Tooltip formatter={(v) => `${Number(v).toFixed(1)} min`} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      {/* Keystrokes Trend (AreaChart) */}
+
+                    </div>
+                  )}
+
+                  {/* Keyboard Activity Timeline Table */}
                   <div className="bg-gray-50 p-6 rounded-lg">
-                    <h3 className="text-lg font-semibold mb-4">Active vs Idle Time</h3>
-                    <ResponsiveContainer width="100%" height={250}>
-                      <PieChart>
-                        <Pie data={[
-                          { name: "Active", value: Math.round(totalKbActiveTime * 100) / 100 },
-                          { name: "Idle", value: Math.round(totalKbIdleTime * 100) / 100 }
-                        ]} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90}
-                          label={({ name, value }) => `${name}: ${value.toFixed(1)} min`}>
-                          <Cell fill="#10b981" />
-                          <Cell fill="#ef4444" />
-                        </Pie>
-                        <Tooltip formatter={(v) => `${Number(v).toFixed(1)} min`} />
-                      </PieChart>
-                    </ResponsiveContainer>
+                    <h3 className="text-lg font-semibold mb-4">Keyboard Activity Timeline ({keyboardData.length})</h3>
+                    <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-100 sticky top-0">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tracked At</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Keystrokes</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unique Keys</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">WPM</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Activity %</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Score</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Active</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Idle</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Session</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {keyboardData.slice(0, 50).map((r, i) => (
+                            <tr key={r.id || i} className={`hover:bg-gray-50 ${i === 0 ? "bg-purple-50" : ""}`}>
+                              <td className="px-4 py-3 text-sm text-gray-600">{fmtDateTime(r.tracked_at)}</td>
+                              <td className="px-4 py-3 text-sm font-medium">{(r.total_keys || 0).toLocaleString()}</td>
+                              <td className="px-4 py-3 text-sm">{r.unique_keys || 0}</td>
+                              <td className="px-4 py-3 text-sm font-medium text-green-700">{(r.words_per_minute || 0).toFixed(1)}</td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-16 bg-gray-200 rounded-full h-2">
+                                    <div className="bg-indigo-500 h-2 rounded-full" style={{ width: `${Math.min(r.keyboard_activity_percentage || 0, 100)}%` }}></div>
+                                  </div>
+                                  <span className="text-sm font-medium text-indigo-700">{(r.keyboard_activity_percentage || 0).toFixed(1)}%</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={`px-2 py-1 rounded text-xs font-medium ${prodBg(r.activity_score || 0)} ${prodColor(r.activity_score || 0)}`}>
+                                  {(r.activity_score || 0).toFixed(0)}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-green-600">{(r.active_time_minutes || 0).toFixed(1)}m</td>
+                              <td className="px-4 py-3 text-sm text-red-500">{(r.idle_time_minutes || 0).toFixed(1)}m</td>
+                              <td className="px-4 py-3 text-xs text-gray-400 font-mono">{r.session_id ? String(r.session_id).slice(-8) : "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {keyboardData.length > 50 && <p className="text-center text-sm text-gray-500 mt-3">Showing 50 of {keyboardData.length} records</p>}
                   </div>
-
-                  {/* Keystrokes Trend (AreaChart) */}
-                  <div className="bg-gray-50 p-6 rounded-lg">
-                    <h3 className="text-lg font-semibold mb-4">Keystroke Trend</h3>
-                    <ResponsiveContainer width="100%" height={250}>
-                      <AreaChart data={keyboardChartData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="time" />
-                        <YAxis />
-                        <Tooltip />
-                        <Area type="monotone" dataKey="totalKeys" name="Keys" stroke="#8b5cf6" fill="#8b5cf640" strokeWidth={2} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              )}
-
-              {/* Keyboard Activity Timeline Table */}
-              <div className="bg-gray-50 p-6 rounded-lg">
-                <h3 className="text-lg font-semibold mb-4">Keyboard Activity Timeline ({keyboardData.length})</h3>
-                <div className="overflow-x-auto max-h-96 overflow-y-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-100 sticky top-0">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tracked At</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Keystrokes</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unique Keys</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">WPM</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Activity %</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Score</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Active</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Idle</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Session</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {keyboardData.slice(0, 50).map((r, i) => (
-                        <tr key={r.id || i} className={`hover:bg-gray-50 ${i === 0 ? "bg-purple-50" : ""}`}>
-                          <td className="px-4 py-3 text-sm text-gray-600">{fmtDateTime(r.tracked_at)}</td>
-                          <td className="px-4 py-3 text-sm font-medium">{(r.total_keys || 0).toLocaleString()}</td>
-                          <td className="px-4 py-3 text-sm">{r.unique_keys || 0}</td>
-                          <td className="px-4 py-3 text-sm font-medium text-green-700">{(r.words_per_minute || 0).toFixed(1)}</td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <div className="w-16 bg-gray-200 rounded-full h-2">
-                                <div className="bg-indigo-500 h-2 rounded-full" style={{ width: `${Math.min(r.keyboard_activity_percentage || 0, 100)}%` }}></div>
-                              </div>
-                              <span className="text-sm font-medium text-indigo-700">{(r.keyboard_activity_percentage || 0).toFixed(1)}%</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className={`px-2 py-1 rounded text-xs font-medium ${prodBg(r.activity_score || 0)} ${prodColor(r.activity_score || 0)}`}>
-                              {(r.activity_score || 0).toFixed(0)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-green-600">{(r.active_time_minutes || 0).toFixed(1)}m</td>
-                          <td className="px-4 py-3 text-sm text-red-500">{(r.idle_time_minutes || 0).toFixed(1)}m</td>
-                          <td className="px-4 py-3 text-xs text-gray-400 font-mono">{r.session_id ? String(r.session_id).slice(-8) : "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {keyboardData.length > 50 && <p className="text-center text-sm text-gray-500 mt-3">Showing 50 of {keyboardData.length} records</p>}
-              </div>
-              </>
+                </>
               )}
             </div>
           )}
@@ -1769,27 +1744,27 @@ export default function DeveloperActivity() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <StatCard icon={<Monitor className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Apps Used" value={totalAppsUsed} bg="bg-blue-100" />
                 <StatCard icon={<BarChart3 className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Usage Records" value={appUsageData.length} bg="bg-green-100" />
-                <StatCard 
-                      icon={<Clock className="h-5 w-5 text-gray-700" aria-hidden="true" />} 
-                      label="Total Active Time" 
-                      value={(() => {
-                        const totalSeconds = totalAppActiveMinutes * 60;
-                        
-                        if (totalSeconds < 60) {
-                          return `${Math.round(totalSeconds)} sec`;
-                        } else if (totalSeconds < 3600) {
-                          const mins = Math.floor(totalSeconds / 60);
-                          const secs = Math.round(totalSeconds % 60);
-                          return `${mins} min ${secs} sec`;
-                        } else {
-                          const hours = Math.floor(totalSeconds / 3600);
-                          const mins = Math.floor((totalSeconds % 3600) / 60);
-                          const secs = Math.round(totalSeconds % 60);
-                          return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-                        }
-                      })()} 
-                      bg="bg-purple-100" 
-                    />
+                <StatCard
+                  icon={<Clock className="h-5 w-5 text-gray-700" aria-hidden="true" />}
+                  label="Total Active Time"
+                  value={(() => {
+                    const totalSeconds = totalAppActiveMinutes * 60;
+
+                    if (totalSeconds < 60) {
+                      return `${Math.round(totalSeconds)} sec`;
+                    } else if (totalSeconds < 3600) {
+                      const mins = Math.floor(totalSeconds / 60);
+                      const secs = Math.round(totalSeconds % 60);
+                      return `${mins} min ${secs} sec`;
+                    } else {
+                      const hours = Math.floor(totalSeconds / 3600);
+                      const mins = Math.floor((totalSeconds % 3600) / 60);
+                      const secs = Math.round(totalSeconds % 60);
+                      return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+                    }
+                  })()}
+                  bg="bg-purple-100"
+                />
                 {/* {currentApp && (
                   <div className="bg-white p-4 rounded-lg border shadow-sm">
                     <div className="flex items-center">
@@ -1908,11 +1883,11 @@ export default function DeveloperActivity() {
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis type="number" />
                         <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 12 }} />
-                        <Tooltip 
+                        <Tooltip
                           formatter={(v) => {
                             // Convert minutes to seconds for calculation
                             const totalSeconds = v * 60;
-                            
+
                             if (totalSeconds < 60) {
                               // Less than 1 minute - show seconds
                               return `${Math.round(totalSeconds)} sec`;
@@ -1930,7 +1905,7 @@ export default function DeveloperActivity() {
                             }
                           }}
                         />
-                        <Bar dataKey="minutes" name="Minutes" fill="#009578" radius={[0,4,4,0]} />
+                        <Bar dataKey="minutes" name="Minutes" fill="#009578" radius={[0, 4, 4, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -1954,7 +1929,7 @@ export default function DeveloperActivity() {
                         // Format duration based on total seconds
                         const formatDurationDisplay = (minutes, seconds) => {
                           const totalSeconds = (minutes * 60) + (seconds || 0);
-                          
+
                           if (totalSeconds < 60) {
                             return `${Math.round(totalSeconds)} sec`;
                           } else if (totalSeconds < 3600) {
@@ -1972,7 +1947,7 @@ export default function DeveloperActivity() {
                         const durationMinutes = r.duration_minutes || 0;
                         const durationSeconds = r.duration_seconds || 0;
                         const formattedDuration = formatDurationDisplay(durationMinutes, durationSeconds);
-                        
+
                         return (
                           <tr key={r.id || i} className="hover:bg-gray-50">
                             <td className="px-4 py-3">
@@ -2049,7 +2024,7 @@ export default function DeveloperActivity() {
                         <p className="text-sm font-bold text-gray-800">{fmtDbExactTime((screenshots[0].timestamp || screenshots[0].created_at) || "")}</p>
                       </div>
                     </div>
-                    
+
                   </div>
                 )}
               </div>

@@ -251,7 +251,7 @@ export default function AdminProjectDetailsPage() {
             <p className="text-gray-600 mt-1">{project?.name}</p>
           </div>
           <button
-            onClick={() => router.push("/admin/dashboard?section=projects")}
+            onClick={() => router.push("/admin/dashboard?section=all-projects")}
             className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700"
           >
             Back to Projects
