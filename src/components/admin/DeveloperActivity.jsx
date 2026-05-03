@@ -1075,20 +1075,10 @@ export default function DeveloperActivity() {
         <div className="flex items-center gap-3">
           <h2 className="text-2xl font-bold">Developer Activity Dashboard</h2>
           {/* Live indicator */}
-          {autoRefresh && selectedDeveloper && (
-            <span className="flex items-center gap-1.5 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-              </span>
-              LIVE
-            </span>
-          )}
+
         </div>
         <div className="flex items-center space-x-4">
-          {lastUpdated && (
-            <p className="text-xs text-gray-400">Updated: {fmtTime(lastUpdated.toISOString())}</p>
-          )}
+
           {/* {currentAdmin && (
             <div className="text-right">
               <p className="text-sm font-medium text-gray-700">{currentAdmin.name || currentAdmin.email}</p>
@@ -1103,10 +1093,7 @@ export default function DeveloperActivity() {
 
       {/* Filters */}
       <div className="mb-6 bg-white rounded-xl p-5 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-        <div className="flex items-center gap-2 mb-4">
-          <Search className="h-5 w-5 text-gray-500" aria-hidden="true" />
-          <h3 className="text-base font-semibold text-gray-900">Filters</h3>
-        </div>
+
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
           <div>
@@ -1926,13 +1913,13 @@ export default function DeveloperActivity() {
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {[...appUsageData].sort((a, b) => {
-                          // Derive canonical total seconds for each row using explicit parseFloat
-                          // so Postgres numeric-as-string values are always compared correctly.
-                          // Prefer duration_seconds (integer precision) and fall back to duration_minutes * 60.
-                          const secA = parseFloat(a.duration_seconds) || (parseFloat(a.duration_minutes) * 60) || 0;
-                          const secB = parseFloat(b.duration_seconds) || (parseFloat(b.duration_minutes) * 60) || 0;
-                          return secB - secA; // descending: highest duration first
-                        }).slice(0, 50).map((r, i) => {
+                        // Derive canonical total seconds for each row using explicit parseFloat
+                        // so Postgres numeric-as-string values are always compared correctly.
+                        // Prefer duration_seconds (integer precision) and fall back to duration_minutes * 60.
+                        const secA = parseFloat(a.duration_seconds) || (parseFloat(a.duration_minutes) * 60) || 0;
+                        const secB = parseFloat(b.duration_seconds) || (parseFloat(b.duration_minutes) * 60) || 0;
+                        return secB - secA; // descending: highest duration first
+                      }).slice(0, 50).map((r, i) => {
                         // Use the same duration logic as Overview's Top Applications:
                         // fmtMinutesToMinSec converts decimal minutes → "X min Y sec"
                         const durationMinutes = r.duration_minutes || 0;
