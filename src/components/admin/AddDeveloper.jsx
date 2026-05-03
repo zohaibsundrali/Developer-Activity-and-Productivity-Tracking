@@ -131,7 +131,7 @@ const DeveloperTable = ({ developers, missingColumns }) => (
                 </td>
 
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                  <span className="font-medium">{developer.projects_count || 0}</span>
+                  <span className="font-medium">{developer.dynamic_projects_count ?? developer.projects_count ?? 0}</span>
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                   {formatDate(developer.created_at)}
@@ -182,6 +182,7 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
 
       // Try to fetch developers added by this admin
       try {
+        let fetchedDevelopers = [];
         const { data, error } = await supabase
           .from('developers')
           .select('*')
@@ -199,11 +200,28 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
 
           if (allError) throw allError;
 
-          setDevelopers(allData || []);
+          fetchedDevelopers = allData || [];
         } else {
           setMissingColumns(false);
-          setDevelopers(data || []);
+          fetchedDevelopers = data || [];
         }
+
+        // Fetch dynamic project counts for each developer
+        const developersWithCounts = await Promise.all(
+          fetchedDevelopers.map(async (developer) => {
+            const { count, error: countError } = await supabase
+              .from('projects')
+              .select('*', { count: 'exact', head: true })
+              .eq('assigned_developer_email', developer.email);
+            
+            return {
+              ...developer,
+              dynamic_projects_count: countError ? 0 : (count || 0)
+            };
+          })
+        );
+
+        setDevelopers(developersWithCounts);
       } catch (fetchError) {
         setMissingColumns(true);
         setDevelopers([]);
