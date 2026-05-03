@@ -36,38 +36,25 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
       }
 
       const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
-      const developerEmails = Array.from(
-        new Set(safeDevs.map((d) => normalizeEmail(d?.email)).filter(Boolean))
+      
+      const hydratedDevs = await Promise.all(
+        safeDevs.map(async (dev) => {
+          const email = normalizeEmail(dev?.email);
+          if (!email) return { ...dev, assigned_projects_count: 0 };
+          
+          const { count, error: countError } = await supabase
+            .from('projects')
+            .select('*', { count: 'exact', head: true })
+            .eq('assigned_developer_email', dev.email); // Match the exact email case or use ilike if needed. Since email should be case sensitive or matching DB exact: dev.email
+          
+          return {
+            ...dev,
+            assigned_projects_count: countError ? 0 : (count || 0)
+          };
+        })
       );
-      if (developerEmails.length === 0) {
-        return safeDevs.map((d) => ({ ...d, assigned_projects_count: 0 }));
-      }
-
-      // Single aggregated query:
-      // Returns rows like: [{ assigned_developer_email: 'a@b.com', count: 3 }, ...]
-      const { data, error } = await supabase
-        .from("projects")
-        .select("assigned_developer_email, count:id")
-        .in("assigned_developer_email", developerEmails);
-
-      if (error) {
-        // If aggregation isn't supported in this environment, fail soft to 0.
-        console.warn("[ViewDevelopers] Failed to aggregate project counts:", error);
-        return safeDevs.map((d) => ({ ...d, assigned_projects_count: 0 }));
-      }
-
-      const countsByEmail = {};
-      for (const row of data || []) {
-        const key = normalizeEmail(row?.assigned_developer_email);
-        if (!key) continue;
-        const value = Number(row?.count);
-        countsByEmail[key] = Number.isFinite(value) ? value : 0;
-      }
-
-      return safeDevs.map((d) => ({
-        ...d,
-        assigned_projects_count: countsByEmail[normalizeEmail(d?.email)] ?? 0,
-      }));
+      
+      return hydratedDevs;
     },
     [supabase]
   );
