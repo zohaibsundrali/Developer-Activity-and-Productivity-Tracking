@@ -1925,7 +1925,14 @@ export default function DeveloperActivity() {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {appUsageData.slice(0, 50).map((r, i) => {
+                      {[...appUsageData].sort((a, b) => {
+                          // Derive canonical total seconds for each row using explicit parseFloat
+                          // so Postgres numeric-as-string values are always compared correctly.
+                          // Prefer duration_seconds (integer precision) and fall back to duration_minutes * 60.
+                          const secA = parseFloat(a.duration_seconds) || (parseFloat(a.duration_minutes) * 60) || 0;
+                          const secB = parseFloat(b.duration_seconds) || (parseFloat(b.duration_minutes) * 60) || 0;
+                          return secB - secA; // descending: highest duration first
+                        }).slice(0, 50).map((r, i) => {
                         // Use the same duration logic as Overview's Top Applications:
                         // fmtMinutesToMinSec converts decimal minutes → "X min Y sec"
                         const durationMinutes = r.duration_minutes || 0;
