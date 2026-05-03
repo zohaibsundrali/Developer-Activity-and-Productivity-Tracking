@@ -9,9 +9,32 @@ export default function DashboardTimeTracking({ user, assignedProjects = [] }) {
   const [totalTime, setTotalTime] = useState("00:00");
   const [recentProjects, setRecentProjects] = useState([]);
   const [todayTrackedTime, setTodayTrackedTime] = useState("00:00:00");
+  const [taskStats, setTaskStats] = useState({ completed: 0, pending: 0 });
 
   const userId = user?.id || null;
   const userEmail = user?.email || null;
+
+  useEffect(() => {
+    async function fetchTaskStats() {
+      if (!userId) return;
+      const { data, error } = await supabase
+        .from("developer_tasks")
+        .select("status")
+        .eq("developer_id", userId);
+
+      if (!error && data) {
+        let completed = 0;
+        let pending = 0;
+        data.forEach(t => {
+          if (t.status === "completed") completed++;
+          else pending++;
+        });
+        setTaskStats({ completed, pending });
+      }
+    }
+    fetchTaskStats();
+  }, [userId]);
+
 
   // Debounce realtime-driven refreshes (multiple events can fire quickly).
   const refreshDebounceRef = useRef(null);
@@ -409,10 +432,42 @@ export default function DashboardTimeTracking({ user, assignedProjects = [] }) {
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
       {/* LEFT PANEL */}
-      <div className="lg:col-span-2 bg-white rounded-lg shadow p-6">
+      <div className="lg:col-span-2 space-y-6">
+        {/* Profile Card */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8 text-black">
+          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
+            <div className="w-24 h-24 rounded-full bg-gray-100 border border-gray-300 flex items-center justify-center text-4xl font-bold text-[#009578]">
+              {user?.name?.charAt(0)?.toUpperCase() || user?.full_name?.charAt(0)?.toUpperCase() || "D"}
+            </div>
+            <div className="flex-1 text-center sm:text-left">
+              <h2 className="text-2xl text-[#009578] font-bold mb-1">{user?.name || user?.full_name || "Developer"}</h2>
+              <p className="text-gray-600 mb-4 flex items-center justify-center sm:justify-start gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                {userEmail}
+              </p>
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3">
+                <span className="px-3 py-1 rounded-full bg-gray-100 text-black text-sm font-medium border border-gray-200">
+                  {user?.role || "Software Developer"}
+                </span>
+                <span className="px-3 py-1 rounded-full bg-gray-100 text-black text-sm font-medium border border-gray-200 flex items-center gap-1">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                  Joined {user?.created_at ? new Date(user.created_at).toLocaleDateString() : new Date().toLocaleDateString()}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
 
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+            <h3 className="text-gray-600 text-sm font-medium mb-1">Total Projects</h3>
+            <p className="text-3xl font-bold text-black">{assignedProjects?.length || recentProjects?.length || 0}</p>
+          </div>
 
+        </div>
 
+        {/* Recent Activity Card */}
 
       </div>
 
@@ -421,7 +476,7 @@ export default function DashboardTimeTracking({ user, assignedProjects = [] }) {
         <div className="mb-6">
           <h3 className="text-lg font-semibold mb-2">Today’s Tracked Time</h3>
           <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-center">
-            <p className="text-3xl font-bold text-blue-600">{todayTrackedTime}</p>
+            <p className="text-3xl font-bold text-[#009578]">{todayTrackedTime}</p>
             {/* <p className="text-sm text-gray-500 mt-1">Completed Sessions</p> */}
           </div>
         </div>
