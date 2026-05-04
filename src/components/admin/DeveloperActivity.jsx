@@ -1624,24 +1624,7 @@ export default function DeveloperActivity() {
                   )}
 
                   {/* Keyboard Activity Chart: WPM & Activity % Over Time */}
-                  {keyboardChartData.length > 0 && (
-                    <div className="bg-gray-50 p-6 rounded-lg">
-                      <h3 className="text-lg font-semibold mb-4">WPM & Activity % Over Time</h3>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <LineChart data={keyboardChartData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="time" />
-                          <YAxis yAxisId="left" />
-                          <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
-                          <Tooltip />
-                          <Legend />
-                          <Line yAxisId="left" type="monotone" dataKey="wpm" name="WPM" stroke="#009578" strokeWidth={2} dot={false} />
-                          <Line yAxisId="right" type="monotone" dataKey="activityPct" name="Activity %" stroke="#8b5cf6" strokeWidth={2} dot={false} />
-                          <Line yAxisId="left" type="monotone" dataKey="score" name="Score" stroke="#f59e0b" strokeWidth={2} dot={false} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
+                
 
                   {/* Keys Pressed Per Minute (from per_minute_summary) */}
 
