@@ -1713,7 +1713,7 @@ export default function DeveloperActivity() {
               {/* App Usage Summary Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <StatCard icon={<Monitor className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Apps Used" value={totalAppsUsed} bg="bg-blue-100" />
-                <StatCard icon={<BarChart3 className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Usage Records" value={appUsageData.length} bg="bg-green-100" />
+                {/* <StatCard icon={<BarChart3 className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Usage Records" value={appUsageData.length} bg="bg-green-100" /> */}
                 <StatCard
                   icon={<Clock className="h-5 w-5 text-gray-700" aria-hidden="true" />}
                   label="Total Active Time"
