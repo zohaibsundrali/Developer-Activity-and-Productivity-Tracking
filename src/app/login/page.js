@@ -103,9 +103,8 @@ export default function LoginPage() {
         </button>
 
         <div className="auth-brand">
-
-          <h1>Welcome Back</h1>
-
+          <h1>Welcome back</h1>
+          <p>Use your workspace credentials to continue to the dashboard.</p>
         </div>
 
         <div className="auth-role-wrap">
