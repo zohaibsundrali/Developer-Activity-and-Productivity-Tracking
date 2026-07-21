@@ -124,12 +124,10 @@ ${extractedText.substring(0, 6000)}`;
 
     for (const model of modelsToTry) {
       try {
-        console.log(`Trying model via Router: ${model}`);
         const content = await callHFRouter(model, prompt);
         tasks = parseAIResponse(content);
         if (tasks) {
           usedModel = model;
-          console.log(`Success with model: ${model}`);
           break;
         }
       } catch (err) {

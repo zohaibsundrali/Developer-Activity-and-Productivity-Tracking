@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import { showPre } from "@/utils/alerts";
 import {
-  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
+  BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   AreaChart, Area,
 } from "recharts";
@@ -24,7 +24,7 @@ import {
   MousePointer2,
   Pause,
   CircleDot,
-  Search,
+  RefreshCw,
   Target,
   Timer,
   TrendingDown,
@@ -34,7 +34,7 @@ import {
   XCircle,
 } from "lucide-react";
 
-const CHART_COLORS = ["#009578", "#0ea5e9", "#8b5cf6", "#f59e0b", "#ef4444", "#10b981", "#6366f1", "#ec4899"];
+const CHART_COLORS = ["#0c8f6e", "#0ea5e9", "#7c3aed", "#f59e0b", "#ef4444", "#10b981", "#6366f1", "#ec4899"];
 const POLL_INTERVAL = 10_000; // 10 seconds
 const MOUSE_PAGE_SIZE = 50;
 
@@ -234,13 +234,6 @@ export default function DeveloperActivity() {
     const startISO = baseStartUtc.toISOString();
     const endISO = endExclusiveUtc.toISOString();
 
-    console.log("[DateFilter][UTC]", {
-      selectedDate,
-      timeRange,
-      start: startISO,
-      end: endISO,
-    });
-
     return { start: startISO, end: endISO };
   }, [selectedDate, timeRange]);
 
@@ -361,8 +354,6 @@ export default function DeveloperActivity() {
       } else if (Array.isArray(keyboardApiRes)) {
         finalKeyboard = keyboardApiRes;
       }
-      console.log("[Keyboard] API response:", keyboardApiRes);
-      console.log("[Keyboard] Source:", keyboardApiRes?.source, "Count:", finalKeyboard.length);
       if (keyboardApiRes?.source && keyboardApiRes.source !== "primary-date-filtered" && keyboardApiRes.source !== "range-bounded") {
         console.warn("[Keyboard] Unexpected source (possible fallback/unfiltered response):", keyboardApiRes.source);
       }
@@ -810,8 +801,6 @@ export default function DeveloperActivity() {
   const hasData = sessions.length || mouseData.length || keyboardData.length || appUsageData.length || screenshots.length || loginRecords.length;
 
   const { start: rangeStart, end: rangeEnd } = getDateFilter();
-  const rangeDays = timeRange === "today" ? 1 : timeRange === "week" ? 7 : 30;
-  const rangeLabel = timeRange === "today" ? "Today" : timeRange === "week" ? "Last 7 Days" : "Last 30 Days";
 
   // Aggregate durations from productivity_sessions for the selected date/range
   const totalActiveTime = sessions.reduce((s, r) => s + (Number(r.active_duration) || 0), 0);
@@ -820,13 +809,6 @@ export default function DeveloperActivity() {
   // Sum of productivity_sessions.total_duration (in seconds) for the selected day (by start_time)
   const rangeStartTime = new Date(rangeStart).getTime();
   const rangeEndTime = new Date(rangeEnd).getTime();
-  const totalDurationSeconds = sessions
-    .filter((r) => {
-      if (!r.start_time || r.total_duration == null) return false;
-      const ts = parseDbTimeMs(r.start_time);
-      return !Number.isNaN(ts) && ts >= rangeStartTime && ts < rangeEndTime;
-    })
-    .reduce((sum, r) => sum + Number(r.total_duration || 0), 0);
 
   // Format seconds to HH:MM:SS
   const formatHHMMSS = (totalSeconds) => {
@@ -835,8 +817,6 @@ export default function DeveloperActivity() {
     const s = Math.floor(totalSeconds % 60);
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   };
-
-  const avgProductivity = sessions.length ? sessions.reduce((s, r) => s + (r.productivity_score || 0), 0) / sessions.length : 0;
 
   // Mouse metrics from actual schema: active_percentage, idle_percentage, activity_status
   const avgMouseActive = mouseData.length ? mouseData.reduce((s, r) => s + (r.active_percentage || 0), 0) / mouseData.length : 0;
@@ -1027,35 +1007,13 @@ export default function DeveloperActivity() {
     if (timeOnly) return timeOnly[1];
     return s;
   };
-  const prodColor = (s) => (s >= 80 ? "text-green-600" : s >= 60 ? "text-yellow-600" : "text-red-600");
-  const prodBg = (s) => (s >= 80 ? "bg-green-100" : s >= 60 ? "bg-yellow-100" : "bg-red-100");
-  const prodLevel = (s) => (s >= 80 ? "High" : s >= 60 ? "Medium" : "Low");
+  const prodColor = (s) => (s >= 80 ? "text-success" : s >= 60 ? "text-warning" : "text-destructive");
+  const prodBg = (s) => (s >= 80 ? "bg-success/10" : s >= 60 ? "bg-warning/10" : "bg-destructive/10");
   const statusColor = (status) => {
     const s = (status || "").toLowerCase();
-    if (s === "active") return "bg-green-100 text-green-800";
-    if (s === "idle") return "bg-yellow-100 text-yellow-800";
-    return "bg-gray-100 text-gray-600";
-  };
-
-  // Format today's total working time from total_duration (in minutes)
-  const formatTotalWorkingTime = (totalMinutes) => {
-    const value = Number(totalMinutes) || 0;
-    if (value <= 0) return "0 min";
-
-    // Treat very small values as seconds (data sometimes logged in seconds)
-    if (value < 1) {
-      const seconds = Math.round(value);
-      return `${seconds} sec`;
-    }
-
-    // Less than an hour → show minutes
-    if (value < 60) {
-      return `${value.toFixed(0)} min`;
-    }
-
-    // 60 minutes or more → show hours with 1 decimal place
-    const hours = value / 60;
-    return `${hours.toFixed(1)} hours`;
+    if (s === "active") return "bg-success/10 text-success";
+    if (s === "idle") return "bg-warning/10 text-warning";
+    return "bg-muted text-muted-foreground";
   };
 
   const refreshAdminData = () => {
@@ -1069,11 +1027,11 @@ export default function DeveloperActivity() {
 
   // ─── Render ───
   return (
-    <div className="bg-white p-6 rounded-lg shadow">
+    <div className="bg-card p-6 rounded-xl border border-border shadow-card">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div className="flex items-center gap-3">
-          <h2 className="text-2xl font-bold">Developer Activity Dashboard</h2>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Developer Activity Dashboard</h2>
           {/* Live indicator */}
 
         </div>
@@ -1081,31 +1039,32 @@ export default function DeveloperActivity() {
 
           {/* {currentAdmin && (
             <div className="text-right">
-              <p className="text-sm font-medium text-gray-700">{currentAdmin.name || currentAdmin.email}</p>
-              <p className="text-xs text-gray-500">Admin Dashboard</p>
+              <p className="text-sm font-medium text-foreground">{currentAdmin.name || currentAdmin.email}</p>
+              <p className="text-xs text-muted-foreground">Admin Dashboard</p>
             </div>
           )} */}
-          <button onClick={refreshAdminData} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-md hover:bg-gray-200 transition-colors text-sm">
+          <button onClick={refreshAdminData} className="inline-flex items-center gap-2 bg-card text-foreground border border-border px-3 py-1.5 rounded-lg hover:bg-muted transition-colors text-sm font-semibold">
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
             Refresh
           </button>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="mb-6 bg-white rounded-xl p-5 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+      <div className="mb-6 bg-card rounded-xl p-5 border border-border shadow-card">
 
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <User className="h-4 w-4 text-gray-500" aria-hidden="true" />
-              <label htmlFor="developer-filter" className="text-sm font-medium text-gray-600">Select Developer</label>
+              <User className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              <label htmlFor="developer-filter" className="text-sm font-medium text-muted-foreground">Select Developer</label>
             </div>
             <select
               id="developer-filter"
               value={selectedDeveloper}
               onChange={(e) => setSelectedDeveloper(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#009578] focus:border-[#009578] transition"
+              className="w-full px-4 py-2.5 border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
               disabled={!currentAdmin || fetchingDevelopers}
             >
               <option value="">Choose Developer</option>
@@ -1120,57 +1079,57 @@ export default function DeveloperActivity() {
 
             {!currentAdmin && (
               <div className="mt-2">
-                <p className="text-xs text-red-500">Please login to view developers</p>
+                <p className="text-xs text-destructive">Please login to view developers</p>
                 <button
                   onClick={() => window.location.href = "/login"}
-                  className="text-xs text-blue-500 hover:text-blue-700 underline"
+                  className="text-xs text-info hover:text-info/80 underline"
                 >
                   Go to Login
                 </button>
               </div>
             )}
-            {currentAdmin && fetchingDevelopers && <p className="text-xs text-gray-500 mt-2">Loading developers...</p>}
+            {currentAdmin && fetchingDevelopers && <p className="text-xs text-muted-foreground mt-2">Loading developers...</p>}
             {currentAdmin && !fetchingDevelopers && developers.length === 0 && (
               <div className="mt-2">
-                <p className="text-xs text-yellow-500">No developers added by you yet</p>
+                <p className="text-xs text-warning">No developers added by you yet</p>
                 <button
                   onClick={() => window.location.href = "/admin/dashboard?section=add-developer"}
-                  className="text-xs text-green-600 hover:text-green-800 underline"
+                  className="text-xs text-success hover:text-success/80 underline"
                 >
                   Add Developers
                 </button>
               </div>
             )}
             {currentAdmin && !fetchingDevelopers && developers.length > 0 && (
-              <p className="text-xs text-gray-500 mt-2">Showing {developers.length} developer{developers.length !== 1 ? "s" : ""} added by you</p>
+              <p className="text-xs text-muted-foreground mt-2">Showing {developers.length} developer{developers.length !== 1 ? "s" : ""} added by you</p>
             )}
           </div>
 
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <Calendar className="h-4 w-4 text-gray-500" aria-hidden="true" />
-              <label htmlFor="date-filter" className="text-sm font-medium text-gray-600">Date</label>
+              <Calendar className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              <label htmlFor="date-filter" className="text-sm font-medium text-muted-foreground">Date</label>
             </div>
             <input
               id="date-filter"
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#009578] focus:border-[#009578] transition"
+              className="w-full px-4 py-2.5 border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
               disabled={!selectedDeveloper}
             />
           </div>
 
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <Timer className="h-4 w-4 text-gray-500" aria-hidden="true" />
-              <label htmlFor="time-range-filter" className="text-sm font-medium text-gray-600">Time Range</label>
+              <Timer className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              <label htmlFor="time-range-filter" className="text-sm font-medium text-muted-foreground">Time Range</label>
             </div>
             <select
               id="time-range-filter"
               value={timeRange}
               onChange={(e) => setTimeRange(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#009578] focus:border-[#009578] transition"
+              className="w-full px-4 py-2.5 border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
               disabled={!selectedDeveloper}
             >
               <option value="today">Today</option>
@@ -1181,14 +1140,14 @@ export default function DeveloperActivity() {
 
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <Eye className="h-4 w-4 text-gray-500" aria-hidden="true" />
-              <label htmlFor="view-mode-filter" className="text-sm font-medium text-gray-600">View Mode</label>
+              <Eye className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              <label htmlFor="view-mode-filter" className="text-sm font-medium text-muted-foreground">View Mode</label>
             </div>
             <select
               id="view-mode-filter"
               value={viewMode}
               onChange={(e) => setViewMode(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#009578] focus:border-[#009578] transition"
+              className="w-full px-4 py-2.5 border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
               disabled={!selectedDeveloper}
             >
               <option value="overview">Overview</option>
@@ -1205,15 +1164,15 @@ export default function DeveloperActivity() {
 
       {/* Active Session Banner */}
       {activeSession && !loading && (
-        <div className="mb-6 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4 flex items-center justify-between">
+        <div className="mb-6 bg-success/10 border border-success/20 rounded-xl p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-success"></span>
             </span>
             <div>
-              <p className="text-sm font-semibold text-green-800">Active Session Running</p>
-              <p className="text-xs text-green-600">
+              <p className="text-sm font-semibold text-success">Active Session Running</p>
+              <p className="text-xs text-success/80">
                 Session: {String(activeSession.session_id || "").slice(-8)} &bull; Started: {fmtDateTime(activeSession.start_time)}
                 &bull; Mouse: {sessionMouseData.length}
                 &bull; Keyboard: {sessionKeyboardData.length}
@@ -1222,7 +1181,7 @@ export default function DeveloperActivity() {
             </div>
           </div>
           <div className="text-right">
-            <p className="text-xs text-green-600">Current Mouse Status</p>
+            <p className="text-xs text-success/80">Current Mouse Status</p>
             <span className={`inline-block px-3 py-1 rounded-full text-sm font-bold ${statusColor(latestMouseStatus)}`}>{latestMouseStatus}</span>
           </div>
         </div>
@@ -1231,8 +1190,8 @@ export default function DeveloperActivity() {
       {/* Loading Spinner */}
       {loading && (
         <div className="text-center py-8">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#009578]"></div>
-          <p className="text-gray-500 mt-2">Loading activity data...</p>
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <p className="text-muted-foreground mt-2">Loading activity data...</p>
         </div>
       )}
 
@@ -1246,30 +1205,30 @@ export default function DeveloperActivity() {
               {/* Summary Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                 <StatCard
-                  icon={<Hourglass className="h-5 w-5 text-gray-700" aria-hidden="true" />}
+                  icon={<Hourglass className="h-5 w-5 text-foreground" aria-hidden="true" />}
                   label="Today's Total Time"
                   value={formatHHMMSS(todayTotalSeconds)}
                   bg="bg-teal-100"
                 />
-                {/* <StatCard icon={<Timer className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Today Active Time" value={fmtDuration(totalActiveTime)} bg="bg-green-100" /> */}
-                {/* <StatCard icon={<Pause className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Idle Time" value={fmtDuration(totalIdleTime)} bg="bg-red-100" /> */}
-                <StatCard icon={<MousePointer2 className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Mouse Active %" value={`${avgMouseActive.toFixed(1)}%`} bg="bg-blue-100" />
-                <StatCard icon={<Target className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Kb Activity %" value={`${avgKeyboardActivity.toFixed(1)}%`} bg="bg-indigo-100" />
-                <StatCard icon={<Camera className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Screenshots" value={screenshots.length} bg="bg-pink-100" />
+                {/* <StatCard icon={<Timer className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Today Active Time" value={fmtDuration(totalActiveTime)} bg="bg-green-100" /> */}
+                {/* <StatCard icon={<Pause className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Idle Time" value={fmtDuration(totalIdleTime)} bg="bg-red-100" /> */}
+                <StatCard icon={<MousePointer2 className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Mouse Active %" value={`${avgMouseActive.toFixed(1)}%`} bg="bg-info/10" />
+                <StatCard icon={<Target className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Kb Activity %" value={`${avgKeyboardActivity.toFixed(1)}%`} bg="bg-primary/10" />
+                <StatCard icon={<Camera className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Screenshots" value={screenshots.length} bg="bg-pink-100" />
               </div>
 
               {/* Productivity Chart */}
               {/* {sessionChartData.length > 0 && (
-                <div className="bg-gray-50 p-6 rounded-lg">
-                  <h3 className="text-lg font-semibold mb-4">Productivity per Session</h3>
+                <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+                  <h3 className="text-lg font-semibold text-foreground mb-4">Productivity per Session</h3>
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={sessionChartData}>
-                      <CartesianGrid strokeDasharray="3 3" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                       <XAxis dataKey="session" />
                       <YAxis />
                       <Tooltip />
                       <Legend />
-                      <Bar dataKey="score" name="Productivity %" fill="#009578" radius={[4,4,0,0]} />
+                      <Bar dataKey="score" name="Productivity %" fill="#0c8f6e" radius={[4,4,0,0]} />
                       <Bar dataKey="active" name="Active (min)" fill="#0ea5e9" radius={[4,4,0,0]} />
                       <Bar dataKey="idle" name="Idle (min)" fill="#ef4444" radius={[4,4,0,0]} />
                     </BarChart>
@@ -1279,12 +1238,12 @@ export default function DeveloperActivity() {
 
               {/* Top Apps + App Pie side by side */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-gray-50 p-6 rounded-lg">
-                  <h3 className="text-lg font-semibold mb-4">Top Applications</h3>
+                <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+                  <h3 className="text-lg font-semibold text-foreground mb-4">Top Applications</h3>
                   {topApps.length > 0 ? (
                     <div className="space-y-2">
                       {topApps.slice(0, 5).map((app, i) => (
-                        <div key={i} className="flex justify-between items-center p-3 bg-white rounded border">
+                        <div key={i} className="flex justify-between items-center p-3 bg-card rounded border">
                           <div className="flex items-center">
                             <div
                               className="w-8 h-8 rounded-lg flex items-center justify-center mr-3"
@@ -1295,19 +1254,19 @@ export default function DeveloperActivity() {
                             <span className="font-medium text-sm truncate max-w-[180px]">{app.app}</span>
                           </div>
                           {/* Show total active time for this app as minutes + seconds */}
-                          <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs whitespace-nowrap">
+                          <span className="bg-info/10 text-info px-3 py-1 rounded-full text-xs whitespace-nowrap">
                             {fmtMinutesToMinSec(app.totalMinutes || 0)}
                           </span>
                         </div>
                       ))}
                     </div>
-                  ) : <p className="text-gray-500 text-center py-4">No app usage data</p>}
+                  ) : <p className="text-muted-foreground text-center py-4">No app usage data</p>}
                 </div>
 
                 {/* App Usage Distribution Pie Chart */}
                 {appPieData.length > 0 && (
-                  <div className="bg-gray-50 p-6 rounded-lg">
-                    <h3 className="text-lg font-semibold mb-4">App Usage Distribution</h3>
+                  <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+                    <h3 className="text-lg font-semibold text-foreground mb-4">App Usage Distribution</h3>
                     <ResponsiveContainer width="100%" height={250}>
                       <PieChart>
                         <Pie
@@ -1335,15 +1294,15 @@ export default function DeveloperActivity() {
             <div className="space-y-6">
               {/* Mouse Summary Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard icon={<MousePointer2 className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Mouse Records" value={mouseData.length} bg="bg-blue-100" />
-                <StatCard icon={<TrendingUp className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Avg Active %" value={`${avgMouseActive.toFixed(1)}%`} bg="bg-green-100" />
-                <StatCard icon={<TrendingDown className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Avg Idle %" value={`${avgMouseIdle.toFixed(1)}%`} bg="bg-red-100" />
-                {/* <div className="bg-white p-4 rounded-lg border shadow-sm">
+                <StatCard icon={<MousePointer2 className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Mouse Records" value={mouseData.length} bg="bg-info/10" />
+                <StatCard icon={<TrendingUp className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Avg Active %" value={`${avgMouseActive.toFixed(1)}%`} bg="bg-green-100" />
+                <StatCard icon={<TrendingDown className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Avg Idle %" value={`${avgMouseIdle.toFixed(1)}%`} bg="bg-red-100" />
+                {/* <div className="bg-card p-4 rounded-xl border border-border shadow-card">
                   <div className="flex items-center">
                     <div className={`p-3 rounded-lg mr-3 ${statusColor(latestMouseStatus)}`}><span className="text-xl">Status</span></div>
                     <div>
-                      <p className="text-xs text-gray-500">Current Status</p>
-                      <p className={`text-lg font-bold ${latestMouseStatus.toLowerCase() === "active" ? "text-green-700" : latestMouseStatus.toLowerCase() === "idle" ? "text-yellow-700" : "text-gray-600"}`}>
+                      <p className="text-xs text-muted-foreground">Current Status</p>
+                      <p className={`text-lg font-bold ${latestMouseStatus.toLowerCase() === "active" ? "text-green-700" : latestMouseStatus.toLowerCase() === "idle" ? "text-yellow-700" : "text-muted-foreground"}`}>
                         {latestMouseStatus}
                       </p>
                     </div>
@@ -1353,23 +1312,23 @@ export default function DeveloperActivity() {
 
               {/* Active Session Mouse Summary */}
               {activeSession && sessionMouseData.length > 0 && (
-                <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-6 rounded-lg border border-green-200">
-                  <h3 className="text-lg font-semibold mb-4 text-green-800">
+                <div className="rounded-xl border border-success/20 bg-success/10 p-6">
+                  <h3 className="text-lg font-semibold mb-4 text-success">
                     Active Session Mouse Activity
-                    <span className="text-sm font-normal text-green-600 ml-2">({sessionMouseData.length} records)</span>
+                    <span className="text-sm font-normal text-success/80 ml-2">({sessionMouseData.length} records)</span>
                   </h3>
                   <div className="grid grid-cols-3 gap-4">
-                    <div className="bg-white p-4 rounded-lg text-center">
+                    <div className="bg-card p-4 rounded-lg text-center border border-border">
                       <p className="text-2xl font-bold text-green-600">{avgSessionMouseActive.toFixed(1)}%</p>
-                      <p className="text-xs text-gray-500">Active %</p>
+                      <p className="text-xs text-muted-foreground">Active %</p>
                     </div>
-                    <div className="bg-white p-4 rounded-lg text-center">
+                    <div className="bg-card p-4 rounded-lg text-center border border-border">
                       <p className="text-2xl font-bold text-red-500">{avgSessionMouseIdle.toFixed(1)}%</p>
-                      <p className="text-xs text-gray-500">Idle %</p>
+                      <p className="text-xs text-muted-foreground">Idle %</p>
                     </div>
-                    <div className="bg-white p-4 rounded-lg text-center">
+                    <div className="bg-card p-4 rounded-lg text-center border border-border">
                       <p className={`text-2xl font-bold ${latestMouseStatus.toLowerCase() === "active" ? "text-green-600" : "text-yellow-600"}`}>{latestMouseStatus}</p>
-                      <p className="text-xs text-gray-500">Latest Status</p>
+                      <p className="text-xs text-muted-foreground">Latest Status</p>
                     </div>
                   </div>
                 </div>
@@ -1377,11 +1336,11 @@ export default function DeveloperActivity() {
 
               {/* Mouse Activity Chart: Active vs Idle % Over Time */}
               {mouseChartData.length > 0 && (
-                <div className="bg-gray-50 p-6 rounded-lg">
-                  <h3 className="text-lg font-semibold mb-4">Mouse Active vs Idle % Over Time</h3>
+                <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+                  <h3 className="text-lg font-semibold text-foreground mb-4">Mouse Active vs Idle % Over Time</h3>
                   <ResponsiveContainer width="100%" height={300}>
                     <AreaChart data={mouseChartData}>
-                      <CartesianGrid strokeDasharray="3 3" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                       <XAxis dataKey="time" />
                       <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
                       <Tooltip formatter={(v) => `${Number(v).toFixed(1)}%`} />
@@ -1396,8 +1355,8 @@ export default function DeveloperActivity() {
               {/* Mouse Activity Pie */}
               {mouseData.length > 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-gray-50 p-6 rounded-lg">
-                    <h3 className="text-lg font-semibold mb-4">Active vs Idle Distribution</h3>
+                  <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+                    <h3 className="text-lg font-semibold text-foreground mb-4">Active vs Idle Distribution</h3>
                     <ResponsiveContainer width="100%" height={250}>
                       <PieChart>
                         <Pie data={[
@@ -1416,13 +1375,13 @@ export default function DeveloperActivity() {
               )}
 
               {/* Mouse Activity Timeline Table */}
-              <div className="bg-gray-50 p-6 rounded-lg">
+              <div className="rounded-xl border border-border bg-card p-6 shadow-card">
                 <div className="flex items-start justify-between gap-4 mb-4">
                   <h3 className="text-lg font-semibold">Mouse Activity Timeline</h3>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      className="px-3 py-1.5 rounded border bg-white text-sm disabled:opacity-50"
+                      className="px-3 py-1.5 rounded-lg border border-border bg-card text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
                       onClick={() => fetchMousePage({ page: Math.max(1, mousePage - 1) })}
                       disabled={mousePageLoading || mousePage <= 1}
                     >
@@ -1430,7 +1389,7 @@ export default function DeveloperActivity() {
                     </button>
                     <button
                       type="button"
-                      className="px-3 py-1.5 rounded border bg-white text-sm disabled:opacity-50"
+                      className="px-3 py-1.5 rounded-lg border border-border bg-card text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
                       onClick={() => fetchMousePage({ page: mousePage + 1 })}
                       disabled={mousePageLoading || (mousePage * MOUSE_PAGE_SIZE) >= mouseTotalCount}
                     >
@@ -1439,7 +1398,7 @@ export default function DeveloperActivity() {
                   </div>
                 </div>
 
-                <p className="text-sm text-gray-600 mb-3">
+                <p className="text-sm text-muted-foreground mb-3">
                   {(() => {
                     const total = mouseTotalCount || 0;
                     if (!total) return "Showing 0 to 0 of 0";
@@ -1449,21 +1408,21 @@ export default function DeveloperActivity() {
                   })()}
                 </p>
                 <div className="overflow-x-auto max-h-96 overflow-y-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-100 sticky top-0">
+                  <table className="min-w-full divide-y divide-border">
+                    <thead className="bg-muted sticky top-0">
                       <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Timestamp</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Active %</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Idle %</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Timestamp</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Active %</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Idle %</th>
                       </tr>
                     </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
+                    <tbody className="bg-card divide-y divide-border">
                       {mouseData.map((r, i) => (
-                        <tr key={r.id || i} className={`hover:bg-gray-50 ${i === 0 ? "bg-green-50" : ""}`}>
-                          <td className="px-4 py-3 text-sm text-gray-600">{fmtDateTime(r.created_at)}</td>
+                        <tr key={r.id || i} className={`hover:bg-muted/50 ${i === 0 ? "bg-green-50" : ""}`}>
+                          <td className="px-4 py-3 text-sm text-muted-foreground">{fmtDateTime(r.created_at)}</td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
-                              <div className="w-16 bg-gray-200 rounded-full h-2">
+                              <div className="w-16 bg-muted rounded-full h-2">
                                 <div className="bg-green-500 h-2 rounded-full" style={{ width: `${Math.min(r.active_percentage || 0, 100)}%` }}></div>
                               </div>
                               <span className="text-sm font-medium text-green-700">{(r.active_percentage || 0).toFixed(1)}%</span>
@@ -1471,7 +1430,7 @@ export default function DeveloperActivity() {
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
-                              <div className="w-16 bg-gray-200 rounded-full h-2">
+                              <div className="w-16 bg-muted rounded-full h-2">
                                 <div className="bg-red-400 h-2 rounded-full" style={{ width: `${Math.min(r.idle_percentage || 0, 100)}%` }}></div>
                               </div>
                               <span className="text-sm font-medium text-red-600">{(r.idle_percentage || 0).toFixed(1)}%</span>
@@ -1482,7 +1441,7 @@ export default function DeveloperActivity() {
                     </tbody>
                   </table>
                 </div>
-                {mousePageLoading && <p className="text-center text-sm text-gray-500 mt-3">Loading…</p>}
+                {mousePageLoading && <p className="text-center text-sm text-muted-foreground mt-3">Loading…</p>}
               </div>
             </div>
           )}
@@ -1491,56 +1450,56 @@ export default function DeveloperActivity() {
           {viewMode === "logins" && (
             <div className="space-y-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard icon={<LockKeyhole className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Today's Login Count" value={todaysLoginCount} bg="bg-emerald-100" />
-                <StatCard icon={<Clock1 className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="First Login" value={firstLoginTime} bg="bg-blue-100" />
-                <StatCard icon={<Clock2 className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Second Login" value={secondLoginTime} bg="bg-indigo-100" />
-                <div className="bg-white p-4 rounded-lg border shadow-sm">
+                <StatCard icon={<LockKeyhole className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Today's Login Count" value={todaysLoginCount} bg="bg-emerald-100" />
+                <StatCard icon={<Clock1 className="h-5 w-5 text-foreground" aria-hidden="true" />} label="First Login" value={firstLoginTime} bg="bg-info/10" />
+                <StatCard icon={<Clock2 className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Second Login" value={secondLoginTime} bg="bg-primary/10" />
+                <div className="bg-card p-4 rounded-xl border border-border shadow-card">
                   <div className="flex items-center">
                     <div className={`${dailyLoginStatus === "Blocked" ? "bg-red-100" : "bg-green-100"} p-3 rounded-lg mr-3`}>
                       {dailyLoginStatus === "Blocked" ? (
-                        <XCircle className="h-5 w-5 text-gray-700" aria-hidden="true" />
+                        <XCircle className="h-5 w-5 text-foreground" aria-hidden="true" />
                       ) : (
-                        <CheckCircle2 className="h-5 w-5 text-gray-700" aria-hidden="true" />
+                        <CheckCircle2 className="h-5 w-5 text-foreground" aria-hidden="true" />
                       )}
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500">Login Status</p>
+                      <p className="text-xs text-muted-foreground">Login Status</p>
                       <p className={`text-lg font-bold ${dailyLoginStatus === "Blocked" ? "text-red-700" : "text-green-700"}`}>{dailyLoginStatus}</p>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-gray-50 p-6 rounded-lg">
-                <h3 className="text-lg font-semibold mb-4">Developer Login Activity ({loginRecords.length})</h3>
+              <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+                <h3 className="text-lg font-semibold text-foreground mb-4">Developer Login Activity ({loginRecords.length})</h3>
 
                 {loginRecords.length === 0 ? (
-                  <div className="bg-white rounded-lg border p-8 text-center">
+                  <div className="bg-card rounded-lg border p-8 text-center">
                     <div className="mb-4 flex justify-center">
-                      <LockKeyhole className="h-10 w-10 text-gray-400" aria-hidden="true" />
+                      <LockKeyhole className="h-10 w-10 text-muted-foreground" aria-hidden="true" />
                     </div>
-                    <h4 className="text-lg font-semibold text-gray-700 mb-2">No Login Activity Recorded</h4>
-                    <p className="text-gray-500">No login records found for this developer on {selectedDate}.</p>
+                    <h4 className="text-lg font-semibold text-foreground mb-2">No Login Activity Recorded</h4>
+                    <p className="text-muted-foreground">No login records found for this developer on {selectedDate}.</p>
                   </div>
                 ) : (
                   <div className="overflow-x-auto max-h-96 overflow-y-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-100 sticky top-0">
+                    <table className="min-w-full divide-y divide-border">
+                      <thead className="bg-muted sticky top-0">
                         <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Developer</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Login Date</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Login Time</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Developer</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Login Date</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Login Time</th>
                         </tr>
                       </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
+                      <tbody className="bg-card divide-y divide-border">
                         {loginChrono.map(({ row }, i) => {
                           const ts = getLoginDisplayValue(row);
                           const devName = row?.developer_name || row?.name || developer?.name || "—";
                           return (
-                            <tr key={row?.id || i} className="hover:bg-gray-50">
-                              <td className="px-4 py-3 text-sm text-gray-700">{devName}</td>
-                              <td className="px-4 py-3 text-sm text-gray-600">{fmtPkDate(ts)}</td>
-                              <td className="px-4 py-3 text-sm font-medium text-gray-800">{fmtPkTime12(ts)}</td>
+                            <tr key={row?.id || i} className="hover:bg-muted/50">
+                              <td className="px-4 py-3 text-sm text-foreground">{devName}</td>
+                              <td className="px-4 py-3 text-sm text-muted-foreground">{fmtPkDate(ts)}</td>
+                              <td className="px-4 py-3 text-sm font-medium text-foreground">{fmtPkTime12(ts)}</td>
                             </tr>
                           );
                         })}
@@ -1557,13 +1516,13 @@ export default function DeveloperActivity() {
             <div className="space-y-6">
               {/* No Data Fallback */}
               {keyboardData.length === 0 && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
+                <div className="bg-muted/50 border border-border rounded-lg p-8 text-center">
                   <div className="mb-4 flex justify-center">
-                    <Keyboard className="h-10 w-10 text-gray-400" aria-hidden="true" />
+                    <Keyboard className="h-10 w-10 text-muted-foreground" aria-hidden="true" />
                   </div>
-                  <h3 className="text-lg font-semibold text-gray-700 mb-2">No Keyboard Activity Recorded</h3>
-                  <p className="text-gray-500">No keyboard activity data found for this session or date range.</p>
-                  <p className="text-sm text-gray-400 mt-2">Keyboard stats will appear here once the desktop tracker records typing activity.</p>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">No Keyboard Activity Recorded</h3>
+                  <p className="text-muted-foreground">No keyboard activity data found for this session or date range.</p>
+                  <p className="text-sm text-muted-foreground mt-2">Keyboard stats will appear here once the desktop tracker records typing activity.</p>
                 </div>
               )}
 
@@ -1571,17 +1530,17 @@ export default function DeveloperActivity() {
               {keyboardData.length > 0 && (
                 <>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <StatCard icon={<Keyboard className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Total Keystrokes" value={totalKeystrokes.toLocaleString()} bg="bg-purple-100" />
-                    <StatCard icon={<Gauge className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Avg WPM" value={avgWPM.toFixed(1)} bg="bg-green-100" />
-                    <StatCard icon={<Target className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Activity Score" value={avgKeyboardScore.toFixed(1)} bg="bg-yellow-100" />
-                    <div className="bg-white p-4 rounded-lg border shadow-sm">
+                    <StatCard icon={<Keyboard className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Total Keystrokes" value={totalKeystrokes.toLocaleString()} bg="bg-violet-500/10" />
+                    <StatCard icon={<Gauge className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Avg WPM" value={avgWPM.toFixed(1)} bg="bg-green-100" />
+                    <StatCard icon={<Target className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Activity Score" value={avgKeyboardScore.toFixed(1)} bg="bg-yellow-100" />
+                    <div className="bg-card p-4 rounded-xl border border-border shadow-card">
                       <div className="flex items-center">
-                        <div className="bg-indigo-100 p-3 rounded-lg mr-3 flex items-center justify-center">
-                          <BarChart3 className="h-5 w-5 text-gray-700" aria-hidden="true" />
+                        <div className="bg-primary/10 p-3 rounded-lg mr-3 flex items-center justify-center">
+                          <BarChart3 className="h-5 w-5 text-foreground" aria-hidden="true" />
                         </div>
                         <div>
-                          <p className="text-xs text-gray-500">Keyboard Activity %</p>
-                          <p className="text-lg font-bold text-indigo-700">{avgKeyboardActivity.toFixed(1)}%</p>
+                          <p className="text-xs text-muted-foreground">Keyboard Activity %</p>
+                          <p className="text-lg font-bold text-primary">{avgKeyboardActivity.toFixed(1)}%</p>
                         </div>
                       </div>
                     </div>
@@ -1589,35 +1548,35 @@ export default function DeveloperActivity() {
 
                   {/* Keyboard Performance Stats */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <StatCard icon={<Timer className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Active Time" value={`${totalKbActiveTime.toFixed(1)} min`} bg="bg-green-100" />
-                    <StatCard icon={<Pause className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Idle Time" value={`${totalKbIdleTime.toFixed(1)} min`} bg="bg-red-100" />
-                    <StatCard icon={<Type className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Unique Keys" value={totalUniqueKeys.toLocaleString()} bg="bg-blue-100" />
-                    <StatCard icon={<Clock className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Total Time" value={`${totalKbTime.toFixed(1)} min`} bg="bg-gray-100" />
+                    <StatCard icon={<Timer className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Active Time" value={`${totalKbActiveTime.toFixed(1)} min`} bg="bg-green-100" />
+                    <StatCard icon={<Pause className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Idle Time" value={`${totalKbIdleTime.toFixed(1)} min`} bg="bg-red-100" />
+                    <StatCard icon={<Type className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Unique Keys" value={totalUniqueKeys.toLocaleString()} bg="bg-info/10" />
+                    <StatCard icon={<Clock className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Total Time" value={`${totalKbTime.toFixed(1)} min`} bg="bg-muted" />
                   </div>
 
                   {/* Active Session Keyboard Summary */}
                   {activeSession && sessionKeyboardData.length > 0 && (
-                    <div className="bg-gradient-to-r from-purple-50 to-indigo-50 p-6 rounded-lg border border-purple-200">
-                      <h3 className="text-lg font-semibold mb-4 text-purple-800">
+                    <div className="rounded-xl border p-6" style={{ borderColor: "#7c3aed33", backgroundColor: "#7c3aed14" }}>
+                      <h3 className="text-lg font-semibold mb-4" style={{ color: "#7c3aed" }}>
                         Active Session Keyboard Activity
-                        <span className="text-sm font-normal text-purple-600 ml-2">({sessionKeyboardData.length} records)</span>
+                        <span className="text-sm font-normal ml-2" style={{ color: "#7c3aed" }}>({sessionKeyboardData.length} records)</span>
                       </h3>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="bg-white p-4 rounded-lg text-center">
-                          <p className="text-2xl font-bold text-purple-600">{sessionTotalKeys.toLocaleString()}</p>
-                          <p className="text-xs text-gray-500">Keystrokes</p>
+                        <div className="bg-card p-4 rounded-lg text-center border border-border">
+                          <p className="text-2xl font-bold text-violet-600">{sessionTotalKeys.toLocaleString()}</p>
+                          <p className="text-xs text-muted-foreground">Keystrokes</p>
                         </div>
-                        <div className="bg-white p-4 rounded-lg text-center">
+                        <div className="bg-card p-4 rounded-lg text-center border border-border">
                           <p className="text-2xl font-bold text-green-600">{sessionAvgWPM.toFixed(1)}</p>
-                          <p className="text-xs text-gray-500">WPM</p>
+                          <p className="text-xs text-muted-foreground">WPM</p>
                         </div>
-                        <div className="bg-white p-4 rounded-lg text-center">
-                          <p className="text-2xl font-bold text-indigo-600">{sessionAvgKbActivity.toFixed(1)}%</p>
-                          <p className="text-xs text-gray-500">Activity %</p>
+                        <div className="bg-card p-4 rounded-lg text-center border border-border">
+                          <p className="text-2xl font-bold text-primary">{sessionAvgKbActivity.toFixed(1)}%</p>
+                          <p className="text-xs text-muted-foreground">Activity %</p>
                         </div>
-                        <div className="bg-white p-4 rounded-lg text-center">
+                        <div className="bg-card p-4 rounded-lg text-center border border-border">
                           <p className={`text-2xl font-bold ${sessionAvgScore >= 80 ? "text-green-600" : sessionAvgScore >= 60 ? "text-yellow-600" : "text-red-600"}`}>{sessionAvgScore.toFixed(1)}</p>
-                          <p className="text-xs text-gray-500">Score</p>
+                          <p className="text-xs text-muted-foreground">Score</p>
                         </div>
                       </div>
                     </div>
@@ -1632,8 +1591,8 @@ export default function DeveloperActivity() {
                   {/* Active vs Idle Time Distribution */}
                   {keyboardData.length > 0 && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="bg-gray-50 p-6 rounded-lg">
-                        <h3 className="text-lg font-semibold mb-4">Active vs Idle Time</h3>
+                      <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+                        <h3 className="text-lg font-semibold text-foreground mb-4">Active vs Idle Time</h3>
                         <ResponsiveContainer width="100%" height={250}>
                           <PieChart>
                             <Pie data={[
@@ -1655,36 +1614,36 @@ export default function DeveloperActivity() {
                   )}
 
                   {/* Keyboard Activity Timeline Table */}
-                  <div className="bg-gray-50 p-6 rounded-lg">
-                    <h3 className="text-lg font-semibold mb-4">Keyboard Activity Timeline ({keyboardData.length})</h3>
+                  <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+                    <h3 className="text-lg font-semibold text-foreground mb-4">Keyboard Activity Timeline ({keyboardData.length})</h3>
                     <div className="overflow-x-auto max-h-96 overflow-y-auto">
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-100 sticky top-0">
+                      <table className="min-w-full divide-y divide-border">
+                        <thead className="bg-muted sticky top-0">
                           <tr>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tracked At</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Keystrokes</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unique Keys</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">WPM</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Activity %</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Score</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Active</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Idle</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Session</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Tracked At</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Keystrokes</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Unique Keys</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">WPM</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Activity %</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Score</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Active</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Idle</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Session</th>
                           </tr>
                         </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
+                        <tbody className="bg-card divide-y divide-border">
                           {keyboardData.slice(0, 50).map((r, i) => (
-                            <tr key={r.id || i} className={`hover:bg-gray-50 ${i === 0 ? "bg-purple-50" : ""}`}>
-                              <td className="px-4 py-3 text-sm text-gray-600">{fmtDateTime(r.tracked_at)}</td>
+                            <tr key={r.id || i} className={`hover:bg-muted/50 ${i === 0 ? "bg-violet-500/5" : ""}`}>
+                              <td className="px-4 py-3 text-sm text-muted-foreground">{fmtDateTime(r.tracked_at)}</td>
                               <td className="px-4 py-3 text-sm font-medium">{(r.total_keys || 0).toLocaleString()}</td>
                               <td className="px-4 py-3 text-sm">{r.unique_keys || 0}</td>
                               <td className="px-4 py-3 text-sm font-medium text-green-700">{(r.words_per_minute || 0).toFixed(1)}</td>
                               <td className="px-4 py-3">
                                 <div className="flex items-center gap-2">
-                                  <div className="w-16 bg-gray-200 rounded-full h-2">
-                                    <div className="bg-indigo-500 h-2 rounded-full" style={{ width: `${Math.min(r.keyboard_activity_percentage || 0, 100)}%` }}></div>
+                                  <div className="w-16 bg-muted rounded-full h-2">
+                                    <div className="bg-primary h-2 rounded-full" style={{ width: `${Math.min(r.keyboard_activity_percentage || 0, 100)}%` }}></div>
                                   </div>
-                                  <span className="text-sm font-medium text-indigo-700">{(r.keyboard_activity_percentage || 0).toFixed(1)}%</span>
+                                  <span className="text-sm font-medium text-primary">{(r.keyboard_activity_percentage || 0).toFixed(1)}%</span>
                                 </div>
                               </td>
                               <td className="px-4 py-3">
@@ -1694,13 +1653,13 @@ export default function DeveloperActivity() {
                               </td>
                               <td className="px-4 py-3 text-sm text-green-600">{(r.active_time_minutes || 0).toFixed(1)}m</td>
                               <td className="px-4 py-3 text-sm text-red-500">{(r.idle_time_minutes || 0).toFixed(1)}m</td>
-                              <td className="px-4 py-3 text-xs text-gray-400 font-mono">{r.session_id ? String(r.session_id).slice(-8) : "—"}</td>
+                              <td className="px-4 py-3 text-xs text-muted-foreground font-mono">{r.session_id ? String(r.session_id).slice(-8) : "—"}</td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
-                    {keyboardData.length > 50 && <p className="text-center text-sm text-gray-500 mt-3">Showing 50 of {keyboardData.length} records</p>}
+                    {keyboardData.length > 50 && <p className="text-center text-sm text-muted-foreground mt-3">Showing 50 of {keyboardData.length} records</p>}
                   </div>
                 </>
               )}
@@ -1712,10 +1671,10 @@ export default function DeveloperActivity() {
             <div className="space-y-6">
               {/* App Usage Summary Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard icon={<Monitor className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Apps Used" value={totalAppsUsed} bg="bg-blue-100" />
-                {/* <StatCard icon={<BarChart3 className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Usage Records" value={appUsageData.length} bg="bg-green-100" /> */}
+                <StatCard icon={<Monitor className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Apps Used" value={totalAppsUsed} bg="bg-info/10" />
+                {/* <StatCard icon={<BarChart3 className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Usage Records" value={appUsageData.length} bg="bg-green-100" /> */}
                 <StatCard
-                  icon={<Clock className="h-5 w-5 text-gray-700" aria-hidden="true" />}
+                  icon={<Clock className="h-5 w-5 text-foreground" aria-hidden="true" />}
                   label="Total Active Time"
                   value={(() => {
                     const totalSeconds = totalAppActiveMinutes * 60;
@@ -1733,15 +1692,15 @@ export default function DeveloperActivity() {
                       return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
                     }
                   })()}
-                  bg="bg-purple-100"
+                  bg="bg-violet-500/10"
                 />
                 {/* {currentApp && (
-                  <div className="bg-white p-4 rounded-lg border shadow-sm">
+                  <div className="bg-card p-4 rounded-xl border border-border shadow-card">
                     <div className="flex items-center">
-                      <div className="bg-orange-100 p-3 rounded-lg mr-3"><span className="text-sm font-medium text-gray-700">Active</span></div>
+                      <div className="bg-orange-100 p-3 rounded-lg mr-3"><span className="text-sm font-medium text-foreground">Active</span></div>
                       <div>
-                        <p className="text-xs text-gray-500">Currently Active</p>
-                        <p className="text-sm font-bold text-gray-800 truncate max-w-[140px]">{currentApp.app_name}</p>
+                        <p className="text-xs text-muted-foreground">Currently Active</p>
+                        <p className="text-sm font-bold text-foreground truncate max-w-[140px]">{currentApp.app_name}</p>
                       </div>
                     </div>
                   </div>
@@ -1759,13 +1718,13 @@ export default function DeveloperActivity() {
                       </span>
                       <div>
                         <p className="text-sm font-semibold text-orange-800">Currently Active Application</p>
-                        <p className="text-lg font-bold text-gray-800">{currentApp.app_name}</p>
-                        {currentApp.window_title && <p className="text-xs text-gray-500 truncate max-w-md">{currentApp.window_title}</p>}
+                        <p className="text-lg font-bold text-foreground">{currentApp.app_name}</p>
+                        {currentApp.window_title && <p className="text-xs text-muted-foreground truncate max-w-md">{currentApp.window_title}</p>}
                       </div>
                     </div>
                     <div className="text-right">
                       <p className="text-2xl font-bold text-orange-600">{(currentApp.duration_minutes || 0).toFixed(1)} min</p>
-                      <p className="text-xs text-gray-500">Since: {fmtDateTime(currentApp.start_time || currentApp.tracked_at)}</p>
+                      <p className="text-xs text-muted-foreground">Since: {fmtDateTime(currentApp.start_time || currentApp.tracked_at)}</p>
                     </div>
                   </div>
                 </div>
@@ -1773,27 +1732,27 @@ export default function DeveloperActivity() {
 
               {/* Active Session App Summary */}
               {activeSession && sessionAppData.length > 0 && (
-                <div className="bg-gradient-to-r from-blue-50 to-cyan-50 p-6 rounded-lg border border-blue-200">
-                  <h3 className="text-lg font-semibold mb-4 text-blue-800">
+                <div className="rounded-xl border border-info/20 bg-info/10 p-6">
+                  <h3 className="text-lg font-semibold mb-4 text-info">
                     Active Session Applications
-                    <span className="text-sm font-normal text-blue-600 ml-2">({sessionAppData.length} records)</span>
+                    <span className="text-sm font-normal text-info/80 ml-2">({sessionAppData.length} records)</span>
                   </h3>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-white p-4 rounded-lg text-center">
-                      <p className="text-2xl font-bold text-blue-600">{new Set(sessionAppData.map(r => r.app_name)).size}</p>
-                      <p className="text-xs text-gray-500">Unique Apps</p>
+                    <div className="bg-card p-4 rounded-lg text-center border border-border">
+                      <p className="text-2xl font-bold text-info">{new Set(sessionAppData.map(r => r.app_name)).size}</p>
+                      <p className="text-xs text-muted-foreground">Unique Apps</p>
                     </div>
-                    <div className="bg-white p-4 rounded-lg text-center">
+                    <div className="bg-card p-4 rounded-lg text-center border border-border">
                       <p className="text-2xl font-bold text-green-600">{sessionAppData.reduce((s, r) => s + (r.duration_minutes || 0), 0).toFixed(1)}</p>
-                      <p className="text-xs text-gray-500">Total Minutes</p>
+                      <p className="text-xs text-muted-foreground">Total Minutes</p>
                     </div>
-                    <div className="bg-white p-4 rounded-lg text-center">
-                      <p className="text-2xl font-bold text-purple-600">{sessionAppData.length}</p>
-                      <p className="text-xs text-gray-500">App Switches</p>
+                    <div className="bg-card p-4 rounded-lg text-center border border-border">
+                      <p className="text-2xl font-bold text-violet-600">{sessionAppData.length}</p>
+                      <p className="text-xs text-muted-foreground">App Switches</p>
                     </div>
-                    <div className="bg-white p-4 rounded-lg text-center">
+                    <div className="bg-card p-4 rounded-lg text-center border border-border">
                       <p className="text-2xl font-bold text-orange-600">{sessionAppData.filter(r => r.is_new_app).length}</p>
-                      <p className="text-xs text-gray-500">New Apps</p>
+                      <p className="text-xs text-muted-foreground">New Apps</p>
                     </div>
                   </div>
                 </div>
@@ -1801,27 +1760,27 @@ export default function DeveloperActivity() {
 
               {/* Top Applications */}
               {topApps.length > 0 && (
-                <div className="bg-gray-50 p-6 rounded-lg">
-                  <h3 className="text-lg font-semibold mb-4">Top Applications</h3>
+                <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+                  <h3 className="text-lg font-semibold text-foreground mb-4">Top Applications</h3>
                   <div className="space-y-3">
                     {topApps.map((app, i) => (
-                      <div key={i} className="flex items-center justify-between p-3 bg-white rounded-lg border hover:shadow-sm transition-shadow">
+                      <div key={i} className="flex items-center justify-between p-3 bg-card rounded-lg border hover:shadow-sm transition-shadow">
                         <div className="flex items-center gap-3 flex-1">
                           <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] + "20" }}>
                             <span className="text-sm font-bold" style={{ color: CHART_COLORS[i % CHART_COLORS.length] }}>#{i + 1}</span>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">{app.app}</p>
-                            <p className="text-xs text-gray-400">{app.count} usage{app.count !== 1 ? "s" : ""}</p>
+                            <p className="text-sm font-medium text-foreground truncate">{app.app}</p>
+                            <p className="text-xs text-muted-foreground">{app.count} usage{app.count !== 1 ? "s" : ""}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-4">
                           {/* Progress bar showing % of session time */}
-                          <div className="w-24 bg-gray-200 rounded-full h-2 hidden md:block">
+                          <div className="w-24 bg-muted rounded-full h-2 hidden md:block">
                             <div className="h-2 rounded-full" style={{ width: `${Math.min(app.pct, 100)}%`, backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}></div>
                           </div>
-                          <span className="text-xs text-gray-500 w-12 text-right">{app.pct.toFixed(0)}%</span>
-                          <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap">{app.totalMinutes.toFixed(1)} min</span>
+                          <span className="text-xs text-muted-foreground w-12 text-right">{app.pct.toFixed(0)}%</span>
+                          <span className="bg-info/10 text-info px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap">{app.totalMinutes.toFixed(1)} min</span>
                         </div>
                       </div>
                     ))}
@@ -1832,8 +1791,8 @@ export default function DeveloperActivity() {
               {/* Charts: Pie + Bar side by side */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {appPieData.length > 0 && (
-                  <div className="bg-gray-50 p-6 rounded-lg">
-                    <h3 className="text-lg font-semibold mb-4">Time Distribution</h3>
+                  <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+                    <h3 className="text-lg font-semibold text-foreground mb-4">Time Distribution</h3>
                     <ResponsiveContainer width="100%" height={300}>
                       <PieChart>
                         <Pie data={appPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
@@ -1846,11 +1805,11 @@ export default function DeveloperActivity() {
                 )}
 
                 {appBarData.length > 0 && (
-                  <div className="bg-gray-50 p-6 rounded-lg">
-                    <h3 className="text-lg font-semibold mb-4">Top Apps Usage (minutes)</h3>
+                  <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+                    <h3 className="text-lg font-semibold text-foreground mb-4">Top Apps Usage (minutes)</h3>
                     <ResponsiveContainer width="100%" height={300}>
                       <BarChart data={appBarData} layout="vertical">
-                        <CartesianGrid strokeDasharray="3 3" />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                         <XAxis type="number" />
                         <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 12 }} />
                         <Tooltip
@@ -1875,7 +1834,7 @@ export default function DeveloperActivity() {
                             }
                           }}
                         />
-                        <Bar dataKey="minutes" name="Minutes" fill="#009578" radius={[0, 4, 4, 0]} />
+                        <Bar dataKey="minutes" name="Minutes" fill="#0c8f6e" radius={[0, 4, 4, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -1883,18 +1842,18 @@ export default function DeveloperActivity() {
               </div>
 
               {/* Application Activity Timeline Table */}
-              <div className="bg-gray-50 p-6 rounded-lg">
-                <h3 className="text-lg font-semibold mb-4">Application Activity Timeline ({appUsageData.length})</h3>
+              <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+                <h3 className="text-lg font-semibold text-foreground mb-4">Application Activity Timeline ({appUsageData.length})</h3>
                 <div className="overflow-x-auto max-h-96 overflow-y-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-100 sticky top-0">
+                  <table className="min-w-full divide-y divide-border">
+                    <thead className="bg-muted sticky top-0">
                       <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Application</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Window Title</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duration</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Application</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Window Title</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Duration</th>
                       </tr>
                     </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
+                    <tbody className="bg-card divide-y divide-border">
                       {[...appUsageData].sort((a, b) => {
                         // Derive canonical total seconds for each row using explicit parseFloat
                         // so Postgres numeric-as-string values are always compared correctly.
@@ -1909,23 +1868,23 @@ export default function DeveloperActivity() {
                         const formattedDuration = fmtMinutesToMinSec(durationMinutes);
 
                         return (
-                          <tr key={r.id || i} className="hover:bg-gray-50">
+                          <tr key={r.id || i} className="hover:bg-muted/50">
                             <td className="px-4 py-3">
                               <div className="flex items-center">
-                                <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
-                                  <Monitor className="h-4 w-4 text-blue-600" aria-hidden="true" />
+                                <div className="w-8 h-8 bg-info/10 rounded-lg flex items-center justify-center mr-3">
+                                  <Monitor className="h-4 w-4 text-info" aria-hidden="true" />
                                 </div>
                                 <div>
-                                  <p className="text-sm font-medium text-gray-900 truncate max-w-[180px]">{r.app_name}</p>
+                                  <p className="text-sm font-medium text-foreground truncate max-w-[180px]">{r.app_name}</p>
                                   {r.app_name_raw && r.app_name_raw !== r.app_name && (
-                                    <p className="text-xs text-gray-400 truncate max-w-[180px]">{r.app_name_raw}</p>
+                                    <p className="text-xs text-muted-foreground truncate max-w-[180px]">{r.app_name_raw}</p>
                                   )}
                                 </div>
                               </div>
                             </td>
-                            <td className="px-4 py-3 text-sm text-gray-600 truncate max-w-[200px]">{r.window_title || "—"}</td>
+                            <td className="px-4 py-3 text-sm text-muted-foreground truncate max-w-[200px]">{r.window_title || "—"}</td>
                             <td className="px-4 py-3">
-                              <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs whitespace-nowrap">{formattedDuration}</span>
+                              <span className="bg-info/10 text-info px-3 py-1 rounded-full text-xs whitespace-nowrap">{formattedDuration}</span>
                             </td>
                           </tr>
                         );
@@ -1933,27 +1892,27 @@ export default function DeveloperActivity() {
                     </tbody>
                   </table>
                 </div>
-                {appUsageData.length > 50 && <p className="text-center text-sm text-gray-500 mt-3">Showing 50 of {appUsageData.length} records</p>}
+                {appUsageData.length > 50 && <p className="text-center text-sm text-muted-foreground mt-3">Showing 50 of {appUsageData.length} records</p>}
               </div>
 
               {/* Recent App Switches */}
               {appUsageData.length > 1 && (
-                <div className="bg-gray-50 p-6 rounded-lg">
-                  <h3 className="text-lg font-semibold mb-4">Recent Application Switches</h3>
+                <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+                  <h3 className="text-lg font-semibold text-foreground mb-4">Recent Application Switches</h3>
                   <div className="space-y-2 max-h-64 overflow-y-auto">
                     {appUsageData.slice(0, 20).map((r, i) => {
                       const next = appUsageData[i + 1];
                       return (
-                        <div key={r.id || i} className="flex items-center gap-2 p-2 bg-white rounded border">
-                          <span className="text-xs text-gray-400 w-20">{fmtTime(r.tracked_at || r.start_time)}</span>
+                        <div key={r.id || i} className="flex items-center gap-2 p-2 bg-card rounded border">
+                          <span className="text-xs text-muted-foreground w-20">{fmtTime(r.tracked_at || r.start_time)}</span>
                           {next && (
                             <>
-                              <span className="text-sm text-gray-500 truncate max-w-[120px]">{next.app_name}</span>
-                              <span className="text-gray-400">→</span>
+                              <span className="text-sm text-muted-foreground truncate max-w-[120px]">{next.app_name}</span>
+                              <span className="text-muted-foreground">→</span>
                             </>
                           )}
-                          <span className="text-sm font-medium text-gray-800 truncate max-w-[120px]">{r.app_name}</span>
-                          <span className="text-xs text-gray-400 ml-auto">{(r.duration_minutes || 0).toFixed(1)} min</span>
+                          <span className="text-sm font-medium text-foreground truncate max-w-[120px]">{r.app_name}</span>
+                          <span className="text-xs text-muted-foreground ml-auto">{(r.duration_minutes || 0).toFixed(1)} min</span>
                           {r.is_new_app && <span className="px-1.5 py-0.5 text-xs bg-yellow-100 text-yellow-800 rounded">NEW</span>}
                         </div>
                       );
@@ -1969,16 +1928,16 @@ export default function DeveloperActivity() {
             <div className="space-y-6">
               {/* Screenshot Summary Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard icon={<Camera className="h-5 w-5 text-gray-700" aria-hidden="true" />} label="Total Screenshots" value={screenshots.length} bg="bg-pink-100" />
+                <StatCard icon={<Camera className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Total Screenshots" value={screenshots.length} bg="bg-pink-100" />
                 {screenshots.length > 0 && (
-                  <div className="bg-white p-4 rounded-lg border shadow-sm">
+                  <div className="bg-card p-4 rounded-xl border border-border shadow-card">
                     <div className="flex items-center">
                       <div className="bg-green-100 p-3 rounded-lg mr-3 flex items-center justify-center">
-                        <CircleDot className="h-5 w-5 text-gray-700" aria-hidden="true" />
+                        <CircleDot className="h-5 w-5 text-foreground" aria-hidden="true" />
                       </div>
                       <div>
-                        <p className="text-xs text-gray-500">Latest Capture</p>
-                        <p className="text-sm font-bold text-gray-800">{fmtDbExactTime((screenshots[0].timestamp || screenshots[0].created_at) || "")}</p>
+                        <p className="text-xs text-muted-foreground">Latest Capture</p>
+                        <p className="text-sm font-bold text-foreground">{fmtDbExactTime((screenshots[0].timestamp || screenshots[0].created_at) || "")}</p>
                       </div>
                     </div>
 
@@ -2023,29 +1982,29 @@ export default function DeveloperActivity() {
               )} */}
 
               {/* Screenshot Gallery */}
-              <div className="bg-gray-50 p-6 rounded-lg">
-                <h3 className="text-lg font-semibold mb-4">Screenshot Gallery ({screenshots.length})</h3>
+              <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+                <h3 className="text-lg font-semibold text-foreground mb-4">Screenshot Gallery ({screenshots.length})</h3>
                 {screenshots.length > 0 ? (
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     {screenshots.map((ss, i) => (
-                      <div key={ss.id || i} className={`bg-white rounded-lg border overflow-hidden hover:shadow-lg transition-shadow cursor-pointer ${i === 0 ? "ring-2 ring-pink-300" : ""}`}
+                      <div key={ss.id || i} className={`bg-card rounded-lg border overflow-hidden hover:shadow-lg transition-shadow cursor-pointer ${i === 0 ? "ring-2 ring-pink-300" : ""}`}
                         onClick={() => setSelectedScreenshot(ss)}>
                         {ss.public_url ? (
                           <img src={ss.public_url} alt={ss.filename || `Screenshot ${i + 1}`} className="w-full h-40 object-cover" loading="lazy" />
                         ) : (
-                          <div className="w-full h-40 bg-gray-200 flex items-center justify-center"><span className="text-gray-400 text-sm">No preview</span></div>
+                          <div className="w-full h-40 bg-muted flex items-center justify-center"><span className="text-muted-foreground text-sm">No preview</span></div>
                         )}
                         <div className="p-3 space-y-1">
                           {ss.app_active && (
                             <div className="flex items-center gap-1">
-                              <Monitor className="h-3 w-3 text-blue-700" aria-hidden="true" />
-                              <p className="text-xs font-medium text-blue-700 truncate">{ss.app_active}</p>
+                              <Monitor className="h-3 w-3 text-info" aria-hidden="true" />
+                              <p className="text-xs font-medium text-info truncate">{ss.app_active}</p>
                             </div>
                           )}
-                          <p className="text-xs text-gray-600">{fmtDbExactTime(ss.timestamp || ss.created_at)}</p>
+                          <p className="text-xs text-muted-foreground">{fmtDbExactTime(ss.timestamp || ss.created_at)}</p>
                           <div className="flex items-center justify-between">
-                            {ss.size_kb && <span className="text-xs text-gray-400">{Number(ss.size_kb).toFixed(0)} KB</span>}
-                            {ss.width && ss.height && <span className="text-xs text-gray-400">{ss.width}×{ss.height}</span>}
+                            {ss.size_kb && <span className="text-xs text-muted-foreground">{Number(ss.size_kb).toFixed(0)} KB</span>}
+                            {ss.width && ss.height && <span className="text-xs text-muted-foreground">{ss.width}×{ss.height}</span>}
                           </div>
                           {i === 0 && <span className="inline-block px-2 py-0.5 text-xs bg-pink-100 text-pink-700 rounded font-medium">Latest</span>}
                         </div>
@@ -2053,7 +2012,7 @@ export default function DeveloperActivity() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-gray-500 text-center py-8">
+                  <p className="text-muted-foreground text-center py-8">
                     {(() => {
                       const todayStr = new Date().toLocaleDateString("en-CA");
                       if (timeRange === "today" && selectedDate === todayStr) return "No screenshots available for today";
@@ -2065,31 +2024,31 @@ export default function DeveloperActivity() {
 
               {/* Screenshot Timeline */}
               {screenshots.length > 0 && (
-                <div className="bg-gray-50 p-6 rounded-lg">
-                  <h3 className="text-lg font-semibold mb-4">Screenshot Timeline</h3>
+                <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+                  <h3 className="text-lg font-semibold text-foreground mb-4">Screenshot Timeline</h3>
                   <div className="space-y-3 max-h-96 overflow-y-auto">
                     {screenshots.map((ss, i) => (
-                      <div key={ss.id || i} className={`flex items-center gap-4 p-3 bg-white rounded-lg border hover:shadow-sm transition-shadow cursor-pointer ${i === 0 ? "border-pink-300 bg-pink-50" : ""}`}
+                      <div key={ss.id || i} className={`flex items-center gap-4 p-3 bg-card rounded-lg border hover:shadow-sm transition-shadow cursor-pointer ${i === 0 ? "border-pink-300 bg-pink-50" : ""}`}
                         onClick={() => setSelectedScreenshot(ss)}>
                         <div className="flex-shrink-0 w-16 text-center">
-                          <p className="text-sm font-bold text-gray-700">{fmtDbExactTime(ss.timestamp || ss.created_at)}</p>
+                          <p className="text-sm font-bold text-foreground">{fmtDbExactTime(ss.timestamp || ss.created_at)}</p>
                           {i === 0 && <span className="text-xs text-pink-600">Latest</span>}
                         </div>
-                        <div className="w-px h-12 bg-gray-300"></div>
+                        <div className="w-px h-12 bg-border"></div>
                         <div className="flex-shrink-0">
                           {ss.public_url ? (
                             <img src={ss.public_url} alt={ss.filename || ""} className="w-16 h-12 object-cover rounded border" loading="lazy" />
                           ) : (
-                            <div className="w-16 h-12 bg-gray-200 rounded flex items-center justify-center"><span className="text-gray-400 text-xs">N/A</span></div>
+                            <div className="w-16 h-12 bg-muted rounded flex items-center justify-center"><span className="text-muted-foreground text-xs">N/A</span></div>
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          {ss.app_active && <p className="text-sm font-medium text-gray-800 truncate">{ss.app_active}</p>}
-                          <p className="text-xs text-gray-500 truncate">{ss.filename || "screenshot"}</p>
+                          {ss.app_active && <p className="text-sm font-medium text-foreground truncate">{ss.app_active}</p>}
+                          <p className="text-xs text-muted-foreground truncate">{ss.filename || "screenshot"}</p>
                         </div>
                         <div className="flex-shrink-0 text-right">
-                          {ss.size_kb && <p className="text-xs text-gray-500">{Number(ss.size_kb).toFixed(0)} KB</p>}
-                          {ss.width && ss.height && <p className="text-xs text-gray-400">{ss.width}×{ss.height}</p>}
+                          {ss.size_kb && <p className="text-xs text-muted-foreground">{Number(ss.size_kb).toFixed(0)} KB</p>}
+                          {ss.width && ss.height && <p className="text-xs text-muted-foreground">{ss.width}×{ss.height}</p>}
                         </div>
                       </div>
                     ))}
@@ -2109,11 +2068,11 @@ export default function DeveloperActivity() {
                   .sort((a, b) => b.value - a.value)
                   .slice(0, 8);
                 return (
-                  <div className="bg-gray-50 p-6 rounded-lg">
-                    <h3 className="text-lg font-semibold mb-4">Screenshots by Application</h3>
+                  <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+                    <h3 className="text-lg font-semibold text-foreground mb-4">Screenshots by Application</h3>
                     <ResponsiveContainer width="100%" height={300}>
                       <BarChart data={appScreenshotData}>
-                        <CartesianGrid strokeDasharray="3 3" />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                         <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                         <YAxis allowDecimals={false} />
                         <Tooltip />
@@ -2129,45 +2088,45 @@ export default function DeveloperActivity() {
                 const ss = selectedScreenshot;
                 return (
                   <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4" onClick={() => setSelectedScreenshot(null)}>
-                    <div className="relative bg-white rounded-xl max-w-5xl max-h-[90vh] overflow-hidden flex flex-col md:flex-row" onClick={(e) => e.stopPropagation()}>
+                    <div className="relative bg-card rounded-xl max-w-5xl max-h-[90vh] overflow-hidden flex flex-col md:flex-row" onClick={(e) => e.stopPropagation()}>
                       {/* Image Side */}
                       <div className="flex-1 bg-black flex items-center justify-center min-h-[300px]">
                         {ss.public_url ? (
                           <img src={ss.public_url} alt={ss.filename || "Screenshot"} className="max-w-full max-h-[80vh] object-contain" />
                         ) : (
-                          <div className="text-gray-400 text-center p-8">No image available</div>
+                          <div className="text-muted-foreground text-center p-8">No image available</div>
                         )}
                       </div>
                       {/* Metadata Side */}
-                      <div className="w-full md:w-72 p-6 bg-white overflow-y-auto">
+                      <div className="w-full md:w-72 p-6 bg-card overflow-y-auto">
                         <div className="flex items-center justify-between mb-4">
-                          <h4 className="text-lg font-bold text-gray-800">Details</h4>
-                          <button onClick={() => setSelectedScreenshot(null)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+                          <h4 className="text-lg font-bold text-foreground">Details</h4>
+                          <button onClick={() => setSelectedScreenshot(null)} className="text-muted-foreground hover:text-muted-foreground text-xl">&times;</button>
                         </div>
                         <div className="space-y-4">
                           <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wide">Filename</p>
-                            <p className="text-sm font-medium text-gray-800 break-all">{ss.filename || "—"}</p>
+                            <p className="text-xs text-muted-foreground uppercase tracking-wide">Filename</p>
+                            <p className="text-sm font-medium text-foreground break-all">{ss.filename || "—"}</p>
                           </div>
                           <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wide">Timestamp</p>
-                            <p className="text-sm font-medium text-gray-800">{fmtDbExactTime(ss.timestamp || ss.created_at)}</p>
+                            <p className="text-xs text-muted-foreground uppercase tracking-wide">Timestamp</p>
+                            <p className="text-sm font-medium text-foreground">{fmtDbExactTime(ss.timestamp || ss.created_at)}</p>
                           </div>
                           <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wide">Resolution</p>
-                            <p className="text-sm font-medium text-gray-800">{ss.width && ss.height ? `${ss.width} × ${ss.height}` : "—"}</p>
+                            <p className="text-xs text-muted-foreground uppercase tracking-wide">Resolution</p>
+                            <p className="text-sm font-medium text-foreground">{ss.width && ss.height ? `${ss.width} × ${ss.height}` : "—"}</p>
                           </div>
                           <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wide">File Size</p>
-                            <p className="text-sm font-medium text-gray-800">{ss.size_kb ? `${Number(ss.size_kb).toFixed(1)} KB` : "—"}</p>
+                            <p className="text-xs text-muted-foreground uppercase tracking-wide">File Size</p>
+                            <p className="text-sm font-medium text-foreground">{ss.size_kb ? `${Number(ss.size_kb).toFixed(1)} KB` : "—"}</p>
                           </div>
                           <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wide">MIME Type</p>
-                            <p className="text-sm font-medium text-gray-800">{ss.mime_type || "—"}</p>
+                            <p className="text-xs text-muted-foreground uppercase tracking-wide">MIME Type</p>
+                            <p className="text-sm font-medium text-foreground">{ss.mime_type || "—"}</p>
                           </div>
                           <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wide">Developer</p>
-                            <p className="text-sm font-medium text-gray-800">{ss.developer_email || "—"}</p>
+                            <p className="text-xs text-muted-foreground uppercase tracking-wide">Developer</p>
+                            <p className="text-sm font-medium text-foreground">{ss.developer_email || "—"}</p>
                           </div>
                         </div>
                       </div>
@@ -2180,18 +2139,18 @@ export default function DeveloperActivity() {
 
           {/* ==================== SESSION TIMELINE ==================== */}
           {/* {viewMode === "timeline" && (
-            <div className="bg-white p-6 rounded-lg border shadow-sm">
-              <h3 className="text-lg font-semibold mb-4">Session Timeline ({sessions.length})</h3>
+            <div className="bg-card p-6 rounded-lg border shadow-sm">
+              <h3 className="text-lg font-semibold text-foreground mb-4">Session Timeline ({sessions.length})</h3>
               <div className="space-y-4 max-h-[600px] overflow-y-auto">
                 {sessions.length > 0 ? (
                   sessions.map((session, index) => (
-                    <div key={index} className={`border-l-4 pl-4 py-4 bg-white rounded hover:shadow-md transition-shadow ${session.status === "active" ? "border-green-500" : "border-blue-500"}`}>
+                    <div key={index} className={`border-l-4 pl-4 py-4 bg-card rounded hover:shadow-md transition-shadow ${session.status === "active" ? "border-green-500" : "border-primary"}`}>
                       <div className="flex justify-between items-start">
                         <div>
-                          <h4 className="font-semibold text-gray-800">
+                          <h4 className="font-semibold text-foreground">
                             Session {session.session_id ? String(session.session_id).slice(-8) : `#${index + 1}`}
                           </h4>
-                          <p className="text-sm text-gray-600">
+                          <p className="text-sm text-muted-foreground">
                             {fmtDateTime(session.start_time)}
                             {session.end_time && ` → ${fmtDateTime(session.end_time)}`}
                           </p>
@@ -2199,7 +2158,7 @@ export default function DeveloperActivity() {
                             <span className={`px-3 py-1 rounded-full text-xs font-medium ${prodBg(session.productivity_score)} ${prodColor(session.productivity_score)}`}>
                               Score: {(session.productivity_score || 0).toFixed(1)}%
                             </span>
-                            <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
+                            <span className="px-3 py-1 bg-info/10 text-info rounded-full text-xs">
                               Active: {fmtDuration(session.active_duration)}
                             </span>
                             <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-xs">
@@ -2211,13 +2170,13 @@ export default function DeveloperActivity() {
                               </span>
                             )}
                             {(session.keyboard_events > 0 || session.keystrokes > 0) && (
-                              <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-xs">
+                              <span className="px-3 py-1 bg-violet-500/10 text-violet-700 rounded-full text-xs">
                                 Keyboard: {session.keyboard_events || session.keystrokes || 0}
                               </span>
                             )}
                           </div>
                         </div>
-                        <span className={`text-xs px-2 py-1 rounded ${session.status === "active" ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}`}>
+                        <span className={`text-xs px-2 py-1 rounded ${session.status === "active" ? "bg-green-100 text-green-800" : "bg-muted text-foreground"}`}>
                           {session.status === "active" && (
                             <span className="inline-block w-2 h-2 bg-green-500 rounded-full mr-1 animate-pulse"></span>
                           )}
@@ -2226,17 +2185,17 @@ export default function DeveloperActivity() {
                       </div>
                       {session.app_usage_summary && (
                         <div className="mt-3 pt-3 border-t">
-                          <p className="text-sm font-medium text-gray-700 mb-1">Apps:</p>
+                          <p className="text-sm font-medium text-foreground mb-1">Apps:</p>
                           <div className="flex flex-wrap gap-1">
                             {(() => {
                               try {
                                 const parsed = typeof session.app_usage_summary === "string" ? JSON.parse(session.app_usage_summary) : session.app_usage_summary;
                                 const apps = parsed.top_apps || (Array.isArray(parsed) ? parsed : []);
                                 return apps.slice(0, 5).map((app, i) => (
-                                  <span key={i} className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">{app}</span>
+                                  <span key={i} className="px-2 py-1 bg-muted text-foreground rounded text-xs">{app}</span>
                                 ));
                               } catch {
-                                return <span className="text-xs text-gray-500">App data available</span>;
+                                return <span className="text-xs text-muted-foreground">App data available</span>;
                               }
                             })()}
                           </div>
@@ -2245,7 +2204,7 @@ export default function DeveloperActivity() {
                     </div>
                   ))
                 ) : (
-                  <p className="text-gray-500 text-center py-4">No sessions found for selected period</p>
+                  <p className="text-muted-foreground text-center py-4">No sessions found for selected period</p>
                 )}
               </div>
             </div>
@@ -2256,35 +2215,35 @@ export default function DeveloperActivity() {
       {/* No Data State */}
       {!loading && selectedDeveloper && !hasData && viewMode !== "logins" && (
         <div className="text-center py-12">
-          <svg className="w-16 h-16 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-16 h-16 mx-auto text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 17h6l2 2V7a2 2 0 00-2-2H9a2 2 0 00-2 2v12l2-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v8" />
           </svg>
-          <p className="text-gray-500 text-lg mt-4">No activity data found for selected period</p>
-          <p className="text-gray-400 text-sm mt-2">Make sure the developer has tracking sessions on {selectedDate}</p>
+          <p className="text-muted-foreground text-lg mt-4">No activity data found for selected period</p>
+          <p className="text-muted-foreground text-sm mt-2">Make sure the developer has tracking sessions on {selectedDate}</p>
         </div>
       )}
 
       {/* No Developer Selected */}
       {!selectedDeveloper && !loading && (
         <div className="text-center py-12">
-          <svg className="w-16 h-16 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-16 h-16 mx-auto text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
           </svg>
           {currentAdmin ? (
             <div>
-              <p className="text-gray-500 text-lg">Select a developer to view activity data</p>
+              <p className="text-muted-foreground text-lg">Select a developer to view activity data</p>
               {/* {developers.length === 0 && (
                 <div className="mt-4">
-                  <p className="text-gray-400 text-sm">No developers added by you yet</p>
-                  <button onClick={() => window.location.href = "/admin/dashboard?section=add-developer"} className="mt-2 text-blue-500 hover:text-blue-700 underline text-sm">Add Developers First</button>
+                  <p className="text-muted-foreground text-sm">No developers added by you yet</p>
+                  <button onClick={() => window.location.href = "/admin/dashboard?section=add-developer"} className="mt-2 text-info hover:text-info underline text-sm">Add Developers First</button>
                 </div>
               )} */}
             </div>
           ) : (
             <div>
-              <p className="text-gray-500 text-lg">Please login to access developer activity</p>
-              <p className="text-gray-400 text-sm mt-2">Only admins can view developer activity data</p>
-              <button onClick={() => window.location.href = "/login"} className="mt-4 bg-[#009578] text-white py-2 px-4 rounded-md hover:bg-[#0e7762] transition-colors">Go to Login</button>
+              <p className="text-muted-foreground text-lg">Please login to access developer activity</p>
+              <p className="text-muted-foreground text-sm mt-2">Only admins can view developer activity data</p>
+              <button onClick={() => window.location.href = "/login"} className="mt-4 inline-flex items-center gap-2 bg-primary text-primary-foreground py-2 px-4 rounded-lg font-semibold hover:bg-primary/90 transition-colors">Go to Login</button>
             </div>
           )}
         </div>
@@ -2296,12 +2255,12 @@ export default function DeveloperActivity() {
 // ─── Stat Card Component ───
 function StatCard({ icon, label, value, bg }) {
   return (
-    <div className="bg-white p-4 rounded-lg border shadow-sm">
+    <div className="bg-card p-4 rounded-xl border border-border shadow-card">
       <div className="flex items-center">
         <div className={`${bg} p-3 rounded-lg mr-3 flex items-center justify-center`}>{icon}</div>
         <div>
-          <p className="text-xs text-gray-500">{label}</p>
-          <p className="text-lg font-bold text-gray-800">{value}</p>
+          <p className="text-xs text-muted-foreground">{label}</p>
+          <p className="text-lg font-bold text-foreground">{value}</p>
         </div>
       </div>
     </div>

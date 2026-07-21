@@ -106,46 +106,46 @@ export default function Account({ user }) {
 
   return (
     <div className="space-y-8">
-      <Card className="border border-[#dbe6ff] bg-gradient-to-br from-white via-[#f8fbff] to-[#eef4ff] shadow-[0_12px_40px_-24px_rgba(37,99,235,0.55)]">
+      <Card className="rounded-xl border border-border bg-card shadow-card">
         <CardHeader>
-          <CardTitle className="text-xl font-semibold tracking-tight">Account Information</CardTitle>
-          <CardDescription className="text-[15px]">Your profile details.</CardDescription>
+          <CardTitle className="text-xl font-semibold tracking-tight text-foreground">Account Information</CardTitle>
+          <CardDescription className="text-[15px] text-muted-foreground">Your profile details.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div className="rounded-xl border border-[#d9e5ff] bg-white/85 p-4 backdrop-blur-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
-            <div className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#e8f0ff] text-[#1e40af]">
+          <div className="rounded-xl border border-border bg-muted/50 p-4 transition-all hover:-translate-y-0.5 hover:shadow-md">
+            <div className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <User className="h-5 w-5" />
             </div>
-            <p className="text-xs font-medium uppercase tracking-[0.12em] text-slate-500">Name</p>
-            <p className="mt-1 text-sm font-semibold text-slate-900 break-words">{name}</p>
+            <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Name</p>
+            <p className="mt-1 text-sm font-semibold text-foreground break-words">{name}</p>
           </div>
-          <div className="rounded-xl border border-[#d9e5ff] bg-white/85 p-4 backdrop-blur-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
-            <div className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#e8f0ff] text-[#1e40af]">
+          <div className="rounded-xl border border-border bg-muted/50 p-4 transition-all hover:-translate-y-0.5 hover:shadow-md">
+            <div className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <Mail className="h-5 w-5" />
             </div>
-            <p className="text-xs font-medium uppercase tracking-[0.12em] text-slate-500">Email</p>
-            <p className="mt-1 text-sm font-semibold text-slate-900 break-words">{email}</p>
+            <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Email</p>
+            <p className="mt-1 text-sm font-semibold text-foreground break-words">{email}</p>
           </div>
         </CardContent>
       </Card>
 
-      <Card className="overflow-hidden border border-[#dbe6ff] bg-white shadow-[0_16px_50px_-30px_rgba(15,23,42,0.45)]">
-        <div className="h-1.5 bg-gradient-to-r from-[#1d4ed8] via-[#0284c7] to-[#0ea5e9]" />
+      <Card className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
+        <div className="h-1.5 bg-primary" />
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2 text-xl font-semibold tracking-tight">
-              <ShieldCheck className="h-5 w-5 text-[#1d4ed8]" />
+            <CardTitle className="flex items-center gap-2 text-xl font-semibold tracking-tight text-foreground">
+              <ShieldCheck className="h-5 w-5 text-primary" />
               Change Password
             </CardTitle>
-            <CardDescription className="text-[15px]">
+            <CardDescription className="text-[15px] text-muted-foreground">
               Choose a strong password (at least {MIN_PASSWORD_LENGTH} characters).
             </CardDescription>
           </div>
           <Button
             variant={isFormOpen ? "outline" : "default"}
             className={isFormOpen
-              ? "h-10 border-slate-300 bg-white px-4 text-slate-700 hover:bg-slate-50"
-              : "h-10 bg-gradient-to-r from-[#1d4ed8] to-[#0284c7] px-4 text-white shadow-[0_10px_20px_-12px_rgba(29,78,216,0.9)] hover:from-[#1e40af] hover:to-[#0369a1]"}
+              ? "h-10 border-border bg-card px-4 text-foreground hover:bg-muted"
+              : "h-10 bg-primary px-4 text-primary-foreground hover:bg-primary/90"}
             onClick={() => {
               setSuccessMessage("");
               setFormError("");
@@ -160,10 +160,10 @@ export default function Account({ user }) {
 
         {successMessage && (
           <CardContent className="pt-0">
-            <Alert variant="default" className="border-green-300 bg-green-50/80">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              <AlertTitle className="text-green-700">Success</AlertTitle>
-              <AlertDescription className="text-green-700">{successMessage}</AlertDescription>
+            <Alert variant="default" className="border-success/30 bg-success/10">
+              <CheckCircle className="h-4 w-4 text-success" />
+              <AlertTitle className="text-success">Success</AlertTitle>
+              <AlertDescription className="text-success">{successMessage}</AlertDescription>
             </Alert>
           </CardContent>
         )}
@@ -180,16 +180,16 @@ export default function Account({ user }) {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="current-password" className="text-slate-700">Current Password</Label>
+                <Label htmlFor="current-password" className="text-foreground">Current Password</Label>
                 <div className="relative">
-                  <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     id="current-password"
                     type={showCurrentPassword ? "text" : "password"}
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
-                    className={`h-11 rounded-xl border-slate-300 bg-slate-50/80 pl-9 pr-11 text-[15px] text-slate-900 placeholder:text-slate-400 focus-visible:border-[#1d4ed8] focus-visible:ring-[#bfdbfe] ${
-                      fieldErrors.currentPassword ? "border-red-500" : ""
+                    className={`h-11 rounded-xl border-input bg-background pl-9 pr-11 text-[15px] text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/30 ${
+                      fieldErrors.currentPassword ? "border-destructive" : ""
                     }`}
                     autoComplete="current-password"
                     disabled={isSubmitting}
@@ -198,28 +198,28 @@ export default function Account({ user }) {
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2 rounded-lg text-slate-500 hover:bg-slate-200/70 hover:text-slate-800"
+                    className="absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
                     onClick={() => setShowCurrentPassword((v) => !v)}
                   >
                     {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
                 </div>
                 {fieldErrors.currentPassword && (
-                  <p className="text-sm text-red-600">{fieldErrors.currentPassword}</p>
+                  <p className="text-sm text-destructive">{fieldErrors.currentPassword}</p>
                 )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="new-password" className="text-slate-700">New Password</Label>
+                <Label htmlFor="new-password" className="text-foreground">New Password</Label>
                 <div className="relative">
-                  <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     id="new-password"
                     type={showNewPassword ? "text" : "password"}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    className={`h-11 rounded-xl border-slate-300 bg-slate-50/80 pl-9 pr-11 text-[15px] text-slate-900 placeholder:text-slate-400 focus-visible:border-[#1d4ed8] focus-visible:ring-[#bfdbfe] ${
-                      fieldErrors.newPassword ? "border-red-500" : ""
+                    className={`h-11 rounded-xl border-input bg-background pl-9 pr-11 text-[15px] text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/30 ${
+                      fieldErrors.newPassword ? "border-destructive" : ""
                     }`}
                     autoComplete="new-password"
                     disabled={isSubmitting}
@@ -228,28 +228,28 @@ export default function Account({ user }) {
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2 rounded-lg text-slate-500 hover:bg-slate-200/70 hover:text-slate-800"
+                    className="absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
                     onClick={() => setShowNewPassword((v) => !v)}
                   >
                     {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
                 </div>
                 {fieldErrors.newPassword && (
-                  <p className="text-sm text-red-600">{fieldErrors.newPassword}</p>
+                  <p className="text-sm text-destructive">{fieldErrors.newPassword}</p>
                 )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="confirm-new-password" className="text-slate-700">Confirm New Password</Label>
+                <Label htmlFor="confirm-new-password" className="text-foreground">Confirm New Password</Label>
                 <div className="relative">
-                  <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     id="confirm-new-password"
                     type={showConfirmNewPassword ? "text" : "password"}
                     value={confirmNewPassword}
                     onChange={(e) => setConfirmNewPassword(e.target.value)}
-                    className={`h-11 rounded-xl border-slate-300 bg-slate-50/80 pl-9 pr-11 text-[15px] text-slate-900 placeholder:text-slate-400 focus-visible:border-[#1d4ed8] focus-visible:ring-[#bfdbfe] ${
-                      fieldErrors.confirmNewPassword ? "border-red-500" : ""
+                    className={`h-11 rounded-xl border-input bg-background pl-9 pr-11 text-[15px] text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/30 ${
+                      fieldErrors.confirmNewPassword ? "border-destructive" : ""
                     }`}
                     autoComplete="new-password"
                     disabled={isSubmitting}
@@ -258,21 +258,21 @@ export default function Account({ user }) {
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2 rounded-lg text-slate-500 hover:bg-slate-200/70 hover:text-slate-800"
+                    className="absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
                     onClick={() => setShowConfirmNewPassword((v) => !v)}
                   >
                     {showConfirmNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
                 </div>
                 {fieldErrors.confirmNewPassword && (
-                  <p className="text-sm text-red-600">{fieldErrors.confirmNewPassword}</p>
+                  <p className="text-sm text-destructive">{fieldErrors.confirmNewPassword}</p>
                 )}
               </div>
 
               <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:items-center">
                 <Button
                   type="submit"
-                  className="h-11 px-6 text-[15px] font-semibold bg-gradient-to-r from-[#1d4ed8] to-[#0284c7] text-white shadow-[0_12px_24px_-14px_rgba(29,78,216,0.9)] hover:from-[#1e40af] hover:to-[#0369a1]"
+                  className="h-11 px-6 text-[15px] font-semibold bg-primary text-primary-foreground hover:bg-primary/90"
                   disabled={isSubmitting}
                 >
                   {isSubmitting ? "Updating..." : "Update Password"}
@@ -280,7 +280,7 @@ export default function Account({ user }) {
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-11 px-6 text-[15px] border-slate-300 text-slate-700 hover:bg-slate-50"
+                  className="h-11 px-6 text-[15px] border-border text-foreground hover:bg-muted"
                   onClick={() => {
                     resetForm();
                     setIsFormOpen(false);

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import {
   BarChart,
   Bar,
@@ -10,7 +10,6 @@ import {
   ResponsiveContainer,
   Cell,
   ReferenceLine,
-  Legend,
   LabelList,
 } from "recharts";
 
@@ -234,12 +233,12 @@ export default function AdminGanttChart({
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
-        <div className="bg-white border-2 border-gray-200 rounded-lg shadow-xl p-4 max-w-xs">
-          <p className="font-bold text-gray-900 mb-2">{data.name}</p>
-          <div className="text-sm text-gray-700 space-y-1">
+        <div className="bg-card border border-border rounded-lg shadow-popover p-4 max-w-xs">
+          <p className="font-bold text-foreground mb-2">{data.name}</p>
+          <div className="text-sm text-foreground space-y-1">
             <p><span className="font-medium">Developer:</span> {data.developer}</p>
             {data.developerEmail && (
-              <p className="text-xs text-gray-500">{data.developerEmail}</p>
+              <p className="text-xs text-muted-foreground">{data.developerEmail}</p>
             )}
             <p><span className="font-medium">Start:</span> {data.startDate}</p>
             <p><span className="font-medium">End:</span> {data.endDate}</p>
@@ -250,11 +249,11 @@ export default function AdminGanttChart({
             <p className="capitalize">
               <span className="font-medium">Status:</span>{" "}
               <span className={`font-semibold ${
-                data.status === 'completed' ? 'text-green-600' :
-                data.status === 'rejected' ? 'text-red-600' :
-                data.status === 'awaiting_approval' ? 'text-amber-600' :
-                data.status === 'in_progress' ? 'text-blue-600' :
-                'text-gray-600'
+                data.status === 'completed' ? 'text-success' :
+                data.status === 'rejected' ? 'text-destructive' :
+                data.status === 'awaiting_approval' ? 'text-warning' :
+                data.status === 'in_progress' ? 'text-info' :
+                'text-muted-foreground'
               }`}>
                 {statusLabels[data.status] || data.status}
               </span>
@@ -263,16 +262,16 @@ export default function AdminGanttChart({
               <p>
                 <span className="font-medium">Completion:</span>{" "}
                 {data.completionStatus === "On Time" ? (
-                  <span className="text-green-600 font-semibold">✓ On Time (+1)</span>
+                  <span className="text-success font-semibold">✓ On Time (+1)</span>
                 ) : data.completionStatus === "Late" ? (
-                  <span className="text-red-600 font-semibold">✗ Late (-1)</span>
+                  <span className="text-destructive font-semibold">✗ Late (-1)</span>
                 ) : (
-                  <span className="text-gray-600">{data.completionStatus}</span>
+                  <span className="text-muted-foreground">{data.completionStatus}</span>
                 )}
               </p>
             )}
             {data.description && (
-              <p className="text-xs text-gray-500 mt-2 pt-2 border-t">{data.description}</p>
+              <p className="text-xs text-muted-foreground mt-2 pt-2 border-t border-border">{data.description}</p>
             )}
           </div>
         </div>
@@ -284,38 +283,38 @@ export default function AdminGanttChart({
   // If no tasks
   if (!tasks || tasks.length === 0) {
     return (
-      <div className="bg-white rounded-xl shadow-lg p-6">
-        <h3 className="text-xl font-bold text-gray-800 mb-4">Project Gantt Chart</h3>
-        <div className="text-center py-12 text-gray-500">
-          <svg className="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="bg-card rounded-xl border border-border shadow-card p-6">
+        <h3 className="text-xl font-bold text-foreground mb-4">Project Gantt Chart</h3>
+        <div className="text-center py-12 text-muted-foreground">
+          <svg className="w-16 h-16 mx-auto text-muted-foreground/40 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
               d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
           </svg>
           <p className="text-lg">No tasks found for this project</p>
-          <p className="text-sm text-gray-400 mt-2">Create tasks with start and end dates to see the Gantt chart</p>
+          <p className="text-sm text-muted-foreground/70 mt-2">Create tasks with start and end dates to see the Gantt chart</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+    <div className="bg-card rounded-xl border border-border shadow-card overflow-hidden">
       {/* Header */}
-      <div className="bg-gradient-to-r from-[#009578] to-[#0e7762] p-6">
+      <div className="bg-primary p-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <h3 className="text-xl font-bold text-white">
+            <h3 className="text-xl font-bold text-primary-foreground">
               {projectName || "Project"} - Gantt Chart
             </h3>
-            <p className="text-white/80 text-sm mt-1">Visual timeline and task management</p>
+            <p className="text-primary-foreground/80 text-sm mt-1">Visual timeline and task management</p>
           </div>
           <div className="flex gap-2">
             <button
               onClick={() => setViewMode("chart")}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
                 viewMode === "chart"
-                  ? "bg-white text-[#009578]"
-                  : "bg-white/20 text-white hover:bg-white/30"
+                  ? "bg-card text-primary"
+                  : "bg-white/20 text-primary-foreground hover:bg-white/30"
               }`}
             >
               <svg className="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -325,10 +324,10 @@ export default function AdminGanttChart({
             </button>
             <button
               onClick={() => setViewMode("table")}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
                 viewMode === "table"
-                  ? "bg-white text-[#009578]"
-                  : "bg-white/20 text-white hover:bg-white/30"
+                  ? "bg-card text-primary"
+                  : "bg-white/20 text-primary-foreground hover:bg-white/30"
               }`}
             >
               <svg className="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -341,14 +340,14 @@ export default function AdminGanttChart({
       </div>
 
       {/* Filters */}
-      <div className="bg-gray-50 border-b p-4">
+      <div className="bg-muted/50 border-b border-border p-4">
         <div className="flex flex-wrap gap-4">
           <div>
-            <label className="text-sm font-medium text-gray-700 mr-2">Status:</label>
+            <label className="text-sm font-medium text-foreground mr-2">Status:</label>
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#009578] focus:border-[#009578]"
+              className="px-3 py-1.5 border border-input bg-background rounded-lg text-sm focus:border-primary focus:ring-2 focus:ring-primary/30"
             >
               <option value="all">All Statuses</option>
               <option value="pending">Pending</option>
@@ -361,11 +360,11 @@ export default function AdminGanttChart({
 
           {showDeveloperFilter && developers && Object.keys(developers).length > 0 && (
             <div>
-              <label className="text-sm font-medium text-gray-700 mr-2">Developer:</label>
+              <label className="text-sm font-medium text-foreground mr-2">Developer:</label>
               <select
                 value={filterDeveloper}
                 onChange={(e) => setFilterDeveloper(e.target.value)}
-                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#009578] focus:border-[#009578]"
+                className="px-3 py-1.5 border border-input bg-background rounded-lg text-sm focus:border-primary focus:ring-2 focus:ring-primary/30"
               >
                 <option value="all">All Developers</option>
                 {Object.values(developers).map(dev => (
@@ -381,7 +380,7 @@ export default function AdminGanttChart({
                 setFilterStatus("all");
                 setFilterDeveloper("all");
               }}
-              className="px-3 py-1.5 text-sm text-[#009578] hover:text-[#0e7762] font-medium"
+              className="px-3 py-1.5 text-sm text-primary hover:text-primary/80 font-medium"
             >
               Clear Filters
             </button>
@@ -390,40 +389,40 @@ export default function AdminGanttChart({
       </div>
 
       {/* Stats Banner */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 divide-x divide-gray-200 bg-gray-50 border-b">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 divide-x divide-border bg-muted/50 border-b border-border">
         <div className="p-3 text-center">
-          <p className="text-xl font-bold text-gray-800">{stats.total}</p>
-          <p className="text-xs text-gray-500">Total</p>
+          <p className="text-xl font-bold text-foreground">{stats.total}</p>
+          <p className="text-xs text-muted-foreground">Total</p>
         </div>
         <div className="p-3 text-center">
-          <p className="text-xl font-bold text-gray-400">{stats.pending}</p>
-          <p className="text-xs text-gray-500">Pending</p>
+          <p className="text-xl font-bold text-muted-foreground">{stats.pending}</p>
+          <p className="text-xs text-muted-foreground">Pending</p>
         </div>
         <div className="p-3 text-center">
-          <p className="text-xl font-bold text-blue-600">{stats.inProgress}</p>
-          <p className="text-xs text-gray-500">In Progress</p>
+          <p className="text-xl font-bold text-info">{stats.inProgress}</p>
+          <p className="text-xs text-muted-foreground">In Progress</p>
         </div>
         <div className="p-3 text-center">
-          <p className="text-xl font-bold text-amber-600">{stats.awaitingApproval}</p>
-          <p className="text-xs text-gray-500">Awaiting</p>
+          <p className="text-xl font-bold text-warning">{stats.awaitingApproval}</p>
+          <p className="text-xs text-muted-foreground">Awaiting</p>
         </div>
         <div className="p-3 text-center">
-          <p className="text-xl font-bold text-green-600">{stats.completed}</p>
-          <p className="text-xs text-gray-500">Completed</p>
+          <p className="text-xl font-bold text-success">{stats.completed}</p>
+          <p className="text-xs text-muted-foreground">Completed</p>
         </div>
         <div className="p-3 text-center">
-          <p className="text-xl font-bold text-green-500">{stats.onTime}</p>
-          <p className="text-xs text-gray-500">On Time</p>
+          <p className="text-xl font-bold text-success">{stats.onTime}</p>
+          <p className="text-xs text-muted-foreground">On Time</p>
         </div>
         <div className="p-3 text-center">
-          <p className="text-xl font-bold text-red-500">{stats.late}</p>
-          <p className="text-xs text-gray-500">Late</p>
+          <p className="text-xl font-bold text-destructive">{stats.late}</p>
+          <p className="text-xs text-muted-foreground">Late</p>
         </div>
         <div className="p-3 text-center">
-          <p className={`text-xl font-bold ${stats.productivityPoints >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+          <p className={`text-xl font-bold ${stats.productivityPoints >= 0 ? 'text-success' : 'text-destructive'}`}>
             {stats.productivityPoints >= 0 ? '+' : ''}{stats.productivityPoints}
           </p>
-          <p className="text-xs text-gray-500">Points</p>
+          <p className="text-xs text-muted-foreground">Points</p>
         </div>
       </div>
 
@@ -436,7 +435,7 @@ export default function AdminGanttChart({
               {Object.entries(statusColors).map(([status, color]) => (
                 <div key={status} className="flex items-center">
                   <div className="w-4 h-4 rounded" style={{ backgroundColor: color }}></div>
-                  <span className="ml-2 text-sm text-gray-600">
+                  <span className="ml-2 text-sm text-muted-foreground">
                     {statusLabels[status]}
                   </span>
                 </div>
@@ -454,7 +453,7 @@ export default function AdminGanttChart({
                       barSize={28}
                       margin={{ top: 20, right: 30, left: 180, bottom: 20 }}
                     >
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
                       <XAxis
                         type="number"
                         domain={[0, 'dataMax + 5']}
@@ -531,12 +530,12 @@ export default function AdminGanttChart({
                 </div>
               </div>
             ) : (
-              <div className="text-center py-12 border-2 border-dashed border-gray-300 rounded-lg">
-                <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="text-center py-12 border-2 border-dashed border-border rounded-lg">
+                <svg className="w-16 h-16 text-muted-foreground/40 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No Tasks with Valid Dates</h3>
-                <p className="text-gray-500">Tasks need start and end dates to appear on the Gantt chart.</p>
+                <h3 className="text-lg font-medium text-foreground mb-2">No Tasks with Valid Dates</h3>
+                <p className="text-muted-foreground">Tasks need start and end dates to appear on the Gantt chart.</p>
               </div>
             )}
           </>
@@ -544,41 +543,41 @@ export default function AdminGanttChart({
           /* Table View */
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1000px]">
-              <thead className="bg-gray-50">
+              <thead className="bg-muted/50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Task</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Developer</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Start</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">End</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Duration</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Task</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Developer</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-foreground">Start</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-foreground">End</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-foreground">Duration</th>
                   {showProgress && (
-                    <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Progress</th>
+                    <th className="px-4 py-3 text-center text-sm font-semibold text-foreground">Progress</th>
                   )}
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Status</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Completion</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Points</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-foreground">Status</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-foreground">Completion</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-foreground">Points</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-border">
                 {chartData.map((task, index) => (
-                  <tr key={task.taskId || index} className="hover:bg-gray-50">
+                  <tr key={task.taskId || index} className="hover:bg-muted/50">
                     <td className="px-4 py-3">
-                      <p className="font-medium text-gray-800">{task.name}</p>
+                      <p className="font-medium text-foreground">{task.name}</p>
                       {task.description && (
-                        <p className="text-xs text-gray-500 mt-1 line-clamp-2">{task.description}</p>
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{task.description}</p>
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <p className="text-sm text-gray-700">{task.developer}</p>
+                      <p className="text-sm text-foreground">{task.developer}</p>
                       {task.developerEmail && (
-                        <p className="text-xs text-gray-500">{task.developerEmail}</p>
+                        <p className="text-xs text-muted-foreground">{task.developerEmail}</p>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-center text-sm text-gray-600">{task.startDate}</td>
-                    <td className="px-4 py-3 text-center text-sm text-gray-600">{task.endDate}</td>
-                    <td className="px-4 py-3 text-center text-sm text-gray-600">{task.duration} days</td>
+                    <td className="px-4 py-3 text-center text-sm text-muted-foreground">{task.startDate}</td>
+                    <td className="px-4 py-3 text-center text-sm text-muted-foreground">{task.endDate}</td>
+                    <td className="px-4 py-3 text-center text-sm text-muted-foreground">{task.duration} days</td>
                     {showProgress && (
-                      <td className="px-4 py-3 text-center text-sm text-gray-600">{task.progressPercent}%</td>
+                      <td className="px-4 py-3 text-center text-sm text-muted-foreground">{task.progressPercent}%</td>
                     )}
                     <td className="px-4 py-3 text-center">
                       <span
@@ -594,25 +593,25 @@ export default function AdminGanttChart({
                     <td className="px-4 py-3 text-center text-sm">
                       {task.status === 'completed' && task.completionStatus ? (
                         task.completionStatus === "On Time" ? (
-                          <span className="text-green-600 font-semibold">✓ On Time</span>
+                          <span className="text-success font-semibold">✓ On Time</span>
                         ) : task.completionStatus === "Late" ? (
-                          <span className="text-red-600 font-semibold">✗ Late</span>
+                          <span className="text-destructive font-semibold">✗ Late</span>
                         ) : (
-                          <span className="text-gray-500">{task.completionStatus}</span>
+                          <span className="text-muted-foreground">{task.completionStatus}</span>
                         )
                       ) : (
-                        <span className="text-gray-400">-</span>
+                        <span className="text-muted-foreground">-</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-center">
                       {task.status === 'completed' && task.completionStatus ? (
                         <span className={`font-bold text-sm ${
-                          task.completionStatus === "On Time" ? 'text-green-600' : 'text-red-600'
+                          task.completionStatus === "On Time" ? 'text-success' : 'text-destructive'
                         }`}>
                           {task.completionStatus === "On Time" ? '+1' : '-1'}
                         </span>
                       ) : (
-                        <span className="text-gray-400">-</span>
+                        <span className="text-muted-foreground">-</span>
                       )}
                     </td>
                   </tr>
@@ -622,7 +621,7 @@ export default function AdminGanttChart({
 
             {chartData.length === 0 && (
               <div className="text-center py-8">
-                <p className="text-gray-500">No tasks match the current filters.</p>
+                <p className="text-muted-foreground">No tasks match the current filters.</p>
               </div>
             )}
           </div>
@@ -630,8 +629,8 @@ export default function AdminGanttChart({
       </div>
 
       {/* Footer Info */}
-      <div className="p-4 bg-gray-50 border-t">
-        <div className="flex items-center justify-between text-sm text-gray-600">
+      <div className="p-4 bg-muted/50 border-t border-border">
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
           <div>
             <strong>Real-time Updates:</strong> This chart automatically updates when tasks change.
           </div>

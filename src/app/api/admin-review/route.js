@@ -447,11 +447,16 @@ export async function GET(request) {
       try {
         const { data: screenshotData } = await supabase
           .from('screenshots')
-          .select('id, public_url, timestamp, app_active')
+          .select('*')
           .or(`developer_id.eq.${submission.developer_id},developer_email.eq.${submission.developers?.email}`)
           .order('timestamp', { ascending: false })
           .limit(5);
-        screenshots = screenshotData || [];
+        // Normalize the display URL across possible columns (desktop app writes
+        // public_url; website uploads may write image_url/thumbnail_url).
+        screenshots = (screenshotData || []).map((s) => ({
+          ...s,
+          public_url: s.public_url || s.image_url || s.thumbnail_url || null,
+        }));
       } catch (_e) {
         screenshots = [];
       }

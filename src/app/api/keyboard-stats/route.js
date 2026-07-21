@@ -16,7 +16,6 @@ export async function GET(request) {
     const start = searchParams.get("start");
     const end = searchParams.get("end");
 
-    console.log("[keyboard-stats] Request params:", { developerId, userId, email, start, end });
 
     if (!developerId && !email && !userId) {
       return NextResponse.json(

@@ -357,7 +357,6 @@ const BROWSER_EXES = [
   "firefox.exe",
   "brave.exe",
   "opera.exe",
-  "opera.exe",
   "safari.exe",
 ];
 
@@ -523,7 +522,15 @@ export function useScreenshotsRealtime({
 
       const { data, error: err } = await query;
       if (err) throw err;
-      setRows(data || []);
+      // Normalize the display URL: desktop app writes public_url; the website
+      // upload route may write image_url/thumbnail_url. Coalesce so every
+      // consumer can reliably render shot.public_url.
+      setRows(
+        (data || []).map((r) => ({
+          ...r,
+          public_url: r.public_url || r.image_url || r.thumbnail_url || null,
+        }))
+      );
     } catch (e) {
       setError(e);
     } finally {

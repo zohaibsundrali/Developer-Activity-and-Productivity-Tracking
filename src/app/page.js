@@ -11,7 +11,7 @@ import Footer from '@/components/Footer';
 
 export default function ProductTourPage() {
   return (
-    <div className="min-h-screen bg-white text-black font-sans">
+    <div className="min-h-screen bg-background text-foreground font-sans">
       <Navbar />
 
       <main className="pt-20">
@@ -19,16 +19,16 @@ export default function ProductTourPage() {
         <HeroSection />
 
         {/* Product Tour Content */}
-        <section id="product-tour" className="py-16 px-6 bg-white">
+        <section id="product-tour" className="py-16 px-6 bg-background">
           <div className="container mx-auto max-w-6xl">
 
             {/* Platforms Section */}
             <div id="platforms" className="mb-20">
               <div className="text-center mb-12">
-                <h2 className="text-3xl font-bold text-black mb-4">
+                <h2 className="text-3xl font-bold tracking-tight text-foreground mb-4">
                   Website and Desktop App
                 </h2>
-                <p className="text-gray-600 text-lg max-w-3xl mx-auto font-light">
+                <p className="text-muted-foreground text-lg max-w-3xl mx-auto font-light">
                   Boost productivity across all platforms with our integrated suite
                 </p>
               </div>
@@ -39,8 +39,8 @@ export default function ProductTourPage() {
             {/* Automated Time Tracking */}
             <div className="mb-20">
               <div className="text-center mb-12">
-                <h2 className="text-3xl font-bold text-black mb-4">Automated Time Tracking</h2>
-                <p className="text-gray-600 text-lg max-w-3xl mx-auto font-light">
+                <h2 className="text-3xl font-bold tracking-tight text-foreground mb-4">Automated Time Tracking</h2>
+                <p className="text-muted-foreground text-lg max-w-3xl mx-auto font-light">
                   Easily track time using our intelligent platform across all devices
                 </p>
               </div>
@@ -51,8 +51,8 @@ export default function ProductTourPage() {
             {/* Employee Monitoring */}
             <div className="mb-20">
               <div className="text-center mb-12">
-                <h2 className="text-3xl font-bold text-black mb-4">Employee Monitoring</h2>
-                <p className="text-gray-600 text-lg max-w-3xl mx-auto font-light">
+                <h2 className="text-3xl font-bold tracking-tight text-foreground mb-4">Employee Monitoring</h2>
+                <p className="text-muted-foreground text-lg max-w-3xl mx-auto font-light">
                   Collect and analyze activity data with comprehensive insights
                 </p>
               </div>
@@ -63,8 +63,8 @@ export default function ProductTourPage() {
             {/* Project Management & Reports */}
             <div className="mb-20">
               <div className="text-center mb-12">
-                <h2 className="text-3xl font-bold text-black mb-4">Project Management & Reports</h2>
-                <p className="text-gray-600 text-lg max-w-3xl mx-auto font-light">
+                <h2 className="text-3xl font-bold tracking-tight text-foreground mb-4">Project Management & Reports</h2>
+                <p className="text-muted-foreground text-lg max-w-3xl mx-auto font-light">
                   Create project plans and generate reports
                 </p>
               </div>

@@ -183,12 +183,12 @@ export default function ProjectDetails() {
   // Loading state
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-8">
+      <div className="min-h-screen bg-muted py-8">
         <div className="max-w-6xl mx-auto px-4">
           <div className="text-center py-20">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Fetching project details from Supabase...</p>
-            <p className="text-sm text-gray-400 mt-2">Loading database data</p>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-4 text-muted-foreground">Fetching project details from Supabase...</p>
+            <p className="text-sm text-muted-foreground mt-2">Loading database data</p>
           </div>
         </div>
       </div>
@@ -198,19 +198,19 @@ export default function ProjectDetails() {
   // Error state
   if (error && !project.id) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-8">
+      <div className="min-h-screen bg-muted py-8">
         <div className="max-w-6xl mx-auto px-4">
-          <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+          <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-6">
             <div className="flex items-center">
-              <svg className="w-6 h-6 text-red-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6 text-destructive mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <div>
-                <h3 className="font-semibold text-red-800">Error Loading Project</h3>
-                <p className="text-sm text-red-600 mt-1">{error}</p>
+                <h3 className="font-semibold text-destructive">Error Loading Project</h3>
+                <p className="text-sm text-destructive mt-1">{error}</p>
                 <button
                   onClick={handleBackToDashboard}
-                  className="mt-4 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+                  className="mt-4 bg-destructive text-destructive-foreground px-4 py-2 rounded-lg hover:bg-destructive/90 transition-colors"
                 >
                   Go to Dashboard
                 </button>
@@ -223,14 +223,14 @@ export default function ProjectDetails() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-8">
+    <div className="min-h-screen bg-muted py-8">
       <div className="max-w-6xl mx-auto px-4">
         {/* ✅ FIXED: Header with better back button options */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center space-x-3">
             <button
               onClick={handleBack}
-              className="flex items-center text-gray-600 hover:text-gray-800 bg-white px-4 py-2 rounded-lg shadow-sm hover:shadow transition-all border border-gray-300"
+              className="flex items-center text-foreground hover:bg-muted bg-card px-4 py-2 rounded-lg shadow-card hover:shadow transition-all border border-border"
             >
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -242,7 +242,7 @@ export default function ProjectDetails() {
             <div className="hidden md:flex space-x-2">
               <button
                 onClick={handleBackToDashboard}
-                className="flex items-center text-gray-600 hover:text-gray-800 bg-gray-100 px-3 py-2 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+                className="flex items-center text-foreground hover:text-foreground bg-muted px-3 py-2 rounded-lg hover:bg-muted/70 transition-colors text-sm"
               >
                 <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
@@ -251,7 +251,7 @@ export default function ProjectDetails() {
               </button>
               <button
                 onClick={handleBackToProjects}
-                className="flex items-center text-gray-600 hover:text-gray-800 bg-gray-100 px-3 py-2 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+                className="flex items-center text-foreground hover:text-foreground bg-muted px-3 py-2 rounded-lg hover:bg-muted/70 transition-colors text-sm"
               >
                 <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -262,8 +262,8 @@ export default function ProjectDetails() {
           </div>
           
           <div className="text-right">
-            <h1 className="text-3xl font-bold text-gray-900">Project Details</h1>
-            <p className="text-gray-600 mt-1">
+            <h1 className="text-3xl font-bold text-foreground">Project Details</h1>
+            <p className="text-muted-foreground mt-1">
               {dataSource === 'supabase' ? "Live data from Supabase" : "Using URL parameters"}
             </p>
           </div>
@@ -271,12 +271,12 @@ export default function ProjectDetails() {
 
         {/* Data source indicator */}
         {dataSource === 'supabase' && (
-          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="mb-6 p-4 bg-info/10 border border-info/20 rounded-lg">
             <div className="flex items-center">
-              <svg className="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 text-info mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
-              <p className="text-sm text-blue-700">
+              <p className="text-sm text-info">
                 <span className="font-semibold">✓ Live Data:</span> Project information loaded directly from Supabase database
               </p>
             </div>
@@ -285,28 +285,28 @@ export default function ProjectDetails() {
 
         {/* Project not found warning */}
         {(!project.id || project.id === 'null') && (
-          <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="mb-6 p-4 bg-warning/10 border border-warning/20 rounded-lg">
             <div className="flex items-center">
-              <svg className="w-6 h-6 text-yellow-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6 text-warning mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
               </svg>
               <div>
-                <p className="font-medium text-yellow-800">Project data not loaded properly</p>
-                <p className="text-sm text-yellow-700">Please go back to the projects list and try again</p>
+                <p className="font-medium text-warning">Project data not loaded properly</p>
+                <p className="text-sm text-warning">Please go back to the projects list and try again</p>
               </div>
             </div>
           </div>
         )}
 
-        <div className="bg-white rounded-xl shadow-xl overflow-hidden border border-gray-200">
+        <div className="bg-card rounded-xl shadow-card overflow-hidden border border-border">
           {/* Project Header with Gradient */}
-          <div className="bg-gradient-to-r from-blue-600 to-blue-800 p-8 text-white relative">
+          <div className="bg-primary p-8 text-primary-foreground relative">
             <div className="absolute top-4 right-4">
               <span className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-semibold ${
-                project.status === 'active' ? 'bg-green-500 text-white' :
-                project.status === 'completed' ? 'bg-emerald-500 text-white' :
-                project.status === 'pending' ? 'bg-yellow-500 text-white' :
-                'bg-gray-500 text-white'
+                project.status === 'active' ? 'bg-success text-white' :
+                project.status === 'completed' ? 'bg-success text-white' :
+                project.status === 'pending' ? 'bg-warning text-white' :
+                'bg-muted text-muted-foreground'
               }`}>
                 {project.status?.charAt(0).toUpperCase() + project.status?.slice(1)}
               </span>
@@ -323,7 +323,7 @@ export default function ProjectDetails() {
                     </svg>
                     <span className="font-medium">Assigned to: {project.assigned_developer_name}</span>
                     {project.assigned_developer_email && (
-                      <span className="ml-2 text-sm text-blue-200">({project.assigned_developer_email})</span>
+                      <span className="ml-2 text-sm text-primary-foreground/80">({project.assigned_developer_email})</span>
                     )}
                   </div>
                 </div>
@@ -353,35 +353,35 @@ export default function ProjectDetails() {
           <div className="p-8">
             {/* Progress Section */}
             <div className="mb-10">
-              <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center">
-                <svg className="w-6 h-6 mr-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <h2 className="text-xl font-bold tracking-tight mb-6 text-foreground flex items-center">
+                <svg className="w-6 h-6 mr-3 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
                 Project Progress
               </h2>
-              
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-6 border border-blue-100">
+
+              <div className="bg-muted/50 rounded-2xl p-6 border border-border">
                 <div className="flex justify-between items-center mb-4">
                   <div>
-                    <span className="text-lg font-semibold text-gray-700">Completion Status</span>
-                    <p className="text-sm text-gray-500 mt-1">Track your progress towards completion</p>
+                    <span className="text-lg font-semibold text-foreground">Completion Status</span>
+                    <p className="text-sm text-muted-foreground mt-1">Track your progress towards completion</p>
                   </div>
                   <div className="text-right">
-                    <span className="text-4xl font-bold text-blue-600">{project.progress}%</span>
-                    <p className="text-sm text-gray-500">completed</p>
+                    <span className="text-4xl font-bold text-primary">{project.progress}%</span>
+                    <p className="text-sm text-muted-foreground">completed</p>
                   </div>
                 </div>
-                
+
                 <div className="mb-2">
-                  <div className="w-full bg-gray-200 rounded-full h-4">
-                    <div 
-                      className="bg-gradient-to-r from-blue-500 to-blue-600 h-4 rounded-full transition-all duration-1000 ease-out"
+                  <div className="w-full bg-muted rounded-full h-4">
+                    <div
+                      className="bg-primary h-4 rounded-full transition-all duration-1000 ease-out"
                       style={{ width: `${project.progress}%` }}
                     ></div>
                   </div>
                 </div>
-                
-                <div className="flex justify-between text-sm text-gray-600 mt-2">
+
+                <div className="flex justify-between text-sm text-muted-foreground mt-2">
                   <span>0%</span>
                   <span>25%</span>
                   <span>50%</span>
@@ -393,77 +393,77 @@ export default function ProjectDetails() {
 
             {/* Timeline Section */}
             <div className="mb-10">
-              <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center">
-                <svg className="w-6 h-6 mr-3 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <h2 className="text-xl font-bold tracking-tight mb-6 text-foreground flex items-center">
+                <svg className="w-6 h-6 mr-3 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                Project Timeline {dataSource === 'supabase' && <span className="text-sm font-normal text-blue-600 ml-2">(Live from Supabase)</span>}
+                Project Timeline {dataSource === 'supabase' && <span className="text-sm font-normal text-info ml-2">(Live from Supabase)</span>}
               </h2>
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* Created Date Card */}
-                <div className="bg-gradient-to-br from-gray-50 to-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                <div className="bg-card rounded-xl p-6 border border-border shadow-card">
                   <div className="flex items-center mb-4">
-                    <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
-                      <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mr-4">
+                      <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                       </svg>
                     </div>
                     <div>
-                      <h3 className="font-semibold text-gray-800">Created On</h3>
-                      <p className="text-sm text-gray-500">Project creation date</p>
+                      <h3 className="font-semibold text-foreground">Created On</h3>
+                      <p className="text-sm text-muted-foreground">Project creation date</p>
                       {dataSource === 'supabase' && (
-                        <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">Supabase</span>
+                        <span className="text-xs text-info bg-info/10 px-2 py-1 rounded">Supabase</span>
                       )}
                     </div>
                   </div>
                   <div className="mt-4">
-                    <p className="text-lg font-medium text-gray-900">{formatDate(project.created_at)}</p>
-                    <p className="text-sm text-gray-500 mt-1">{formatDateTime(project.created_at)}</p>
+                    <p className="text-lg font-medium text-foreground">{formatDate(project.created_at)}</p>
+                    <p className="text-sm text-muted-foreground mt-1">{formatDateTime(project.created_at)}</p>
                   </div>
                 </div>
 
                 {/* ✅ ASSIGNED DATE CARD - HIGHLIGHTED */}
-                <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border border-green-200 shadow-sm relative overflow-hidden">
-                  <div className="absolute -top-4 -right-4 w-16 h-16 bg-green-200 rounded-full opacity-20"></div>
-                  <div className="absolute -bottom-4 -left-4 w-12 h-12 bg-green-300 rounded-full opacity-10"></div>
-                  
+                <div className="bg-success/10 rounded-xl p-6 border border-success/20 shadow-card relative overflow-hidden">
+                  <div className="absolute -top-4 -right-4 w-16 h-16 bg-success/20 rounded-full opacity-20"></div>
+                  <div className="absolute -bottom-4 -left-4 w-12 h-12 bg-success/30 rounded-full opacity-10"></div>
+
                   <div className="flex items-center mb-4 relative z-10">
-                    <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mr-4">
-                      <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="w-12 h-12 bg-success/10 rounded-lg flex items-center justify-center mr-4">
+                      <svg className="w-6 h-6 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                     </div>
                     <div>
                       <div className="flex items-center">
-                        <h3 className="font-semibold text-gray-800">Assigned On</h3>
-                        <span className="ml-2 px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
+                        <h3 className="font-semibold text-foreground">Assigned On</h3>
+                        <span className="ml-2 px-2 py-1 bg-success/10 text-success text-xs font-medium rounded-full">
                           🎯 Key Date
                         </span>
                       </div>
-                      <p className="text-sm text-gray-500">When project was assigned to you</p>
+                      <p className="text-sm text-muted-foreground">When project was assigned to you</p>
                     </div>
                   </div>
                   <div className="mt-4 relative z-10">
-                    <p className="text-lg font-bold text-green-800">{formatDate(assignedDate)}</p>
-                    <p className="text-sm text-green-600 mt-1">{formatDateTime(assignedDate)}</p>
-                    
+                    <p className="text-lg font-bold text-success">{formatDate(assignedDate)}</p>
+                    <p className="text-sm text-success mt-1">{formatDateTime(assignedDate)}</p>
+
                     {/* Data source indicator */}
                     {dataSource === 'supabase' && assignedDate === project.created_at && (
-                      <div className="text-xs text-blue-600 bg-blue-50 p-1 rounded mt-1">
+                      <div className="text-xs text-info bg-info/10 p-1 rounded mt-1">
                         ⚡ Using Supabase created_at
                       </div>
                     )}
-                    
+
                     {daysSinceAssignment !== null && (
-                      <div className="mt-3 p-2 bg-green-100 rounded-lg">
+                      <div className="mt-3 p-2 bg-success/10 rounded-lg">
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-green-800">
-                            {daysSinceAssignment === 0 ? 'Assigned today' : 
-                             daysSinceAssignment === 1 ? 'Assigned yesterday' : 
+                          <span className="text-sm text-success">
+                            {daysSinceAssignment === 0 ? 'Assigned today' :
+                             daysSinceAssignment === 1 ? 'Assigned yesterday' :
                              `Assigned ${daysSinceAssignment} days ago`}
                           </span>
-                          <span className="text-xs bg-green-200 text-green-800 px-2 py-1 rounded-full font-medium">
+                          <span className="text-xs bg-success/20 text-success px-2 py-1 rounded-full font-medium">
                             {daysSinceAssignment}d
                           </span>
                         </div>
@@ -474,28 +474,28 @@ export default function ProjectDetails() {
 
                 {/* Deadline Card */}
                 {project.deadline && project.deadline !== 'null' && (
-                  <div className="bg-gradient-to-br from-orange-50 to-red-50 rounded-xl p-6 border border-orange-200 shadow-sm">
+                  <div className="bg-warning/10 rounded-xl p-6 border border-warning/20 shadow-card">
                     <div className="flex items-center mb-4">
-                      <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mr-4">
-                        <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div className="w-12 h-12 bg-warning/10 rounded-lg flex items-center justify-center mr-4">
+                        <svg className="w-6 h-6 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                       </div>
                       <div>
-                        <h3 className="font-semibold text-gray-800">Deadline</h3>
-                        <p className="text-sm text-gray-500">Submission due date</p>
+                        <h3 className="font-semibold text-foreground">Deadline</h3>
+                        <p className="text-sm text-muted-foreground">Submission due date</p>
                       </div>
                     </div>
                     <div className="mt-4">
-                      <p className="text-lg font-medium text-gray-900">{formatDate(project.deadline)}</p>
-                      <p className="text-sm text-gray-500 mt-1">{formatDateTime(project.deadline)}</p>
-                      
+                      <p className="text-lg font-medium text-foreground">{formatDate(project.deadline)}</p>
+                      <p className="text-sm text-muted-foreground mt-1">{formatDateTime(project.deadline)}</p>
+
                       {/* Days remaining calculation */}
                       {project.deadline && project.deadline !== 'null' && (
                         <div className="mt-3">
                           <div className="flex items-center justify-between text-sm">
-                            <span className="text-gray-600">Time remaining:</span>
-                            <span className="font-medium text-orange-600">
+                            <span className="text-muted-foreground">Time remaining:</span>
+                            <span className="font-medium text-warning">
                               {(() => {
                                 try {
                                   const deadline = new Date(project.deadline);
@@ -523,17 +523,17 @@ export default function ProjectDetails() {
 
             {/* Description Section */}
             <div className="mb-10">
-              <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center">
-                <svg className="w-6 h-6 mr-3 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <h2 className="text-xl font-bold tracking-tight mb-6 text-foreground flex items-center">
+                <svg className="w-6 h-6 mr-3 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
                 Project Description & Requirements
               </h2>
-              
-              <div className="bg-gradient-to-r from-gray-50 to-white rounded-2xl p-8 border border-gray-200">
+
+              <div className="bg-muted/50 rounded-2xl p-8 border border-border">
                 <div className="prose max-w-none">
                   {project.description ? (
-                    <div className="text-gray-700 leading-relaxed space-y-4">
+                    <div className="text-foreground leading-relaxed space-y-4">
                       {project.description.split('\n').map((paragraph, index) => (
                         <p key={index} className="text-lg">
                           {paragraph}
@@ -542,11 +542,11 @@ export default function ProjectDetails() {
                     </div>
                   ) : (
                     <div className="text-center py-12">
-                      <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-16 h-16 text-muted-foreground mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
-                      <p className="text-gray-500 text-lg">No description provided for this project.</p>
-                      <p className="text-gray-400 text-sm mt-2">Contact the project manager for details</p>
+                      <p className="text-muted-foreground text-lg">No description provided for this project.</p>
+                      <p className="text-muted-foreground text-sm mt-2">Contact the project manager for details</p>
                     </div>
                   )}
                 </div>
@@ -556,26 +556,26 @@ export default function ProjectDetails() {
             {/* File Attachment */}
             {project.file_url && project.file_url !== 'null' && (
               <div className="mb-10">
-                <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center">
-                  <svg className="w-6 h-6 mr-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <h2 className="text-xl font-bold tracking-tight mb-6 text-foreground flex items-center">
+                  <svg className="w-6 h-6 mr-3 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
                   </svg>
                   Project Files & Resources
                 </h2>
-                
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-6 border border-blue-200">
+
+                <div className="bg-muted/50 rounded-2xl p-6 border border-border">
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div className="flex items-center space-x-4">
-                      <div className="w-16 h-16 bg-white rounded-xl flex items-center justify-center shadow-sm">
-                        <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div className="w-16 h-16 bg-card rounded-xl flex items-center justify-center shadow-card">
+                        <svg className="w-8 h-8 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                       </div>
                       <div>
-                        <p className="font-bold text-gray-900 text-lg">
+                        <p className="font-bold text-foreground text-lg">
                           {project.file_name || 'Project Requirements Document'}
                         </p>
-                        <p className="text-sm text-gray-600 mt-1">
+                        <p className="text-sm text-muted-foreground mt-1">
                           Contains all project specifications, guidelines, and requirements
                         </p>
                       </div>
@@ -583,14 +583,14 @@ export default function ProjectDetails() {
                     <div className="flex flex-col sm:flex-row gap-3">
                       <button
                         onClick={handleDownloadFile}
-                        className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-3 rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-md hover:shadow-lg font-medium flex items-center justify-center"
+                        className="bg-primary text-primary-foreground px-6 py-3 rounded-lg hover:bg-primary/90 transition-all shadow-md hover:shadow-lg font-medium flex items-center justify-center"
                       >
                         <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                         </svg>
                         Download File
                       </button>
-                      <button className="bg-white text-blue-600 px-6 py-3 rounded-lg border border-blue-200 hover:bg-blue-50 transition-colors font-medium">
+                      <button className="bg-card text-primary px-6 py-3 rounded-lg border border-border hover:bg-muted transition-colors font-medium">
                         Preview
                       </button>
                     </div>
@@ -600,12 +600,12 @@ export default function ProjectDetails() {
             )}
 
             {/* ✅ FIXED: Action Buttons with better navigation */}
-            <div className="pt-8 border-t border-gray-200">
+            <div className="pt-8 border-t border-border">
               <div className="flex flex-col sm:flex-row gap-4 justify-between">
                 <div className="flex flex-col sm:flex-row gap-4">
                   <button
                     onClick={handleBackToDashboard}
-                    className="flex-1 bg-gray-100 text-gray-700 py-3 px-6 rounded-xl hover:bg-gray-200 transition-colors font-medium flex items-center justify-center border border-gray-300"
+                    className="flex-1 bg-muted text-foreground py-3 px-6 rounded-xl hover:bg-muted/70 transition-colors font-medium flex items-center justify-center border border-border"
                   >
                     <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
@@ -615,7 +615,7 @@ export default function ProjectDetails() {
                   
                   <button
                     onClick={handleBackToProjects}
-                    className="flex-1 bg-blue-100 text-blue-600 py-3 px-6 rounded-xl hover:bg-blue-200 transition-colors font-medium flex items-center justify-center border border-blue-300"
+                    className="flex-1 bg-info/10 text-info py-3 px-6 rounded-xl hover:bg-info/20 transition-colors font-medium flex items-center justify-center border border-info/20"
                   >
                     <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -626,7 +626,7 @@ export default function ProjectDetails() {
                 
                 <button
                   onClick={handleSubmitWork}
-                  className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white py-3 px-6 rounded-xl hover:from-green-600 hover:to-emerald-700 transition-all shadow-md hover:shadow-lg font-medium flex items-center justify-center"
+                  className="flex-1 bg-success text-white py-3 px-6 rounded-xl hover:bg-success/90 transition-all shadow-md hover:shadow-lg font-medium flex items-center justify-center"
                 >
                   <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />

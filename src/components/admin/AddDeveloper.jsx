@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
+import { RefreshCw, Users, AlertTriangle } from "lucide-react";
 import { showError, showSuccess, showWarning } from "@/utils/alerts";
 
 const formatDate = (dateString) => {
@@ -20,7 +21,7 @@ const DeveloperForm = ({
 }) => (
   <form onSubmit={handleAddDeveloper} className="space-y-4 max-w-md mb-8">
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
+      <label className="block text-sm font-medium text-foreground mb-1">
         Full Name *
       </label>
       <input
@@ -28,14 +29,14 @@ const DeveloperForm = ({
         name="name"
         value={newDeveloper.name}
         onChange={handleInputChange}
-        className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]"
+        className="w-full rounded-lg border border-input bg-background p-2 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
         placeholder="Enter developer's full name"
         required
         disabled={isAddingDeveloper || !currentAdmin}
       />
     </div>
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
+      <label className="block text-sm font-medium text-foreground mb-1">
         Email *
       </label>
       <input
@@ -43,14 +44,14 @@ const DeveloperForm = ({
         name="email"
         value={newDeveloper.email}
         onChange={handleInputChange}
-        className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]"
+        className="w-full rounded-lg border border-input bg-background p-2 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
         placeholder="Enter developer's email"
         required
         disabled={isAddingDeveloper || !currentAdmin}
       />
     </div>
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
+      <label className="block text-sm font-medium text-foreground mb-1">
         Password *
       </label>
       <input
@@ -58,23 +59,23 @@ const DeveloperForm = ({
         name="password"
         value={newDeveloper.password}
         onChange={handleInputChange}
-        className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]"
+        className="w-full rounded-lg border border-input bg-background p-2 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
         placeholder="Set developer password"
         required
         minLength="6"
         disabled={isAddingDeveloper || !currentAdmin}
       />
-      <p className="text-xs text-gray-500 mt-1">Password must be at least 6 characters long</p>
+      <p className="text-xs text-muted-foreground mt-1">Password must be at least 6 characters long</p>
     </div>
 
     <div className="flex flex-col sm:flex-row gap-3">
       <button
         type="submit"
         disabled={isAddingDeveloper || !currentAdmin}
-        className={`flex-1 py-2 px-4 rounded-md transition-colors ${isAddingDeveloper || !currentAdmin
-          ? 'bg-gray-400 cursor-not-allowed'
-          : 'bg-[#009578] hover:bg-[#0e7762]'
-          } text-white w-full sm:flex-1`}
+        className={`inline-flex w-full sm:flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors ${isAddingDeveloper || !currentAdmin
+          ? 'bg-primary/50 cursor-not-allowed'
+          : 'bg-primary hover:bg-primary/90'
+          }`}
       >
         {!currentAdmin ? 'Please Login' : isAddingDeveloper ? 'Adding...' : 'Add Developer'}
       </button>
@@ -83,13 +84,13 @@ const DeveloperForm = ({
 );
 
 const DeveloperTable = ({ developers, missingColumns }) => (
-  <div className="border-t pt-6">
+  <div className="border-t border-border pt-6">
     <div className="flex justify-between items-center mb-4">
       <div>
-        <h3 className="text-lg font-semibold">
+        <h3 className="text-lg font-semibold text-foreground">
           {!missingColumns ? 'Your Developers' : 'All Developers'}
           {developers.length > 0 && (
-            <span className="ml-2 text-sm font-normal text-gray-500">
+            <span className="ml-2 text-sm font-normal text-muted-foreground">
               ({developers.length} total)
             </span>
           )}
@@ -98,42 +99,42 @@ const DeveloperTable = ({ developers, missingColumns }) => (
     </div>
 
     {developers.length > 0 ? (
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full min-w-[720px] divide-y divide-border">
+          <thead className="bg-muted">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Name
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Email
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Projects
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Added On
               </th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+          <tbody className="bg-card divide-y divide-border">
             {developers.map(developer => (
-              <tr key={developer.id} className="hover:bg-gray-50">
+              <tr key={developer.id} className="hover:bg-muted/50">
                 <td className="px-4 py-3 whitespace-nowrap">
-                  <div className="text-sm font-medium text-gray-900">
+                  <div className="text-sm font-medium text-foreground">
                     {developer.name}
                   </div>
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap">
-                  <div className="text-sm text-gray-600">
+                  <div className="text-sm text-muted-foreground">
                     {developer.email}
                   </div>
                 </td>
 
-                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                  <span className="font-medium">{developer.dynamic_projects_count ?? developer.projects_count ?? 0}</span>
+                <td className="px-4 py-3 whitespace-nowrap text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">{developer.dynamic_projects_count ?? developer.projects_count ?? 0}</span>
                 </td>
-                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                <td className="px-4 py-3 whitespace-nowrap text-sm text-muted-foreground">
                   {formatDate(developer.created_at)}
                 </td>
               </tr>
@@ -143,10 +144,8 @@ const DeveloperTable = ({ developers, missingColumns }) => (
       </div>
     ) : (
       <div className="text-center py-8">
-        <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13 0c1.013 0 1.827.833 1.827 1.86 0 1.03-.814 1.86-1.827 1.86s-1.827-.83-1.827-1.86c0-1.027.814-1.86 1.827-1.86z" />
-        </svg>
-        <p className="text-gray-500 text-lg mb-2">
+        <Users className="w-16 h-16 text-muted-foreground/40 mx-auto mb-4" strokeWidth={1} />
+        <p className="text-muted-foreground text-lg mb-2">
           {!missingColumns ? 'No developers added by you yet' : 'No developers found'}
         </p>
       </div>
@@ -397,26 +396,24 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
   // Show warning about missing columns
   if (missingColumns && developers.length > 0) {
     return (
-      <div className="bg-white p-6 rounded-lg shadow">
-        <div className="mb-6">
-          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+      <div className="space-y-6 rounded-xl border border-border bg-card p-6 shadow-card">
+        <div>
+          <div className="rounded-lg border border-warning/30 bg-warning/10 p-4">
             <div className="flex">
               <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                </svg>
+                <AlertTriangle className="h-5 w-5 text-warning" />
               </div>
               <div className="ml-3">
-                <h3 className="text-sm font-medium text-yellow-800">
+                <h3 className="text-sm font-medium text-foreground">
                   Database Setup Required
                 </h3>
-                <div className="mt-2 text-sm text-yellow-700">
+                <div className="mt-2 text-sm text-muted-foreground">
                   <p>
                     To enable admin isolation (each admin seeing only their own developers),
                     please run this SQL in Supabase SQL Editor:
                   </p>
-                  <pre className="mt-2 bg-yellow-100 p-2 rounded text-xs overflow-x-auto">
-                    {`ALTER TABLE developers 
+                  <pre className="mt-2 bg-muted p-2 rounded text-xs overflow-x-auto text-foreground">
+                    {`ALTER TABLE developers
 ADD COLUMN IF NOT EXISTS added_by UUID,
 ADD COLUMN IF NOT EXISTS added_by_admin TEXT,
 ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
@@ -430,19 +427,17 @@ ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
           </div>
         </div>
 
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold">Add Developer</h2>
+            <h2 className="text-xl font-bold tracking-tight text-foreground">Add Developer</h2>
           </div>
 
           <button
             onClick={fetchAdminDevelopers}
-            className="bg-gray-100 text-gray-700 px-3 py-2 rounded-md hover:bg-gray-200 transition-colors text-sm flex items-center"
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
             disabled={loading}
           >
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
+            <RefreshCw className="w-4 h-4" />
             Refresh
           </button>
         </div>
@@ -463,10 +458,10 @@ ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
   // Loading state
   if (loading) {
     return (
-      <div className="bg-white p-6 rounded-lg shadow">
+      <div className="rounded-xl border border-border bg-card p-6 shadow-card">
         <div className="text-center py-8">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#009578]"></div>
-          <p className="mt-2 text-gray-500">Loading developers...</p>
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <p className="mt-2 text-muted-foreground">Loading developers...</p>
         </div>
       </div>
     );
@@ -475,32 +470,28 @@ ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
   // Show warning if admin is not logged in
   if (!currentAdmin) {
     return (
-      <div className="bg-white p-6 rounded-lg shadow">
+      <div className="rounded-xl border border-border bg-card p-6 shadow-card">
         <div className="text-center py-8">
-          <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13 0c1.013 0 1.827.833 1.827 1.86 0 1.03-.814 1.86-1.827 1.86s-1.827-.83-1.827-1.86c0-1.027.814-1.86 1.827-1.86z" />
-          </svg>
-          <p className="text-gray-500">Please log in as an admin to view developers.</p>
+          <Users className="w-16 h-16 text-muted-foreground/40 mx-auto mb-4" strokeWidth={1} />
+          <p className="text-muted-foreground">Please log in as an admin to view developers.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow">
-      <div className="flex justify-between items-center mb-6">
+    <div className="space-y-6 rounded-xl border border-border bg-card p-6 shadow-card">
+      <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold">Add Developer</h2>
+          <h2 className="text-xl font-bold tracking-tight text-foreground">Add Developer</h2>
         </div>
 
         <button
           onClick={fetchAdminDevelopers}
-          className="bg-gray-100 text-gray-700 px-3 py-2 rounded-md hover:bg-gray-200 transition-colors text-sm flex items-center"
+          className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
           disabled={loading}
         >
-          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
+          <RefreshCw className="w-4 h-4" />
           Refresh
         </button>
       </div>

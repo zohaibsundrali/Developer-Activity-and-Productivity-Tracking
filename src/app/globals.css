@@ -1,89 +1,98 @@
-@import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 /* Tailwind v3 project: avoid Tailwind v4-only CSS imports */
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-
-:root {
-  --foreground-rgb: 0, 0, 0;
-  --background-rgb: 255, 255, 255;
-}
-
-body {
-  background: rgb(var(--background-rgb));
-  font-family: 'Roboto', sans-serif;
-}
-
-html,
-body {
-  width: 100%;
-  overflow-x: hidden;
-}
-
-img,
-video,
-canvas,
-svg {
-  max-width: 100%;
-  height: auto;
-}
-
-.swal2-pre {
-  margin: 0;
-  text-align: left;
-  white-space: pre-wrap;
-  font-family: 'Roboto', sans-serif;
-  line-height: 1.4;
-}
-
+/*
+  Unified design system — "Refined Teal" premium SaaS palette.
+  Tokens are raw HSL channels (space-separated) so tailwind.config's
+  hsl(var(--token)) resolves correctly. Replaces the old broken oklch tokens.
+*/
 @layer base {
-  .theme {
-    --font-heading: var(--font-sans);
-    --font-sans: var(--font-sans);
-  }
   :root {
-    --background: oklch(0.99 0.005 240);
-    --foreground: oklch(0.1 0.02 240);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.1 0.02 240);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.1 0.02 240);
-    --primary: oklch(0.45 0.25 260);
-    --primary-foreground: oklch(0.98 0.01 240);
-    --secondary: oklch(0.95 0.01 240);
-    --secondary-foreground: oklch(0.1 0.02 240);
-    --muted: oklch(0.95 0.01 240);
-    --muted-foreground: oklch(0.4 0.01 240);
-    --accent: oklch(0.95 0.01 240);
-    --accent-foreground: oklch(0.1 0.02 240);
-    --destructive: oklch(0.55 0.25 25);
-    --border: oklch(0.9 0.01 240);
-    --input: oklch(0.9 0.01 240);
-    --ring: oklch(0.45 0.25 260);
-    --radius: 0.5rem;
+    /* Surfaces & text */
+    --background: 210 30% 98%;
+    --foreground: 200 25% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 200 25% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 200 25% 12%;
+
+    /* Brand — refined teal (evolved from #009578) */
+    --primary: 168 84% 30%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Neutrals */
+    --secondary: 210 20% 96%;
+    --secondary-foreground: 200 20% 22%;
+    --muted: 210 20% 96%;
+    --muted-foreground: 210 12% 46%;
+    --accent: 168 55% 95%;
+    --accent-foreground: 168 84% 22%;
+
+    /* Semantic */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 160 84% 32%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 48%;
+    --warning-foreground: 0 0% 100%;
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+
+    /* Lines & focus */
+    --border: 214 22% 90%;
+    --input: 214 22% 90%;
+    --ring: 168 84% 30%;
+    --radius: 0.75rem;
+
+    /* Premium dark sidebar */
+    --sidebar: 200 45% 9%;
+    --sidebar-foreground: 205 20% 74%;
+    --sidebar-muted: 205 14% 55%;
+    --sidebar-border: 200 30% 17%;
+    --sidebar-accent: 200 34% 14%;
+    --sidebar-primary: 168 74% 40%;
+    --sidebar-primary-foreground: 0 0% 100%;
   }
 
+  /* Dark mode kept for completeness; app runs light by default. */
   .dark {
-    --background: oklch(0.1 0.02 240);
-    --foreground: oklch(0.98 0.01 240);
-    --card: oklch(0.12 0.02 240);
-    --card-foreground: oklch(0.98 0.01 240);
-    --popover: oklch(0.12 0.02 240);
-    --popover-foreground: oklch(0.98 0.01 240);
-    --primary: oklch(0.45 0.25 260);
-    --primary-foreground: oklch(0.98 0.01 240);
-    --secondary: oklch(0.2 0.02 240);
-    --secondary-foreground: oklch(0.98 0.01 240);
-    --muted: oklch(0.2 0.02 240);
-    --muted-foreground: oklch(0.7 0.01 240);
-    --accent: oklch(0.2 0.02 240);
-    --accent-foreground: oklch(0.98 0.01 240);
-    --destructive: oklch(0.55 0.25 25);
-    --border: oklch(0.2 0.02 240);
-    --input: oklch(0.2 0.02 240);
-    --ring: oklch(0.45 0.25 260);
+    --background: 200 30% 8%;
+    --foreground: 210 20% 96%;
+    --card: 200 28% 11%;
+    --card-foreground: 210 20% 96%;
+    --popover: 200 28% 11%;
+    --popover-foreground: 210 20% 96%;
+    --primary: 168 74% 42%;
+    --primary-foreground: 200 45% 9%;
+    --secondary: 200 20% 18%;
+    --secondary-foreground: 210 20% 96%;
+    --muted: 200 20% 18%;
+    --muted-foreground: 210 14% 64%;
+    --accent: 200 24% 18%;
+    --accent-foreground: 168 74% 60%;
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 160 74% 42%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 200 45% 9%;
+    --info: 199 89% 56%;
+    --info-foreground: 200 45% 9%;
+    --border: 200 22% 20%;
+    --input: 200 22% 20%;
+    --ring: 168 74% 42%;
+    /* Sidebar stays dark chrome in both themes */
+    --sidebar: 200 45% 7%;
+    --sidebar-foreground: 205 20% 74%;
+    --sidebar-muted: 205 14% 55%;
+    --sidebar-border: 200 30% 15%;
+    --sidebar-accent: 200 34% 13%;
+    --sidebar-primary: 168 74% 40%;
+    --sidebar-primary-foreground: 0 0% 100%;
   }
 }
 
@@ -93,10 +102,71 @@ svg {
     outline-color: hsl(var(--ring) / 0.5);
     min-width: 0;
   }
-  body {
-    @apply bg-background text-foreground;
-  }
+
   html {
-    @apply font-sans;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
+
+  html,
+  body {
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  body {
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  img,
+  video,
+  canvas,
+  svg {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Refined scrollbars */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.4);
+    background-clip: content-box;
+  }
+}
+
+/* Sidebar owns its own dark scrollbar */
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: hsl(var(--sidebar-border));
+  background-clip: content-box;
+}
+
+/* Utilities */
+.card-elevated {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  box-shadow: 0 1px 2px hsl(200 25% 12% / 0.04), 0 1px 3px hsl(200 25% 12% / 0.06);
+}
+
+.swal2-pre {
+  margin: 0;
+  text-align: left;
+  white-space: pre-wrap;
+  font-family: 'Inter', sans-serif;
+  line-height: 1.4;
 }

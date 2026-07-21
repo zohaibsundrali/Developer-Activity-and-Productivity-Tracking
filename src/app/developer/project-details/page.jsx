@@ -3,7 +3,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabaseClient';
 import TaskCompletionModal from "@/components/developer/TaskCompletionModal";
-import { showError, showInfo, showWarning, showSuccess } from "@/utils/alerts";
+import { showError, showInfo, showWarning } from "@/utils/alerts";
 import Swal from 'sweetalert2';
 import { isSessionExpired, clearDeveloperSession } from '@/utils/sessionPolicy';
 
@@ -425,7 +425,7 @@ export default function ProjectDetailsPage() {
         showCancelButton: true,
         confirmButtonText: "Yes, submit tasks",
         cancelButtonText: "Cancel",
-        confirmButtonColor: "#009578",
+        confirmButtonColor: "#0c8f6e",
         cancelButtonColor: "#d33"
       });
       
@@ -1046,19 +1046,19 @@ export default function ProjectDetailsPage() {
     const totalDays = Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24)) + 1;
     
     return (
-      <div className="mt-6 bg-white rounded-lg shadow border p-6">
-        <h3 className="text-xl font-bold mb-4 text-gray-800">Gantt Chart</h3>
+      <div className="mt-6 bg-card rounded-xl shadow-card border border-border p-6">
+        <h3 className="text-xl font-bold mb-4 text-foreground">Gantt Chart</h3>
         <div className="overflow-x-auto">
           <div className="min-w-full">
             <div className="flex items-center mb-2">
-              <div className="w-32 text-sm font-medium text-gray-600">Task</div>
+              <div className="w-32 text-sm font-medium text-muted-foreground">Task</div>
               <div className="flex-1 relative h-8">
                 <div className="absolute inset-0 flex items-center">
                   {Array.from({ length: totalDays }).map((_, i) => {
                     const date = new Date(minDate);
                     date.setDate(minDate.getDate() + i);
                     return (
-                      <div key={i} className="flex-1 border-l border-gray-200 h-4 text-xs text-gray-400 text-center">
+                      <div key={i} className="flex-1 border-l border-border h-4 text-xs text-muted-foreground text-center">
                         {i === 0 || i === totalDays - 1 || date.getDate() === 1 ? 
                           date.getDate() : ''}
                       </div>
@@ -1084,10 +1084,10 @@ export default function ProjectDetailsPage() {
               
               return (
                 <div key={task.id} className="flex items-center mb-3">
-                  <div className="w-32 text-sm font-medium text-gray-700 truncate">
+                  <div className="w-32 text-sm font-medium text-foreground truncate">
                     {task.title}
                   </div>
-                  <div className="flex-1 relative h-6 bg-gray-100 rounded">
+                  <div className="flex-1 relative h-6 bg-muted rounded">
                     <div 
                       className={`absolute h-4 rounded ${barColor} top-1`}
                       style={{
@@ -1108,11 +1108,11 @@ export default function ProjectDetailsPage() {
           </div>
         </div>
         <div className="mt-4 flex items-center flex-wrap gap-4 text-sm">
-          <div className="flex items-center"><div className="w-3 h-3 bg-blue-400 rounded mr-2"></div><span className="text-gray-600">Pending</span></div>
-          <div className="flex items-center"><div className="w-3 h-3 bg-yellow-500 rounded mr-2"></div><span className="text-gray-600">In Progress</span></div>
-          <div className="flex items-center"><div className="w-3 h-3 bg-orange-400 rounded mr-2"></div><span className="text-gray-600">Awaiting Review</span></div>
-          <div className="flex items-center"><div className="w-3 h-3 bg-green-500 rounded mr-2"></div><span className="text-gray-600">Completed</span></div>
-          <div className="flex items-center"><div className="w-3 h-3 bg-red-500 rounded mr-2"></div><span className="text-gray-600">Rejected</span></div>
+          <div className="flex items-center"><div className="w-3 h-3 bg-blue-400 rounded mr-2"></div><span className="text-muted-foreground">Pending</span></div>
+          <div className="flex items-center"><div className="w-3 h-3 bg-yellow-500 rounded mr-2"></div><span className="text-muted-foreground">In Progress</span></div>
+          <div className="flex items-center"><div className="w-3 h-3 bg-orange-400 rounded mr-2"></div><span className="text-muted-foreground">Awaiting Review</span></div>
+          <div className="flex items-center"><div className="w-3 h-3 bg-green-500 rounded mr-2"></div><span className="text-muted-foreground">Completed</span></div>
+          <div className="flex items-center"><div className="w-3 h-3 bg-red-500 rounded mr-2"></div><span className="text-muted-foreground">Rejected</span></div>
         </div>
       </div>
     );
@@ -1121,13 +1121,13 @@ export default function ProjectDetailsPage() {
   // Loading state
   if (loading || developerLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-muted flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <div className="text-xl text-gray-600 mt-4">Loading project details...</div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <div className="text-xl text-muted-foreground mt-4">Loading project details...</div>
           <button
             onClick={handleBack}
-            className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Go to Dashboard
           </button>
@@ -1139,13 +1139,13 @@ export default function ProjectDetailsPage() {
   // Error state
   if (error && (!project || !project.id)) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center bg-white p-8 rounded-lg shadow">
-          <div className="text-red-500 text-xl mb-4">Error Loading Project</div>
-          <p className="text-gray-600 mb-6">{error}</p>
+      <div className="min-h-screen bg-muted flex items-center justify-center">
+        <div className="text-center bg-card p-8 rounded-xl border border-border shadow-card">
+          <div className="text-destructive text-xl mb-4">Error Loading Project</div>
+          <p className="text-muted-foreground mb-6">{error}</p>
           <button
             onClick={handleBack}
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Go to Dashboard
           </button>
@@ -1157,12 +1157,12 @@ export default function ProjectDetailsPage() {
   // If project data doesn't exist
   if (!project || !project.id) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-muted flex items-center justify-center">
         <div className="text-center">
-          <div className="text-xl text-gray-600">Loading project details...</div>
+          <div className="text-xl text-muted-foreground">Loading project details...</div>
           <button
             onClick={handleBack}
-            className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Go to Dashboard
           </button>
@@ -1172,45 +1172,45 @@ export default function ProjectDetailsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="min-h-screen bg-muted py-8">
       <div className="max-w-7xl mx-auto px-4">
         {/* Header with navigation */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-3">
             <button
               onClick={handleBack}
-              className="flex items-center text-gray-700 hover:text-blue-700 bg-white px-4 py-2 rounded-lg shadow border hover:shadow-md"
+              className="flex items-center text-foreground hover:text-primary bg-card px-4 py-2 rounded-lg shadow-card border border-border transition-shadow hover:shadow-elevated"
             >
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
               Dashboard
             </button>
-            
+
             <button
               onClick={handleBackToProjects}
-              className="hidden md:flex items-center text-gray-700 hover:text-blue-700 bg-white px-4 py-2 rounded-lg shadow border hover:shadow-md"
+              className="hidden md:flex items-center text-foreground hover:text-primary bg-card px-4 py-2 rounded-lg shadow-card border border-border transition-shadow hover:shadow-elevated"
             >
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
               </svg>
               All Projects
             </button>
-            
-            <h1 className="text-3xl font-bold text-gray-900 ml-4">Project Details</h1>
+
+            <h1 className="text-3xl font-bold tracking-tight text-foreground ml-4">Project Details</h1>
           </div>
-          
+
           {/* Developer Info */}
           {currentDeveloper && (
-            <div className="hidden md:block bg-blue-50 border border-blue-200 rounded-lg px-4 py-2">
-              <p className="text-sm font-medium text-blue-800">{currentDeveloper.name}</p>
-              <p className="text-xs text-blue-600">{currentDeveloper.email}</p>
+            <div className="hidden md:block bg-primary/10 border border-primary/20 rounded-lg px-4 py-2">
+              <p className="text-sm font-medium text-primary">{currentDeveloper.name}</p>
+              <p className="text-xs text-primary/80">{currentDeveloper.email}</p>
             </div>
           )}
-          
+
           {/* Submitted Status */}
           {isSubmitted && !isPlanRejected && (
-            <div className="bg-green-100 border border-green-400 text-green-800 px-4 py-2 rounded-lg">
+            <div className="bg-success/10 border border-success/30 text-success px-4 py-2 rounded-lg">
               <div className="flex items-center">
                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -1220,7 +1220,7 @@ export default function ProjectDetailsPage() {
             </div>
           )}
           {isPlanRejected && (
-            <div className="bg-red-100 border border-red-400 text-red-800 px-4 py-2 rounded-lg">
+            <div className="bg-destructive/10 border border-destructive/30 text-destructive px-4 py-2 rounded-lg">
               <div className="flex items-center">
                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -1232,52 +1232,52 @@ export default function ProjectDetailsPage() {
         </div>
 
         {isPlanPending && (
-          <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="mb-6 bg-warning/10 border border-warning/30 rounded-lg p-4">
             <div className="flex items-start">
-              <svg className="w-5 h-5 text-yellow-500 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 text-warning mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <div>
-                <h4 className="font-semibold text-yellow-800 mb-1">Task plan awaiting admin approval</h4>
-                <p className="text-sm text-yellow-700">Editing is locked until the admin approves or rejects the plan.</p>
+                <h4 className="font-semibold text-warning mb-1">Task plan awaiting admin approval</h4>
+                <p className="text-sm text-warning/90">Editing is locked until the admin approves or rejects the plan.</p>
               </div>
             </div>
           </div>
         )}
 
         {isPlanRejected && project?.task_plan_rejection_reason && (
-          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="mb-6 bg-destructive/10 border border-destructive/30 rounded-lg p-4">
             <div className="flex items-start">
-              <svg className="w-5 h-5 text-red-500 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 text-destructive mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <div>
-                <h4 className="font-semibold text-red-800 mb-1">Admin rejected the task plan</h4>
-                <p className="text-sm text-red-700">Reason: {project.task_plan_rejection_reason}</p>
+                <h4 className="font-semibold text-destructive mb-1">Admin rejected the task plan</h4>
+                <p className="text-sm text-destructive/90">Reason: {project.task_plan_rejection_reason}</p>
               </div>
             </div>
           </div>
         )}
 
         {/* Task Summary Banner */}
-        <div className="mb-6 bg-white rounded-lg shadow border p-4">
+        <div className="mb-6 bg-card rounded-xl shadow-card border border-border p-4">
           <div className="flex flex-wrap items-center justify-between">
             <div className="flex items-center flex-wrap gap-6">
-              <div className="text-center"><div className="text-2xl font-bold text-gray-800">{taskSummary.total}</div><div className="text-sm text-gray-500">Total</div></div>
-              <div className="text-center"><div className="text-2xl font-bold text-gray-500">{taskSummary.pending}</div><div className="text-sm text-gray-500">Pending</div></div>
-              <div className="text-center"><div className="text-2xl font-bold text-blue-600">{taskSummary.inProgress}</div><div className="text-sm text-gray-500">In Progress</div></div>
-              <div className="text-center"><div className="text-2xl font-bold text-yellow-600">{taskSummary.awaitingReview}</div><div className="text-sm text-gray-500">Awaiting Review</div></div>
-              <div className="text-center"><div className="text-2xl font-bold text-green-600">{taskSummary.completed}</div><div className="text-sm text-gray-500">Completed</div></div>
-              {taskSummary.rejected > 0 && <div className="text-center"><div className="text-2xl font-bold text-red-600">{taskSummary.rejected}</div><div className="text-sm text-gray-500">Rejected</div></div>}
+              <div className="text-center"><div className="text-2xl font-bold text-foreground">{taskSummary.total}</div><div className="text-sm text-muted-foreground">Total</div></div>
+              <div className="text-center"><div className="text-2xl font-bold text-muted-foreground">{taskSummary.pending}</div><div className="text-sm text-muted-foreground">Pending</div></div>
+              <div className="text-center"><div className="text-2xl font-bold text-info">{taskSummary.inProgress}</div><div className="text-sm text-muted-foreground">In Progress</div></div>
+              <div className="text-center"><div className="text-2xl font-bold text-warning">{taskSummary.awaitingReview}</div><div className="text-sm text-muted-foreground">Awaiting Review</div></div>
+              <div className="text-center"><div className="text-2xl font-bold text-success">{taskSummary.completed}</div><div className="text-sm text-muted-foreground">Completed</div></div>
+              {taskSummary.rejected > 0 && <div className="text-center"><div className="text-2xl font-bold text-destructive">{taskSummary.rejected}</div><div className="text-sm text-muted-foreground">Rejected</div></div>}
             </div>
-            
+
             {/* Duration Summary */}
             <div className="mt-4 md:mt-0">
               <div className="text-right">
-                <div className="text-lg font-bold text-gray-800">
+                <div className="text-lg font-bold text-foreground">
                   {tasks.filter(t => t.startDate && t.endDate).length} tasks with dates
                 </div>
-                <div className="text-sm text-gray-500">Tasks scheduled</div>
+                <div className="text-sm text-muted-foreground">Tasks scheduled</div>
               </div>
             </div>
           </div>
@@ -1285,15 +1285,15 @@ export default function ProjectDetailsPage() {
 
         {/* Validation Error Message */}
         {validationError && (
-          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="mb-6 bg-destructive/10 border border-destructive/30 rounded-lg p-4">
             <div className="flex items-start">
-              <svg className="w-5 h-5 text-red-500 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 text-destructive mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <div>
-                <h4 className="font-semibold text-red-800 mb-1">{validationError}</h4>
+                <h4 className="font-semibold text-destructive mb-1">{validationError}</h4>
                 {validationStats.invalidTasks > 0 && (
-                  <p className="text-sm text-red-600">
+                  <p className="text-sm text-destructive/90">
                     {validationStats.invalidTasks} task(s) need attention before submission.
                   </p>
                 )}
@@ -1305,15 +1305,15 @@ export default function ProjectDetailsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column - Project Details */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg shadow overflow-hidden border">
-              <div className="bg-blue-600 p-6 text-white">
+            <div className="bg-card rounded-xl shadow-card overflow-hidden border border-border">
+              <div className="bg-primary p-6 text-primary-foreground">
                 <div className="flex justify-between items-start">
                   <div>
                     <h1 className="text-2xl font-bold mb-2">{project.name}</h1>
                     <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                      project.status === 'active' ? 'bg-green-100 text-green-800' :
-                      project.status === 'completed' ? 'bg-blue-100 text-blue-800' :
-                      'bg-amber-100 text-amber-800'
+                      project.status === 'active' ? 'bg-success/15 text-success' :
+                      project.status === 'completed' ? 'bg-info/15 text-info' :
+                      'bg-warning/15 text-warning'
                     }`}>
                       {project.status ? project.status.charAt(0).toUpperCase() + project.status.slice(1) : 'Unknown'}
                     </span>
@@ -1324,9 +1324,9 @@ export default function ProjectDetailsPage() {
               <div className="p-6">
                 {/* Description Section */}
                 <div className="mb-6">
-                  <h2 className="text-lg font-semibold mb-3 text-gray-800">Project Description</h2>
-                  <div className="bg-gray-50 rounded-lg p-4 border">
-                    <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                  <h2 className="text-lg font-semibold mb-3 text-foreground">Project Description</h2>
+                  <div className="bg-muted/50 rounded-lg p-4 border border-border">
+                    <p className="text-foreground leading-relaxed whitespace-pre-wrap">
                       {project.description || 'No description provided for this project.'}
                     </p>
                   </div>
@@ -1334,12 +1334,12 @@ export default function ProjectDetailsPage() {
 
                 {/* Project Timeline */}
                 <div className="space-y-4 mb-6">
-                  <div className="bg-white border rounded-lg p-4">
+                  <div className="bg-card border border-border rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-md font-semibold text-gray-800">Assigned Date</h3>
+                      <h3 className="text-md font-semibold text-foreground">Assigned Date</h3>
                     </div>
-                    <div className="flex items-center text-gray-600">
-                      <svg className="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="flex items-center text-muted-foreground">
+                      <svg className="w-4 h-4 mr-2 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                       <span>{formatDate(assignedDate)}</span>
@@ -1347,10 +1347,10 @@ export default function ProjectDetailsPage() {
                   </div>
 
                   {project.deadline && project.deadline !== 'null' && (
-                    <div className="bg-white border rounded-lg p-4">
-                      <h3 className="text-md font-semibold mb-2 text-gray-800">Deadline</h3>
-                      <div className="flex items-center text-gray-600">
-                        <svg className="w-4 h-4 mr-2 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="bg-card border border-border rounded-lg p-4">
+                      <h3 className="text-md font-semibold mb-2 text-foreground">Deadline</h3>
+                      <div className="flex items-center text-muted-foreground">
+                        <svg className="w-4 h-4 mr-2 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                         <span>{formatDate(project.deadline)}</span>
@@ -1362,29 +1362,29 @@ export default function ProjectDetailsPage() {
                 {/* File Attachment */}
                 {project.file_url && project.file_url !== 'null' && (
                   <div className="mb-6">
-                    <h2 className="text-lg font-semibold mb-3 text-gray-800">Project Files</h2>
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h2 className="text-lg font-semibold mb-3 text-foreground">Project Files</h2>
+                    <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow border border-blue-200">
-                            <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <div className="w-10 h-10 bg-card rounded-lg flex items-center justify-center shadow-card border border-primary/20">
+                            <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                             </svg>
                           </div>
                           <div>
-                            <p className="font-semibold text-blue-900">
+                            <p className="font-semibold text-foreground">
                               {project.file_name || 'Project Requirements Document'}
                             </p>
-                            <p className="text-xs text-blue-700 mt-1">Click to download file</p>
+                            <p className="text-xs text-muted-foreground mt-1">Click to download file</p>
                           </div>
                         </div>
                         <button
                           onClick={handleDownloadFile}
                           disabled={downloading}
-                          className={`px-4 py-2 rounded-lg font-medium text-sm flex items-center ${
-                            downloading 
-                              ? 'bg-blue-400 cursor-not-allowed' 
-                              : 'bg-blue-600 hover:bg-blue-700 text-white'
+                          className={`px-4 py-2 rounded-lg font-semibold text-sm flex items-center transition-colors ${
+                            downloading
+                              ? 'bg-primary/60 cursor-not-allowed text-primary-foreground'
+                              : 'bg-primary hover:bg-primary/90 text-primary-foreground'
                           }`}
                         >
                           {downloading ? (
@@ -1414,8 +1414,8 @@ export default function ProjectDetailsPage() {
 
           {/* Right Column - Tasks List */}
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-lg shadow overflow-hidden border">
-              <div className={`p-6 ${isSubmitted ? 'bg-gray-600' : 'bg-green-600'} text-white`}>
+            <div className="bg-card rounded-xl shadow-card overflow-hidden border border-border">
+              <div className={`p-6 ${isSubmitted ? 'bg-slate-600' : 'bg-primary'} text-white`}>
                 <h2 className="text-2xl font-bold">Project Tasks</h2>
                 <p className="text-white mt-1 opacity-90">
                   {isPlanApproved && 'Task plan approved — work through tasks one by one sequentially'}
@@ -1433,11 +1433,11 @@ export default function ProjectDetailsPage() {
               <div className="p-6">
                 {/* Task Status Legend */}
                 <div className="flex flex-wrap gap-4 mb-6">
-                  <div className="flex items-center"><div className="w-3 h-3 rounded-full bg-gray-400 mr-2"></div><span className="text-sm text-gray-600">Pending</span></div>
-                  <div className="flex items-center"><div className="w-3 h-3 rounded-full bg-blue-500 mr-2"></div><span className="text-sm text-gray-600">In Progress</span></div>
-                  <div className="flex items-center"><div className="w-3 h-3 rounded-full bg-yellow-500 mr-2"></div><span className="text-sm text-gray-600">Awaiting Review</span></div>
-                  <div className="flex items-center"><div className="w-3 h-3 rounded-full bg-green-500 mr-2"></div><span className="text-sm text-gray-600">Completed</span></div>
-                  <div className="flex items-center"><div className="w-3 h-3 rounded-full bg-red-500 mr-2"></div><span className="text-sm text-gray-600">Rejected</span></div>
+                  <div className="flex items-center"><div className="w-3 h-3 rounded-full bg-muted-foreground/50 mr-2"></div><span className="text-sm text-muted-foreground">Pending</span></div>
+                  <div className="flex items-center"><div className="w-3 h-3 rounded-full bg-info mr-2"></div><span className="text-sm text-muted-foreground">In Progress</span></div>
+                  <div className="flex items-center"><div className="w-3 h-3 rounded-full bg-warning mr-2"></div><span className="text-sm text-muted-foreground">Awaiting Review</span></div>
+                  <div className="flex items-center"><div className="w-3 h-3 rounded-full bg-success mr-2"></div><span className="text-sm text-muted-foreground">Completed</span></div>
+                  <div className="flex items-center"><div className="w-3 h-3 rounded-full bg-destructive mr-2"></div><span className="text-sm text-muted-foreground">Rejected</span></div>
                 </div>
 
                 {/* Tasks List */}
@@ -1445,28 +1445,28 @@ export default function ProjectDetailsPage() {
                   {tasks.map((task, index) => (
                     <div key={task.id}>
                       <div className={`border rounded-lg p-4 ${
-                        task.status === 'completed' ? 'bg-green-50 border-green-200' :
-                        task.status === 'in_progress' ? 'bg-blue-50 border-blue-200' :
-                        task.status === 'awaiting_approval' ? 'bg-yellow-50 border-yellow-200' :
-                        task.status === 'rejected' ? 'bg-red-50 border-red-200' :
-                        'bg-gray-50 border-gray-200'
+                        task.status === 'completed' ? 'bg-success/10 border-success/20' :
+                        task.status === 'in_progress' ? 'bg-info/10 border-info/20' :
+                        task.status === 'awaiting_approval' ? 'bg-warning/10 border-warning/20' :
+                        task.status === 'rejected' ? 'bg-destructive/10 border-destructive/20' :
+                        'bg-muted/50 border-border'
                       } ${
-                        canEditTasks && !isTaskValid(task) ? 'border-l-4 border-l-red-500' : ''
+                        canEditTasks && !isTaskValid(task) ? 'border-l-4 border-l-destructive' : ''
                       }`}>
                         <div className="flex justify-between items-start mb-3">
                           <div className="flex items-start space-x-3">
                             {/* Task Number and Status Indicator */}
                             <div className="flex flex-col items-center">
-                              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center font-bold text-blue-700 border border-blue-200">
+                              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary border border-primary/20">
                                 {index + 1}
                               </div>
                               {/* Status Badge */}
                               <span className={`mt-2 px-2 py-1 rounded-full text-xs font-medium ${
-                                task.status === 'completed' ? 'bg-green-100 text-green-800 border border-green-200' :
-                                task.status === 'in_progress' ? 'bg-blue-100 text-blue-800 border border-blue-200' :
-                                task.status === 'awaiting_approval' ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' :
-                                task.status === 'rejected' ? 'bg-red-100 text-red-800 border border-red-200' :
-                                'bg-gray-100 text-gray-600 border border-gray-200'
+                                task.status === 'completed' ? 'bg-success/15 text-success border border-success/20' :
+                                task.status === 'in_progress' ? 'bg-info/15 text-info border border-info/20' :
+                                task.status === 'awaiting_approval' ? 'bg-warning/15 text-warning border border-warning/20' :
+                                task.status === 'rejected' ? 'bg-destructive/15 text-destructive border border-destructive/20' :
+                                'bg-muted text-muted-foreground border border-border'
                               }`}>
                                 {task.status === 'in_progress' ? 'In Progress' :
                                  task.status === 'completed' ? 'Completed' :
@@ -1474,53 +1474,53 @@ export default function ProjectDetailsPage() {
                                  task.status === 'rejected' ? 'Rejected' : 'Pending'}
                               </span>
                             </div>
-                            
+
                             <div className="flex-1">
                               <h3 className={`text-lg font-semibold ${
-                                canEditTasks ? 'text-gray-800' : 'text-gray-600'
+                                canEditTasks ? 'text-foreground' : 'text-muted-foreground'
                               }`}>
                                 {formatTaskTitle(task.title) || 'Untitled Task'}
                               </h3>
                               <p className={`text-sm mt-1 ${
-                                canEditTasks ? 'text-gray-600' : 'text-gray-500'
+                                canEditTasks ? 'text-muted-foreground' : 'text-muted-foreground'
                               }`}>
                                 {task.description || 'No description provided'}
                               </p>
-                              
+
                               {/* Task Duration */}
                               {task.startDate && task.endDate && (
-                                <div className="mt-2 inline-flex items-center text-xs text-gray-600 bg-white border border-gray-200 px-2 py-1 rounded">
-                                  <svg className="w-3 h-3 mr-1 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <div className="mt-2 inline-flex items-center text-xs text-muted-foreground bg-card border border-border px-2 py-1 rounded">
+                                  <svg className="w-3 h-3 mr-1 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                                   </svg>
                                   {calculateDuration(task.startDate, task.endDate)}
                                 </div>
                               )}
-                              
+
                               {/* Rejection reason */}
                               {task.status === 'rejected' && task.rejection_reason && (
-                                <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                                <div className="mt-2 p-2 bg-destructive/10 border border-destructive/20 rounded text-sm text-destructive">
                                   <strong>Rejection reason:</strong> {task.rejection_reason}
                                 </div>
                               )}
                               {task.status === 'rejected' && task.admin_comments && (
-                                <div className="mt-1 p-2 bg-orange-50 border border-orange-200 rounded text-sm text-orange-700">
+                                <div className="mt-1 p-2 bg-warning/10 border border-warning/20 rounded text-sm text-warning">
                                   <strong>Admin comments:</strong> {task.admin_comments}
                                 </div>
                               )}
                               {task.status === 'completed' && task.admin_comments && (
-                                <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-sm text-blue-700">
+                                <div className="mt-2 p-2 bg-info/10 border border-info/20 rounded text-sm text-info">
                                   <strong>Admin comments:</strong> {task.admin_comments}
                                 </div>
                               )}
                               {task.status === 'completed' && task.is_on_time !== undefined && task.is_on_time !== null && (
-                                <div className={`mt-2 p-2 rounded text-xs font-medium ${task.is_on_time ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                                <div className={`mt-2 p-2 rounded text-xs font-medium ${task.is_on_time ? 'bg-success/15 text-success' : 'bg-warning/15 text-warning'}`}>
                                   {task.is_on_time ? '✓ Completed on time · +1 productivity point' : '⚠ Completed late · −1 productivity point'}
                                 </div>
                               )}
                               {/* Validation error messages */}
                               {canEditTasks && !isTaskValid(task) && (
-                                <div className="mt-2 text-xs text-red-600 bg-red-50 p-2 rounded border border-red-200">
+                                <div className="mt-2 text-xs text-destructive bg-destructive/10 p-2 rounded border border-destructive/20">
                                   {!task.title || task.title.trim() === '' ? '• Task title is required' : ''}
                                   {!task.startDate || task.startDate.trim() === '' ? '• Start date is required' : ''}
                                   {!task.endDate || task.endDate.trim() === '' ? '• End date is required' : ''}
@@ -1535,13 +1535,13 @@ export default function ProjectDetailsPage() {
                             <div className="flex space-x-2">
                               <button
                                 onClick={() => handleEditTask(task)}
-                                className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
+                                className="bg-primary text-primary-foreground px-3 py-1 rounded text-sm font-semibold transition-colors hover:bg-primary/90"
                               >
                                 Edit
                               </button>
                               <button
                                 onClick={() => handleDeleteTask(task.id)}
-                                className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
+                                className="bg-destructive text-destructive-foreground px-3 py-1 rounded text-sm font-semibold transition-colors hover:bg-destructive/90"
                               >
                                 Delete
                               </button>
@@ -1552,14 +1552,14 @@ export default function ProjectDetailsPage() {
                         {/* Task Details Grid */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm mt-4">
                           <div>
-                            <label className="font-medium text-gray-700 mb-1 block">Start Date</label>
-                            <p className={`flex items-center ${canEditTasks ? 'text-gray-600' : 'text-gray-400'}`}>
+                            <label className="font-medium text-foreground mb-1 block">Start Date</label>
+                            <p className={`flex items-center ${canEditTasks ? 'text-muted-foreground' : 'text-muted-foreground/70'}`}>
                               {!task.startDate || task.startDate.trim() === '' ? (
-                                <span className="text-red-500 italic">Not set</span>
+                                <span className="text-destructive italic">Not set</span>
                               ) : (
                                 <>
                                   <svg className={`w-4 h-4 mr-1 ${
-                                    isTaskValid(task) ? 'text-green-500' : 'text-red-500'
+                                    isTaskValid(task) ? 'text-success' : 'text-destructive'
                                   }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     {isTaskValid(task) ? (
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -1573,14 +1573,14 @@ export default function ProjectDetailsPage() {
                             </p>
                           </div>
                           <div>
-                            <label className="font-medium text-gray-700 mb-1 block">End Date</label>
-                            <p className={`flex items-center ${canEditTasks ? 'text-gray-600' : 'text-gray-400'}`}>
+                            <label className="font-medium text-foreground mb-1 block">End Date</label>
+                            <p className={`flex items-center ${canEditTasks ? 'text-muted-foreground' : 'text-muted-foreground/70'}`}>
                               {!task.endDate || task.endDate.trim() === '' ? (
-                                <span className="text-red-500 italic">Not set</span>
+                                <span className="text-destructive italic">Not set</span>
                               ) : (
                                 <>
                                   <svg className={`w-4 h-4 mr-1 ${
-                                    isTaskValid(task) ? 'text-green-500' : 'text-red-500'
+                                    isTaskValid(task) ? 'text-success' : 'text-destructive'
                                   }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     {isTaskValid(task) ? (
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -1596,19 +1596,19 @@ export default function ProjectDetailsPage() {
                           
                           {/* Sequential Task Workflow Actions */}
                           <div>
-                            <label className="font-medium text-gray-700 mb-2 block">Action</label>
+                            <label className="font-medium text-foreground mb-2 block">Action</label>
                             {canEditTasks && (
-                              <span className="text-xs text-gray-400 italic">Save task plan first to begin working</span>
+                              <span className="text-xs text-muted-foreground italic">Save task plan first to begin working</span>
                             )}
                             {isSubmitted && isPlanApproved && task.status === 'pending' && (
                               <button
                                 onClick={() => handleStartTask(task.id, index)}
                                 disabled={!canStartTask(index) || getInProgressTaskIndex() !== -1}
                                 title={!canStartTask(index) ? 'Complete the previous task first' : getInProgressTaskIndex() !== -1 ? 'Another task is already in progress' : 'Start working on this task'}
-                                className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                                className={`px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
                                   canStartTask(index) && getInProgressTaskIndex() === -1
-                                    ? 'bg-blue-600 text-white hover:bg-blue-700'
-                                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                                    : 'bg-muted text-muted-foreground cursor-not-allowed'
                                 }`}
                               >
                                 {canStartTask(index) && getInProgressTaskIndex() === -1 ? '▶ Start Task' : '🔒 Locked'}
@@ -1617,31 +1617,31 @@ export default function ProjectDetailsPage() {
                             {isSubmitted && isPlanApproved && task.status === 'in_progress' && (
                               <button
                                 onClick={() => handleOpenCompletionModal(task)}
-                                className="px-3 py-2 rounded-lg text-xs font-medium bg-green-600 text-white hover:bg-green-700 transition-colors"
+                                className="px-3 py-2 rounded-lg text-xs font-semibold bg-success text-success-foreground hover:bg-success/90 transition-colors"
                               >
                                 ✓ Mark as Completed
                               </button>
                             )}
                             {isSubmitted && isPlanApproved && task.status === 'awaiting_approval' && (
-                              <span className="px-3 py-2 rounded-lg text-xs bg-yellow-100 text-yellow-800 border border-yellow-200 inline-block">
+                              <span className="px-3 py-2 rounded-lg text-xs bg-warning/15 text-warning border border-warning/20 inline-block">
                                 ⏳ Awaiting Admin Review
                               </span>
                             )}
                             {isSubmitted && isPlanApproved && task.status === 'rejected' && (
                               <button
                                 onClick={() => handleOpenCompletionModal(task)}
-                                className="px-3 py-2 rounded-lg text-xs font-medium bg-orange-600 text-white hover:bg-orange-700 transition-colors"
+                                className="px-3 py-2 rounded-lg text-xs font-semibold bg-warning text-warning-foreground hover:bg-warning/90 transition-colors"
                               >
                                 ↻ Re-submit Work
                               </button>
                             )}
                             {isSubmitted && isPlanApproved && task.status === 'completed' && (
-                              <span className="px-3 py-2 rounded-lg text-xs bg-green-100 text-green-800 border border-green-200 inline-block">
+                              <span className="px-3 py-2 rounded-lg text-xs bg-success/15 text-success border border-success/20 inline-block">
                                 ✓ Admin Approved{task.is_on_time === true ? ' · +1 pt' : task.is_on_time === false ? ' · −1 pt' : ''}
                               </span>
                             )}
                             {isSubmitted && !isPlanApproved && (
-                              <span className="px-3 py-2 rounded-lg text-xs bg-gray-100 text-gray-600 border border-gray-200 inline-block">
+                              <span className="px-3 py-2 rounded-lg text-xs bg-muted text-muted-foreground border border-border inline-block">
                                 ⏳ Waiting for admin approval
                               </span>
                             )}
@@ -1654,7 +1654,7 @@ export default function ProjectDetailsPage() {
                         <div className="flex justify-center mt-4">
                           <button
                             onClick={() => handleAddTask(task.id)}
-                            className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 font-medium flex items-center text-sm"
+                            className="bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:bg-primary/90 font-semibold flex items-center text-sm transition-colors"
                           >
                             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -1672,7 +1672,7 @@ export default function ProjectDetailsPage() {
                   <div className="text-center py-8">
                     <button
                       onClick={() => handleAddTask()}
-                      className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 font-medium flex items-center mx-auto"
+                      className="bg-primary text-primary-foreground px-6 py-3 rounded-lg hover:bg-primary/90 font-semibold flex items-center mx-auto transition-colors"
                     >
                       <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -1684,7 +1684,7 @@ export default function ProjectDetailsPage() {
 
                 {tasks.length === 0 && isSubmitted && !canEditTasks && (
                   <div className="text-center py-8">
-                    <p className="text-gray-500">No tasks were added for this project.</p>
+                    <p className="text-muted-foreground">No tasks were added for this project.</p>
                   </div>
                 )}
               </div>
@@ -1695,7 +1695,7 @@ export default function ProjectDetailsPage() {
               <div className="mt-6">
                 <button
                   onClick={() => setShowGanttChart(!showGanttChart)}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-medium flex items-center mb-4"
+                  className="bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:bg-primary/90 font-semibold flex items-center mb-4 transition-colors"
                 >
                   <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -1714,17 +1714,17 @@ export default function ProjectDetailsPage() {
           <div className="flex flex-col sm:flex-row gap-4 flex-1">
             <button
               onClick={handleBack}
-              className="flex-1 bg-gray-600 text-white py-3 px-6 rounded-lg hover:bg-gray-700 font-medium flex items-center justify-center"
+              className="flex-1 border border-border bg-card text-foreground py-3 px-6 rounded-lg hover:bg-muted font-semibold flex items-center justify-center transition-colors"
             >
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
               </svg>
               Go to Dashboard
             </button>
-            
+
             <button
               onClick={handleBackToProjects}
-              className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 font-medium flex items-center justify-center"
+              className="flex-1 border border-border bg-card text-foreground py-3 px-6 rounded-lg hover:bg-muted font-semibold flex items-center justify-center transition-colors"
             >
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -1732,12 +1732,12 @@ export default function ProjectDetailsPage() {
               All Projects
             </button>
           </div>
-          
+
           {/* Submit Work Button - Always enabled */}
           {canEditTasks && (
             <button
               onClick={handleSubmitWork}
-              className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 px-6 rounded-lg font-medium flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground py-3 px-6 rounded-lg font-semibold flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={tasks.length === 0 || !currentDeveloper}
             >
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1752,7 +1752,7 @@ export default function ProjectDetailsPage() {
 
         {/* Success Messages */}
         {showSubmitSuccess && (
-          <div className="fixed top-4 right-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg animate-bounce z-50">
+          <div className="fixed top-4 right-4 bg-success text-success-foreground px-6 py-3 rounded-lg shadow-elevated animate-bounce z-50">
             <div className="flex items-center">
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -1763,7 +1763,7 @@ export default function ProjectDetailsPage() {
         )}
 
         {validationSuccess && (
-          <div className="fixed top-4 right-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50">
+          <div className="fixed top-4 right-4 bg-success text-success-foreground px-6 py-3 rounded-lg shadow-elevated z-50">
             <div className="flex items-center">
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -1776,77 +1776,77 @@ export default function ProjectDetailsPage() {
 
       {/* Edit Task Modal */}
       {editingTask && canEditTasks && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6 max-h-[90vh] overflow-y-auto border border-gray-200 shadow-lg">
-            <h3 className="text-xl font-bold mb-4 text-gray-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-card rounded-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto border border-border shadow-popover">
+            <h3 className="text-xl font-bold mb-4 text-foreground">
               {editingTask.title ? 'Edit Task' : 'Add New Task'}
             </h3>
-            
+
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Task Title *</label>
+                <label className="block text-sm font-medium text-foreground mb-1">Task Title *</label>
                 <input
                   type="text"
                   value={editingTask.title}
                   onChange={(e) => setEditingTask({...editingTask, title: e.target.value})}
                   placeholder="Enter task title"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-input bg-background rounded-lg px-3 py-2 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <label className="block text-sm font-medium text-foreground mb-1">Description</label>
                 <textarea
                   value={editingTask.description}
                   onChange={(e) => setEditingTask({...editingTask, description: e.target.value})}
                   placeholder="Enter task description"
                   rows="3"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-input bg-background rounded-lg px-3 py-2 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Start Date *</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">Start Date *</label>
                   <input
                     type="date"
                     value={editingTask.startDate}
                     onChange={(e) => handleEditFieldChange("startDate", e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-input bg-background rounded-lg px-3 py-2 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">End Date *</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">End Date *</label>
                   <input
                     type="date"
                     value={editingTask.endDate}
                     onChange={(e) => handleEditFieldChange("endDate", e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-input bg-background rounded-lg px-3 py-2 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
                     required
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">No of Days *</label>
+                <label className="block text-sm font-medium text-foreground mb-1">No of Days *</label>
                 <input
                   type="number"
                   min="1"
                   value={editingTask.noOfDays || ""}
                   onChange={(e) => handleEditFieldChange("noOfDays", e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-input bg-background rounded-lg px-3 py-2 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
                   required
                 />
               </div>
 
               {/* Date Validation Check */}
-              {editingTask.startDate && editingTask.endDate && 
+              {editingTask.startDate && editingTask.endDate &&
                new Date(editingTask.endDate) < new Date(editingTask.startDate) && (
-                <div className="bg-red-50 border border-red-200 rounded p-3">
-                  <p className="text-sm text-red-600 flex items-center">
+                <div className="bg-destructive/10 border border-destructive/20 rounded p-3">
+                  <p className="text-sm text-destructive flex items-center">
                     <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
@@ -1860,13 +1860,13 @@ export default function ProjectDetailsPage() {
             <div className="flex space-x-3 mt-6">
               <button
                 onClick={handleCancelEdit}
-                className="flex-1 bg-gray-600 text-white py-2 px-4 rounded-lg hover:bg-gray-700"
+                className="flex-1 border border-border bg-card text-foreground py-2 px-4 rounded-lg hover:bg-muted font-semibold transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleUpdateTask}
-                className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700"
+                className="flex-1 bg-primary text-primary-foreground py-2 px-4 rounded-lg hover:bg-primary/90 font-semibold transition-colors disabled:opacity-50"
                 disabled={!editingTask.title || !editingTask.startDate || !editingTask.endDate}
               >
                 {editingTask.title ? 'Update Task' : 'Add Task'}

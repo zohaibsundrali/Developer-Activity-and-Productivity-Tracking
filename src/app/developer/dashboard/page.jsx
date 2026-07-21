@@ -2,8 +2,9 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
-import Header from "@/components/developer/Header";
-import Navigation from "@/components/developer/Navigation";
+import AppShell from "@/components/shell/AppShell";
+import { DEVELOPER_NAV, sectionTitle } from "@/components/shell/navConfig";
+import NotificationDropdown from "@/components/developer/NotificationDropdown";
 import DashboardOverview from "@/components/developer/DashboardOverview";
 import MyProjects from "@/components/developer/MyProjects";
 import ProjectDetails from "@/components/developer/ProjectDetails";
@@ -83,8 +84,11 @@ const withAuth = (WrappedComponent) => {
 
     if (loading) {
       return (
-        <div className="flex items-center justify-center min-h-screen bg-[#009578]">
-          <div className="text-white text-xl">Loading...</div>
+        <div className="flex min-h-screen items-center justify-center bg-background">
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-primary/30 border-t-primary" />
+            <div className="text-sm font-medium text-muted-foreground">Loading…</div>
+          </div>
         </div>
       );
     }
@@ -463,40 +467,39 @@ function DeveloperDashboardContent() {
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#009578]">
-        <div className="text-white text-xl">Loading...</div>
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-primary/30 border-t-primary" />
+          <div className="text-sm font-medium text-muted-foreground">Loading…</div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <Header
-        user={user}
-        assignedProjects={assignedProjects}
-        onLogout={handleLogout}
-        unreadCount={unreadCount}
-        notifications={notifications}
-        onMarkAllAsRead={handleMarkAllAsRead}
-        onLoadMoreNotifications={handleLoadMoreNotifications}
-        hasMoreNotifications={hasMoreNotifications}
-        isLoadingMoreNotifications={isLoadingMoreNotifications}
-      />
-
-      <Navigation
-        activeSection={activeSection}
-        onSectionChange={handleSectionChange}
-        assignedProjectsCount={assignedProjects.length}
-      />
-
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0">
-          <div className="border-4 border-dashed border-gray-200 rounded-lg min-h-96 p-4 sm:p-6 lg:p-8">
-            {renderContent()}
-          </div>
-        </div>
-      </main>
-    </div>
+    <AppShell
+      role="developer"
+      brandName="DevTrack"
+      navItems={DEVELOPER_NAV}
+      activeSection={activeSection}
+      onNavigate={handleSectionChange}
+      user={user}
+      onLogout={handleLogout}
+      title={sectionTitle(activeSection, "developer")}
+      subtitle={user?.name ? `Welcome back, ${user.name}` : undefined}
+      notificationSlot={
+        <NotificationDropdown
+          notifications={notifications || []}
+          unreadCount={unreadCount}
+          onMarkAllAsRead={handleMarkAllAsRead}
+          onLoadMore={handleLoadMoreNotifications}
+          hasMore={hasMoreNotifications}
+          isLoadingMore={isLoadingMoreNotifications}
+        />
+      }
+    >
+      {renderContent()}
+    </AppShell>
   );
 }
 

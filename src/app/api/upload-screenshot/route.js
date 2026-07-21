@@ -12,7 +12,7 @@ export async function POST(request) {
 
     // Upload to Supabase Storage
     const fileName = `screenshots/${developer_id}/${Date.now()}.png`;
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from('documents')
       .upload(fileName, base64ToBuffer(image_data), {
         contentType: 'image/png',
@@ -26,16 +26,19 @@ export async function POST(request) {
       .from('documents')
       .getPublicUrl(fileName);
 
-    // Save to database
+    // Save to database. Only REAL columns of the screenshots table are written:
+    // public_url is the canonical URL the desktop app writes and every reader
+    // displays. (image_url / thumbnail_url / activity_context / session_id do
+    // NOT exist in this table's schema and previously made this insert fail.)
     const { data, error } = await supabase
       .from('screenshots')
       .insert([
         {
           developer_id,
-          image_url: urlData.publicUrl,
-          thumbnail_url: urlData.publicUrl,
-          activity_context: context,
-          session_id,
+          public_url: urlData.publicUrl,
+          storage_path: fileName,
+          filename: fileName.split('/').pop(),
+          annotation_text: context || null,
           timestamp: new Date(timestamp).toISOString()
         }
       ])

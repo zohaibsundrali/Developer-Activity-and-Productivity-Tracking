@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
+import { Mail, CalendarDays, FolderKanban, CheckCircle2, Clock, Timer } from "lucide-react";
+import StatCard from "@/components/shell/StatCard";
 
-export default function DashboardTimeTracking({ user, assignedProjects = [] }) {
+export default function DashboardOverview({ user, assignedProjects = [] }) {
   const [dailyTotals, setDailyTotals] = useState({});
   const [weeklyTotals, setWeeklyTotals] = useState([]);
   const [totalTime, setTotalTime] = useState("00:00");
@@ -48,7 +50,7 @@ export default function DashboardTimeTracking({ user, assignedProjects = [] }) {
       return { label: "Completed", className: "bg-green-100 text-green-700" };
     }
     if (s === "in_progress" || s === "in progress" || s === "active") {
-      return { label: "In progress", className: "bg-blue-100 text-blue-700" };
+      return { label: "In progress", className: "bg-info/10 text-info" };
     }
     if (s === "on_hold" || s === "on hold") {
       return { label: "On hold", className: "bg-yellow-100 text-yellow-800" };
@@ -429,73 +431,51 @@ export default function DashboardTimeTracking({ user, assignedProjects = [] }) {
   const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-      {/* LEFT PANEL */}
-      <div className="lg:col-span-2 space-y-6">
-        {/* Profile Card */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8 text-black">
-          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
-            <div className="w-24 h-24 rounded-full bg-gray-100 border border-gray-300 flex items-center justify-center text-4xl font-bold text-[#009578]">
-              {user?.name?.charAt(0)?.toUpperCase() || user?.full_name?.charAt(0)?.toUpperCase() || "D"}
-            </div>
-            <div className="flex-1 text-center sm:text-left">
-              <h2 className="text-2xl text-[#009578] font-bold mb-1">{user?.name || user?.full_name || "Developer"}</h2>
-              <p className="text-gray-600 mb-4 flex items-center justify-center sm:justify-start gap-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-                {userEmail}
-              </p>
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3">
-                <span className="px-3 py-1 rounded-full bg-gray-100 text-black text-sm font-medium border border-gray-200">
-                  {user?.role || "Software Developer"}
-                </span>
-                <span className="px-3 py-1 rounded-full bg-gray-100 text-black text-sm font-medium border border-gray-200 flex items-center gap-1">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                  Joined {user?.created_at ? new Date(user.created_at).toLocaleDateString() : new Date().toLocaleDateString()}
-                </span>
-              </div>
+    <div className="space-y-6">
+      {/* Profile Card */}
+      <div className="rounded-xl border border-border bg-card p-6 shadow-card sm:p-7">
+        <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center">
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-3xl font-bold text-primary">
+            {user?.name?.charAt(0)?.toUpperCase() || user?.full_name?.charAt(0)?.toUpperCase() || "D"}
+          </div>
+          <div className="flex-1 text-center sm:text-left">
+            <h2 className="text-xl font-bold text-foreground">{user?.name || user?.full_name || "Developer"}</h2>
+            <p className="mt-1 flex items-center justify-center gap-1.5 text-sm text-muted-foreground sm:justify-start">
+              <Mail className="h-4 w-4" />
+              {userEmail}
+            </p>
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+              <span className="rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
+                {user?.role || "Software Developer"}
+              </span>
+              <span className="flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
+                <CalendarDays className="h-3.5 w-3.5" />
+                Joined {user?.created_at ? new Date(user.created_at).toLocaleDateString() : new Date().toLocaleDateString()}
+              </span>
             </div>
           </div>
         </div>
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-          <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-            <h3 className="text-gray-600 text-sm font-medium mb-1">Total Projects</h3>
-            <p className="text-3xl font-bold text-black">{assignedProjects?.length || recentProjects?.length || 0}</p>
-          </div>
-
-        </div>
-
-        {/* Recent Activity Card */}
-
       </div>
 
-      {/* RIGHT PANEL */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <div className="mb-6">
-          <h3 className="text-lg font-semibold mb-2">Today’s Tracked Time</h3>
-          <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-center">
-            <p className="text-3xl font-bold text-[#009578]">{todayTrackedTime}</p>
-            {/* <p className="text-sm text-gray-500 mt-1">Completed Sessions</p> */}
-          </div>
-        </div>
+      {/* Stat cards */}
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard title="Total Projects" value={assignedProjects?.length || recentProjects?.length || 0} icon={FolderKanban} tone="primary" />
+        <StatCard title="Completed Tasks" value={taskStats.completed} icon={CheckCircle2} tone="success" />
+        <StatCard title="Pending Tasks" value={taskStats.pending} icon={Clock} tone="warning" />
+        <StatCard title="Today's Tracked Time" value={todayTrackedTime} icon={Timer} tone="info" />
+      </div>
 
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-lg font-semibold">Most recent activity</h3>
-
-          </div>
-
-        </div>
+      {/* Recent projects */}
+      <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+        <h3 className="mb-4 text-base font-semibold text-foreground">Most recent activity</h3>
 
         {recentProjects.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-gray-200 p-10 text-center">
-            <p className="text-sm text-gray-500">No projects to display</p>
-            <p className="text-xs text-gray-400 mt-1">Projects assigned to you will appear here.</p>
+          <div className="rounded-lg border border-dashed border-border p-10 text-center">
+            <p className="text-sm font-medium text-muted-foreground">No projects to display</p>
+            <p className="mt-1 text-xs text-muted-foreground">Projects assigned to you will appear here.</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {recentProjects.map((p) => {
               const badge = getStatusBadge(p.status);
               const updated = formatUpdatedAt(p.activity_at || p.updated_at || p.created_at);
@@ -504,23 +484,20 @@ export default function DashboardTimeTracking({ user, assignedProjects = [] }) {
               return (
                 <div
                   key={p.id}
-                  className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm hover:border-gray-300 transition-colors"
+                  className="rounded-lg border border-border bg-card p-4 shadow-card transition-colors hover:border-primary/40"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 truncate">{p.name}</p>
-                      <p className="text-xs text-gray-500 mt-1 line-clamp-2">
-                        {desc || "No description provided."}
-                      </p>
-                    </div>
-                    <span className={`shrink-0 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${badge.className}`}>
+                    <p className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{p.name}</p>
+                    <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-medium ${badge.className}`}>
                       {badge.label}
                     </span>
                   </div>
-
-                  <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+                  <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                    {desc || "No description provided."}
+                  </p>
+                  <div className="mt-3 flex items-center justify-between border-t border-border pt-2 text-xs text-muted-foreground">
                     <span>Last activity</span>
-                    <span className="font-medium text-gray-700">{updated}</span>
+                    <span className="font-medium text-foreground">{updated}</span>
                   </div>
                 </div>
               );

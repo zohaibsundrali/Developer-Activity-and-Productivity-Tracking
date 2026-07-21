@@ -159,23 +159,23 @@ export default function GanttChartPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-muted/50 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-xl text-gray-600">Loading Gantt Chart...</div>
+          <div className="text-xl text-muted-foreground">Loading Gantt Chart...</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="min-h-screen bg-muted/50 py-8">
       <div className="max-w-7xl mx-auto px-4">
         {/* Header */}
         <div className="flex flex-col gap-4 mb-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <button
               onClick={handleBack}
-              className="flex items-center text-gray-600 hover:text-gray-800 bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-all w-fit"
+              className="flex items-center text-muted-foreground hover:text-foreground bg-card px-4 py-2 rounded-lg shadow-sm border border-border hover:shadow-md transition-all w-fit"
             >
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -183,14 +183,14 @@ export default function GanttChartPage() {
               Back to Project
             </button>
             <div className="min-w-0">
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 break-words">Project Gantt Chart</h1>
-              <p className="text-gray-600 mt-1">Visual timeline showing exact dates for each task</p>
+              <h1 className="text-2xl sm:text-3xl font-bold text-foreground break-words">Project Gantt Chart</h1>
+              <p className="text-muted-foreground mt-1">Visual timeline showing exact dates for each task</p>
             </div>
           </div>
 
           <button
             onClick={handleExportData}
-            className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors font-medium flex items-center justify-center w-full sm:w-auto"
+            className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors font-medium flex items-center justify-center w-full sm:w-auto"
           >
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -201,21 +201,21 @@ export default function GanttChartPage() {
 
         {/* Project Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="bg-white rounded-lg shadow p-4">
+          <div className="rounded-xl border border-border bg-card shadow-card p-4">
             <div className="flex items-center">
-              <div className="bg-blue-100 p-3 rounded-lg mr-4">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="bg-info/10 p-3 rounded-lg mr-4">
+                <svg className="w-6 h-6 text-info" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                 </svg>
               </div>
               <div>
-                <p className="text-sm text-gray-600">Total Tasks</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalTasks}</p>
+                <p className="text-sm text-muted-foreground">Total Tasks</p>
+                <p className="text-2xl font-bold text-foreground">{stats.totalTasks}</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-4">
+          <div className="rounded-xl border border-border bg-card shadow-card p-4">
             <div className="flex items-center">
               <div className="bg-green-100 p-3 rounded-lg mr-4">
                 <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -223,32 +223,32 @@ export default function GanttChartPage() {
                 </svg>
               </div>
               <div>
-                <p className="text-sm text-gray-600">Total Hours</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalHours} hrs</p>
+                <p className="text-sm text-muted-foreground">Total Hours</p>
+                <p className="text-2xl font-bold text-foreground">{stats.totalHours} hrs</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-4">
+          <div className="rounded-xl border border-border bg-card shadow-card p-4">
             <div className="flex items-center">
-              <div className="bg-purple-100 p-3 rounded-lg mr-4">
-                <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="bg-violet-500/10 p-3 rounded-lg mr-4">
+                <svg className="w-6 h-6 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
               </div>
               <div>
-                <p className="text-sm text-gray-600">Project Timeline</p>
-                <p className="text-sm font-bold text-gray-900 truncate">{stats.dateRange}</p>
+                <p className="text-sm text-muted-foreground">Project Timeline</p>
+                <p className="text-sm font-bold text-foreground truncate">{stats.dateRange}</p>
               </div>
             </div>
           </div>
         </div>
 
         {/* Gantt Chart */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+        <div className="rounded-xl border border-border bg-card shadow-elevated p-6 mb-6">
           <div className="mb-4">
-            <h2 className="text-xl font-semibold text-gray-800 mb-2">Project Timeline (Date-wise)</h2>
-            <p className="text-gray-600">Each bar shows the exact start and end dates for tasks</p>
+            <h2 className="text-xl font-semibold text-foreground mb-2">Project Timeline (Date-wise)</h2>
+            <p className="text-muted-foreground">Each bar shows the exact start and end dates for tasks</p>
           </div>
 
           {ganttData.length > 1 ? (
@@ -333,72 +333,72 @@ export default function GanttChartPage() {
               </div>
             </div>
           ) : (
-            <div className="text-center py-12 border-2 border-dashed border-gray-300 rounded-lg">
+            <div className="text-center py-12 border-2 border-dashed border-border rounded-lg">
               <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No Task Data Available</h3>
-              <p className="text-gray-500 mb-4">Submit project work with tasks to view the Gantt chart.</p>
+              <h3 className="text-lg font-medium text-foreground mb-2">No Task Data Available</h3>
+              <p className="text-muted-foreground mb-4">Submit project work with tasks to view the Gantt chart.</p>
             </div>
           )}
         </div>
 
         {/* Detailed Tasks Table */}
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">Task Details with Dates</h2>
+        <div className="rounded-xl border border-border bg-card shadow-elevated p-6">
+          <h2 className="text-xl font-semibold text-foreground mb-4">Task Details with Dates</h2>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="w-full min-w-[900px] divide-y divide-border">
+              <thead className="bg-muted/50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Task Name
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Description
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Start Date
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     End Date
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Working Hours
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Duration
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-card divide-y divide-border">
                 {tasks.map((task) => {
                   const startDate = task.startDate && task.startDate !== 'null' ? new Date(task.startDate) : null;
                   const endDate = task.endDate && task.endDate !== 'null' ? new Date(task.endDate) : null;
                   const duration = startDate && endDate ? Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) : 'N/A';
 
                   return (
-                    <tr key={task.id} className="hover:bg-gray-50">
+                    <tr key={task.id} className="hover:bg-muted/50">
                       <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-gray-900 break-words max-w-[28rem]">{task.title}</div>
+                        <div className="text-sm font-medium text-foreground break-words max-w-[28rem]">{task.title}</div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-sm text-gray-500 max-w-xs truncate">{task.description}</div>
+                        <div className="text-sm text-muted-foreground max-w-xs truncate">{task.description}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
+                        <div className="text-sm text-foreground">
                           {startDate ? formatDate(startDate) : 'Not set'}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
+                        <div className="text-sm text-foreground">
                           {endDate ? formatDate(endDate) : 'Not set'}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{task.workingHours || 0} hrs</div>
+                        <div className="text-sm text-foreground">{task.workingHours || 0} hrs</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
+                        <div className="text-sm text-foreground">
                           {typeof duration === 'number' ? `${duration} days` : duration}
                         </div>
                       </td>
@@ -410,7 +410,7 @@ export default function GanttChartPage() {
 
             {tasks.length === 0 && (
               <div className="text-center py-8">
-                <p className="text-gray-500">No tasks available for this project.</p>
+                <p className="text-muted-foreground">No tasks available for this project.</p>
               </div>
             )}
           </div>

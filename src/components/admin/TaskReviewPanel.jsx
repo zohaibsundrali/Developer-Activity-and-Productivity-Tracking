@@ -1,6 +1,15 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { showError, showSuccess, showWarning } from "@/utils/alerts";
+import { getSignedSubmissionUrl } from "@/utils/submissionFiles";
+import {
+  RefreshCw,
+  ClipboardList,
+  FileText,
+  Download,
+  Check,
+  X,
+} from "lucide-react";
 
 export default function TaskReviewPanel({ currentAdmin }) {
   const [loading, setLoading] = useState(true);
@@ -125,43 +134,26 @@ export default function TaskReviewPanel({ currentAdmin }) {
 
   const getStatusBadge = (status) => {
     const badges = {
-      pending: "bg-yellow-100 text-yellow-800 border-yellow-200",
-      approved: "bg-green-100 text-green-800 border-green-200",
-      rejected: "bg-red-100 text-red-800 border-red-200",
+      pending: "bg-warning/10 text-warning border-warning/20",
+      approved: "bg-success/10 text-success border-success/20",
+      rejected: "bg-destructive/10 text-destructive border-destructive/20",
     };
     return badges[status] || badges.pending;
   };
 
   const handleDownloadFile = async (fileUrl, fileName, storagePath) => {
-    let downloadUrl = null;
-
     try {
-      // 1) Prefer generating a fresh URL from Supabase Storage using storagePath
-      if (storagePath) {
-        const { data, error } = await supabase.storage
-          .from("task-submissions")
-          .createSignedUrl(storagePath, 60); // 60 seconds expiry
-
-        if (error) {
-          console.error("Failed to create signed URL from storage:", error);
-        } else if (data?.signedUrl) {
-          downloadUrl = data.signedUrl;
-        }
-      }
-
-      // 2) Fallback to a valid HTTP(S) URL from the database if needed
-      if (
-        !downloadUrl &&
-        fileUrl &&
-        fileUrl.startsWith("http") &&
-        !fileUrl.startsWith("data:") &&
-        !fileUrl.startsWith("base64:")
-      ) {
-        downloadUrl = fileUrl;
-      }
+      // The task-submissions bucket is PRIVATE, so we always mint a fresh
+      // short-lived signed URL (derived from storage_path, or parsed from the
+      // stored file_url for older rows). The stored public URL is never used
+      // directly because it does not resolve for a private bucket.
+      const downloadUrl = await getSignedSubmissionUrl({ storagePath, fileUrl });
 
       if (!downloadUrl) {
-        console.error("No valid download URL available for this file");
+        showError?.(
+          "Download unavailable",
+          "Could not generate a secure link for this file. Please try again."
+        );
         return;
       }
       // Fetch the file as a blob, then trigger a forced download
@@ -188,32 +180,32 @@ export default function TaskReviewPanel({ currentAdmin }) {
 
   if (!currentAdmin) {
     return (
-      <div className="p-6 text-center text-gray-500">
+      <div className="p-6 text-center text-muted-foreground">
         Please log in to view task reviews
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+    <div className="bg-card rounded-xl border border-border shadow-card overflow-hidden">
       {/* Header */}
-      <div className="bg-gradient-to-r from-[#009578] to-[#00b894] p-6">
-        <h2 className="text-2xl font-bold text-white mb-2">
+      <div className="bg-primary p-6">
+        <h2 className="text-2xl font-bold text-primary-foreground mb-2">
           Task Review Panel
         </h2>
-        <p className="text-white/80">
+        <p className="text-primary-foreground/80">
           Review and approve developer task submissions
         </p>
       </div>
 
       {/* Filter Tabs */}
-      <div className="border-b px-6 py-3 bg-gray-50 flex space-x-4">
+      <div className="border-b border-border px-6 py-3 bg-muted/50 flex space-x-4">
         <button
           onClick={() => setReviewStatus("pending")}
-          className={`px-4 py-2 rounded-lg font-medium transition-all ${
+          className={`px-4 py-2 rounded-lg font-semibold transition-all ${
             reviewStatus === "pending"
-              ? "bg-[#009578] text-white shadow"
-              : "bg-white text-gray-600 hover:bg-gray-100 border"
+              ? "bg-primary text-primary-foreground shadow-card"
+              : "bg-card text-muted-foreground hover:bg-muted border border-border"
           }`}
         >
           Pending Reviews
@@ -225,10 +217,10 @@ export default function TaskReviewPanel({ currentAdmin }) {
         </button>
         <button
           onClick={() => setReviewStatus("reviewed")}
-          className={`px-4 py-2 rounded-lg font-medium transition-all ${
+          className={`px-4 py-2 rounded-lg font-semibold transition-all ${
             reviewStatus === "reviewed"
-              ? "bg-[#009578] text-white shadow"
-              : "bg-white text-gray-600 hover:bg-gray-100 border"
+              ? "bg-primary text-primary-foreground shadow-card"
+              : "bg-card text-muted-foreground hover:bg-muted border border-border"
           }`}
         >
           Review History
@@ -240,21 +232,9 @@ export default function TaskReviewPanel({ currentAdmin }) {
         </button>
         <button
           onClick={fetchSubmissions}
-          className="ml-auto px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-all"
+          className="ml-auto inline-flex items-center justify-center px-4 py-2 bg-card text-muted-foreground rounded-lg border border-border hover:bg-muted transition-all"
         >
-          <svg
-            className="w-5 h-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-            />
-          </svg>
+          <RefreshCw className="w-5 h-5" aria-hidden="true" />
         </button>
       </div>
 
@@ -262,25 +242,16 @@ export default function TaskReviewPanel({ currentAdmin }) {
       <div className="p-6">
         {loading ? (
           <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#009578] mx-auto"></div>
-            <p className="mt-4 text-gray-500">Loading submissions...</p>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-4 text-muted-foreground">Loading submissions...</p>
           </div>
         ) : submissions.length === 0 ? (
           <div className="text-center py-12">
-            <svg
-              className="w-16 h-16 mx-auto text-gray-300"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
-              />
-            </svg>
-            <p className="mt-4 text-gray-500">
+            <ClipboardList
+              className="w-16 h-16 mx-auto text-muted-foreground/40"
+              aria-hidden="true"
+            />
+            <p className="mt-4 text-muted-foreground">
               {reviewStatus === "pending"
                 ? "No pending reviews"
                 : "No review history found"}
@@ -291,21 +262,21 @@ export default function TaskReviewPanel({ currentAdmin }) {
             {submissions.map((submission) => (
               <div
                 key={submission.id}
-                className="border rounded-xl p-5 hover:shadow-lg transition-all bg-white"
+                className="border border-border rounded-xl p-5 hover:shadow-card transition-all bg-card"
               >
                 {/* Submission Header */}
                 <div className="flex items-start justify-between mb-4">
                   <div>
-                    <h3 className="font-bold text-lg text-gray-800">
+                    <h3 className="font-bold text-lg text-foreground">
                       {submission.developer_tasks?.task_title || "Unnamed Task"}
                     </h3>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-muted-foreground">
                       Project: {submission.projects?.name || "Unknown Project"}
                     </p>
                   </div>
                   <div className="flex items-center space-x-2">
                     {isLateSubmission(submission) && (
-                      <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-medium">
+                      <span className="px-2.5 py-1 bg-warning/10 text-warning rounded-full text-xs font-semibold">
                         Late Submission
                       </span>
                     )}
@@ -321,37 +292,37 @@ export default function TaskReviewPanel({ currentAdmin }) {
                 </div>
 
                 {/* Developer Info */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 bg-gray-50 rounded-lg p-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 bg-muted/50 rounded-lg p-4">
                   <div>
-                    <p className="text-xs text-gray-500 uppercase">Developer</p>
-                    <p className="font-medium text-gray-800">
+                    <p className="text-xs text-muted-foreground uppercase">Developer</p>
+                    <p className="font-medium text-foreground">
                       {submission.developers?.name || "Unknown"}
                     </p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-muted-foreground">
                       {submission.developers?.email}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500 uppercase">Deadline</p>
-                    <p className="font-medium text-gray-800">
+                    <p className="text-xs text-muted-foreground uppercase">Deadline</p>
+                    <p className="font-medium text-foreground">
                       {formatDate(submission.developer_tasks?.end_date)}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500 uppercase">Submitted</p>
-                    <p className="font-medium text-gray-800">
+                    <p className="text-xs text-muted-foreground uppercase">Submitted</p>
+                    <p className="font-medium text-foreground">
                       {formatDate(submission.submitted_at)}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500 uppercase">
+                    <p className="text-xs text-muted-foreground uppercase">
                       Time Status
                     </p>
                     <p
                       className={`font-medium ${
                         isLateSubmission(submission)
-                          ? "text-red-600"
-                          : "text-green-600"
+                          ? "text-destructive"
+                          : "text-success"
                       }`}
                     >
                       {isLateSubmission(submission) ? "Late (-1)" : "On Time (+1)"}
@@ -360,26 +331,14 @@ export default function TaskReviewPanel({ currentAdmin }) {
                 </div>
 
                 {/* File Info */}
-                <div className="flex items-center justify-between bg-blue-50 rounded-lg p-3 mb-4">
+                <div className="flex items-center justify-between bg-info/10 rounded-lg p-3 mb-4">
                   <div className="flex items-center">
-                    <svg
-                      className="w-8 h-8 text-blue-500 mr-3"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                      />
-                    </svg>
+                    <FileText className="w-8 h-8 text-info mr-3" aria-hidden="true" />
                     <div>
-                      <p className="font-medium text-gray-800">
+                      <p className="font-medium text-foreground">
                         {submission.file_name || "Uploaded File"}
                       </p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-muted-foreground">
                         {submission.file_type?.toUpperCase()} •{" "}
                         {submission.file_size
                           ? `${(submission.file_size / 1024).toFixed(1)} KB`
@@ -396,32 +355,20 @@ export default function TaskReviewPanel({ currentAdmin }) {
                         submission.storage_path
                       )
                     }
-                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-semibold text-sm"
                   >
-                    <svg
-                      className="w-4 h-4 mr-2"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M16 12l-4 4m0 0l-4-4m4 4V4"
-                      />
-                    </svg>
+                    <Download className="w-4 h-4" aria-hidden="true" />
                     Download File
                   </button>
                 </div>
 
                 {/* Submission Notes */}
                 {submission.submission_notes && (
-                  <div className="mb-4 bg-gray-50 rounded-lg p-3">
-                    <p className="text-xs text-gray-500 uppercase mb-1">
+                  <div className="mb-4 bg-muted/50 rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground uppercase mb-1">
                       Developer Notes
                     </p>
-                    <p className="text-gray-700">{submission.submission_notes}</p>
+                    <p className="text-foreground">{submission.submission_notes}</p>
                   </div>
                 )}
 
@@ -429,43 +376,19 @@ export default function TaskReviewPanel({ currentAdmin }) {
 
                 {/* Action Buttons */}
                 {submission.review_status === "pending" && (
-                  <div className="flex space-x-3 pt-4 border-t">
+                  <div className="flex space-x-3 pt-4 border-t border-border">
                     <button
                       onClick={() => openReviewModal(submission, "approve")}
-                      className="flex-1 px-4 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium flex items-center justify-center"
+                      className="flex-1 px-4 py-3 bg-success text-success-foreground rounded-lg hover:bg-success/90 transition-colors font-semibold flex items-center justify-center gap-2"
                     >
-                      <svg
-                        className="w-5 h-5 mr-2"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
+                      <Check className="w-5 h-5" aria-hidden="true" />
                       Approve Task
                     </button>
                     <button
                       onClick={() => openReviewModal(submission, "reject")}
-                      className="flex-1 px-4 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors font-medium flex items-center justify-center"
+                      className="flex-1 px-4 py-3 bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90 transition-colors font-semibold flex items-center justify-center gap-2"
                     >
-                      <svg
-                        className="w-5 h-5 mr-2"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
+                      <X className="w-5 h-5" aria-hidden="true" />
                       Reject Task
                     </button>
                   </div>
@@ -476,21 +399,21 @@ export default function TaskReviewPanel({ currentAdmin }) {
                   <div
                     className={`mt-4 p-3 rounded-lg ${
                       submission.review_status === "approved"
-                        ? "bg-green-50"
-                        : "bg-red-50"
+                        ? "bg-success/10"
+                        : "bg-destructive/10"
                     }`}
                   >
-                    <p className="font-medium text-gray-800">
+                    <p className="font-medium text-foreground">
                       {submission.review_status === "approved"
                         ? "✓ Approved"
                         : "✗ Rejected"}
                     </p>
                     {submission.review_comments && (
-                      <p className="text-sm text-gray-600 mt-1">
+                      <p className="text-sm text-muted-foreground mt-1">
                         {submission.review_comments}
                       </p>
                     )}
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       Reviewed: {formatDate(submission.reviewed_at)}
                     </p>
                   </div>
@@ -503,11 +426,11 @@ export default function TaskReviewPanel({ currentAdmin }) {
 
       {/* Review Modal */}
       {showModal && selectedSubmission && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-card border border-border shadow-popover rounded-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
             <div
               className={`p-4 rounded-t-xl ${
-                modalAction === "approve" ? "bg-green-500" : "bg-red-500"
+                modalAction === "approve" ? "bg-success" : "bg-destructive"
               }`}
             >
               <h3 className="text-xl font-bold text-white">
@@ -521,14 +444,14 @@ export default function TaskReviewPanel({ currentAdmin }) {
             <div className="p-6 overflow-y-auto">
               {modalAction === "approve" ? (
                 <div>
-                  <p className="text-gray-600 mb-4">
+                  <p className="text-muted-foreground mb-4">
                     You are about to approve this task. The developer will
                     receive{" "}
                     <span
                       className={`font-bold ${
                         isLateSubmission(selectedSubmission)
-                          ? "text-red-600"
-                          : "text-green-600"
+                          ? "text-destructive"
+                          : "text-success"
                       }`}
                     >
                       {isLateSubmission(selectedSubmission)
@@ -537,30 +460,30 @@ export default function TaskReviewPanel({ currentAdmin }) {
                     </span>
                     .
                   </p>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-foreground mb-2">
                     Comments (Optional)
                   </label>
                   <textarea
                     value={reviewComments}
                     onChange={(e) => setReviewComments(e.target.value)}
-                    className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    className="w-full border border-input bg-background rounded-lg p-3 focus:border-primary focus:ring-2 focus:ring-primary/30"
                     rows={3}
                     placeholder="Add any feedback for the developer..."
                   />
                 </div>
               ) : (
                 <div>
-                  <p className="text-gray-600 mb-4">
+                  <p className="text-muted-foreground mb-4">
                     Please provide a reason for rejection. The developer will be
                     notified and can resubmit their work.
                   </p>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Rejection Reason <span className="text-red-500">*</span>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Rejection Reason <span className="text-destructive">*</span>
                   </label>
                   <textarea
                     value={rejectionReason}
                     onChange={(e) => setRejectionReason(e.target.value)}
-                    className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                    className="w-full border border-input bg-background rounded-lg p-3 focus:border-destructive focus:ring-2 focus:ring-destructive/30"
                     rows={3}
                     placeholder="Explain why this submission is being rejected..."
                     required
@@ -569,14 +492,14 @@ export default function TaskReviewPanel({ currentAdmin }) {
               )}
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3 p-4 bg-gray-50 rounded-b-xl">
+            <div className="flex flex-col sm:flex-row gap-3 p-4 bg-muted/50 rounded-b-xl">
               <button
                 onClick={() => {
                   setShowModal(false);
                   setReviewComments("");
                   setRejectionReason("");
                 }}
-                className="flex-1 px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
+                className="flex-1 px-4 py-2 border border-border rounded-lg text-foreground hover:bg-muted transition-colors"
                 disabled={processing}
               >
                 Cancel
@@ -587,10 +510,10 @@ export default function TaskReviewPanel({ currentAdmin }) {
                   processing ||
                   (modalAction === "reject" && !rejectionReason.trim())
                 }
-                className={`flex-1 px-4 py-2 rounded-lg text-white transition-colors ${
+                className={`flex-1 px-4 py-2 rounded-lg text-white font-semibold transition-colors ${
                   modalAction === "approve"
-                    ? "bg-green-500 hover:bg-green-600"
-                    : "bg-red-500 hover:bg-red-600"
+                    ? "bg-success hover:bg-success/90"
+                    : "bg-destructive hover:bg-destructive/90"
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 {processing

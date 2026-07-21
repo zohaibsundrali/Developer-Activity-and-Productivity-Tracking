@@ -5,6 +5,15 @@ import { supabase } from "@/utils/supabaseClient";
 import { showError, showWarning } from "@/utils/alerts";
 import { isSessionExpired, clearAdminSession } from "@/utils/sessionPolicy";
 
+const statusPill = (status) => {
+  const s = String(status || "").toLowerCase();
+  if (["completed", "done", "approved", "active", "reviewed"].includes(s)) return "bg-success/10 text-success";
+  if (["in_progress", "in progress", "awaiting_approval", "pending_review"].includes(s)) return "bg-info/10 text-info";
+  if (["pending", "assigned", "draft", "on_hold"].includes(s)) return "bg-warning/10 text-warning";
+  if (["rejected", "cancelled", "overdue"].includes(s)) return "bg-destructive/10 text-destructive";
+  return "bg-muted text-muted-foreground";
+};
+
 const checkAdminAuth = () => {
   if (typeof window === "undefined") return false;
 
@@ -216,10 +225,10 @@ export default function AdminProjectDetailsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-muted flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#009578] mx-auto"></div>
-          <div className="text-xl text-gray-600 mt-4">Loading project details...</div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <div className="text-xl text-muted-foreground mt-4">Loading project details...</div>
         </div>
       </div>
     );
@@ -227,13 +236,13 @@ export default function AdminProjectDetailsPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center bg-white p-8 rounded-lg shadow">
-          <div className="text-red-500 text-xl mb-4">Error Loading Project</div>
-          <p className="text-gray-600 mb-6">{error}</p>
+      <div className="min-h-screen bg-muted flex items-center justify-center">
+        <div className="text-center bg-card p-8 rounded-xl border border-border shadow-card">
+          <div className="text-destructive text-xl mb-4">Error Loading Project</div>
+          <p className="text-muted-foreground mb-6">{error}</p>
           <button
             onClick={() => router.push("/admin/dashboard?section=all-projects")}
-            className="bg-[#009578] text-white px-6 py-2 rounded-lg hover:bg-[#0e7762]"
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Back to Projects
           </button>
@@ -243,16 +252,16 @@ export default function AdminProjectDetailsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="min-h-screen bg-muted py-8">
       <div className="max-w-6xl mx-auto px-4">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Project Details</h1>
-            <p className="text-gray-600 mt-1">{project?.name}</p>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">Project Details</h1>
+            <p className="text-muted-foreground mt-1">{project?.name}</p>
           </div>
           <button
             onClick={() => router.push("/admin/dashboard?section=all-projects")}
-            className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700"
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
           >
             Back to Projects
           </button>
@@ -260,47 +269,47 @@ export default function AdminProjectDetailsPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg shadow border p-5">
-              <h2 className="text-lg font-semibold text-gray-800 mb-3">Project Info</h2>
-              <div className="space-y-2 text-sm text-gray-600">
-                <p><span className="font-medium">Assigned to:</span> {project?.assigned_developer_name || "Not assigned"}</p>
-                <p><span className="font-medium">Email:</span> {project?.assigned_developer_email || "N/A"}</p>
-                <p><span className="font-medium">Deadline:</span> {formatDate(project?.deadline)}</p>
-                <p><span className="font-medium">Created:</span> {formatDate(project?.created_at)}</p>
-                <p><span className="font-medium">Plan status:</span> {taskPlanStatus}</p>
-                <p><span className="font-medium">Submitted:</span> {taskPlanSubmitted ? "Yes" : "No"}</p>
-                <p><span className="font-medium">Submitted at:</span> {formatDate(project?.task_plan_submitted_at)}</p>
-                <p><span className="font-medium">Reviewed:</span> {formatDate(project?.task_plan_reviewed_at)}</p>
+            <div className="bg-card rounded-xl border border-border shadow-card p-5">
+              <h2 className="text-lg font-semibold text-foreground mb-3">Project Info</h2>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p><span className="font-medium text-foreground">Assigned to:</span> {project?.assigned_developer_name || "Not assigned"}</p>
+                <p><span className="font-medium text-foreground">Email:</span> {project?.assigned_developer_email || "N/A"}</p>
+                <p><span className="font-medium text-foreground">Deadline:</span> {formatDate(project?.deadline)}</p>
+                <p><span className="font-medium text-foreground">Created:</span> {formatDate(project?.created_at)}</p>
+                <p className="flex items-center gap-2"><span className="font-medium text-foreground">Plan status:</span> <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${statusPill(taskPlanStatus)}`}>{taskPlanStatus}</span></p>
+                <p><span className="font-medium text-foreground">Submitted:</span> {taskPlanSubmitted ? "Yes" : "No"}</p>
+                <p><span className="font-medium text-foreground">Submitted at:</span> {formatDate(project?.task_plan_submitted_at)}</p>
+                <p><span className="font-medium text-foreground">Reviewed:</span> {formatDate(project?.task_plan_reviewed_at)}</p>
               </div>
               {project?.task_plan_rejection_reason && (
-                <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                <div className="mt-3 p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-sm text-destructive">
                   <span className="font-medium">Rejection reason:</span> {project.task_plan_rejection_reason}
                 </div>
               )}
             </div>
 
-            <div className="bg-white rounded-lg shadow border p-5 mt-6">
-              <h2 className="text-lg font-semibold text-gray-800 mb-3">Task Plan Review</h2>
+            <div className="bg-card rounded-xl border border-border shadow-card p-5 mt-6">
+              <h2 className="text-lg font-semibold text-foreground mb-3">Task Plan Review</h2>
               <div className="space-y-3">
                 <button
                   onClick={handleApprovePlan}
                   disabled={processing || isPlanApproved || !canReviewPlan}
-                  className="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 disabled:opacity-50"
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-success py-2 text-sm font-semibold text-success-foreground transition-colors hover:bg-success/90 disabled:opacity-50"
                 >
                   {isPlanApproved ? "Task Plan Approved" : "Approve Task Plan"}
                 </button>
                 {!canReviewPlan && !isPlanApproved && (
-                  <div className="text-xs text-gray-600 bg-gray-50 border rounded-lg p-3">
+                  <div className="text-xs text-muted-foreground bg-muted border border-border rounded-lg p-3">
                     Approve/Reject will be enabled after the developer clicks “Save Task Plan”.
                   </div>
                 )}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Rejection Reason</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">Rejection Reason</label>
                   <textarea
                     rows="3"
                     value={rejectionReason}
                     onChange={(e) => setRejectionReason(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                    className="w-full border border-input bg-background rounded-lg px-3 py-2 focus:border-primary focus:ring-2 focus:ring-primary/30 focus:outline-none"
                     placeholder="Explain why the plan is rejected"
                     disabled={isPlanApproved || !canReviewPlan}
                   />
@@ -308,7 +317,7 @@ export default function AdminProjectDetailsPage() {
                 <button
                   onClick={handleRejectPlan}
                   disabled={processing || isPlanApproved || !canReviewPlan}
-                  className="w-full bg-red-600 text-white py-2 rounded-lg hover:bg-red-700 disabled:opacity-50"
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-destructive py-2 text-sm font-semibold text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:opacity-50"
                 >
                   Reject Task Plan
                 </button>
@@ -317,23 +326,23 @@ export default function AdminProjectDetailsPage() {
           </div>
 
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-lg shadow border p-5">
-              <h2 className="text-lg font-semibold text-gray-800 mb-4">Tasks</h2>
+            <div className="bg-card rounded-xl border border-border shadow-card p-5">
+              <h2 className="text-lg font-semibold text-foreground mb-4">Tasks</h2>
               {tasks.length === 0 ? (
-                <p className="text-gray-500">No tasks submitted for this project.</p>
+                <p className="text-muted-foreground">No tasks submitted for this project.</p>
               ) : (
                 <div className="space-y-3">
                   {tasks.map((task, index) => (
-                    <div key={task.id} className="border rounded-lg p-4 bg-gray-50">
+                    <div key={task.id} className="border border-border rounded-lg p-4 bg-muted/50">
                       <div className="flex items-start justify-between">
                         <div>
-                          <p className="font-semibold text-gray-800">{index + 1}. {formatTaskTitle(task.task_title)}</p>
-                          <p className="text-sm text-gray-600 mt-1">{task.task_description || "No description"}</p>
-                          <p className="text-xs text-gray-500 mt-2">
+                          <p className="font-semibold text-foreground">{index + 1}. {formatTaskTitle(task.task_title)}</p>
+                          <p className="text-sm text-muted-foreground mt-1">{task.task_description || "No description"}</p>
+                          <p className="text-xs text-muted-foreground mt-2">
                             {formatDate(task.start_date)} - {formatDate(task.end_date)}
                           </p>
                         </div>
-                        <span className="text-xs px-2 py-1 rounded-full bg-white border text-gray-600">
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${statusPill(task.status || "pending")}`}>
                           {task.status || "pending"}
                         </span>
                       </div>

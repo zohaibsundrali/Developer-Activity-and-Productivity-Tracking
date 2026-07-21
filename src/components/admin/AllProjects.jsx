@@ -1,6 +1,16 @@
 "use client";
 import { useState, useEffect } from "react";
+import { RefreshCw, Plus, X, Trash2, AlertTriangle, FileText, BarChart3, Calendar, Eye, Download } from "lucide-react";
 import { showError, showInfo, showSuccess, showWarning } from "@/utils/alerts";
+
+const statusPill = (status) => {
+  const s = String(status || "").toLowerCase();
+  if (["completed","done","approved","active","reviewed"].includes(s)) return "bg-success/10 text-success";
+  if (["in_progress","in progress","awaiting_approval","pending_review"].includes(s)) return "bg-info/10 text-info";
+  if (["pending","assigned","draft","on_hold"].includes(s)) return "bg-warning/10 text-warning";
+  if (["rejected","cancelled","overdue"].includes(s)) return "bg-destructive/10 text-destructive";
+  return "bg-muted text-muted-foreground";
+};
 
 export default function AllProjects({ developers: initialDevelopers, supabase }) {
   const [showAddProject, setShowAddProject] = useState(false);
@@ -101,14 +111,6 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
       month: 'short',
       day: 'numeric'
     });
-  };
-
-  const handleViewProjectActivity = (projectId) => {
-    showInfo("Project activity", `View project ${projectId} activity.`);
-  };
-
-  const handleViewProjectProductivity = (projectId) => {
-    // Placeholder kept for backwards compatibility (no-op)
   };
 
   const handleViewGanttChart = (projectId) => {
@@ -509,40 +511,13 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
     if (fileInput) fileInput.value = '';
   };
 
-  // Debug function to check notifications table structure
-  const debugCheckNotifications = async () => {
-    try {
-      // Check what fields exist in notifications table
-      const { data: columns, error: columnsError } = await supabase
-        .rpc('get_table_columns', { table_name: 'notifications' });
-
-      if (columnsError) {
-        // Alternative method
-        const { data } = await supabase
-          .from('notifications')
-          .select('*')
-          .limit(1);
-      }
-
-      // Check last 5 notifications
-      const { data: recentNotifications } = await supabase
-        .from('notifications')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-    } catch (error) {
-      // Silently handle error
-    }
-  };
-
   // Show loading state
   if (fetchingProjects) {
     return (
-      <div className="bg-white p-6 rounded-lg shadow">
+      <div className="rounded-xl border border-border bg-card p-6 shadow-card">
         <div className="text-center py-8">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#009578]"></div>
-          <p className="mt-2 text-gray-500">Loading your projects...</p>
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <p className="mt-2 text-muted-foreground">Loading your projects...</p>
         </div>
       </div>
     );
@@ -551,19 +526,16 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
   // Show warning if admin is not logged in
   if (!currentAdmin) {
     return (
-      <div className="bg-white p-6 rounded-lg shadow">
+      <div className="rounded-xl border border-border bg-card p-6 shadow-card">
         <div className="text-center py-8">
-          <p className="text-gray-500">Please log in as an admin to view projects.</p>
+          <p className="text-muted-foreground">Please log in as an admin to view projects.</p>
         </div>
       </div>
     );
   }
 
-  const activeDevelopers = adminDevelopers.filter(dev => dev.status === 'active');
-  const inactiveDevelopers = adminDevelopers.filter(dev => dev.status === 'inactive');
-
   const getDeadlineSummary = (deadline) => {
-    if (!deadline) return { label: 'No deadline set', tone: 'text-gray-600' };
+    if (!deadline) return { label: 'No deadline set', tone: 'text-muted-foreground' };
 
     try {
       const deadlineDate = new Date(deadline);
@@ -574,53 +546,52 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
       if (diffDays < 0) {
         return {
           label: `Overdue by ${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? '' : 's'}`,
-          tone: 'text-red-600'
+          tone: 'text-destructive'
         };
       }
       if (diffDays === 0) {
-        return { label: 'Due today', tone: 'text-orange-600' };
+        return { label: 'Due today', tone: 'text-warning' };
       }
       if (diffDays === 1) {
-        return { label: '1 day left', tone: 'text-orange-600' };
+        return { label: '1 day left', tone: 'text-warning' };
       }
 
       return {
         label: `${diffDays} days left`,
-        tone: diffDays <= 3 ? 'text-orange-600' : 'text-green-600'
+        tone: diffDays <= 3 ? 'text-warning' : 'text-success'
       };
     } catch {
-      return { label: 'N/A', tone: 'text-gray-600' };
+      return { label: 'N/A', tone: 'text-muted-foreground' };
     }
   };
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow">
+    <div className="space-y-6 rounded-xl border border-border bg-card p-6 shadow-card">
       {/* Debug Button - Temporary */}
 
 
       {/* Header with Add Project Button and Admin Info */}
-      <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-2xl font-bold">My Projects</h2>
+          <h2 className="text-xl font-bold tracking-tight text-foreground">My Projects</h2>
 
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <button
             onClick={fetchAdminData}
-            className="bg-gray-100 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-200 transition-colors text-sm flex items-center"
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-50"
             disabled={fetchingProjects}
           >
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
+            <RefreshCw className="w-4 h-4" />
             Refresh
           </button>
           <button
             onClick={() => setShowAddProject(true)}
-            className="bg-[#009578] text-white px-4 py-2 rounded-lg hover:bg-[#0e7762] transition-colors"
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
             disabled={adminDevelopers.length === 0}
           >
-            + Add New Project
+            <Plus className="w-4 h-4" />
+            Add New Project
           </button>
         </div>
       </div>
@@ -630,21 +601,21 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
 
       {/* Add Project Modal */}
       {showAddProject && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-popover max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold">Add New Project</h3>
+              <h3 className="text-xl font-bold text-foreground">Add New Project</h3>
               <button
                 onClick={() => setShowAddProject(false)}
-                className="text-gray-500 hover:text-gray-700 text-xl"
+                className="text-muted-foreground hover:text-foreground"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleAddProject} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-foreground mb-1">
                   Project Title *
                 </label>
                 <input
@@ -653,13 +624,13 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
                   value={newProject.name}
                   onChange={handleInputChange}
                   placeholder="Enter project title"
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]"
+                  className="w-full rounded-lg border border-input bg-background p-2 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-foreground mb-1">
                   Deadline *
                 </label>
                 <input
@@ -668,13 +639,13 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
                   value={newProject.deadline}
                   onChange={handleInputChange}
                   min={new Date().toISOString().split('T')[0]}
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]"
+                  className="w-full rounded-lg border border-input bg-background p-2 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-foreground mb-1">
                   Project Description
                 </label>
                 <textarea
@@ -683,12 +654,12 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
                   onChange={handleInputChange}
                   placeholder="Enter project description and requirements..."
                   rows="3"
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]"
+                  className="w-full rounded-lg border border-input bg-background p-2 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-foreground mb-1">
                   Assign to Developer *
                 </label>
                 {adminDevelopers.length > 0 ? (
@@ -696,7 +667,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
                     name="assigned_developer"
                     value={newProject.assigned_developer}
                     onChange={handleInputChange}
-                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]"
+                    className="w-full rounded-lg border border-input bg-background p-2 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
                     required
                   >
                     <option value="">Select Developer (Added by you)</option>
@@ -707,8 +678,8 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
                     ))}
                   </select>
                 ) : (
-                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-                    <p className="text-sm text-yellow-700">
+                  <div className="p-3 bg-warning/10 border border-warning/30 rounded-lg">
+                    <p className="text-sm text-warning">
                       You haven't added any developers yet. Please add developers first in the "Add Developer" section.
                     </p>
                   </div>
@@ -719,35 +690,35 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
 
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-foreground mb-1">
                   Attach Requirements File
                 </label>
                 <input
                   id="file-input"
                   type="file"
                   onChange={handleFileChange}
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-[#009578] focus:border-[#009578]"
+                  className="w-full rounded-lg border border-input bg-background p-2 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
                   accept=".pdf,.doc,.docx,.txt"
                 />
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   Supported format only DOCX  (Max 10MB)
                 </p>
 
                 {newProject.file && (
-                  <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-md">
+                  <div className="mt-2 p-3 bg-success/10 border border-success/30 rounded-lg">
                     <div className="flex justify-between items-center">
                       <div>
-                        <p className="text-sm font-medium text-green-800">
+                        <p className="text-sm font-medium text-success">
                           {newProject.file.name}
                         </p>
-                        <p className="text-xs text-green-600">
+                        <p className="text-xs text-success">
                           {(newProject.file.size / 1024 / 1024).toFixed(2)} MB
                         </p>
                       </div>
                       <button
                         type="button"
                         onClick={removeSelectedFile}
-                        className="text-red-500 hover:text-red-700"
+                        className="text-destructive hover:text-destructive/80"
                       >
                         Remove
                       </button>
@@ -760,10 +731,10 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
                 <button
                   type="submit"
                   disabled={loading || uploadingFile || adminDevelopers.length === 0}
-                  className={`flex-1 py-2 px-4 rounded-md transition-colors ${loading || uploadingFile || adminDevelopers.length === 0
-                    ? 'bg-gray-400 cursor-not-allowed'
-                    : 'bg-[#009578] hover:bg-[#0e7762]'
-                    } text-white`}
+                  className={`flex-1 inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors ${loading || uploadingFile || adminDevelopers.length === 0
+                    ? 'bg-primary/50 cursor-not-allowed'
+                    : 'bg-primary hover:bg-primary/90'
+                    }`}
                 >
                   {uploadingFile ? 'Uploading File...' :
                     loading ? 'Adding...' :
@@ -773,7 +744,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
                 <button
                   type="button"
                   onClick={() => setShowAddProject(false)}
-                  className="flex-1 bg-gray-500 text-white py-2 px-4 rounded-md hover:bg-gray-600 transition-colors"
+                  className="flex-1 inline-flex items-center justify-center rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
                 >
                   Cancel
                 </button>
@@ -785,51 +756,49 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-popover max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold text-red-600">Delete Project</h3>
+              <h3 className="text-xl font-bold text-destructive">Delete Project</h3>
               <button
                 onClick={() => {
                   setShowDeleteModal(false);
                   setProjectToDelete(null);
                 }}
-                className="text-gray-500 hover:text-gray-700 text-xl"
+                className="text-muted-foreground hover:text-foreground"
                 disabled={deleting}
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="mb-6">
-              <div className="p-4 bg-red-50 border border-red-200 rounded-md mb-4">
+              <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg mb-4">
                 <div className="flex items-center">
-                  <svg className="w-6 h-6 text-red-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                  </svg>
-                  <h4 className="text-lg font-medium text-red-800">Warning: This action cannot be undone</h4>
+                  <AlertTriangle className="w-6 h-6 text-destructive mr-3" />
+                  <h4 className="text-lg font-medium text-destructive">Warning: This action cannot be undone</h4>
                 </div>
               </div>
 
-              <p className="text-gray-700 mb-4">
+              <p className="text-foreground mb-4">
                 Are you sure you want to delete the project <span className="font-bold">"{projectToDelete?.name}"</span>?
               </p>
 
-              <div className="p-3 bg-gray-100 rounded-md mb-4">
-                <p className="text-sm text-gray-600">
-                  <span className="font-medium">Assigned to:</span> {projectToDelete?.assigned_developer_name || 'No developer assigned'}
+              <div className="p-3 bg-muted rounded-lg mb-4">
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">Assigned to:</span> {projectToDelete?.assigned_developer_name || 'No developer assigned'}
                 </p>
-                <p className="text-sm text-gray-600 mt-1">
-                  <span className="font-medium">Progress:</span> {projectToDelete?.progress}%
+                <p className="text-sm text-muted-foreground mt-1">
+                  <span className="font-medium text-foreground">Progress:</span> {projectToDelete?.progress}%
                 </p>
                 {projectToDelete?.deadline && (
-                  <p className="text-sm text-gray-600 mt-1">
-                    <span className="font-medium">Deadline:</span> {formatDate(projectToDelete.deadline)}
+                  <p className="text-sm text-muted-foreground mt-1">
+                    <span className="font-medium text-foreground">Deadline:</span> {formatDate(projectToDelete.deadline)}
                   </p>
                 )}
               </div>
 
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-muted-foreground">
                 This will permanently remove the project and all associated data. The assigned developer will be notified.
               </p>
             </div>
@@ -838,10 +807,10 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
               <button
                 onClick={handleConfirmDelete}
                 disabled={deleting}
-                className={`flex-1 py-2 px-4 rounded-md transition-colors ${deleting
-                  ? 'bg-red-400 cursor-not-allowed'
-                  : 'bg-red-600 hover:bg-red-700'
-                  } text-white flex items-center justify-center`}
+                className={`flex-1 py-2 px-4 rounded-lg transition-colors text-destructive-foreground flex items-center justify-center ${deleting
+                  ? 'bg-destructive/60 cursor-not-allowed'
+                  : 'bg-destructive hover:bg-destructive/90'
+                  }`}
               >
                 {deleting ? (
                   <>
@@ -858,7 +827,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
                   setProjectToDelete(null);
                 }}
                 disabled={deleting}
-                className="flex-1 bg-gray-500 text-white py-2 px-4 rounded-md hover:bg-gray-600 transition-colors"
+                className="flex-1 inline-flex items-center justify-center rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
               >
                 Cancel
               </button>
@@ -869,13 +838,13 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
 
       {/* Metrics / Productivity Modal */}
       {showMetricsModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white p-6 rounded-xl shadow-xl max-w-xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-xl rounded-xl border border-border bg-card p-6 shadow-popover max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <div>
-                <h3 className="text-xl font-bold text-gray-900">Developer Productivity</h3>
+                <h3 className="text-xl font-bold text-foreground">Developer Productivity</h3>
                 {metricsData?.project?.name && (
-                  <p className="text-sm text-gray-500 mt-1">
+                  <p className="text-sm text-muted-foreground mt-1">
                     {metricsData.project.name}
                   </p>
                 )}
@@ -886,20 +855,20 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
                   setMetricsData(null);
                   setMetricsError("");
                 }}
-                className="text-gray-500 hover:text-gray-700 text-xl"
+                className="text-muted-foreground hover:text-foreground"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
             {metricsLoading ? (
               <div className="py-10 text-center">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#009578]"></div>
-                <p className="mt-3 text-gray-500 text-sm">Loading productivity metrics...</p>
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                <p className="mt-3 text-muted-foreground text-sm">Loading productivity metrics...</p>
               </div>
             ) : metricsError ? (
               <div className="py-6">
-                <div className="bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-700">
+                <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 text-sm text-destructive">
                   {metricsError}
                 </div>
               </div>
@@ -907,57 +876,57 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
               <div className="space-y-4">
                 {/* Summary cards similar to developer timesheet */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="bg-white rounded-xl border p-4 text-center shadow-sm">
-                    <div className="text-2xl font-bold text-gray-800">{metricsData.totalTasks}</div>
-                    <div className="text-xs text-gray-500 mt-1">Total Tasks</div>
+                  <div className="bg-card rounded-xl border border-border p-4 text-center shadow-card">
+                    <div className="text-2xl font-bold text-foreground">{metricsData.totalTasks}</div>
+                    <div className="text-xs text-muted-foreground mt-1">Total Tasks</div>
                   </div>
-                  <div className="bg-green-50 rounded-xl border border-green-200 p-4 text-center shadow-sm">
-                    <div className="text-2xl font-bold text-green-600">{metricsData.summary?.onTime || 0}</div>
-                    <div className="text-xs text-green-700 mt-1">On Time</div>
-                    <div className="text-[11px] text-green-600">+{metricsData.summary?.onTime || 0} pts</div>
+                  <div className="bg-success/10 rounded-xl border border-success/30 p-4 text-center shadow-card">
+                    <div className="text-2xl font-bold text-success">{metricsData.summary?.onTime || 0}</div>
+                    <div className="text-xs text-success mt-1">On Time</div>
+                    <div className="text-[11px] text-success">+{metricsData.summary?.onTime || 0} pts</div>
                   </div>
-                  <div className="bg-red-50 rounded-xl border border-red-200 p-4 text-center shadow-sm">
-                    <div className="text-2xl font-bold text-red-600">{metricsData.summary?.late || 0}</div>
-                    <div className="text-xs text-red-700 mt-1">Late</div>
-                    <div className="text-[11px] text-red-600">-{metricsData.summary?.late || 0} pts</div>
+                  <div className="bg-destructive/10 rounded-xl border border-destructive/30 p-4 text-center shadow-card">
+                    <div className="text-2xl font-bold text-destructive">{metricsData.summary?.late || 0}</div>
+                    <div className="text-xs text-destructive mt-1">Late</div>
+                    <div className="text-[11px] text-destructive">-{metricsData.summary?.late || 0} pts</div>
                   </div>
                   <div
-                    className={`rounded-xl border p-4 text-center shadow-sm ${parseFloat(metricsData.productivityPercentage || 0) >= 80
-                      ? "bg-green-50 border-green-200"
+                    className={`rounded-xl border p-4 text-center shadow-card ${parseFloat(metricsData.productivityPercentage || 0) >= 80
+                      ? "bg-success/10 border-success/30"
                       : parseFloat(metricsData.productivityPercentage || 0) >= 50
-                        ? "bg-yellow-50 border-yellow-200"
-                        : "bg-red-50 border-red-200"
+                        ? "bg-warning/10 border-warning/30"
+                        : "bg-destructive/10 border-destructive/30"
                       }`}
                   >
                     <div
                       className={`text-2xl font-bold ${parseFloat(metricsData.productivityPercentage || 0) >= 80
-                        ? "text-green-600"
+                        ? "text-success"
                         : parseFloat(metricsData.productivityPercentage || 0) >= 50
-                          ? "text-yellow-600"
-                          : "text-red-600"
+                          ? "text-warning"
+                          : "text-destructive"
                         }`}
                     >
                       {metricsData.productivityPercentage || 0}%
                     </div>
-                    <div className="text-xs text-gray-600 mt-1">Productivity</div>
-                    <div className="text-[11px] text-gray-500">
+                    <div className="text-xs text-muted-foreground mt-1">Productivity</div>
+                    <div className="text-[11px] text-muted-foreground">
                       Points: {metricsData.productivityPoints >= 0 ? `+${metricsData.productivityPoints}` : metricsData.productivityPoints}
                     </div>
                   </div>
                 </div>
 
                 {/* Basic breakdown */}
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-700">
+                <div className="bg-muted border border-border rounded-lg p-3 text-xs text-muted-foreground">
                   <p className="mb-1">
-                    <span className="font-semibold">Completed:</span> {metricsData.summary?.completed || 0} ·
+                    <span className="font-semibold text-foreground">Completed:</span> {metricsData.summary?.completed || 0} ·
                     {" "}
-                    <span className="font-semibold text-green-700">On Time:</span> {metricsData.summary?.onTime || 0} ·
+                    <span className="font-semibold text-success">On Time:</span> {metricsData.summary?.onTime || 0} ·
                     {" "}
-                    <span className="font-semibold text-red-700">Late:</span> {metricsData.summary?.late || 0} ·
+                    <span className="font-semibold text-destructive">Late:</span> {metricsData.summary?.late || 0} ·
                     {" "}
-                    <span className="font-semibold">Pending:</span> {(metricsData.summary?.pending || 0) + (metricsData.summary?.inProgress || 0) + (metricsData.summary?.awaiting || 0)} ·
+                    <span className="font-semibold text-foreground">Pending:</span> {(metricsData.summary?.pending || 0) + (metricsData.summary?.inProgress || 0) + (metricsData.summary?.awaiting || 0)} ·
                     {" "}
-                    <span className="font-semibold">Rejected:</span> {metricsData.summary?.rejected || 0}
+                    <span className="font-semibold text-foreground">Rejected:</span> {metricsData.summary?.rejected || 0}
                   </p>
                 </div>
               </div>
@@ -970,89 +939,83 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
       {projects.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {projects.map(project => (
-            <div key={project.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow relative">
+            <div key={project.id} className="rounded-xl border border-border bg-card p-4 shadow-card hover:shadow-elevated transition-shadow relative">
               {/* Delete Button - Top Right Corner */}
               <button
                 onClick={() => handleDeleteClick(project)}
-                className="absolute top-3 right-3 text-gray-400 hover:text-red-600 transition-colors p-1"
+                className="absolute top-3 right-3 text-muted-foreground hover:text-destructive transition-colors p-1"
                 title="Delete Project"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
+                <Trash2 className="w-5 h-5" />
               </button>
 
               <div className="flex justify-between items-start mb-2 pr-8">
-                <h3 className="text-lg font-semibold">{project.name}</h3>
-                <span className={`text-xs px-2 py-1 rounded-full ${project.status === 'active' ? 'bg-green-100 text-green-800' :
-                  project.status === 'completed' ? 'bg-blue-100 text-blue-800' :
-                    'bg-yellow-100 text-yellow-800'
-                  }`}>
+                <h3 className="text-lg font-semibold text-foreground">{project.name}</h3>
+                <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${statusPill(project.status)}`}>
                   {project.status}
                 </span>
               </div>
 
               {project.description && (
-                <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+                <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
                   {project.description}
                 </p>
               )}
 
               <div className="mb-2">
-                <div className="flex justify-between text-sm mb-1">
+                <div className="flex justify-between text-sm mb-1 text-foreground">
                   <span>Progress</span>
                   <span>{project.progress}%</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <div className="w-full bg-muted rounded-full h-2">
                   <div
-                    className="bg-[#009578] h-2 rounded-full"
+                    className="bg-primary h-2 rounded-full"
                     style={{ width: `${project.progress}%` }}
                   ></div>
                 </div>
               </div>
 
               <div className="space-y-1 mb-3">
-                <p className="text-sm text-gray-600">
-                  <span className="font-medium">Developers:</span> {project.developers_count}
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">Developers:</span> {project.developers_count}
                 </p>
 
                 {project.assigned_developer_name && (
                   <div>
-                    <p className="text-sm text-gray-600">
-                      <span className="font-medium">Assigned to:</span> {project.assigned_developer_name}
+                    <p className="text-sm text-muted-foreground">
+                      <span className="font-medium text-foreground">Assigned to:</span> {project.assigned_developer_name}
                     </p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-muted-foreground">
                       {project.assigned_developer_email}
                     </p>
                   </div>
                 )}
 
                 {project.deadline && (
-                  <p className="text-sm text-gray-600">
-                    <span className="font-medium">Deadline:</span> {formatDate(project.deadline)}
+                  <p className="text-sm text-muted-foreground">
+                    <span className="font-medium text-foreground">Deadline:</span> {formatDate(project.deadline)}
                   </p>
                 )}
 
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-muted-foreground">
                   Created: {formatDate(project.created_at)}
                 </p>
               </div>
 
               {project.file_url && (
-                <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded-md">
+                <div className="mb-3 p-2 bg-info/10 border border-info/30 rounded-lg">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2 flex-1 min-w-0">
-                      <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      <span className="text-sm text-blue-700 truncate">
+                      <FileText className="w-4 h-4 text-info" />
+                      <span className="text-sm text-info truncate">
                         {project.file_name || 'Requirements File'}
                       </span>
                     </div>
                     <button
                       onClick={() => handleDownloadFile(project)}
-                      className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                      className="inline-flex items-center gap-1 text-info hover:text-info/80 text-sm font-medium"
                     >
+                      <Download className="w-4 h-4" />
                       Download
                     </button>
                   </div>
@@ -1060,24 +1023,22 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
               )}
 
               {/* Compact timeline similar to developer view */}
-              <div className="mt-2 mb-3 rounded-md bg-gray-50 border border-dashed border-gray-200 p-3">
-                <p className="text-xs font-semibold text-gray-600 mb-2 flex items-center">
-                  <svg className="w-3 h-3 mr-1 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
+              <div className="mt-2 mb-3 rounded-lg bg-muted/50 border border-dashed border-border p-3">
+                <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center">
+                  <Calendar className="w-3 h-3 mr-1 text-muted-foreground" />
                   Project timeline
                 </p>
-                <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
+                <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
                   <div>
-                    <p className="font-medium">Created</p>
+                    <p className="font-medium text-foreground">Created</p>
                     <p>{formatDate(project.created_at)}</p>
                   </div>
-                  <div className="flex-1 mx-3 h-0.5 bg-gradient-to-r from-gray-300 via-[#009578] to-gray-300 relative">
-                    <span className="absolute -top-1 left-1 w-2 h-2 rounded-full bg-gray-400" />
-                    <span className="absolute -top-1 right-1 w-2 h-2 rounded-full bg-gray-400" />
+                  <div className="flex-1 mx-3 h-0.5 bg-gradient-to-r from-border via-primary to-border relative">
+                    <span className="absolute -top-1 left-1 w-2 h-2 rounded-full bg-muted-foreground/50" />
+                    <span className="absolute -top-1 right-1 w-2 h-2 rounded-full bg-muted-foreground/50" />
                   </div>
                   <div>
-                    <p className="font-medium">Deadline</p>
+                    <p className="font-medium text-foreground">Deadline</p>
                     <p>{project.deadline ? formatDate(project.deadline) : 'Not set'}</p>
                   </div>
                 </div>
@@ -1085,7 +1046,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
                   {(() => {
                     const summary = getDeadlineSummary(project.deadline);
                     return (
-                      <span className={`inline-flex items-center px-2 py-1 rounded-full bg-white border text-[11px] font-medium ${summary.tone}`}>
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full bg-card border border-border text-[11px] font-medium ${summary.tone}`}>
                         {summary.label}
                       </span>
                     );
@@ -1096,33 +1057,27 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => handleViewMetrics(project)}
-                  className="bg-green-500 text-white py-2 px-2 rounded text-xs hover:bg-green-600 transition-colors flex items-center justify-center"
+                  className="bg-success/10 text-success py-2 px-2 rounded-lg text-xs font-semibold hover:bg-success/20 transition-colors flex items-center justify-center"
                   title="View Productivity"
                 >
-                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                  </svg>
+                  <BarChart3 className="w-4 h-4 mr-1" />
                   Metrics
                 </button>
                 <button
                   onClick={() => handleViewGanttChart(project.id)}
-                  className="bg-purple-500 text-white py-2 px-2 rounded text-xs hover:bg-purple-600 transition-colors flex items-center justify-center"
+                  className="bg-violet-500/10 text-violet-600 py-2 px-2 rounded-lg text-xs font-semibold hover:bg-violet-500/20 transition-colors flex items-center justify-center"
                   title="View Gantt Chart Timeline"
                 >
-                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
+                  <Calendar className="w-4 h-4 mr-1" />
                   Timeline
                 </button>
               </div>
               <button
                 onClick={() => handleViewProjectDetails(project.id)}
-                className="mt-2 w-full bg-blue-600 text-white py-2 px-2 rounded text-xs hover:bg-blue-700 transition-colors flex items-center justify-center"
+                className="mt-2 w-full bg-primary text-primary-foreground py-2 px-2 rounded-lg text-xs font-semibold hover:bg-primary/90 transition-colors flex items-center justify-center"
                 title="View Project Details"
               >
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+                <Eye className="w-4 h-4 mr-1" />
                 View Detail
               </button>
             </div>
@@ -1130,17 +1085,15 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
         </div>
       ) : (
         <div className="text-center py-8">
-          <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
+          <FileText className="w-16 h-16 text-muted-foreground/40 mx-auto mb-4" strokeWidth={1} />
 
 
           {adminDevelopers.length === 0 ? (
             <div className="mb-6">
-              <p className="text-gray-400 text-sm mb-4">You need to add developers first</p>
+              <p className="text-muted-foreground text-sm mb-4">You need to add developers first</p>
             </div>
           ) : (
-            <p className="text-gray-400 text-sm mb-6">Start by creating your first project</p>
+            <p className="text-muted-foreground text-sm mb-6">Start by creating your first project</p>
           )}
         </div>
       )}

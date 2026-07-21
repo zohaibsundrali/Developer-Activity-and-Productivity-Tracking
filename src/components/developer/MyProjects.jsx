@@ -2,6 +2,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { showInfo, showWarning } from "@/utils/alerts";
+import { Zap, CheckCircle2, Clock } from "lucide-react";
+import StatCard from "@/components/shell/StatCard";
 
 export default function MyProjects({
   assignedProjects,
@@ -143,78 +145,37 @@ export default function MyProjects({
   ).length;
 
   return (
-    <div className="bg-white rounded-lg shadow">
+    <div className="space-y-6">
       {/* Header with Stats */}
-      <div className="p-6 border-b border-gray-200">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
+      <div>
+        <div className="mb-5 flex flex-col justify-between gap-3 md:flex-row md:items-center">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">My Projects</h2>
-            <p className="text-gray-600 text-sm mt-1">
+            <h2 className="text-xl font-bold tracking-tight text-foreground">My Projects</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
               Manage and track all your assigned projects
             </p>
           </div>
-
-          <div className="flex items-center space-x-4 mt-4 md:mt-0">
-            <div className="text-sm text-gray-600">
-              <span className="font-semibold">{assignedProjects.length}</span> total projects
-            </div>
+          <div className="text-sm text-muted-foreground">
+            <span className="font-semibold text-foreground">{assignedProjects.length}</span> total projects
           </div>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-blue-800">Active Projects</p>
-                <p className="text-2xl font-bold text-blue-900 mt-1">{activeProjectsCount}</p>
-              </div>
-              <div className="bg-blue-200 p-3 rounded-lg">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-r from-green-50 to-green-100 border border-green-200 rounded-xl p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-green-800">Completed</p>
-                <p className="text-2xl font-bold text-green-900 mt-1">{completedProjectsCount}</p>
-              </div>
-              <div className="bg-green-200 p-3 rounded-lg">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-yellow-800">Pending</p>
-                <p className="text-2xl font-bold text-yellow-900 mt-1">{pendingProjectsCount}</p>
-              </div>
-              <div className="bg-yellow-200 p-3 rounded-lg">
-                <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-            </div>
-          </div>
+        <div className="mb-6 grid grid-cols-1 gap-5 md:grid-cols-3">
+          <StatCard title="Active Projects" value={activeProjectsCount} icon={Zap} tone="primary" />
+          <StatCard title="Completed" value={completedProjectsCount} icon={CheckCircle2} tone="success" />
+          <StatCard title="Pending" value={pendingProjectsCount} icon={Clock} tone="warning" />
         </div>
 
         {/* Filters */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between space-y-4 md:space-y-0">
-          <div className="flex items-center space-x-4">
+        <div className="flex flex-col justify-between gap-4 rounded-xl border border-border bg-card p-4 shadow-card md:flex-row md:items-end">
+          <div className="flex flex-wrap items-end gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Sort by</label>
+              <label className="mb-1 block text-sm font-medium text-foreground">Sort by</label>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
               >
                 <option value="recent">Most Recent</option>
                 <option value="deadline">Deadline</option>
@@ -223,11 +184,11 @@ export default function MyProjects({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <label className="mb-1 block text-sm font-medium text-foreground">Status</label>
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
               >
                 <option value="all">All Projects</option>
                 <option value="active">Active</option>
@@ -237,8 +198,8 @@ export default function MyProjects({
             </div>
           </div>
 
-          <div className="text-sm text-gray-600">
-            Showing <span className="font-semibold">{sortedProjects.length}</span> of {assignedProjects.length} projects
+          <div className="text-sm text-muted-foreground">
+            Showing <span className="font-semibold text-foreground">{sortedProjects.length}</span> of {assignedProjects.length} projects
           </div>
         </div>
       </div>
@@ -247,13 +208,13 @@ export default function MyProjects({
       <div className="p-6">
         {/* Metrics / Productivity Modal (Developer view) */}
         {showMetricsModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white p-6 rounded-xl shadow-xl max-w-xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-card p-6 rounded-xl shadow-xl max-w-xl w-full mx-4 max-h-[90vh] overflow-y-auto">
               <div className="flex justify-between items-center mb-4">
                 <div>
-                  <h3 className="text-xl font-bold text-gray-900">Develper Productivity</h3>
+                  <h3 className="text-xl font-bold text-foreground">Develper Productivity</h3>
                   {metricsData?.project?.name && (
-                    <p className="text-sm text-gray-500 mt-1">{metricsData.project.name}</p>
+                    <p className="text-sm text-muted-foreground mt-1">{metricsData.project.name}</p>
                   )}
                 </div>
                 <button
@@ -262,7 +223,7 @@ export default function MyProjects({
                     setMetricsData(null);
                     setMetricsError("");
                   }}
-                  className="text-gray-500 hover:text-gray-700 text-xl"
+                  className="text-muted-foreground hover:text-foreground text-xl"
                 >
                   ✕
                 </button>
@@ -270,8 +231,8 @@ export default function MyProjects({
 
               {metricsLoading ? (
                 <div className="py-10 text-center">
-                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#009578]"></div>
-                  <p className="mt-3 text-gray-500 text-sm">Loading productivity metrics...</p>
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  <p className="mt-3 text-muted-foreground text-sm">Loading productivity metrics...</p>
                 </div>
               ) : metricsError ? (
                 <div className="py-6">
@@ -282,9 +243,9 @@ export default function MyProjects({
               ) : metricsData ? (
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-white rounded-xl border p-4 text-center shadow-sm">
-                      <div className="text-2xl font-bold text-gray-800">{metricsData.totalTasks}</div>
-                      <div className="text-xs text-gray-500 mt-1">Total Tasks</div>
+                    <div className="bg-card rounded-xl border p-4 text-center shadow-sm">
+                      <div className="text-2xl font-bold text-foreground">{metricsData.totalTasks}</div>
+                      <div className="text-xs text-muted-foreground mt-1">Total Tasks</div>
                     </div>
                     <div className="bg-green-50 rounded-xl border border-green-200 p-4 text-center shadow-sm">
                       <div className="text-2xl font-bold text-green-600">{metricsData.summary?.onTime || 0}</div>
@@ -314,8 +275,8 @@ export default function MyProjects({
                       >
                         {metricsData.productivityPercentage || 0}%
                       </div>
-                      <div className="text-xs text-gray-600 mt-1">Productivity</div>
-                      <div className="text-[11px] text-gray-500">
+                      <div className="text-xs text-muted-foreground mt-1">Productivity</div>
+                      <div className="text-[11px] text-muted-foreground">
                         Points:{" "}
                         {metricsData.productivityPoints >= 0
                           ? `+${metricsData.productivityPoints}`
@@ -324,7 +285,7 @@ export default function MyProjects({
                     </div>
                   </div>
 
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-700">
+                  <div className="bg-muted/50 border border-border rounded-lg p-3 text-xs text-foreground">
                     <p className="mb-1">
                       <span className="font-semibold">Completed:</span> {metricsData.summary?.completed || 0} ·{" "}
                       <span className="font-semibold text-green-700">On Time:</span> {metricsData.summary?.onTime || 0} ·{" "}
@@ -351,28 +312,28 @@ export default function MyProjects({
               return (
                 <div
                   key={project.id}
-                  className="border border-gray-200 rounded-xl overflow-hidden hover:shadow-lg transition-all duration-300 hover:-translate-y-1 bg-white"
+                  className="border border-border rounded-xl overflow-hidden hover:shadow-lg transition-all duration-300 hover:-translate-y-1 bg-card"
                 >
                   {/* Project Header */}
-                  <div className="p-5 border-b border-gray-100">
+                  <div className="p-5 border-b border-border">
                     <div className="flex justify-between items-start mb-3">
-                      <h3 className="text-lg font-bold text-gray-900 line-clamp-1">
+                      <h3 className="text-lg font-bold text-foreground line-clamp-1">
                         {project.name}
                       </h3>
                       <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${project.status === 'active' || project.status === 'in_progress'
                         ? 'bg-green-100 text-green-800'
                         : project.status === 'completed'
-                          ? 'bg-blue-100 text-blue-800'
+                          ? 'bg-info/10 text-info'
                           : project.status === 'pending' || project.status === 'assigned'
                             ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-gray-100 text-gray-800'
+                            : 'bg-muted text-foreground'
                         }`}>
                         {project.status?.charAt(0).toUpperCase() + project.status?.slice(1) || 'Pending'}
                       </span>
                     </div>
 
                     {project.description && (
-                      <p className="text-sm text-gray-600 line-clamp-2 mb-4">
+                      <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
                         {project.description}
                       </p>
                     )}
@@ -380,12 +341,12 @@ export default function MyProjects({
                     {/* Progress Bar */}
                     <div className="mb-2">
                       <div className="flex justify-between text-sm mb-1">
-                        <span className="text-gray-700 font-medium">Progress</span>
-                        <span className="font-bold text-blue-600">{project.progress || 0}%</span>
+                        <span className="text-foreground font-medium">Progress</span>
+                        <span className="font-bold text-primary">{project.progress || 0}%</span>
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div className="w-full bg-muted rounded-full h-2">
                         <div
-                          className="bg-gradient-to-r from-blue-500 to-blue-600 h-2 rounded-full transition-all duration-500"
+                          className="bg-primary h-2 rounded-full transition-all duration-500"
                           style={{ width: `${project.progress || 0}%` }}
                         ></div>
                       </div>
@@ -397,24 +358,24 @@ export default function MyProjects({
                     {/* Timeline Info */}
                     <div className="grid grid-cols-2 gap-4 mb-4">
                       <div>
-                        <p className="text-xs text-gray-500 font-medium mb-1">Assigned</p>
+                        <p className="text-xs text-muted-foreground font-medium mb-1">Assigned</p>
                         <div className="flex items-center">
                           <svg className="w-4 h-4 text-green-500 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
-                          <p className="text-sm font-medium text-gray-900">{formatDate(assignedDate)}</p>
+                          <p className="text-sm font-medium text-foreground">{formatDate(assignedDate)}</p>
                         </div>
-                        <p className="text-xs text-gray-400 mt-1">{daysAgo}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{daysAgo}</p>
                       </div>
 
                       {project.deadline && (
                         <div>
-                          <p className="text-xs text-gray-500 font-medium mb-1">Deadline</p>
+                          <p className="text-xs text-muted-foreground font-medium mb-1">Deadline</p>
                           <div className="flex items-center">
                             <svg className="w-4 h-4 text-orange-500 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
-                            <p className="text-sm font-medium text-gray-900">{formatDate(project.deadline)}</p>
+                            <p className="text-sm font-medium text-foreground">{formatDate(project.deadline)}</p>
                           </div>
                           <div className="mt-1">
                             <span className="text-xs px-2 py-1 rounded-full bg-orange-100 text-orange-800 font-medium">
@@ -441,24 +402,24 @@ export default function MyProjects({
 
                     {/* File Attachment */}
                     {project.file_url && (
-                      <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                      <div className="mb-4 p-3 bg-primary/5 border border-primary/15 rounded-lg">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center border border-blue-200">
-                              <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <div className="w-8 h-8 bg-card rounded-lg flex items-center justify-center border border-primary/20">
+                              <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                               </svg>
                             </div>
                             <div>
-                              <p className="text-sm font-medium text-blue-900 truncate max-w-[150px]">
+                              <p className="text-sm font-medium text-foreground truncate max-w-[150px]">
                                 {project.file_name || 'Requirements File'}
                               </p>
-                              <p className="text-xs text-blue-600">Project requirements</p>
+                              <p className="text-xs text-primary">Project requirements</p>
                             </div>
                           </div>
                           <button
                             onClick={() => handleDownloadFile(project)}
-                            className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
+                            className="text-primary hover:text-primary/80 text-sm font-medium flex items-center"
                           >
                             <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -473,7 +434,7 @@ export default function MyProjects({
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         onClick={() => handleViewMetrics(project)}
-                        className="bg-green-500 text-white py-2 px-2 rounded text-xs hover:bg-green-600 transition-colors flex items-center justify-center"
+                        className="bg-success text-success-foreground py-2 px-2 rounded-lg text-xs hover:bg-success/90 transition-colors flex items-center justify-center"
                         title="View Productivity"
                       >
                         <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -483,7 +444,7 @@ export default function MyProjects({
                       </button>
                       <button
                         onClick={() => handleViewTimeline(project)}
-                        className="bg-purple-500 text-white py-2 px-2 rounded text-xs hover:bg-purple-600 transition-colors flex items-center justify-center"
+                        className="bg-violet-500 text-white py-2 px-2 rounded-lg text-xs hover:bg-violet-600 transition-colors flex items-center justify-center"
                         title="View Gantt Chart Timeline"
                       >
                         <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -494,7 +455,7 @@ export default function MyProjects({
                     </div>
                     <button
                       onClick={() => handleViewProject(project)}
-                      className="mt-2 w-full bg-blue-600 text-white py-2 px-2 rounded text-xs hover:bg-blue-700 transition-colors flex items-center justify-center"
+                      className="mt-2 w-full bg-primary text-primary-foreground py-2 px-2 rounded-lg text-xs hover:bg-primary/90 transition-colors flex items-center justify-center"
                       title="View Project Details"
                     >
                       <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -509,13 +470,13 @@ export default function MyProjects({
           </div>
         ) : (
           <div className="text-center py-16">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 rounded-full mb-6">
-              <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="inline-flex items-center justify-center w-20 h-20 bg-muted rounded-full mb-6">
+              <svg className="w-10 h-10 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">No Projects Found</h3>
-            <p className="text-gray-600 max-w-md mx-auto mb-8">
+            <h3 className="text-xl font-semibold text-foreground mb-2">No Projects Found</h3>
+            <p className="text-muted-foreground max-w-md mx-auto mb-8">
               {filterStatus === 'all'
                 ? "You haven't been assigned any projects yet. Projects assigned to you will appear here."
                 : `No ${filterStatus} projects found. Try changing the status filter.`
@@ -525,7 +486,7 @@ export default function MyProjects({
             {filterStatus !== 'all' && (
               <button
                 onClick={() => setFilterStatus('all')}
-                className="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition-colors font-medium"
+                className="bg-primary text-primary-foreground px-6 py-2 rounded-lg hover:bg-primary/90 transition-colors font-medium"
               >
                 Show All Projects
               </button>

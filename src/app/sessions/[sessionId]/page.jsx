@@ -78,26 +78,26 @@ export default function SessionDetailPage() {
   });
 
   if (authLoading) {
-    return <div className="p-6 text-gray-600">Checking authentication…</div>;
+    return <div className="p-6 text-muted-foreground">Checking authentication…</div>;
   }
 
   if (!userEmail) {
-    return <div className="p-6 text-gray-700">Please log in to view session details.</div>;
+    return <div className="p-6 text-foreground">Please log in to view session details.</div>;
   }
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-6 space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold text-gray-800">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">
           Session detail
         </h1>
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-muted-foreground">
           session_id: <span className="font-mono">{sessionId}</span>
         </p>
         {sessionLoading ? (
-          <p className="text-xs text-gray-400">Loading session summary…</p>
+          <p className="text-xs text-muted-foreground">Loading session summary…</p>
         ) : session ? (
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             {session.start_time &&
               `Started ${new Date(session.start_time).toLocaleString()} | `}
             {session.end_time &&
@@ -109,60 +109,60 @@ export default function SessionDetailPage() {
 
       {/* Stat cards row */}
       <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
             Keyboard
           </h2>
-          <p className="text-sm text-gray-700">
+          <p className="text-sm text-foreground">
             Total keys: <span className="font-semibold">{keyboard.totalKeys}</span>
           </p>
-          <p className="text-sm text-gray-700">
+          <p className="text-sm text-foreground">
             Avg WPM: <span className="font-semibold">{keyboard.avgWpm.toFixed(1)}</span>
           </p>
-          <p className="text-sm text-gray-700">
+          <p className="text-sm text-foreground">
             Activity %: <span className="font-semibold">{keyboard.avgActivityPct.toFixed(1)}</span>
           </p>
         </div>
 
-        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
             Mouse
           </h2>
-          <p className="text-sm text-gray-700">
+          <p className="text-sm text-foreground">
             Total events: <span className="font-semibold">{mouse.totalEvents}</span>
           </p>
-          <p className="text-sm text-gray-700">
+          <p className="text-sm text-foreground">
             Avg active %: <span className="font-semibold">{mouse.avgActivePct.toFixed(1)}</span>
           </p>
-          <p className="text-sm text-gray-700">
+          <p className="text-sm text-foreground">
             Avg idle %: <span className="font-semibold">{mouse.avgIdlePct.toFixed(1)}</span>
           </p>
           {mouse.latest?.activity_status && (
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="mt-1 text-xs text-muted-foreground">
               Latest status: {mouse.latest.activity_status}
             </p>
           )}
         </div>
 
-        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
             Apps
           </h2>
-          <p className="text-sm text-gray-700">
+          <p className="text-sm text-foreground">
             Unique apps: <span className="font-semibold">{apps.topApps.length}</span>
           </p>
           {apps.topBrowser && (
-            <p className="text-sm text-gray-700">
+            <p className="text-sm text-foreground">
               Top browser: <span className="font-semibold">{apps.topBrowser.browser}</span>
             </p>
           )}
         </div>
 
-        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
             Screenshots
           </h2>
-          <p className="text-sm text-gray-700">
+          <p className="text-sm text-foreground">
             Count: <span className="font-semibold">{screenshots.count}</span>
           </p>
         </div>
@@ -170,25 +170,25 @@ export default function SessionDetailPage() {
 
       {/* Charts and lists */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <h2 className="mb-2 text-sm font-semibold text-gray-800">Keyboard activity</h2>
+        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+          <h2 className="mb-2 text-sm font-semibold text-foreground">Keyboard activity</h2>
           <KeyboardActivityChart data={keyboard.rows} />
         </div>
 
-        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <h2 className="mb-2 text-sm font-semibold text-gray-800">Mouse activity</h2>
+        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+          <h2 className="mb-2 text-sm font-semibold text-foreground">Mouse activity</h2>
           <MouseActivityChart data={mouse.rows} />
         </div>
       </section>
 
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <h2 className="mb-2 text-sm font-semibold text-gray-800">App usage</h2>
+        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+          <h2 className="mb-2 text-sm font-semibold text-foreground">App usage</h2>
           <AppUsageList topApps={apps.topApps} topBrowser={apps.topBrowser} />
         </div>
 
-        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <h2 className="mb-2 text-sm font-semibold text-gray-800">Screenshots</h2>
+        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+          <h2 className="mb-2 text-sm font-semibold text-foreground">Screenshots</h2>
           <ScreenshotGrid screenshots={screenshots.recentThree} />
         </div>
       </section>

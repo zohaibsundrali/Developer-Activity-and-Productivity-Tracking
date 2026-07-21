@@ -5,17 +5,12 @@ import { isSessionExpired, clearAdminSession, clearDeveloperSession } from '@/ut
 import {
   Menu,
   X,
-  User,
   LogOut,
   LayoutDashboard,
   ChevronDown,
-  Sparkles,
-  Clock,
-  BarChart3,
   Settings,
   HelpCircle,
   Shield,
-  UserCircle,
   Mail,
   Award
 } from 'lucide-react';
@@ -259,9 +254,9 @@ export default function Navbar() {
   const DashboardButton = () => (
     <button
       onClick={(e) => navigateToDashboard(e)}
-      className="flex items-center w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors rounded-lg"
+      className="flex items-center w-full text-left px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors rounded-lg"
     >
-      <LayoutDashboard className="w-4 h-4 mr-3 text-gray-400" />
+      <LayoutDashboard className="w-4 h-4 mr-3 text-muted-foreground" />
       Dashboard
     </button>
   );
@@ -271,7 +266,7 @@ export default function Navbar() {
     if (isLoading) {
       return (
         <div className="flex items-center space-x-4">
-          <div className="w-24 h-10 bg-gray-200 animate-pulse rounded-lg"></div>
+          <div className="w-24 h-10 bg-primary-foreground/20 animate-pulse rounded-lg"></div>
         </div>
       );
     }
@@ -284,47 +279,47 @@ export default function Navbar() {
             className="flex items-center space-x-3 focus:outline-none hover:opacity-90 transition-opacity group"
             aria-label="User profile menu"
           >
-            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-teal-500 to-emerald-600 flex items-center justify-center text-white font-bold shadow-md ring-2 ring-teal-100 group-hover:ring-teal-300 transition-all">
+            <div className="w-10 h-10 rounded-full bg-primary-foreground/20 flex items-center justify-center text-primary-foreground font-bold shadow-md ring-2 ring-primary-foreground/20 group-hover:ring-primary-foreground/40 transition-all">
               {getUserInitials()}
             </div>
-            
+
             <div className="hidden lg:flex flex-col items-start">
-              <span className="text-sm font-medium text-gray-700">
+             <span className="text-sm font-semibold text-primary-foreground">
                 {getUserDisplayName()}
               </span>
               <div className="flex items-center gap-1">
-                <Award className="w-3 h-3 text-teal-500" />
-                <span className="text-xs text-gray-500">
+                <Award className="w-3 h-3 text-primary-foreground/80" />
+                <span className="text-xs text-primary-foreground/80">
                   {getUserRoleText()}
                 </span>
               </div>
             </div>
-            
-            <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
+
+            <ChevronDown className={`w-4 h-4 text-primary-foreground/80 transition-transform duration-200 ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
           </button>
 
           {/* Profile Dropdown Menu */}
           {isProfileMenuOpen && (
-            <div className="absolute right-0 mt-3 w-64 bg-white rounded-xl shadow-xl border border-gray-100 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-              <div className="px-4 py-3 border-b border-gray-100">
+            <div className="absolute right-0 mt-3 w-64 bg-card rounded-xl shadow-popover border border-border py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="px-4 py-3 border-b border-border">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-r from-teal-500 to-emerald-600 flex items-center justify-center text-white font-bold text-lg shadow-md">
+                  <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-bold text-lg shadow-md">
                     {getUserInitials()}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate">{getUserDisplayName()}</p>
-                    <p className="text-xs text-gray-500 truncate flex items-center gap-1">
+                    <p className="text-sm font-semibold text-foreground truncate">{getUserDisplayName()}</p>
+                    <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
                       <Mail className="w-3 h-3" />
                       {getUserEmail()}
                     </p>
                   </div>
                 </div>
                 <div className="mt-2 flex items-center gap-2">
-                  <Shield className="w-3 h-3 text-teal-500" />
+                  <Shield className="w-3 h-3 text-primary" />
                   <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                    userRole === USER_TYPES.ADMIN 
-                      ? 'bg-purple-100 text-purple-700' 
-                      : 'bg-teal-100 text-teal-700'
+                    userRole === USER_TYPES.ADMIN
+                      ? 'bg-info/10 text-info'
+                      : 'bg-primary/10 text-primary'
                   }`}>
                     {getUserRoleText()}
                   </span>
@@ -339,9 +334,9 @@ export default function Navbar() {
                     setIsProfileMenuOpen(false);
                     // Navigate to settings
                   }}
-                  className="flex items-center w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors rounded-lg"
+                  className="flex items-center w-full text-left px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors rounded-lg"
                 >
-                  <Settings className="w-4 h-4 mr-3 text-gray-400" />
+                  <Settings className="w-4 h-4 mr-3 text-muted-foreground" />
                   Settings
                 </button>
                 
@@ -350,19 +345,19 @@ export default function Navbar() {
                     setIsProfileMenuOpen(false);
                     // Navigate to help
                   }}
-                  className="flex items-center w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors rounded-lg"
+                  className="flex items-center w-full text-left px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors rounded-lg"
                 >
-                  <HelpCircle className="w-4 h-4 mr-3 text-gray-400" />
+                  <HelpCircle className="w-4 h-4 mr-3 text-muted-foreground" />
                   Help & Support
                 </button>
               </div>
               
-              <div className="border-t border-gray-100 py-1">
+              <div className="border-t border-border py-1">
                 <button
                   onClick={handleLogout}
-                  className="flex items-center w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors rounded-lg"
+                  className="flex items-center w-full text-left px-4 py-2.5 text-sm text-destructive hover:bg-destructive/10 transition-colors rounded-lg"
                 >
-                  <LogOut className="w-4 h-4 mr-3 text-red-400" />
+                  <LogOut className="w-4 h-4 mr-3 text-destructive" />
                   Logout
                 </button>
               </div>
@@ -375,13 +370,13 @@ export default function Navbar() {
         <>
           <a
             href="/login"
-            className="px-5 py-2 text-gray-700 hover:text-teal-600 font-medium transition-all duration-200 text-sm border border-gray-300 rounded-lg hover:border-teal-500 hover:bg-teal-50/50"
+            className="px-5 py-2 text-primary-foreground border border-primary-foreground/30 rounded-lg hover:bg-primary-foreground/10 hover:border-primary-foreground transition-all duration-200 text-sm font-medium"
           >
             Sign In
           </a>
           <a
             href="/admin/registration"
-            className="px-5 py-2 bg-gradient-to-r from-teal-600 to-emerald-600 text-white font-medium hover:shadow-lg hover:scale-[1.02] transition-all duration-200 text-sm rounded-lg shadow-md shadow-teal-600/20"
+           className="px-5 py-2 bg-primary-foreground text-primary font-semibold rounded-lg hover:bg-primary-foreground/90 hover:scale-[1.02] transition-all duration-200 text-sm shadow-md"
           >
             Sign Up
           </a>
@@ -397,7 +392,7 @@ export default function Navbar() {
     const currentNavItems = isLoggedIn && user ? getUserNavItems() : navItems;
 
     return (
-      <div className="md:hidden bg-white/95 backdrop-blur-sm border-t border-gray-100 mt-4">
+      <div className="md:hidden bg-primary border-t border-primary-foreground/10 mt-4">
         <div className="py-3 space-y-1">
           {currentNavItems.map((item) => (
             <button
@@ -406,25 +401,25 @@ export default function Navbar() {
                 handleNavItemClick(item.href, e);
                 setIsMenuOpen(false);
               }}
-              className="block w-full text-left px-4 py-3 text-gray-700 hover:text-teal-600 hover:bg-teal-50 text-sm font-medium rounded-lg transition-colors"
+              className="block w-full text-left px-4 py-3 text-primary-foreground hover:bg-primary-foreground/10 text-sm font-medium rounded-lg transition-all"
             >
               {item.name}
             </button>
           ))}
-          
-          <div className="border-t border-gray-100 pt-2 mt-2 px-4">
+
+          <div className="border-t border-primary-foreground/10 pt-2 mt-2 px-4">
             {!(isLoggedIn && user) ? (
               <>
                 <a
                   href="/login"
-                  className="block py-3 text-gray-700 hover:text-teal-600 text-sm font-medium hover:bg-teal-50 px-4 rounded-lg transition-colors"
+                  className="block py-3 text-primary-foreground text-sm font-medium hover:bg-primary-foreground/10 px-4 rounded-lg transition-all"
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Sign In
                 </a>
                 <a
                   href="/admin/registration"
-                  className="block py-3 bg-gradient-to-r from-teal-600 to-emerald-600 text-white text-center rounded-lg text-sm font-medium mt-2 hover:shadow-lg transition-all"
+                  className="block py-3 bg-primary-foreground text-primary text-center rounded-lg text-sm font-semibold mt-2 hover:bg-primary-foreground/90 transition-all"
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Sign Up
@@ -432,46 +427,46 @@ export default function Navbar() {
               </>
             ) : (
               <>
-                <div className="flex items-center space-x-3 mb-4 p-2 bg-gray-50 rounded-lg">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-r from-teal-500 to-emerald-600 flex items-center justify-center text-white font-bold text-lg shadow-md">
+                <div className="flex items-center space-x-3 mb-4 p-2 bg-primary-foreground/10 rounded-lg">
+                  <div className="w-12 h-12 rounded-full bg-primary-foreground/20 flex items-center justify-center text-primary-foreground font-bold text-lg shadow-md">
                     {getUserInitials()}
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-gray-900">{getUserDisplayName()}</p>
-                    <p className="text-xs text-gray-500 flex items-center gap-1">
+                    <p className="text-sm font-semibold text-primary-foreground">{getUserDisplayName()}</p>
+                    <p className="text-xs text-primary-foreground/80 flex items-center gap-1">
                       <Award className="w-3 h-3" />
                       {getUserRoleText()}
                     </p>
                   </div>
                 </div>
-                
+
                 <button
                   onClick={(e) => {
                     navigateToDashboard(e);
                     setIsMenuOpen(false);
                   }}
-                  className="flex items-center w-full text-left px-4 py-3 text-gray-700 hover:text-teal-600 hover:bg-teal-50 text-sm font-medium rounded-lg transition-colors"
+                  className="flex items-center w-full text-left px-4 py-3 text-primary-foreground hover:bg-primary-foreground/10 text-sm font-medium rounded-lg transition-colors"
                 >
-                  <LayoutDashboard className="w-4 h-4 mr-3 text-gray-400" />
+                  <LayoutDashboard className="w-4 h-4 mr-3 text-primary-foreground/70" />
                   Dashboard
                 </button>
-                
+
                 <button
                   onClick={() => {
                     setIsMenuOpen(false);
                     // Navigate to settings
                   }}
-                  className="flex items-center w-full text-left px-4 py-3 text-gray-700 hover:text-teal-600 hover:bg-teal-50 text-sm font-medium rounded-lg transition-colors"
+                  className="flex items-center w-full text-left px-4 py-3 text-primary-foreground hover:bg-primary-foreground/10 text-sm font-medium rounded-lg transition-colors"
                 >
-                  <Settings className="w-4 h-4 mr-3 text-gray-400" />
+                  <Settings className="w-4 h-4 mr-3 text-primary-foreground/70" />
                   Settings
                 </button>
-                
+
                 <button
                   onClick={handleLogout}
-                  className="w-full text-left flex items-center px-4 py-3 text-red-600 hover:bg-red-50 text-sm font-medium rounded-lg transition-colors mt-2"
+                  className="w-full text-left flex items-center px-4 py-3 text-primary-foreground hover:bg-primary-foreground/10 text-sm font-medium rounded-lg transition-colors mt-2"
                 >
-                  <LogOut className="w-4 h-4 mr-3 text-red-400" />
+                  <LogOut className="w-4 h-4 mr-3 text-primary-foreground/70" />
                   Logout
                 </button>
               </>
@@ -485,14 +480,14 @@ export default function Navbar() {
   // Show loading state
   if (isLoading) {
     return (
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-sm border-b border-gray-100 shadow-sm">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-primary backdrop-blur-md border-b border-primary/20 shadow-elevated">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-gradient-to-r from-teal-500 to-emerald-600 rounded-lg animate-pulse"></div>
-              <div className="h-6 w-48 bg-gray-200 rounded animate-pulse"></div>
+              <div className="w-8 h-8 bg-primary-foreground/20 rounded-lg animate-pulse"></div>
+              <div className="h-6 w-48 bg-primary-foreground/20 rounded animate-pulse"></div>
             </div>
-            <div className="h-10 w-24 bg-gray-200 rounded animate-pulse"></div>
+            <div className="h-10 w-24 bg-primary-foreground/20 rounded animate-pulse"></div>
           </div>
         </div>
       </nav>
@@ -500,16 +495,16 @@ export default function Navbar() {
   }
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-sm border-b border-gray-100 shadow-sm">
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-primary text-primary-foreground backdrop-blur-sm border-b border-primary/20 shadow-card">
       <div className="container mx-auto px-6 py-4">
         <div className="flex items-center justify-between">
           
           {/* Logo/Brand */}
           <div className="flex items-center space-x-3">
             <div>
-              <p className="text-lg font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
-                DevTrack
-              </p>
+              <p className="text-lg font-bold text-primary-foreground">
+  DevTrack
+</p>
             </div>
           </div>
 
@@ -520,7 +515,7 @@ export default function Navbar() {
                 <button
                   key={item.name}
                   onClick={(e) => handleNavItemClick(item.href, e)}
-                  className="text-gray-600 hover:text-teal-600 font-medium transition-colors duration-200 text-sm"
+                  className="text-primary-foreground hover:text-primary-foreground/80 font-medium transition-all duration-200 text-sm"
                 >
                   {item.name}
                 </button>
@@ -534,7 +529,7 @@ export default function Navbar() {
 
           {/* Mobile Menu Toggle */}
           <button
-            className="md:hidden p-2 rounded-lg text-gray-700 hover:text-teal-600 hover:bg-teal-50 transition-colors"
+            className="md:hidden p-2 rounded-lg text-primary-foreground hover:bg-primary-foreground/10 transition-all"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
             aria-label="Toggle menu"
           >

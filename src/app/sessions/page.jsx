@@ -37,19 +37,19 @@ export default function SessionsPage() {
   };
 
   if (authLoading) {
-    return <div className="p-6 text-gray-600">Checking authentication…</div>;
+    return <div className="p-6 text-muted-foreground">Checking authentication…</div>;
   }
 
   if (!user?.email) {
-    return <div className="p-6 text-gray-700">Please log in to view your sessions.</div>;
+    return <div className="p-6 text-foreground">Please log in to view your sessions.</div>;
   }
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-6 space-y-6">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-800">Session history</h1>
-          <p className="text-sm text-gray-500">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Session history</h1>
+          <p className="text-sm text-muted-foreground">
             productivity_sessions for {user.email}
           </p>
         </div>
@@ -57,14 +57,14 @@ export default function SessionsPage() {
           type="button"
           onClick={() => fetchSessions(user.email)}
           disabled={loading}
-          className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-indigo-700 disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-card transition-colors hover:bg-primary/90 disabled:opacity-50"
         >
           {loading ? "Refreshing…" : "Refresh"}
         </button>
       </header>
 
       {sessions.length === 0 ? (
-        <p className="text-sm text-gray-500">No sessions found yet.</p>
+        <p className="text-sm text-muted-foreground">No sessions found yet.</p>
       ) : (
         <div className="space-y-3">
           {sessions.map((s) => (

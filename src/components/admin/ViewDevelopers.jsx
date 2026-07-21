@@ -1,6 +1,8 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
 import Swal from "sweetalert2";
+import { RefreshCw, Users } from "lucide-react";
+import StatCard from "@/components/shell/StatCard";
 import { showError, showInfo, showPre, showSuccess, showWarning } from "@/utils/alerts";
 
 export default function ViewDevelopers({ developers: initialDevelopers, onRefresh, supabase, user }) {
@@ -455,10 +457,10 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
   // Loading state
   if (loading) {
     return (
-      <div className="bg-white p-6 rounded-lg shadow">
+      <div className="rounded-xl border border-border bg-card p-6 shadow-card">
         <div className="text-center py-8">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#009578]"></div>
-          <p className="mt-2 text-gray-500">Loading developers...</p>
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <p className="mt-2 text-muted-foreground">Loading developers...</p>
         </div>
       </div>
     );
@@ -467,57 +469,41 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
   // Show warning if admin is not logged in
   if (!currentAdmin) {
     return (
-      <div className="bg-white p-6 rounded-lg shadow">
+      <div className="rounded-xl border border-border bg-card p-6 shadow-card">
         <div className="text-center py-8">
-          <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13 0c1.013 0 1.827.833 1.827 1.86 0 1.03-.814 1.86-1.827 1.86s-1.827-.83-1.827-1.86c0-1.027.814-1.86 1.827-1.86z" />
-          </svg>
-          <p className="text-gray-500">Please log in as an admin to view developers.</p>
+          <Users className="w-16 h-16 text-muted-foreground/40 mx-auto mb-4" strokeWidth={1} />
+          <p className="text-muted-foreground">Please log in as an admin to view developers.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow">
-      <div className="flex justify-between items-center mb-6">
+    <div className="space-y-6 rounded-xl border border-border bg-card p-6 shadow-card">
+      <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold">View Developers</h2>
+          <h2 className="text-xl font-bold tracking-tight text-foreground">View Developers</h2>
           {/* <p className="text-sm text-gray-500">
             Showing developers added by: {currentAdmin.name || currentAdmin.email}
           </p> */}
         </div>
-        
+
         <div className="flex items-center space-x-3">
-          <button 
+          <button
             onClick={fetchAdminDevelopers}
-            className="bg-gray-100 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-200 transition-colors flex items-center"
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
             disabled={loading}
           >
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
+            <RefreshCw className="w-4 h-4" />
             Refresh
           </button>
         </div>
       </div>
-      
+
       {/* Stats Section */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-          <div className="flex items-center">
-            <div className="bg-blue-100 p-3 rounded-full mr-4">
-              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13 0c1.013 0 1.827.833 1.827 1.86 0 1.03-.814 1.86-1.827 1.86s-1.827-.83-1.827-1.86c0-1.027.814-1.86 1.827-1.86z" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Total Developers</p>
-              <p className="text-2xl font-bold">{developers.length}</p>
-            </div>
-          </div>
-        </div>
-        
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <StatCard title="Total Developers" value={developers.length} icon={Users} tone="info" />
+
         {/* <div className="bg-green-50 p-4 rounded-lg border border-green-100">
           <div className="flex items-center">
             <div className="bg-green-100 p-3 rounded-full mr-4">
@@ -548,68 +534,68 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
       </div>
 
       {/* Developers Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[820px] divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full min-w-[820px] divide-y divide-border">
+          <thead className="bg-muted">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Name
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Email
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Projects
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Added On
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Actions
               </th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+          <tbody className="bg-card divide-y divide-border">
             {developers.map(developer => (
-              <tr key={developer.id} className="hover:bg-gray-50">
+              <tr key={developer.id} className="hover:bg-muted/50">
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm font-medium text-gray-900">
+                  <div className="text-sm font-medium text-foreground">
                     {developer.name}
                   </div>
                   {developer.added_by_name && (
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-muted-foreground">
                       Added by: {developer.added_by_name}
                     </div>
                   )}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
                   {developer.email}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  <span className="font-medium">{developer.assigned_projects_count ?? developer.projects_count ?? 0}</span>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">{developer.assigned_projects_count ?? developer.projects_count ?? 0}</span>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
                   {formatDate(developer.created_at)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-3">
-                  <button 
+                  <button
                     onClick={() => handleViewDeveloper(developer.id)}
-                    className="text-blue-600 hover:text-blue-900 px-2 py-1 hover:bg-blue-50 rounded"
+                    className="text-info hover:text-info px-2 py-1 hover:bg-info/10 rounded"
                     title="View Details"
                   >
                     View
                   </button>
-                  <button 
+                  <button
                     onClick={() => handleEditDeveloper(developer.id)}
-                    className="text-green-600 hover:text-green-900 px-2 py-1 hover:bg-green-50 rounded"
+                    className="text-success hover:text-success px-2 py-1 hover:bg-success/10 rounded"
                     title="Edit Developer"
                     disabled={isEditing}
                   >
                     {isEditing ? 'Editing...' : 'Edit'}
                   </button>
-                  <button 
+                  <button
                     onClick={() => handleDeleteDeveloper(developer.id)}
-                    className="text-red-600 hover:text-red-900 px-2 py-1 hover:bg-red-50 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="text-destructive hover:text-destructive px-2 py-1 hover:bg-destructive/10 rounded disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Delete Developer"
                     disabled={deletingId !== null}
                   >
@@ -621,14 +607,12 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
           </tbody>
         </table>
       </div>
-      
+
       {developers.length === 0 && !loading && (
         <div className="text-center py-8">
-          <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13 0c1.013 0 1.827.833 1.827 1.86 0 1.03-.814 1.86-1.827 1.86s-1.827-.83-1.827-1.86c0-1.027.814-1.86 1.827-1.86z" />
-          </svg>
-          <p className="text-gray-500 text-lg mb-2">No developers added by you yet</p>
-         
+          <Users className="w-16 h-16 text-muted-foreground/40 mx-auto mb-4" strokeWidth={1} />
+          <p className="text-muted-foreground text-lg mb-2">No developers added by you yet</p>
+
         </div>
       )}
     </div>

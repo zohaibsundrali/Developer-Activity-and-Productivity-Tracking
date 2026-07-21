@@ -1,4 +1,6 @@
-import { useState, useEffect } from "react"; // Add this import at the top
+import { useState, useEffect } from "react";
+import { Users, FolderKanban, Bell, RefreshCw, Mail, BadgeCheck, User } from "lucide-react";
+import StatCard from "@/components/shell/StatCard";
 
 export default function DashboardOverview({ user, developers, projects, notifications, onRefresh, supabase }) {
   const [realTimeStats, setRealTimeStats] = useState({
@@ -159,157 +161,88 @@ export default function DashboardOverview({ user, developers, projects, notifica
   };
 
   return (
-    <div className="text-center">
-      <div className="flex justify-between items-center mb-6">
+    <div className="space-y-6">
+      {/* Header row */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-700">
-            Dashboard Overview
-          </h2>
-
+          <h2 className="text-xl font-bold tracking-tight text-foreground">Dashboard Overview</h2>
+          <p className="text-sm text-muted-foreground">
+            {lastUpdated ? `Last updated ${formatTime(lastUpdated)}` : "Your workspace at a glance"}
+          </p>
         </div>
-
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={fetchRealTimeData}
-            disabled={loading}
-            className="flex items-center bg-[#009578] text-white px-4 py-2 rounded hover:bg-[#0e7762] transition-colors disabled:opacity-50"
-          >
-            {loading ? (
-              <>
-                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Refreshing...
-              </>
-            ) : (
-              <>
-                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Refresh Stats
-              </>
-            )}
-          </button>
-        </div>
+        <button
+          onClick={fetchRealTimeData}
+          disabled={loading}
+          className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground shadow-card transition-colors hover:bg-muted disabled:opacity-50"
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          {loading ? "Refreshing…" : "Refresh Stats"}
+        </button>
       </div>
-
-
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-        {/* My Developers Card */}
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl shadow-lg border border-blue-200">
-          <div className="flex items-center justify-between mb-4">
-            <div className="bg-blue-500 p-3 rounded-lg">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13 0c1.013 0 1.827.833 1.827 1.86 0 1.03-.814 1.86-1.827 1.86s-1.827-.83-1.827-1.86c0-1.027.814-1.86 1.827-1.86z" />
-              </svg>
-            </div>
-            <span className="text-sm font-medium text-blue-600 bg-blue-100 px-3 py-1 rounded-full">
-              Assigned to you
-            </span>
-          </div>
-          <h3 className="text-3xl font-bold text-gray-800 mb-2">
-            {realTimeStats.myDevelopers}
-          </h3>
-          <p className="text-gray-600 font-medium">My Developers</p>
-          <div className="mt-4 pt-4 border-t border-blue-200">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-500">Active</span>
-              <span className="text-sm font-semibold text-green-600">
-                {realTimeStats.activeDevelopers}
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <StatCard
+          title="My Developers"
+          value={realTimeStats.myDevelopers}
+          icon={Users}
+          tone="primary"
+          badge="Assigned to you"
+          hint={
+            <>
+              <span className="text-muted-foreground">Active</span>
+              <span className="font-semibold text-success">{realTimeStats.activeDevelopers}</span>
+            </>
+          }
+        />
+        <StatCard
+          title="My Projects"
+          value={realTimeStats.myProjects}
+          icon={FolderKanban}
+          tone="info"
+          badge="Your projects"
+        />
+        <StatCard
+          title="Pending Notifications"
+          value={realTimeStats.pendingNotifications}
+          icon={Bell}
+          tone={realTimeStats.pendingNotifications > 0 ? "destructive" : "warning"}
+          badge={realTimeStats.pendingNotifications > 0 ? `${realTimeStats.pendingNotifications} new` : undefined}
+          badgeTone="destructive"
+          hint={
+            <>
+              <span className="text-muted-foreground">Require action</span>
+              <span className={`font-semibold ${realTimeStats.pendingNotifications > 0 ? "text-destructive" : "text-success"}`}>
+                {realTimeStats.pendingNotifications > 0 ? "Yes" : "No"}
               </span>
-            </div>
-          </div>
-        </div>
-
-        {/* My Projects Card */}
-        <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl shadow-lg border border-green-200">
-          <div className="flex items-center justify-between mb-4">
-            <div className="bg-green-500 p-3 rounded-lg">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-            </div>
-            <span className="text-sm font-medium text-green-600 bg-green-100 px-3 py-1 rounded-full">
-              Your projects
-            </span>
-          </div>
-          <h3 className="text-3xl font-bold text-gray-800 mb-2">
-            {realTimeStats.myProjects}
-          </h3>
-          <p className="text-gray-600 font-medium">My Projects</p>
-        </div>
-
-        {/* Pending Notifications Card */}
-        <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 p-6 rounded-xl shadow-lg border border-yellow-200">
-          <div className="flex items-center justify-between mb-4">
-            <div className="bg-yellow-500 p-3 rounded-lg">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
-            </div>
-            {realTimeStats.pendingNotifications > 0 && (
-              <span className="animate-pulse bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full">
-                {realTimeStats.pendingNotifications} new
-              </span>
-            )}
-          </div>
-          <h3 className={`text-3xl font-bold mb-2 ${realTimeStats.pendingNotifications > 0 ? 'text-red-600' : 'text-gray-800'
-            }`}>
-            {realTimeStats.pendingNotifications}
-          </h3>
-          <p className="text-gray-600 font-medium">Pending Notifications</p>
-          <div className="mt-4 pt-4 border-t border-yellow-200">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-500">Require action</span>
-              <span className="text-sm font-semibold text-yellow-600">
-                {realTimeStats.pendingNotifications > 0 ? 'Yes' : 'No'}
-              </span>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        />
       </div>
 
-      {/* Profile Information Only */}
-      <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
-        <div className="bg-white p-6 rounded-xl shadow border border-gray-200">
-          <h3 className="text-lg font-semibold mb-4 text-gray-800">Profile Information</h3>
-          <div className="space-y-3 text-left">
-            <div className="flex items-center">
-              <svg className="w-5 h-5 text-gray-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-              <div>
-                <p className="text-sm text-gray-500">Full Name</p>
-                <p className="font-medium">{user?.full_name || user?.name || 'Not specified'}</p>
-              </div>
-            </div>
-            <div className="flex items-center">
-              <svg className="w-5 h-5 text-gray-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-              <div>
-                <p className="text-sm text-gray-500">Email</p>
-                <p className="font-medium">{user?.email || 'Not specified'}</p>
-              </div>
-            </div>
-            <div className="flex items-center">
-              <svg className="w-5 h-5 text-gray-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-              </svg>
-              <div>
-                <p className="text-sm text-gray-500">Role</p>
-                <p className="font-medium capitalize">{user?.role || 'Admin'}</p>
-              </div>
-            </div>
-          </div>
+      {/* Profile Information */}
+      <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+        <h3 className="mb-4 text-base font-semibold text-foreground">Profile Information</h3>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <ProfileField icon={User} label="Full Name" value={user?.full_name || user?.name || "Not specified"} />
+          <ProfileField icon={Mail} label="Email" value={user?.email || "Not specified"} />
+          <ProfileField icon={BadgeCheck} label="Role" value={(user?.role || "Admin")} capitalize />
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* Last Updated */}
-
+function ProfileField({ icon: Icon, label, value, capitalize }) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 p-3">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        {Icon && <Icon className="h-[18px] w-[18px]" />}
+      </div>
+      <div className="min-w-0">
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className={`truncate text-sm font-medium text-foreground ${capitalize ? "capitalize" : ""}`}>{value}</p>
+      </div>
     </div>
   );
 }

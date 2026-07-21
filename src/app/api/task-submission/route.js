@@ -22,7 +22,6 @@ export async function POST(request) {
       submissionNotes 
     } = body;
 
-    console.log('Task submission request:', { taskId, projectId, developerId, fileName });
 
     // Validate required fields
     if (!taskId || !projectId || !developerId) {
@@ -78,7 +77,6 @@ export async function POST(request) {
       }
     } catch (checkErr) {
       // Ignore if table doesn't exist yet
-      console.log('Existing submission check skipped:', checkErr.message);
     }
 
     const submittedAt = new Date().toISOString();
@@ -160,7 +158,6 @@ export async function POST(request) {
           new_value: 'awaiting_approval'
         });
     } catch (logErr) {
-      console.log('Activity log skipped:', logErr.message);
     }
 
     // Get project's admin to send notification (don't fail if this doesn't work)
@@ -195,7 +192,6 @@ export async function POST(request) {
           });
       }
     } catch (notifErr) {
-      console.log('Notification skipped:', notifErr.message);
     }
 
     return NextResponse.json({

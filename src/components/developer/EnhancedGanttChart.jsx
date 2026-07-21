@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import {
   BarChart,
   Bar,
@@ -129,26 +129,26 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
-        <div className="bg-white border rounded-lg shadow-lg p-3 max-w-xs">
-          <p className="font-semibold text-gray-800">{data.name}</p>
-          <div className="text-sm text-gray-600 mt-1 space-y-1">
+        <div className="bg-card border border-border rounded-lg shadow-popover p-3 max-w-xs">
+          <p className="font-semibold text-foreground">{data.name}</p>
+          <div className="text-sm text-muted-foreground mt-1 space-y-1">
             <p>Start: {data.startDate}</p>
             <p>End: {data.endDate}</p>
             <p>Duration: {data.duration} days</p>
             <p className="capitalize">
               Status: <span className={`font-medium ${
-                data.status === 'completed' ? 'text-green-600' :
-                data.status === 'rejected' ? 'text-red-600' :
-                data.status === 'awaiting_approval' ? 'text-amber-600' :
-                'text-gray-600'
+                data.status === 'completed' ? 'text-success' :
+                data.status === 'rejected' ? 'text-destructive' :
+                data.status === 'awaiting_approval' ? 'text-warning' :
+                'text-muted-foreground'
               }`}>{data.status.replace('_', ' ')}</span>
             </p>
             {data.status === 'completed' && (
               <p>
                 {data.isOnTime ? (
-                  <span className="text-green-600">✓ Completed on time (+1)</span>
+                  <span className="text-success">✓ Completed on time (+1)</span>
                 ) : (
-                  <span className="text-red-600">✗ Completed late (-1)</span>
+                  <span className="text-destructive">✗ Completed late (-1)</span>
                 )}
               </p>
             )}
@@ -161,10 +161,10 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
 
   if (!tasks || tasks.length === 0) {
     return (
-      <div className="bg-white rounded-xl shadow-lg p-6">
-        <h3 className="text-xl font-bold text-gray-800 mb-4">Project Timeline</h3>
-        <div className="text-center py-12 text-gray-500">
-          <svg className="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="rounded-xl border border-border bg-card shadow-card p-6">
+        <h3 className="text-xl font-bold tracking-tight text-foreground mb-4">Project Timeline</h3>
+        <div className="text-center py-12 text-muted-foreground">
+          <svg className="w-16 h-16 mx-auto text-muted-foreground mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
               d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
           </svg>
@@ -175,23 +175,23 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+    <div className="rounded-xl border border-border bg-card shadow-card overflow-hidden">
       {/* Header */}
-      <div className="bg-gradient-to-r from-purple-500 to-purple-600 p-6">
+      <div className="bg-primary p-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <h3 className="text-xl font-bold text-white">
+            <h3 className="text-xl font-bold tracking-tight text-primary-foreground">
               {projectName || "Project"} - Gantt Chart
             </h3>
-            <p className="text-white/80 text-sm mt-1">Visual timeline of all tasks</p>
+            <p className="text-primary-foreground/80 text-sm mt-1">Visual timeline of all tasks</p>
           </div>
           <div className="flex gap-2">
             <button
               onClick={() => setViewMode("chart")}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                 viewMode === "chart"
-                  ? "bg-white text-purple-600"
-                  : "bg-white/20 text-white hover:bg-white/30"
+                  ? "bg-card text-primary"
+                  : "bg-white/20 text-primary-foreground hover:bg-white/30"
               }`}
             >
               Chart
@@ -200,8 +200,8 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
               onClick={() => setViewMode("list")}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                 viewMode === "list"
-                  ? "bg-white text-purple-600"
-                  : "bg-white/20 text-white hover:bg-white/30"
+                  ? "bg-card text-primary"
+                  : "bg-white/20 text-primary-foreground hover:bg-white/30"
               }`}
             >
               List
@@ -211,32 +211,32 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
       </div>
 
       {/* Stats Banner */}
-      <div className="grid grid-cols-2 sm:grid-cols-6 divide-x divide-gray-200 bg-gray-50 border-b">
+      <div className="grid grid-cols-2 sm:grid-cols-6 divide-x divide-border bg-muted/50 border-b border-border">
         <div className="p-4 text-center">
-          <p className="text-2xl font-bold text-gray-800">{stats.total}</p>
-          <p className="text-xs text-gray-500">Total Tasks</p>
+          <p className="text-2xl font-bold text-foreground">{stats.total}</p>
+          <p className="text-xs text-muted-foreground">Total Tasks</p>
         </div>
         <div className="p-4 text-center">
-          <p className="text-2xl font-bold text-green-600">{stats.completed}</p>
-          <p className="text-xs text-gray-500">Completed</p>
+          <p className="text-2xl font-bold text-success">{stats.completed}</p>
+          <p className="text-xs text-muted-foreground">Completed</p>
         </div>
         <div className="p-4 text-center">
-          <p className="text-2xl font-bold text-green-500">{stats.onTime}</p>
-          <p className="text-xs text-gray-500">On Time</p>
+          <p className="text-2xl font-bold text-success">{stats.onTime}</p>
+          <p className="text-xs text-muted-foreground">On Time</p>
         </div>
         <div className="p-4 text-center">
-          <p className="text-2xl font-bold text-red-500">{stats.late}</p>
-          <p className="text-xs text-gray-500">Late</p>
+          <p className="text-2xl font-bold text-destructive">{stats.late}</p>
+          <p className="text-xs text-muted-foreground">Late</p>
         </div>
         <div className="p-4 text-center">
-          <p className="text-2xl font-bold text-amber-500">{stats.pending}</p>
-          <p className="text-xs text-gray-500">Pending</p>
+          <p className="text-2xl font-bold text-warning">{stats.pending}</p>
+          <p className="text-xs text-muted-foreground">Pending</p>
         </div>
         <div className="p-4 text-center">
-          <p className={`text-2xl font-bold ${stats.productivityPoints >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+          <p className={`text-2xl font-bold ${stats.productivityPoints >= 0 ? 'text-success' : 'text-destructive'}`}>
             {stats.productivityPoints >= 0 ? '+' : ''}{stats.productivityPoints}
           </p>
-          <p className="text-xs text-gray-500">Points</p>
+          <p className="text-xs text-muted-foreground">Points</p>
         </div>
       </div>
 
@@ -249,7 +249,7 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
               {Object.entries(statusColors).map(([status, color]) => (
                 <div key={status} className="flex items-center">
                   <div className="w-4 h-4 rounded" style={{ backgroundColor: color }}></div>
-                  <span className="ml-2 text-sm text-gray-600 capitalize">
+                  <span className="ml-2 text-sm text-muted-foreground capitalize">
                     {status.replace('_', ' ')}
                   </span>
                 </div>
@@ -266,7 +266,7 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
                     barSize={24}
                     margin={{ top: 20, right: 30, left: 150, bottom: 5 }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
                     <XAxis
                       type="number"
                       domain={[0, 'dataMax + 5']}
@@ -311,26 +311,26 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
           /* List View */
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px]">
-              <thead className="bg-gray-50">
+              <thead className="bg-muted/50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Task</th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">Start</th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">End</th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">Duration</th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">Status</th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">On Time</th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">Points</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Task</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">Start</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">End</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">Duration</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">Status</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">On Time</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">Points</th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody className="divide-y divide-border">
                 {chartData.map((task, index) => (
-                  <tr key={index} className="hover:bg-gray-50">
+                  <tr key={index} className="hover:bg-muted/50">
                     <td className="px-4 py-3">
-                      <p className="font-medium text-gray-800">{task.name}</p>
+                      <p className="font-medium text-foreground">{task.name}</p>
                     </td>
-                    <td className="px-4 py-3 text-center text-gray-600">{task.startDate}</td>
-                    <td className="px-4 py-3 text-center text-gray-600">{task.endDate}</td>
-                    <td className="px-4 py-3 text-center text-gray-600">{task.duration} days</td>
+                    <td className="px-4 py-3 text-center text-muted-foreground">{task.startDate}</td>
+                    <td className="px-4 py-3 text-center text-muted-foreground">{task.endDate}</td>
+                    <td className="px-4 py-3 text-center text-muted-foreground">{task.duration} days</td>
                     <td className="px-4 py-3 text-center">
                       <span
                         className="px-2 py-1 rounded-full text-xs font-medium capitalize"
@@ -345,21 +345,21 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
                     <td className="px-4 py-3 text-center">
                       {task.status === 'completed' ? (
                         task.isOnTime ? (
-                          <span className="text-green-600">✓ Yes</span>
+                          <span className="text-success">✓ Yes</span>
                         ) : (
-                          <span className="text-red-600">✗ No</span>
+                          <span className="text-destructive">✗ No</span>
                         )
                       ) : (
-                        <span className="text-gray-400">-</span>
+                        <span className="text-muted-foreground">-</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-center">
                       {task.status === 'completed' ? (
-                        <span className={`font-bold ${task.isOnTime ? 'text-green-600' : 'text-red-600'}`}>
+                        <span className={`font-bold ${task.isOnTime ? 'text-success' : 'text-destructive'}`}>
                           {task.isOnTime ? '+1' : '-1'}
                         </span>
                       ) : (
-                        <span className="text-gray-400">-</span>
+                        <span className="text-muted-foreground">-</span>
                       )}
                     </td>
                   </tr>
@@ -371,12 +371,12 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
       </div>
 
       {/* Productivity Formula */}
-      <div className="p-4 bg-gray-50 border-t">
-        <div className="text-sm text-gray-600">
+      <div className="p-4 bg-muted/50 border-t border-border">
+        <div className="text-sm text-muted-foreground">
           <strong>Productivity Formula:</strong> Each task = {(100 / (tasks?.length || 1)).toFixed(1)}% weight.
           On-time completion = +weight, Late completion = -weight.
-          Current: {stats.onTime} on-time × {(100 / (tasks?.length || 1)).toFixed(1)}% - {stats.late} late × {(100 / (tasks?.length || 1)).toFixed(1)}% = 
-          <span className={`font-bold ml-1 ${((stats.onTime - stats.late) / (tasks?.length || 1) * 100) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+          Current: {stats.onTime} on-time × {(100 / (tasks?.length || 1)).toFixed(1)}% - {stats.late} late × {(100 / (tasks?.length || 1)).toFixed(1)}% =
+          <span className={`font-bold ml-1 ${((stats.onTime - stats.late) / (tasks?.length || 1) * 100) >= 0 ? 'text-success' : 'text-destructive'}`}>
             {(((stats.onTime - stats.late) / (stats.completed || 1)) * 100).toFixed(1)}% productivity
           </span>
         </div>

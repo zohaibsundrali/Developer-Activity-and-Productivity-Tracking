@@ -13,11 +13,9 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  LineChart,
-  Line,
 } from "recharts";
 
-const COLORS = ["#009578", "#0ea5e9", "#f59e0b", "#ef4444", "#8b5cf6", "#10b981"];
+const COLORS = ["#0c8f6e", "#0ea5e9", "#f59e0b", "#ef4444", "#0c8f6e", "#10b981"];
 
 export default function ProductivityDashboard({ currentAdmin }) {
   const [loading, setLoading] = useState(true);
@@ -114,7 +112,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
             cx={size / 2}
             cy={size / 2}
             r={radius}
-            stroke="#e5e7eb"
+            stroke="#e2e8f0"
             strokeWidth={strokeWidth}
             fill="none"
           />
@@ -133,8 +131,8 @@ export default function ProductivityDashboard({ currentAdmin }) {
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-4xl font-bold text-gray-800">{value}%</span>
-          <span className="text-sm text-gray-500">Productivity</span>
+          <span className="text-4xl font-bold text-foreground">{value}%</span>
+          <span className="text-sm text-muted-foreground">Productivity</span>
         </div>
       </div>
     );
@@ -173,21 +171,21 @@ export default function ProductivityDashboard({ currentAdmin }) {
       <div>
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-gradient-to-br from-[#009578] to-[#00b894] rounded-xl p-4 text-white">
-            <p className="text-white/80 text-sm">Avg Productivity</p>
-            <p className="text-3xl font-bold">{averageProductivity}%</p>
+          <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+            <p className="text-sm text-muted-foreground">Avg Productivity</p>
+            <p className="text-3xl font-bold text-primary">{averageProductivity}%</p>
           </div>
-          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-4 text-white">
-            <p className="text-white/80 text-sm">Total Developers</p>
-            <p className="text-3xl font-bold">{totalDevelopers}</p>
+          <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+            <p className="text-sm text-muted-foreground">Total Developers</p>
+            <p className="text-3xl font-bold text-info">{totalDevelopers}</p>
           </div>
-          <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-4 text-white">
-            <p className="text-white/80 text-sm">Total Projects</p>
-            <p className="text-3xl font-bold">{totalProjects}</p>
+          <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+            <p className="text-sm text-muted-foreground">Total Projects</p>
+            <p className="text-3xl font-bold" style={{ color: "#0c8f6e" }}>{totalProjects}</p>
           </div>
-          <div className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl p-4 text-white">
-            <p className="text-white/80 text-sm">Tasks Completed</p>
-            <p className="text-3xl font-bold">
+          <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+            <p className="text-sm text-muted-foreground">Tasks Completed</p>
+            <p className="text-3xl font-bold text-warning">
               {totalCompleted}/{totalTasks}
             </p>
           </div>
@@ -196,13 +194,13 @@ export default function ProductivityDashboard({ currentAdmin }) {
         {/* Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           {/* Bar Chart */}
-          <div className="bg-white rounded-xl p-6 shadow">
-            <h3 className="text-lg font-semibold mb-4">
+          <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+            <h3 className="text-lg font-semibold text-foreground mb-4">
               Developer Productivity Comparison
             </h3>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={barData}>
-                <CartesianGrid strokeDasharray="3 3" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                 <XAxis dataKey="name" />
                 <YAxis domain={[0, 100]} />
                 <Tooltip />
@@ -210,7 +208,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
                 <Bar
                   dataKey="productivity"
                   name="Productivity %"
-                  fill="#009578"
+                  fill="#0c8f6e"
                   radius={[4, 4, 0, 0]}
                 />
               </BarChart>
@@ -218,8 +216,8 @@ export default function ProductivityDashboard({ currentAdmin }) {
           </div>
 
           {/* Pie Chart */}
-          <div className="bg-white rounded-xl p-6 shadow">
-            <h3 className="text-lg font-semibold mb-4">Task Status Distribution</h3>
+          <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+            <h3 className="text-lg font-semibold text-foreground mb-4">Task Status Distribution</h3>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
@@ -247,53 +245,53 @@ export default function ProductivityDashboard({ currentAdmin }) {
         </div>
 
         {/* Developer Ranking Table */}
-        <div className="bg-white rounded-xl shadow overflow-hidden">
-          <div className="p-4 border-b bg-gray-50">
-            <h3 className="text-lg font-semibold">Developer Rankings</h3>
+        <div className="bg-card rounded-xl border border-border shadow-card overflow-hidden">
+          <div className="p-4 border-b border-border bg-muted/50">
+            <h3 className="text-lg font-semibold text-foreground">Developer Rankings</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1000px]">
-              <thead className="bg-gray-50">
+              <thead className="bg-muted/50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">
+                  <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">
                     Rank
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">
+                  <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">
                     Developer
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">
+                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">
                     Projects
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">
+                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">
                     Tasks
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">
+                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">
                     On Time
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">
+                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">
                     Late
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">
+                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">
                     Points
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">
+                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">
                     Productivity
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody className="divide-y divide-border">
                 {developersBreakdown?.map((dev, index) => (
-                  <tr key={dev.developerId} className="hover:bg-gray-50">
+                  <tr key={dev.developerId} className="hover:bg-muted/50">
                     <td className="px-4 py-3">
                       <span
                         className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold ${
                           index === 0
-                            ? "bg-yellow-100 text-yellow-700"
+                            ? "bg-warning/10 text-warning"
                             : index === 1
-                            ? "bg-gray-100 text-gray-600"
+                            ? "bg-muted text-muted-foreground"
                             : index === 2
-                            ? "bg-orange-100 text-orange-700"
-                            : "bg-gray-50 text-gray-500"
+                            ? "bg-warning/10 text-warning"
+                            : "bg-muted/50 text-muted-foreground"
                         }`}
                       >
                         {index + 1}
@@ -301,27 +299,27 @@ export default function ProductivityDashboard({ currentAdmin }) {
                     </td>
                     <td className="px-4 py-3">
                       <div>
-                        <p className="font-medium text-gray-800">
+                        <p className="font-medium text-foreground">
                           {dev.developerName}
                         </p>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-muted-foreground">
                           {dev.developerEmail}
                         </p>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-center text-gray-600">
+                    <td className="px-4 py-3 text-center text-muted-foreground">
                       {dev.totalProjects}
                     </td>
-                    <td className="px-4 py-3 text-center text-gray-600">
+                    <td className="px-4 py-3 text-center text-muted-foreground">
                       {dev.completedTasks}/{dev.totalTasks}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className="text-green-600 font-medium">
+                      <span className="text-success font-medium">
                         {dev.onTimeTasks}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className="text-red-600 font-medium">
+                      <span className="text-destructive font-medium">
                         {dev.lateTasks}
                       </span>
                     </td>
@@ -329,8 +327,8 @@ export default function ProductivityDashboard({ currentAdmin }) {
                       <span
                         className={`font-bold ${
                           dev.productivityPoints >= 0
-                            ? "text-green-600"
-                            : "text-red-600"
+                            ? "text-success"
+                            : "text-destructive"
                         }`}
                       >
                         {dev.productivityPoints >= 0 ? "+" : ""}
@@ -339,21 +337,21 @@ export default function ProductivityDashboard({ currentAdmin }) {
                     </td>
                     <td className="px-4 py-3 text-center">
                       <div className="flex items-center justify-center">
-                        <div className="w-20 bg-gray-200 rounded-full h-2 mr-2">
+                        <div className="w-20 bg-muted rounded-full h-2 mr-2">
                           <div
                             className={`h-2 rounded-full ${
                               parseFloat(dev.productivityPercentage) >= 80
-                                ? "bg-green-500"
+                                ? "bg-success"
                                 : parseFloat(dev.productivityPercentage) >= 60
-                                ? "bg-yellow-500"
-                                : "bg-red-500"
+                                ? "bg-warning"
+                                : "bg-destructive"
                             }`}
                             style={{
                               width: `${dev.productivityPercentage}%`,
                             }}
                           />
                         </div>
-                        <span className="font-medium">
+                        <span className="font-medium text-foreground">
                           {dev.productivityPercentage}%
                         </span>
                       </div>
@@ -384,11 +382,11 @@ export default function ProductivityDashboard({ currentAdmin }) {
     return (
       <div>
         {/* Developer Header */}
-        <div className="bg-gradient-to-r from-[#009578] to-[#00b894] rounded-xl p-6 mb-6 text-white">
+        <div className="bg-primary rounded-xl p-6 mb-6 text-primary-foreground">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold">{developerName}</h2>
-              <p className="text-white/80">Developer Productivity Report</p>
+              <p className="text-primary-foreground/80">Developer Productivity Report</p>
             </div>
             <ProductivityGauge percentage={productivityPercentage} size={150} />
           </div>
@@ -396,29 +394,29 @@ export default function ProductivityDashboard({ currentAdmin }) {
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-          <div className="bg-white rounded-xl p-4 shadow">
-            <p className="text-gray-500 text-sm">Projects</p>
-            <p className="text-2xl font-bold text-gray-800">{totalProjects}</p>
+          <div className="bg-card rounded-xl border border-border p-4 shadow-card">
+            <p className="text-muted-foreground text-sm">Projects</p>
+            <p className="text-2xl font-bold text-foreground">{totalProjects}</p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow">
-            <p className="text-gray-500 text-sm">Total Tasks</p>
-            <p className="text-2xl font-bold text-gray-800">{totalTasks}</p>
+          <div className="bg-card rounded-xl border border-border p-4 shadow-card">
+            <p className="text-muted-foreground text-sm">Total Tasks</p>
+            <p className="text-2xl font-bold text-foreground">{totalTasks}</p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow">
-            <p className="text-gray-500 text-sm">Completed</p>
-            <p className="text-2xl font-bold text-gray-800">{totalCompleted}</p>
+          <div className="bg-card rounded-xl border border-border p-4 shadow-card">
+            <p className="text-muted-foreground text-sm">Completed</p>
+            <p className="text-2xl font-bold text-foreground">{totalCompleted}</p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow">
-            <p className="text-gray-500 text-sm">On Time</p>
-            <p className="text-2xl font-bold text-green-600">
+          <div className="bg-card rounded-xl border border-border p-4 shadow-card">
+            <p className="text-muted-foreground text-sm">On Time</p>
+            <p className="text-2xl font-bold text-success">
               {productivityData.totalOnTime}
             </p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow">
-            <p className="text-gray-500 text-sm">Points</p>
+          <div className="bg-card rounded-xl border border-border p-4 shadow-card">
+            <p className="text-muted-foreground text-sm">Points</p>
             <p
               className={`text-2xl font-bold ${
-                productivityPoints >= 0 ? "text-green-600" : "text-red-600"
+                productivityPoints >= 0 ? "text-success" : "text-destructive"
               }`}
             >
               {productivityPoints >= 0 ? "+" : ""}
@@ -429,83 +427,83 @@ export default function ProductivityDashboard({ currentAdmin }) {
 
         {/* Timesheet-style productivity summary for admin view */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-xl border p-4 text-center shadow-sm">
-            <div className="text-3xl font-bold text-gray-800">{totalTasks}</div>
-            <div className="text-sm text-gray-500 mt-1">Total Tasks</div>
+          <div className="bg-card rounded-xl border border-border p-4 text-center shadow-card">
+            <div className="text-3xl font-bold text-foreground">{totalTasks}</div>
+            <div className="text-sm text-muted-foreground mt-1">Total Tasks</div>
           </div>
-          <div className="bg-green-50 rounded-xl border border-green-200 p-4 text-center shadow-sm">
-            <div className="text-3xl font-bold text-green-600">{productivityData.totalOnTime}</div>
-            <div className="text-sm text-green-700 mt-1">On Time</div>
-            <div className="text-xs text-green-600">+{productivityData.totalOnTime} pts</div>
+          <div className="bg-success/10 rounded-xl border border-success/20 p-4 text-center shadow-card">
+            <div className="text-3xl font-bold text-success">{productivityData.totalOnTime}</div>
+            <div className="text-sm text-success mt-1">On Time</div>
+            <div className="text-xs text-success">+{productivityData.totalOnTime} pts</div>
           </div>
-          <div className="bg-red-50 rounded-xl border border-red-200 p-4 text-center shadow-sm">
-            <div className="text-3xl font-bold text-red-600">{productivityData.totalLate}</div>
-            <div className="text-sm text-red-700 mt-1">Late</div>
-            <div className="text-xs text-red-600">
+          <div className="bg-destructive/10 rounded-xl border border-destructive/20 p-4 text-center shadow-card">
+            <div className="text-3xl font-bold text-destructive">{productivityData.totalLate}</div>
+            <div className="text-sm text-destructive mt-1">Late</div>
+            <div className="text-xs text-destructive">
               -{productivityData.totalLate} pts
             </div>
           </div>
           <div
-            className={`rounded-xl border p-4 text-center shadow-sm ${
+            className={`rounded-xl border p-4 text-center shadow-card ${
               parseFloat(productivityPercentage) >= 80
-                ? "bg-green-50 border-green-200"
+                ? "bg-success/10 border-success/20"
                 : parseFloat(productivityPercentage) >= 50
-                ? "bg-yellow-50 border-yellow-200"
-                : "bg-red-50 border-red-200"
+                ? "bg-warning/10 border-warning/20"
+                : "bg-destructive/10 border-destructive/20"
             }`}
           >
             <div
               className={`text-3xl font-bold ${
                 parseFloat(productivityPercentage) >= 80
-                  ? "text-green-600"
+                  ? "text-success"
                   : parseFloat(productivityPercentage) >= 50
-                  ? "text-yellow-600"
-                  : "text-red-600"
+                  ? "text-warning"
+                  : "text-destructive"
               }`}
             >
               {productivityPercentage}%
             </div>
-            <div className="text-sm text-gray-600 mt-1">Productivity</div>
-            <div className="text-xs text-gray-500">
+            <div className="text-sm text-muted-foreground mt-1">Productivity</div>
+            <div className="text-xs text-muted-foreground">
               Points: {productivityPoints >= 0 ? `+${productivityPoints}` : productivityPoints}
             </div>
           </div>
         </div>
 
         {/* Projects Breakdown */}
-        <div className="bg-white rounded-xl shadow overflow-hidden">
-          <div className="p-4 border-b bg-gray-50">
-            <h3 className="text-lg font-semibold">Projects Breakdown</h3>
+        <div className="bg-card rounded-xl border border-border shadow-card overflow-hidden">
+          <div className="p-4 border-b border-border bg-muted/50">
+            <h3 className="text-lg font-semibold text-foreground">Projects Breakdown</h3>
           </div>
-          <div className="divide-y">
+          <div className="divide-y divide-border">
             {projectsBreakdown?.map((proj) => (
-              <div key={proj.projectId} className="p-4 hover:bg-gray-50">
+              <div key={proj.projectId} className="p-4 hover:bg-muted/50">
                 <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-medium text-gray-800">
+                  <h4 className="font-medium text-foreground">
                     {proj.projectName}
                   </h4>
                   <span
                     className={`px-3 py-1 rounded-full text-sm font-medium ${
                       parseFloat(proj.productivityPercentage) >= 80
-                        ? "bg-green-100 text-green-700"
+                        ? "bg-success/10 text-success"
                         : parseFloat(proj.productivityPercentage) >= 60
-                        ? "bg-yellow-100 text-yellow-700"
-                        : "bg-red-100 text-red-700"
+                        ? "bg-warning/10 text-warning"
+                        : "bg-destructive/10 text-destructive"
                     }`}
                   >
                     {proj.productivityPercentage}%
                   </span>
                 </div>
-                <div className="flex items-center space-x-4 text-sm text-gray-500">
+                <div className="flex items-center space-x-4 text-sm text-muted-foreground">
                   <span>Tasks: {proj.totalTasks}</span>
                   <span>Completed: {proj.completed}</span>
-                  <span className="text-green-600">On Time: {proj.onTime}</span>
-                  <span className="text-red-600">Late: {proj.late}</span>
+                  <span className="text-success">On Time: {proj.onTime}</span>
+                  <span className="text-destructive">Late: {proj.late}</span>
                   <span>Pending: {proj.pending}</span>
                 </div>
-                <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
+                <div className="mt-2 w-full bg-muted rounded-full h-2">
                   <div
-                    className="bg-[#009578] h-2 rounded-full transition-all"
+                    className="bg-primary h-2 rounded-full transition-all"
                     style={{
                       width: `${(proj.completed / proj.totalTasks) * 100}%`,
                     }}
@@ -517,7 +515,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
         </div>
 
         {/* Productivity formula note (same logic as developer timesheet) */}
-        <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
+        <div className="mt-6 bg-info/10 border border-info/20 rounded-lg p-4 text-sm text-info">
           <strong>Productivity Formula:</strong>
           {" "}(On-time tasks − Late tasks) / Total tasks × 100
           {" "}+ 50% · On-time completion = +1 point · Late completion = −1 point
@@ -544,7 +542,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
     return (
       <div>
         {/* Project Header */}
-        <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl p-6 mb-6 text-white">
+        <div className="rounded-xl p-6 mb-6 text-white" style={{ background: "linear-gradient(to right, #0c8f6e, #0a7457)" }}>
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold">{projectName}</h2>
@@ -555,102 +553,102 @@ export default function ProductivityDashboard({ currentAdmin }) {
         </div>
 
         {/* Formula Explanation */}
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
-          <h4 className="font-semibold text-blue-800 mb-2">
+        <div className="bg-info/10 border border-info/20 rounded-xl p-4 mb-6">
+          <h4 className="font-semibold text-info mb-2">
             Productivity Formula
           </h4>
-          <p className="text-blue-700">{formula?.description}</p>
-          <p className="text-blue-600 mt-1 font-mono text-sm">
+          <p className="text-info">{formula?.description}</p>
+          <p className="text-info mt-1 font-mono text-sm">
             {formula?.calculation}
           </p>
-          <p className="text-blue-500 text-sm mt-1">{formula?.example}</p>
+          <p className="text-info/80 text-sm mt-1">{formula?.example}</p>
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
-          <div className="bg-white rounded-xl p-4 shadow">
-            <p className="text-gray-500 text-sm">Total Tasks</p>
-            <p className="text-2xl font-bold text-gray-800">{totalTasks}</p>
+          <div className="bg-card rounded-xl border border-border p-4 shadow-card">
+            <p className="text-muted-foreground text-sm">Total Tasks</p>
+            <p className="text-2xl font-bold text-foreground">{totalTasks}</p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow">
-            <p className="text-gray-500 text-sm">Task Weight</p>
-            <p className="text-2xl font-bold text-gray-800">{taskWeight}%</p>
+          <div className="bg-card rounded-xl border border-border p-4 shadow-card">
+            <p className="text-muted-foreground text-sm">Task Weight</p>
+            <p className="text-2xl font-bold text-foreground">{taskWeight}%</p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow">
-            <p className="text-gray-500 text-sm">Completed</p>
-            <p className="text-2xl font-bold text-blue-600">
+          <div className="bg-card rounded-xl border border-border p-4 shadow-card">
+            <p className="text-muted-foreground text-sm">Completed</p>
+            <p className="text-2xl font-bold text-info">
               {summary?.completed}
             </p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow">
-            <p className="text-gray-500 text-sm">On Time</p>
-            <p className="text-2xl font-bold text-green-600">
+          <div className="bg-card rounded-xl border border-border p-4 shadow-card">
+            <p className="text-muted-foreground text-sm">On Time</p>
+            <p className="text-2xl font-bold text-success">
               {summary?.onTime}
             </p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow">
-            <p className="text-gray-500 text-sm">Late</p>
-            <p className="text-2xl font-bold text-red-600">{summary?.late}</p>
+          <div className="bg-card rounded-xl border border-border p-4 shadow-card">
+            <p className="text-muted-foreground text-sm">Late</p>
+            <p className="text-2xl font-bold text-destructive">{summary?.late}</p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow">
-            <p className="text-gray-500 text-sm">Progress</p>
-            <p className="text-2xl font-bold text-purple-600">
+          <div className="bg-card rounded-xl border border-border p-4 shadow-card">
+            <p className="text-muted-foreground text-sm">Progress</p>
+            <p className="text-2xl font-bold" style={{ color: "#0c8f6e" }}>
               {completionProgress}%
             </p>
           </div>
         </div>
 
         {/* Tasks Breakdown Table */}
-        <div className="bg-white rounded-xl shadow overflow-hidden">
-          <div className="p-4 border-b bg-gray-50">
-            <h3 className="text-lg font-semibold">Task-by-Task Analysis</h3>
+        <div className="bg-card rounded-xl border border-border shadow-card overflow-hidden">
+          <div className="p-4 border-b border-border bg-muted/50">
+            <h3 className="text-lg font-semibold text-foreground">Task-by-Task Analysis</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px]">
-              <thead className="bg-gray-50">
+              <thead className="bg-muted/50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">
+                  <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">
                     Task
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">
+                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">
                     Status
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">
+                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">
                     Deadline
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">
+                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">
                     On Time?
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">
+                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">
                     Weight
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">
+                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">
                     Contribution
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody className="divide-y divide-border">
                 {tasksBreakdown?.map((task) => (
-                  <tr key={task.id} className="hover:bg-gray-50">
+                  <tr key={task.id} className="hover:bg-muted/50">
                     <td className="px-4 py-3">
-                      <p className="font-medium text-gray-800">{task.title}</p>
+                      <p className="font-medium text-foreground">{task.title}</p>
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span
                         className={`px-2 py-1 rounded-full text-xs font-medium ${
                           task.status === "completed"
-                            ? "bg-green-100 text-green-700"
+                            ? "bg-success/10 text-success"
                             : task.status === "rejected"
-                            ? "bg-red-100 text-red-700"
+                            ? "bg-destructive/10 text-destructive"
                             : task.status === "awaiting_approval"
-                            ? "bg-yellow-100 text-yellow-700"
-                            : "bg-gray-100 text-gray-700"
+                            ? "bg-warning/10 text-warning"
+                            : "bg-muted text-muted-foreground"
                         }`}
                       >
                         {task.status.replace("_", " ")}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center text-gray-600">
+                    <td className="px-4 py-3 text-center text-muted-foreground">
                       {task.endDate
                         ? new Date(task.endDate).toLocaleDateString()
                         : "N/A"}
@@ -658,25 +656,25 @@ export default function ProductivityDashboard({ currentAdmin }) {
                     <td className="px-4 py-3 text-center">
                       {task.status === "completed" ? (
                         task.isOnTime ? (
-                          <span className="text-green-600">✓ Yes</span>
+                          <span className="text-success">✓ Yes</span>
                         ) : (
-                          <span className="text-red-600">✗ No</span>
+                          <span className="text-destructive">✗ No</span>
                         )
                       ) : (
-                        <span className="text-gray-400">-</span>
+                        <span className="text-muted-foreground">-</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-center text-gray-600">
+                    <td className="px-4 py-3 text-center text-muted-foreground">
                       {task.weight}%
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span
                         className={`font-bold ${
                           task.contribution > 0
-                            ? "text-green-600"
+                            ? "text-success"
                             : task.contribution < 0
-                            ? "text-red-600"
-                            : "text-gray-500"
+                            ? "text-destructive"
+                            : "text-muted-foreground"
                         }`}
                       >
                         {task.contributionLabel}
@@ -693,49 +691,49 @@ export default function ProductivityDashboard({ currentAdmin }) {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+    <div className="bg-card rounded-xl border border-border shadow-card overflow-hidden">
       {/* Header */}
-      <div className="bg-gradient-to-r from-[#009578] to-[#00b894] p-6">
-        <h2 className="text-2xl font-bold text-white mb-2">
+      <div className="bg-primary p-6">
+        <h2 className="text-2xl font-bold text-primary-foreground mb-2">
           Productivity Dashboard
         </h2>
-        <p className="text-white/80">
+        <p className="text-primary-foreground/80">
           Monitor and analyze developer productivity metrics
         </p>
       </div>
 
       {/* View Mode Tabs */}
-      <div className="border-b px-6 py-3 bg-gray-50 flex flex-wrap gap-3 items-center">
+      <div className="border-b border-border px-6 py-3 bg-muted/50 flex flex-wrap gap-3 items-center">
         <button
           onClick={() => {
             setViewMode("overall");
             setSelectedDeveloper("");
             setSelectedProject("");
           }}
-          className={`px-4 py-2 rounded-lg font-medium transition-all ${
+          className={`px-4 py-2 rounded-lg font-semibold transition-all ${
             viewMode === "overall"
-              ? "bg-[#009578] text-white shadow"
-              : "bg-white text-gray-600 hover:bg-gray-100 border"
+              ? "bg-primary text-primary-foreground shadow-card"
+              : "bg-card text-muted-foreground hover:bg-muted border border-border"
           }`}
         >
           Overall View
         </button>
         <button
           onClick={() => setViewMode("developer")}
-          className={`px-4 py-2 rounded-lg font-medium transition-all ${
+          className={`px-4 py-2 rounded-lg font-semibold transition-all ${
             viewMode === "developer"
-              ? "bg-[#009578] text-white shadow"
-              : "bg-white text-gray-600 hover:bg-gray-100 border"
+              ? "bg-primary text-primary-foreground shadow-card"
+              : "bg-card text-muted-foreground hover:bg-muted border border-border"
           }`}
         >
           By Developer
         </button>
         <button
           onClick={() => setViewMode("project")}
-          className={`px-4 py-2 rounded-lg font-medium transition-all ${
+          className={`px-4 py-2 rounded-lg font-semibold transition-all ${
             viewMode === "project"
-              ? "bg-[#009578] text-white shadow"
-              : "bg-white text-gray-600 hover:bg-gray-100 border"
+              ? "bg-primary text-primary-foreground shadow-card"
+              : "bg-card text-muted-foreground hover:bg-muted border border-border"
           }`}
         >
           By Project
@@ -746,7 +744,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
           <select
             value={selectedDeveloper}
             onChange={(e) => setSelectedDeveloper(e.target.value)}
-            className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#009578] focus:border-[#009578]"
+            className="px-3 py-2 border border-input bg-background rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/30"
           >
             <option value="">Select Developer</option>
             {developers.map((dev) => (
@@ -762,7 +760,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
           <select
             value={selectedProject}
             onChange={(e) => setSelectedProject(e.target.value)}
-            className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#009578] focus:border-[#009578]"
+            className="px-3 py-2 border border-input bg-background rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/30"
           >
             <option value="">Select Project</option>
             {projects.map((proj) => (
@@ -775,7 +773,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
 
         <button
           onClick={fetchProductivityData}
-          className="ml-auto px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-all"
+          className="ml-auto inline-flex items-center justify-center px-4 py-2 bg-card text-muted-foreground rounded-lg border border-border hover:bg-muted transition-all"
         >
           <svg
             className="w-5 h-5"
@@ -797,8 +795,8 @@ export default function ProductivityDashboard({ currentAdmin }) {
       <div className="p-6">
         {loading ? (
           <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#009578] mx-auto"></div>
-            <p className="mt-4 text-gray-500">Loading productivity data...</p>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-4 text-muted-foreground">Loading productivity data...</p>
           </div>
         ) : viewMode === "overall" ? (
           renderOverallView()
@@ -807,9 +805,9 @@ export default function ProductivityDashboard({ currentAdmin }) {
         ) : viewMode === "project" && selectedProject ? (
           renderProjectView()
         ) : (
-          <div className="text-center py-12 text-gray-500">
+          <div className="text-center py-12 text-muted-foreground">
             <svg
-              className="w-16 h-16 mx-auto text-gray-300 mb-4"
+              className="w-16 h-16 mx-auto text-muted-foreground/40 mb-4"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"

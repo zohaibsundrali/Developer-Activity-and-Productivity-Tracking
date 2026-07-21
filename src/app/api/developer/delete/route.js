@@ -11,7 +11,6 @@ const normalize = (value) => (typeof value === 'string' ? value.trim() : '');
 async function resolveDeveloper({ developerId, developerEmail, userId }) {
   const normalizedId = normalize(developerId);
   const normalizedEmail = normalize(developerEmail).toLowerCase();
-  const normalizedUserId = normalize(userId);
 
   if (normalizedId) {
     const { data, error } = await supabase

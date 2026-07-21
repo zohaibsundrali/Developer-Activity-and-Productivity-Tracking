@@ -26,20 +26,20 @@ export function SessionCard({ session, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="w-full text-left rounded-lg border border-gray-200 bg-white p-4 shadow-sm hover:border-indigo-400 hover:shadow-md transition"
+      className="w-full text-left rounded-xl border border-border bg-card p-4 shadow-card hover:border-primary hover:shadow-md transition"
     >
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-sm text-gray-500">Session ID</div>
-          <div className="font-mono text-xs text-gray-700 truncate max-w-xs">
+          <div className="text-sm text-muted-foreground">Session ID</div>
+          <div className="font-mono text-xs text-foreground truncate max-w-xs">
             {session.session_id}
           </div>
         </div>
-        <span className="inline-flex rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">
+        <span className="inline-flex rounded-full bg-info/10 px-3 py-1 text-xs font-medium text-info">
           {session.status || "unknown"}
         </span>
       </div>
-      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-600">
+      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-muted-foreground">
         <div>
           <span className="font-medium">Start:</span> {start}
         </div>
@@ -58,7 +58,7 @@ export function SessionCard({ session, onClick }) {
 }
 
 export function KeyboardActivityChart({ data }) {
-  if (!data?.length) return <p className="text-sm text-gray-500">No keyboard data yet.</p>;
+  if (!data?.length) return <p className="text-sm text-muted-foreground">No keyboard data yet.</p>;
 
   const chartData = data.map((r) => ({
     time: String(r.minute_timestamp).slice(11, 16),
@@ -70,7 +70,7 @@ export function KeyboardActivityChart({ data }) {
     <div className="h-64 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={chartData} margin={{ top: 10, right: 20, bottom: 5, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
           <XAxis dataKey="time" stroke="#6b7280" fontSize={12} />
           <YAxis yAxisId="left" stroke="#0ea5e9" fontSize={12} />
           <YAxis yAxisId="right" orientation="right" stroke="#22c55e" fontSize={12} />
@@ -101,7 +101,7 @@ export function KeyboardActivityChart({ data }) {
 }
 
 export function MouseActivityChart({ data }) {
-  if (!data?.length) return <p className="text-sm text-gray-500">No mouse data yet.</p>;
+  if (!data?.length) return <p className="text-sm text-muted-foreground">No mouse data yet.</p>;
 
   const chartData = data
     .slice()
@@ -116,7 +116,7 @@ export function MouseActivityChart({ data }) {
     <div className="h-64 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={chartData} margin={{ top: 10, right: 20, bottom: 5, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
           <XAxis dataKey="time" stroke="#6b7280" fontSize={12} />
           <YAxis stroke="#6b7280" fontSize={12} />
           <Tooltip />
@@ -130,12 +130,12 @@ export function MouseActivityChart({ data }) {
 }
 
 export function AppUsageList({ topApps, topBrowser }) {
-  if (!topApps?.length) return <p className="text-sm text-gray-500">No app usage recorded yet.</p>;
+  if (!topApps?.length) return <p className="text-sm text-muted-foreground">No app usage recorded yet.</p>;
 
   return (
     <div className="space-y-2 text-sm">
       {topBrowser && (
-        <div className="mb-2 rounded-md bg-blue-50 px-3 py-2 text-blue-700">
+        <div className="mb-2 rounded-md bg-info/10 px-3 py-2 text-info">
           <span className="font-semibold">Top browser:</span> {topBrowser.browser} ({
             topBrowser.totalMinutes.toFixed(1)
           }
@@ -146,12 +146,12 @@ export function AppUsageList({ topApps, topBrowser }) {
         {topApps.map((a) => (
           <li
             key={a.app}
-            className="flex items-center justify-between rounded border border-gray-200 px-3 py-1.5"
+            className="flex items-center justify-between rounded border border-border px-3 py-1.5"
           >
             <span className="truncate mr-2" title={a.app}>
               {a.app}
             </span>
-            <span className="font-mono text-xs text-gray-700">
+            <span className="font-mono text-xs text-foreground">
               {a.totalMinutes.toFixed(1)} m
             </span>
           </li>
@@ -162,24 +162,32 @@ export function AppUsageList({ topApps, topBrowser }) {
 }
 
 export function ScreenshotGrid({ screenshots }) {
-  if (!screenshots?.length) return <p className="text-sm text-gray-500">No screenshots for this session.</p>;
+  if (!screenshots?.length) return <p className="text-sm text-muted-foreground">No screenshots for this session.</p>;
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
       {screenshots.map((shot) => (
         <div
           key={shot.id || shot.filename}
-          className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm"
+          className="overflow-hidden rounded-lg border border-border bg-card shadow-card"
         >
-          <div className="aspect-video bg-gray-100">
-            {/* public_url is safe to use directly in <img> */}
-            <img
-              src={shot.public_url}
-              alt={shot.app_active || shot.filename}
-              className="h-full w-full object-cover"
-            />
+          <div className="aspect-video bg-muted">
+            {/* Coalesce across the possible URL columns (desktop app writes
+                public_url; website upload route may write image_url/thumbnail_url). */}
+            {(shot.public_url || shot.image_url || shot.thumbnail_url) ? (
+              <img
+                src={shot.public_url || shot.image_url || shot.thumbnail_url}
+                alt={shot.app_active || shot.filename || "Screenshot"}
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
+                No preview
+              </div>
+            )}
           </div>
-          <div className="px-2 py-1.5 text-xs text-gray-600 space-y-0.5">
+          <div className="px-2 py-1.5 text-xs text-muted-foreground space-y-0.5">
             <div className="truncate" title={shot.app_active || "Unknown app"}>
               {shot.app_active || "Unknown app"}
             </div>
