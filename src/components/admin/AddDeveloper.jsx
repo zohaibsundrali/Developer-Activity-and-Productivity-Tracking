@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { RefreshCw, Users, AlertTriangle } from "lucide-react";
 import { showError, showSuccess, showWarning } from "@/utils/alerts";
+import { getOrgId } from "@/utils/orgContext";
 
 const formatDate = (dateString) => {
   if (!dateString) return 'Recently';
@@ -181,21 +182,26 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
 
       // Try to fetch developers added by this admin
       try {
+        const orgId = getOrgId();
         let fetchedDevelopers = [];
-        const { data, error } = await supabase
+        let devQuery = supabase
           .from('developers')
           .select('*')
           .or(`added_by.eq.${adminData.id},added_by_admin.ilike.%${adminData.email}%`)
           .order('created_at', { ascending: false });
+        if (orgId) devQuery = devQuery.eq('organization_id', orgId);
+        const { data, error } = await devQuery;
 
         if (error) {
           // If columns don't exist, fetch all developers
           setMissingColumns(true);
 
-          const { data: allData, error: allError } = await supabase
+          let allQuery = supabase
             .from('developers')
             .select('*')
             .order('created_at', { ascending: false });
+          if (orgId) allQuery = allQuery.eq('organization_id', orgId);
+          const { data: allData, error: allError } = await allQuery;
 
           if (allError) throw allError;
 
@@ -267,12 +273,15 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
       return;
     }
 
-    // Check if developer already exists (global check)
+    // Check if developer already exists (scoped to current organization)
     try {
-      const { data: existingDevs, error: checkError } = await supabase
+      const orgId = getOrgId();
+      let dupQuery = supabase
         .from('developers')
         .select('email')
         .ilike('email', newDeveloper.email.trim());
+      if (orgId) dupQuery = dupQuery.eq('organization_id', orgId);
+      const { data: existingDevs, error: checkError } = await dupQuery;
 
       if (checkError) throw checkError;
 
@@ -297,6 +306,7 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
         status: 'active',
         projects_count: 0,
         company: user?.company || 'Unknown Company',
+        organization_id: getOrgId(),
         created_at: new Date().toISOString()
       };
 
@@ -327,6 +337,7 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
             status: 'active',
             projects_count: 0,
             company: user?.company || 'Unknown Company',
+            organization_id: getOrgId(),
             created_at: new Date().toISOString()
           };
 
@@ -345,6 +356,25 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
       } else {
         insertedData = data; // Assign to let variable
       }
+
+      // Create a membership for the new developer so they get org context at
+      // login (best-effort; never block the main flow).
+      try {
+        const orgId = getOrgId();
+        const createdDeveloper = Array.isArray(insertedData) ? insertedData[0] : insertedData;
+        if (orgId && createdDeveloper?.id) {
+          await supabase
+            .from('memberships')
+            .insert([{
+              organization_id: orgId,
+              user_id: createdDeveloper.id,
+              user_type: 'developer',
+              email: createdDeveloper.email,
+              role: 'developer',
+              status: 'active',
+            }]);
+        }
+      } catch { /* non-fatal */ }
 
       // Add notification
       try {

@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { RefreshCw, Plus, X, Trash2, AlertTriangle, FileText, BarChart3, Calendar, Eye, Download } from "lucide-react";
 import { showError, showInfo, showSuccess, showWarning } from "@/utils/alerts";
+import { getOrgId } from "@/utils/orgContext";
 
 const statusPill = (status) => {
   const s = String(status || "").toLowerCase();
@@ -57,20 +58,26 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
 
       setCurrentAdmin(adminData);
 
+      const orgId = getOrgId();
+
       // Fetch projects created by this admin (not assigned_to, but created_by)
-      const projectsPromise = supabase
+      let projectsQuery = supabase
         .from('projects')
         .select('*')
         .or(`created_by.eq.${adminData.id},added_by.eq.${adminData.id},added_by_admin.ilike.%${adminData.email}%`)
         .order('created_at', { ascending: false });
+      if (orgId) projectsQuery = projectsQuery.eq('organization_id', orgId);
+      const projectsPromise = projectsQuery;
 
       // Fetch developers added by this admin
-      const developersPromise = supabase
+      let developersQuery = supabase
         .from('developers')
         .select('*')
         .or(`added_by.eq.${adminData.id},added_by_admin.ilike.%${adminData.email}%`)
         .eq('status', 'active') // Only active developers
         .order('name', { ascending: true });
+      if (orgId) developersQuery = developersQuery.eq('organization_id', orgId);
+      const developersPromise = developersQuery;
 
       // Execute both promises in parallel
       const [projectsResult, developersResult] = await Promise.all([
@@ -375,6 +382,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
             created_by: currentAdmin.id,
             added_by: currentAdmin.id, // Store who added this project
             added_by_admin: currentAdmin.email,
+            organization_id: getOrgId(),
             created_at: new Date().toISOString()
           }
         ])

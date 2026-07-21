@@ -24,7 +24,10 @@ export default function Sidebar({
   const displayName = user?.full_name || user?.name || (role === "admin" ? "Admin" : "Developer");
   const displayEmail = user?.email || "";
   const initial = (displayName || "U").charAt(0).toUpperCase();
-  const roleLabel = role === "admin" ? "Admin Workspace" : "Developer Workspace";
+  // Multi-tenant: show the organization/workspace name when available.
+  const roleLabel = user?.organization_name
+    ? user.organization_name
+    : (role === "admin" ? "Admin Workspace" : "Developer Workspace");
 
   const handleNav = (id) => {
     onNavigate?.(id);

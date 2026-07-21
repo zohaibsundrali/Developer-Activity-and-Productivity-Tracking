@@ -4,6 +4,7 @@ import Swal from "sweetalert2";
 import { RefreshCw, Users } from "lucide-react";
 import StatCard from "@/components/shell/StatCard";
 import { showError, showInfo, showPre, showSuccess, showWarning } from "@/utils/alerts";
+import { getOrgId } from "@/utils/orgContext";
 
 export default function ViewDevelopers({ developers: initialDevelopers, onRefresh, supabase, user }) {
   const [developers, setDevelopers] = useState([]);
@@ -44,11 +45,14 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
           const email = normalizeEmail(dev?.email);
           if (!email) return { ...dev, assigned_projects_count: 0 };
           
-          const { count, error: countError } = await supabase
+          const orgId = getOrgId();
+          let countQuery = supabase
             .from('projects')
             .select('*', { count: 'exact', head: true })
             .eq('assigned_developer_email', dev.email); // Match the exact email case or use ilike if needed. Since email should be case sensitive or matching DB exact: dev.email
-          
+          if (orgId) countQuery = countQuery.eq('organization_id', orgId);
+          const { count, error: countError } = await countQuery;
+
           return {
             ...dev,
             assigned_projects_count: countError ? 0 : (count || 0)
@@ -86,11 +90,14 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
       } 
       // Option 2: Fetch directly from Supabase
       else if (supabase) {
-        const { data, error } = await supabase
+        const orgId = getOrgId();
+        let developersQuery = supabase
           .from('developers')
           .select('*')
           .or(`added_by.eq.${adminData.id},added_by_admin.ilike.%${adminData.email}%`)
           .order('created_at', { ascending: false });
+        if (orgId) developersQuery = developersQuery.eq('organization_id', orgId);
+        const { data, error } = await developersQuery;
 
         if (error) throw error;
 

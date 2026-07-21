@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/utils/supabaseClient";
+import { getOrgId } from "@/utils/orgContext";
 import { showPre } from "@/utils/alerts";
 import EChart from "@/components/charts/EChart";
 import {
@@ -190,19 +191,26 @@ export default function DeveloperActivity() {
     if (!currentAdmin?.id) return;
     setFetchingDevelopers(true);
     try {
+      const orgId = getOrgId();
       let devs = [];
       const cols = ["added_by_admin", "added_by", "admin_id", "created_by"];
       for (const col of cols) {
-        const { data } = await supabase.from("developers").select("*").eq(col, currentAdmin.id);
+        let q1 = supabase.from("developers").select("*").eq(col, currentAdmin.id);
+        if (orgId) q1 = q1.eq("organization_id", orgId);
+        const { data } = await q1;
         if (data?.length) { devs = data; break; }
         if (currentAdmin.email) {
-          const { data: d2 } = await supabase.from("developers").select("*").eq(col, currentAdmin.email);
+          let q2 = supabase.from("developers").select("*").eq(col, currentAdmin.email);
+          if (orgId) q2 = q2.eq("organization_id", orgId);
+          const { data: d2 } = await q2;
           if (d2?.length) { devs = d2; break; }
         }
       }
       if (!devs.length && currentAdmin.id) {
-        const { data } = await supabase.from("developers").select("*")
+        let q3 = supabase.from("developers").select("*")
           .or(`added_by_admin.eq.${currentAdmin.id},added_by.eq.${currentAdmin.id},admin_id.eq.${currentAdmin.id}`);
+        if (orgId) q3 = q3.eq("organization_id", orgId);
+        const { data } = await q3;
         if (data) devs = data;
       }
       setDevelopers(devs);

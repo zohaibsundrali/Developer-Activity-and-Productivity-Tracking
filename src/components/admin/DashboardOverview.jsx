@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Users, FolderKanban, Bell, RefreshCw, Mail, BadgeCheck, User } from "lucide-react";
 import StatCard from "@/components/shell/StatCard";
+import { getOrgId } from "@/utils/orgContext";
 
 export default function DashboardOverview({ user, developers, projects, notifications, onRefresh, supabase }) {
   const [realTimeStats, setRealTimeStats] = useState({
@@ -84,6 +85,8 @@ export default function DashboardOverview({ user, developers, projects, notifica
 
       if (!adminId && !adminEmail) return;
 
+      const orgId = getOrgId();
+
       // Fetch developers added by this admin
       const orFilters = [];
       if (adminId) {
@@ -93,10 +96,12 @@ export default function DashboardOverview({ user, developers, projects, notifica
         orFilters.push(`added_by_admin.ilike.%${adminEmail}%`);
       }
 
-      const { data: myDevsData } = await supabase
+      let devsQuery = supabase
         .from('developers')
         .select('*')
         .or(orFilters.join(','));
+      if (orgId) devsQuery = devsQuery.eq('organization_id', orgId);
+      const { data: myDevsData } = await devsQuery;
 
       // Fetch projects created/assigned by this admin
       const projectOrFilters = [];
@@ -108,17 +113,21 @@ export default function DashboardOverview({ user, developers, projects, notifica
         projectOrFilters.push(`added_by_admin.ilike.%${adminEmail}%`);
       }
 
-      const { data: myProjectsData } = await supabase
+      let projectsQuery = supabase
         .from('projects')
         .select('*')
         .or(projectOrFilters.join(','));
+      if (orgId) projectsQuery = projectsQuery.eq('organization_id', orgId);
+      const { data: myProjectsData } = await projectsQuery;
 
       // Fetch unread notifications
-      const { data: unreadNotifications } = await supabase
+      let notificationsQuery = supabase
         .from('notifications')
         .select('*')
         .eq('read', false)
         .or(`admin_id.eq.${adminId},admin_email.ilike.%${adminEmail}%`);
+      if (orgId) notificationsQuery = notificationsQuery.eq('organization_id', orgId);
+      const { data: unreadNotifications } = await notificationsQuery;
 
       // Calculate statistics
       const myDevelopers = myDevsData?.length || 0;

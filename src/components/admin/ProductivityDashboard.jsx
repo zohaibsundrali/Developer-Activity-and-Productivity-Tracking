@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { supabase } from "@/utils/supabaseClient";
+import { getOrgId } from "@/utils/orgContext";
 import EChart from "@/components/charts/EChart";
 import {
   textStyle,
@@ -35,19 +36,25 @@ export default function ProductivityDashboard({ currentAdmin }) {
 
   const fetchDevelopersAndProjects = async () => {
     try {
+      const orgId = getOrgId();
+
       // Fetch developers
-      const { data: devs } = await supabase
+      let devQuery = supabase
         .from("developers")
         .select("id, name, email")
         .order("name");
+      if (orgId) devQuery = devQuery.eq("organization_id", orgId);
+      const { data: devs } = await devQuery;
 
       setDevelopers(devs || []);
 
       // Fetch projects
-      const { data: projs } = await supabase
+      let projQuery = supabase
         .from("projects")
         .select("id, name")
         .order("name");
+      if (orgId) projQuery = projQuery.eq("organization_id", orgId);
+      const { data: projs } = await projQuery;
 
       setProjects(projs || []);
     } catch (error) {
