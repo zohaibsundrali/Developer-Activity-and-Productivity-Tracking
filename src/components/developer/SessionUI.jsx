@@ -1,17 +1,15 @@
 "use client";
 
+import EChart from "@/components/charts/EChart";
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-} from "recharts";
+  textStyle,
+  baseGrid,
+  baseTooltip,
+  baseLegend,
+  axisLabel,
+  axisLine,
+  splitLine,
+} from "@/components/charts/chartTheme";
 
 export function SessionCard({ session, onClick }) {
   if (!session) return null;
@@ -66,36 +64,33 @@ export function KeyboardActivityChart({ data }) {
     activityPct: Number(r.keyboard_activity_percentage) || 0,
   }));
 
+  const option = {
+    color: ["#0ea5e9", "#16a34a"],
+    textStyle,
+    grid: { ...baseGrid, right: 44 },
+    tooltip: { trigger: "axis", ...baseTooltip },
+    legend: { ...baseLegend, data: ["WPM", "Keyboard %"] },
+    xAxis: {
+      type: "category",
+      boundaryGap: false,
+      data: chartData.map((d) => d.time),
+      axisLabel,
+      axisLine,
+      axisTick: { show: false },
+    },
+    yAxis: [
+      { type: "value", axisLabel, splitLine },
+      { type: "value", max: 100, position: "right", axisLabel, splitLine: { show: false } },
+    ],
+    series: [
+      { name: "WPM", type: "line", yAxisIndex: 0, smooth: true, showSymbol: false, lineStyle: { width: 2 }, data: chartData.map((d) => d.wpm) },
+      { name: "Keyboard %", type: "line", yAxisIndex: 1, smooth: true, showSymbol: false, lineStyle: { width: 2 }, data: chartData.map((d) => d.activityPct) },
+    ],
+  };
+
   return (
     <div className="h-64 w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={chartData} margin={{ top: 10, right: 20, bottom: 5, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey="time" stroke="#6b7280" fontSize={12} />
-          <YAxis yAxisId="left" stroke="#0ea5e9" fontSize={12} />
-          <YAxis yAxisId="right" orientation="right" stroke="#22c55e" fontSize={12} />
-          <Tooltip />
-          <Legend />
-          <Line
-            yAxisId="left"
-            type="monotone"
-            dataKey="wpm"
-            stroke="#0ea5e9"
-            strokeWidth={2}
-            dot={false}
-            name="WPM"
-          />
-          <Line
-            yAxisId="right"
-            type="monotone"
-            dataKey="activityPct"
-            stroke="#22c55e"
-            strokeWidth={2}
-            dot={false}
-            name="Keyboard %"
-          />
-        </LineChart>
-      </ResponsiveContainer>
+      <EChart option={option} height="100%" />
     </div>
   );
 }
@@ -112,19 +107,29 @@ export function MouseActivityChart({ data }) {
       idle: Number(r.idle_percentage) || 0,
     }));
 
+  const option = {
+    color: ["#16a34a", "#ef4444"],
+    textStyle,
+    grid: baseGrid,
+    tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, ...baseTooltip },
+    legend: { ...baseLegend, data: ["Active %", "Idle %"] },
+    xAxis: {
+      type: "category",
+      data: chartData.map((d) => d.time),
+      axisLabel,
+      axisLine,
+      axisTick: { show: false },
+    },
+    yAxis: { type: "value", max: 100, axisLabel, splitLine },
+    series: [
+      { name: "Active %", type: "bar", stack: "a", data: chartData.map((d) => d.active) },
+      { name: "Idle %", type: "bar", stack: "a", itemStyle: { borderRadius: [4, 4, 0, 0] }, data: chartData.map((d) => d.idle) },
+    ],
+  };
+
   return (
     <div className="h-64 w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={chartData} margin={{ top: 10, right: 20, bottom: 5, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey="time" stroke="#6b7280" fontSize={12} />
-          <YAxis stroke="#6b7280" fontSize={12} />
-          <Tooltip />
-          <Legend />
-          <Bar dataKey="active" stackId="a" fill="#22c55e" name="Active %" />
-          <Bar dataKey="idle" stackId="a" fill="#ef4444" name="Idle %" />
-        </BarChart>
-      </ResponsiveContainer>
+      <EChart option={option} height="100%" />
     </div>
   );
 }

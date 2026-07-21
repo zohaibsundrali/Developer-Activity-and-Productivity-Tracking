@@ -1,7 +1,16 @@
 "use client";
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import { Chart } from 'react-google-charts';
+import EChart from "@/components/charts/EChart";
+import {
+  PALETTE,
+  textStyle,
+  baseGrid,
+  baseTooltip,
+  axisLabel,
+  axisLine,
+  splitLine,
+} from "@/components/charts/chartTheme";
 import { showWarning } from "@/utils/alerts";
 
 export default function GanttChartPage() {
@@ -157,6 +166,88 @@ export default function GanttChartPage() {
 
   const stats = calculateStats();
 
+  // Build an ECharts horizontal Gantt (offset placeholder + colored duration bar)
+  // from the already-prepared Gantt rows (ganttData: [columns, ...rows]).
+  const buildGanttOption = () => {
+    const rows = ganttData.slice(1);
+    const dayMs = 1000 * 60 * 60 * 24;
+    const parsed = rows.map((r) => ({
+      title: r[1],
+      start: new Date(r[3]),
+      end: new Date(r[4]),
+    }));
+    const minTime = Math.min(...parsed.map((p) => p.start.getTime()));
+    const minDate = new Date(minTime);
+    const withOffsets = parsed.map((p) => ({
+      title: p.title,
+      startLabel: formatDate(p.start),
+      endLabel: formatDate(p.end),
+      offset: Math.floor((p.start.getTime() - minTime) / dayMs),
+      duration: Math.max(1, Math.ceil((p.end.getTime() - p.start.getTime()) / dayMs)),
+    }));
+
+    return {
+      color: PALETTE,
+      textStyle,
+      grid: { ...baseGrid, left: 8, right: 30, top: 20, bottom: 8, containLabel: true },
+      tooltip: {
+        trigger: "item",
+        axisPointer: { type: "shadow" },
+        ...baseTooltip,
+        formatter: (params) => {
+          const row = withOffsets[params.dataIndex];
+          if (!row) return "";
+          return (
+            `<div style="font-weight:600;margin-bottom:4px">${row.title}</div>` +
+            `<div>Start: ${row.startLabel}</div>` +
+            `<div>End: ${row.endLabel}</div>` +
+            `<div>Duration: ${row.duration} days</div>`
+          );
+        },
+      },
+      xAxis: {
+        type: "value",
+        min: 0,
+        axisLabel: {
+          ...axisLabel,
+          formatter: (value) =>
+            formatDate(new Date(minDate.getTime() + value * dayMs)),
+        },
+        axisLine,
+        splitLine,
+      },
+      yAxis: {
+        type: "category",
+        inverse: true,
+        data: withOffsets.map((r) => r.title),
+        axisLabel: { ...axisLabel, fontSize: 12 },
+        axisLine,
+        axisTick: { show: false },
+      },
+      series: [
+        {
+          name: "offset",
+          type: "bar",
+          stack: "g",
+          silent: true,
+          itemStyle: { color: "transparent" },
+          tooltip: { show: false },
+          data: withOffsets.map((r) => r.offset),
+        },
+        {
+          name: "duration",
+          type: "bar",
+          stack: "g",
+          barWidth: 24,
+          data: withOffsets.map((r, i) => ({
+            value: r.duration,
+            itemStyle: { color: PALETTE[i % PALETTE.length], borderRadius: 4 },
+          })),
+        },
+      ],
+    };
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-muted/50 flex items-center justify-center">
@@ -255,80 +346,7 @@ export default function GanttChartPage() {
             <div className="border rounded-lg overflow-hidden">
               <div className="overflow-x-auto">
                 <div className="min-w-[900px]">
-                  <Chart
-                    width={'100%'}
-                    height={isNarrowScreen ? '420px' : '600px'}
-                    chartType="Gantt"
-                    loader={<div className="flex justify-center items-center h-32">Loading Gantt Chart...</div>}
-                    data={ganttData}
-                    options={{
-                      height: isNarrowScreen ? 420 : 600,
-                      gantt: {
-                        trackHeight: isNarrowScreen ? 30 : 40,
-                        barHeight: isNarrowScreen ? 22 : 30,
-                        labelMaxWidth: isNarrowScreen ? 220 : 400,
-                        criticalPathEnabled: false,
-                        innerGridTrack: { fill: '#f8fafc' },
-                        innerGridDarkTrack: { fill: '#e2e8f0' },
-                        arrow: {
-                          angle: 100,
-                          width: 2,
-                          color: '#6e6e6e',
-                          radius: 0,
-                        },
-                        palette: [
-                          {
-                            color: '#3B82F6', // Blue
-                            dark: '#1D4ED8',
-                            light: '#93C5FD',
-                          },
-                          {
-                            color: '#10B981', // Green
-                            dark: '#047857',
-                            light: '#6EE7B7',
-                          },
-                          {
-                            color: '#F59E0B', // Amber
-                            dark: '#D97706',
-                            light: '#FCD34D',
-                          },
-                          {
-                            color: '#EF4444', // Red
-                            dark: '#DC2626',
-                            light: '#FCA5A5',
-                          },
-                          {
-                            color: '#8B5CF6', // Purple
-                            dark: '#7C3AED',
-                            light: '#C4B5FD',
-                          },
-                        ],
-                      },
-                      backgroundColor: '#ffffff',
-                      chartArea: {
-                        left: isNarrowScreen ? 220 : 400,
-                        top: 60,
-                        width: '70%',
-                        height: '85%'
-                      },
-                      hAxis: {
-                        format: 'MMM dd, yyyy', // Date format
-                        gridlines: {
-                          count: -1,
-                          color: '#e5e7eb'
-                        },
-                        minorGridlines: {
-                          count: 0
-                        }
-                      },
-                      vAxis: {
-                        textStyle: {
-                          fontSize: isNarrowScreen ? 10 : 12
-                        }
-                      }
-                    }}
-                    rootProps={{ 'data-testid': '1' }}
-                  />
+                  <EChart option={buildGanttOption()} height={Math.max(240, tasks.length * 38)} />
                 </div>
               </div>
             </div>

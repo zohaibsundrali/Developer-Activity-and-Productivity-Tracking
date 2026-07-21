@@ -1,19 +1,16 @@
 "use client";
 import { useState, useEffect } from "react";
 import { supabase } from "@/utils/supabaseClient";
+import EChart from "@/components/charts/EChart";
 import {
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from "recharts";
+  textStyle,
+  baseGrid,
+  baseTooltip,
+  baseLegend,
+  axisLabel,
+  axisLine,
+  splitLine,
+} from "@/components/charts/chartTheme";
 
 const COLORS = ["#0c8f6e", "#0ea5e9", "#f59e0b", "#ef4444", "#0c8f6e", "#10b981"];
 
@@ -167,6 +164,50 @@ export default function ProductivityDashboard({ currentAdmin }) {
       { name: "Pending", value: (totalTasks || 0) - (totalCompleted || 0) },
     ];
 
+    const barOption = {
+      color: ["#0c8f6e"],
+      textStyle,
+      grid: baseGrid,
+      tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, ...baseTooltip },
+      legend: { ...baseLegend, data: ["Productivity %"] },
+      xAxis: {
+        type: "category",
+        data: (barData || []).map((d) => d.name),
+        axisLabel,
+        axisLine,
+        axisTick: { show: false },
+      },
+      yAxis: { type: "value", max: 100, axisLabel, splitLine },
+      series: [
+        {
+          name: "Productivity %",
+          type: "bar",
+          itemStyle: { borderRadius: [4, 4, 0, 0] },
+          data: (barData || []).map((d) => d.productivity),
+        },
+      ],
+    };
+
+    const pieOption = {
+      textStyle,
+      tooltip: { trigger: "item", ...baseTooltip },
+      legend: { ...baseLegend, bottom: 0, top: "auto" },
+      series: [
+        {
+          type: "pie",
+          radius: ["45%", "70%"],
+          center: ["50%", "50%"],
+          padAngle: 5,
+          label: { formatter: "{b}: {c}" },
+          data: pieData.map((entry, index) => ({
+            value: entry.value,
+            name: entry.name,
+            itemStyle: { color: COLORS[index % COLORS.length] },
+          })),
+        },
+      ],
+    };
+
     return (
       <div>
         {/* Stats Cards */}
@@ -198,49 +239,13 @@ export default function ProductivityDashboard({ currentAdmin }) {
             <h3 className="text-lg font-semibold text-foreground mb-4">
               Developer Productivity Comparison
             </h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={barData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="name" />
-                <YAxis domain={[0, 100]} />
-                <Tooltip />
-                <Legend />
-                <Bar
-                  dataKey="productivity"
-                  name="Productivity %"
-                  fill="#0c8f6e"
-                  radius={[4, 4, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
+            <EChart option={barOption} height={300} />
           </div>
 
           {/* Pie Chart */}
           <div className="rounded-xl border border-border bg-card p-6 shadow-card">
             <h3 className="text-lg font-semibold text-foreground mb-4">Task Status Distribution</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={100}
-                  paddingAngle={5}
-                  dataKey="value"
-                  label={({ name, value }) => `${name}: ${value}`}
-                >
-                  {pieData.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={COLORS[index % COLORS.length]}
-                    />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+            <EChart option={pieOption} height={300} />
           </div>
         </div>
 

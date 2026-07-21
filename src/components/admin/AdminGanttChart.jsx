@@ -1,17 +1,14 @@
 "use client";
 import { useState, useMemo } from "react";
+import EChart from "@/components/charts/EChart";
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-  ReferenceLine,
-  LabelList,
-} from "recharts";
+  textStyle,
+  baseTooltip,
+  axisLabel,
+  axisLine,
+  splitLine,
+  GANTT_STATUS_COLORS,
+} from "@/components/charts/chartTheme";
 
 /**
  * Admin Gantt Chart Component
@@ -163,26 +160,6 @@ export default function AdminGanttChart({
     });
   }, [filteredTasks, developers]);
 
-  const ProgressLabel = ({ x, y, width, height, value }) => {
-    if (!showProgress) return null;
-    const pct = Number(value);
-    if (!Number.isFinite(pct)) return null;
-    if (width < 28) return null;
-
-    return (
-      <text
-        x={x + width / 2}
-        y={y + height / 2 + 4}
-        textAnchor="middle"
-        fill="#ffffff"
-        fontSize={11}
-        fontWeight={700}
-      >
-        {pct}%
-      </text>
-    );
-  };
-
   // Calculate today's position on the chart
   const todayPosition = useMemo(() => {
     if (!filteredTasks || filteredTasks.length === 0) return null;
@@ -228,57 +205,166 @@ export default function AdminGanttChart({
     };
   }, [filteredTasks]);
 
-  // Custom tooltip for chart
-  const CustomTooltip = ({ active, payload }) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      return (
-        <div className="bg-card border border-border rounded-lg shadow-popover p-4 max-w-xs">
-          <p className="font-bold text-foreground mb-2">{data.name}</p>
-          <div className="text-sm text-foreground space-y-1">
-            <p><span className="font-medium">Developer:</span> {data.developer}</p>
-            {data.developerEmail && (
-              <p className="text-xs text-muted-foreground">{data.developerEmail}</p>
-            )}
-            <p><span className="font-medium">Start:</span> {data.startDate}</p>
-            <p><span className="font-medium">End:</span> {data.endDate}</p>
-            <p><span className="font-medium">Duration:</span> {data.duration} days</p>
-            {showProgress && (
-              <p><span className="font-medium">Progress:</span> {data.progressPercent}%</p>
-            )}
-            <p className="capitalize">
-              <span className="font-medium">Status:</span>{" "}
-              <span className={`font-semibold ${
-                data.status === 'completed' ? 'text-success' :
-                data.status === 'rejected' ? 'text-destructive' :
-                data.status === 'awaiting_approval' ? 'text-warning' :
-                data.status === 'in_progress' ? 'text-info' :
-                'text-muted-foreground'
-              }`}>
-                {statusLabels[data.status] || data.status}
-              </span>
-            </p>
-            {data.status === 'completed' && data.completionStatus && (
-              <p>
-                <span className="font-medium">Completion:</span>{" "}
-                {data.completionStatus === "On Time" ? (
-                  <span className="text-success font-semibold">✓ On Time (+1)</span>
-                ) : data.completionStatus === "Late" ? (
-                  <span className="text-destructive font-semibold">✗ Late (-1)</span>
-                ) : (
-                  <span className="text-muted-foreground">{data.completionStatus}</span>
-                )}
-              </p>
-            )}
-            {data.description && (
-              <p className="text-xs text-muted-foreground mt-2 pt-2 border-t border-border">{data.description}</p>
-            )}
-          </div>
-        </div>
-      );
+  // ECharts tooltip formatter — reads the original chartData row by index and
+  // reproduces the previous CustomTooltip content (title, dates, status, completion).
+  const ganttTooltipFormatter = (params) => {
+    const p = Array.isArray(params) ? params[0] : params;
+    const data = p && chartData[p.dataIndex];
+    if (!data) return "";
+
+    const statusColor = statusColors[data.status] || statusColors.pending;
+    let html = `<div style="max-width:240px">`;
+    html += `<div style="font-weight:700;color:#1e293b;margin-bottom:6px">${data.name}</div>`;
+    html += `<div style="font-size:12px;color:#1e293b;line-height:1.5">`;
+    html += `<div><span style="font-weight:500">Developer:</span> ${data.developer}</div>`;
+    if (data.developerEmail) {
+      html += `<div style="font-size:11px;color:#64748b">${data.developerEmail}</div>`;
     }
-    return null;
+    html += `<div><span style="font-weight:500">Start:</span> ${data.startDate}</div>`;
+    html += `<div><span style="font-weight:500">End:</span> ${data.endDate}</div>`;
+    html += `<div><span style="font-weight:500">Duration:</span> ${data.duration} days</div>`;
+    if (showProgress) {
+      html += `<div><span style="font-weight:500">Progress:</span> ${data.progressPercent}%</div>`;
+    }
+    html += `<div><span style="font-weight:500">Status:</span> <span style="font-weight:600;color:${statusColor}">${statusLabels[data.status] || data.status}</span></div>`;
+    if (data.status === "completed" && data.completionStatus) {
+      if (data.completionStatus === "On Time") {
+        html += `<div><span style="font-weight:500">Completion:</span> <span style="font-weight:600;color:#16a34a">✓ On Time (+1)</span></div>`;
+      } else if (data.completionStatus === "Late") {
+        html += `<div><span style="font-weight:500">Completion:</span> <span style="font-weight:600;color:#ef4444">✗ Late (-1)</span></div>`;
+      } else {
+        html += `<div><span style="font-weight:500">Completion:</span> <span style="color:#64748b">${data.completionStatus}</span></div>`;
+      }
+    }
+    if (data.description) {
+      html += `<div style="font-size:11px;color:#64748b;margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0">${data.description}</div>`;
+    }
+    html += `</div></div>`;
+    return html;
   };
+
+  // Build the ECharts Gantt option from the existing computed chartData.
+  const ganttOption = {
+    textStyle,
+    grid: { left: 8, right: 30, top: 20, bottom: 20, containLabel: true },
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "shadow" },
+      ...baseTooltip,
+      formatter: ganttTooltipFormatter,
+    },
+    xAxis: {
+      type: "value",
+      min: 0,
+      axisLabel: { ...axisLabel, formatter: "Day {value}" },
+      axisLine,
+      splitLine: { ...splitLine, show: true },
+    },
+    yAxis: {
+      type: "category",
+      data: chartData.map((d) => d.name),
+      inverse: true,
+      axisLabel: { ...axisLabel, width: 160, overflow: "truncate" },
+      axisLine,
+      axisTick: { show: false },
+    },
+    series: [
+      // Transparent placeholder (start offset)
+      {
+        type: "bar",
+        stack: "a",
+        barWidth: 28,
+        silent: true,
+        itemStyle: { color: "transparent" },
+        tooltip: { show: false },
+        data: chartData.map((d) => d.start),
+      },
+      ...(showProgress
+        ? [
+            // Filled progress segment
+            {
+              type: "bar",
+              stack: "a",
+              barWidth: 28,
+              label: {
+                show: true,
+                position: "inside",
+                color: "#ffffff",
+                fontSize: 11,
+                fontWeight: 700,
+                formatter: (p) => {
+                  const d = chartData[p.dataIndex];
+                  return d ? `${d.progressPercent}%` : "";
+                },
+              },
+              data: chartData.map((entry) => ({
+                value: entry.progressDuration,
+                itemStyle: {
+                  color:
+                    GANTT_STATUS_COLORS[entry.status] ||
+                    GANTT_STATUS_COLORS.pending,
+                  borderRadius:
+                    entry.remainingDuration === 0
+                      ? [4, 4, 4, 4]
+                      : [4, 0, 0, 4],
+                },
+              })),
+            },
+            // Remaining segment (same color, lighter)
+            {
+              type: "bar",
+              stack: "a",
+              barWidth: 28,
+              data: chartData.map((entry) => ({
+                value: entry.remainingDuration,
+                itemStyle: {
+                  color:
+                    GANTT_STATUS_COLORS[entry.status] ||
+                    GANTT_STATUS_COLORS.pending,
+                  opacity: 0.25,
+                  borderRadius:
+                    entry.progressDuration === 0
+                      ? [4, 4, 4, 4]
+                      : [0, 4, 4, 0],
+                },
+              })),
+            },
+          ]
+        : [
+            // Default Admin duration bar
+            {
+              type: "bar",
+              stack: "a",
+              barWidth: 28,
+              data: chartData.map((entry) => ({
+                value: entry.duration,
+                itemStyle: {
+                  color:
+                    GANTT_STATUS_COLORS[entry.status] ||
+                    GANTT_STATUS_COLORS.pending,
+                  borderRadius: [4, 4, 4, 4],
+                },
+              })),
+            },
+          ]),
+    ],
+  };
+
+  // Attach the "Today" reference line as a markLine on the last colored series.
+  if (todayPosition) {
+    ganttOption.series[ganttOption.series.length - 1].markLine = {
+      silent: true,
+      symbol: "none",
+      data: [{ xAxis: todayPosition }],
+      lineStyle: { color: "#ef4444", width: 2, type: "dashed" },
+      label: {
+        formatter: "Today",
+        color: "#ef4444",
+        fontWeight: "bold",
+        position: "start",
+      },
+    };
+  }
 
   // If no tasks
   if (!tasks || tasks.length === 0) {
@@ -446,87 +532,7 @@ export default function AdminGanttChart({
             {chartData.length > 0 ? (
               <div className="overflow-x-auto">
                 <div className="h-[600px] min-w-[900px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={chartData}
-                      layout="vertical"
-                      barSize={28}
-                      margin={{ top: 20, right: 30, left: 180, bottom: 20 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
-                      <XAxis
-                        type="number"
-                        domain={[0, 'dataMax + 5']}
-                        tickFormatter={(value) => `Day ${value}`}
-                        tick={{ fontSize: 12 }}
-                      />
-                      <YAxis
-                        type="category"
-                        dataKey="name"
-                        width={170}
-                        tick={{ fontSize: 11 }}
-                      />
-                      <Tooltip content={<CustomTooltip />} />
-
-                      {/* Today line */}
-                      {todayPosition && (
-                        <ReferenceLine
-                          x={todayPosition}
-                          stroke="#ef4444"
-                          strokeWidth={2}
-                          strokeDasharray="5 5"
-                          label={{
-                            value: 'Today',
-                            fill: '#ef4444',
-                            fontSize: 12,
-                            fontWeight: 'bold',
-                            position: 'top'
-                          }}
-                        />
-                      )}
-
-                      {/* Invisible bar for offset (start position) */}
-                      <Bar dataKey="start" stackId="a" fill="transparent" />
-
-                      {showProgress ? (
-                        <>
-                          {/* Filled progress segment */}
-                          <Bar dataKey="progressDuration" stackId="a">
-                            {chartData.map((entry, index) => (
-                              <Cell
-                                key={`progress-cell-${index}`}
-                                fill={statusColors[entry.status] || statusColors.pending}
-                                radius={entry.remainingDuration === 0 ? [4, 4, 4, 4] : [4, 0, 0, 4]}
-                              />
-                            ))}
-                          </Bar>
-
-                          {/* Remaining segment (same color, lighter) */}
-                          <Bar dataKey="remainingDuration" stackId="a">
-                            {chartData.map((entry, index) => (
-                              <Cell
-                                key={`remaining-cell-${index}`}
-                                fill={statusColors[entry.status] || statusColors.pending}
-                                fillOpacity={0.25}
-                                radius={entry.progressDuration === 0 ? [4, 4, 4, 4] : [0, 4, 4, 0]}
-                              />
-                            ))}
-                            <LabelList dataKey="progressPercent" content={<ProgressLabel />} />
-                          </Bar>
-                        </>
-                      ) : (
-                        /* Default Admin duration bar */
-                        <Bar dataKey="duration" stackId="a" radius={[4, 4, 4, 4]}>
-                          {chartData.map((entry, index) => (
-                            <Cell
-                              key={`cell-${index}`}
-                              fill={statusColors[entry.status] || statusColors.pending}
-                            />
-                          ))}
-                        </Bar>
-                      )}
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <EChart option={ganttOption} height="100%" />
                 </div>
               </div>
             ) : (

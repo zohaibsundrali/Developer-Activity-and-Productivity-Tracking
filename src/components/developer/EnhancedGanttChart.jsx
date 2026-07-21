@@ -1,16 +1,15 @@
 "use client";
 import { useState, useMemo } from "react";
+import EChart from "@/components/charts/EChart";
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-  ReferenceLine,
-} from "recharts";
+  GANTT_STATUS_COLORS,
+  textStyle,
+  baseGrid,
+  baseTooltip,
+  axisLabel,
+  axisLine,
+  splitLine,
+} from "@/components/charts/chartTheme";
 
 /**
  * Enhanced Gantt Chart Component
@@ -124,40 +123,87 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
     return { total, completed, onTime, late, pending, productivityPoints };
   }, [tasks]);
 
-  // Custom tooltip
-  const CustomTooltip = ({ active, payload }) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      return (
-        <div className="bg-card border border-border rounded-lg shadow-popover p-3 max-w-xs">
-          <p className="font-semibold text-foreground">{data.name}</p>
-          <div className="text-sm text-muted-foreground mt-1 space-y-1">
-            <p>Start: {data.startDate}</p>
-            <p>End: {data.endDate}</p>
-            <p>Duration: {data.duration} days</p>
-            <p className="capitalize">
-              Status: <span className={`font-medium ${
-                data.status === 'completed' ? 'text-success' :
-                data.status === 'rejected' ? 'text-destructive' :
-                data.status === 'awaiting_approval' ? 'text-warning' :
-                'text-muted-foreground'
-              }`}>{data.status.replace('_', ' ')}</span>
-            </p>
-            {data.status === 'completed' && (
-              <p>
-                {data.isOnTime ? (
-                  <span className="text-success">✓ Completed on time (+1)</span>
-                ) : (
-                  <span className="text-destructive">✗ Completed late (-1)</span>
-                )}
-              </p>
-            )}
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
+  // ECharts horizontal stacked-bar Gantt option (offset placeholder + colored duration)
+  const chartOption = useMemo(() => {
+    const onTimeRow = (row) =>
+      row.status === "completed"
+        ? row.isOnTime
+          ? "<div style=\"color:#16a34a\">✓ Completed on time (+1)</div>"
+          : "<div style=\"color:#ef4444\">✗ Completed late (-1)</div>"
+        : "";
+
+    return {
+      textStyle,
+      grid: { ...baseGrid, left: 8, right: 30, top: 20, bottom: 8, containLabel: true },
+      tooltip: {
+        trigger: "item",
+        axisPointer: { type: "shadow" },
+        ...baseTooltip,
+        formatter: (params) => {
+          const row = chartData[params.dataIndex];
+          if (!row) return "";
+          return (
+            `<div style="font-weight:600;margin-bottom:4px">${row.name}</div>` +
+            `<div>Start: ${row.startDate}</div>` +
+            `<div>End: ${row.endDate}</div>` +
+            `<div>Duration: ${row.duration} days</div>` +
+            `<div style="text-transform:capitalize">Status: ${row.status.replace("_", " ")}</div>` +
+            onTimeRow(row)
+          );
+        },
+      },
+      xAxis: {
+        type: "value",
+        min: 0,
+        axisLabel: { ...axisLabel, formatter: (value) => `Day ${value}` },
+        axisLine,
+        splitLine,
+      },
+      yAxis: {
+        type: "category",
+        inverse: true,
+        data: chartData.map((d) => d.name),
+        axisLabel: { ...axisLabel, fontSize: 12 },
+        axisLine,
+        axisTick: { show: false },
+      },
+      series: [
+        {
+          // Transparent placeholder = start offset
+          name: "offset",
+          type: "bar",
+          stack: "g",
+          silent: true,
+          itemStyle: { color: "transparent" },
+          tooltip: { show: false },
+          data: chartData.map((d) => d.start),
+        },
+        {
+          // Colored duration bar
+          name: "duration",
+          type: "bar",
+          stack: "g",
+          barWidth: 24,
+          data: chartData.map((d) => ({
+            value: d.duration,
+            itemStyle: {
+              color: GANTT_STATUS_COLORS[d.status] || GANTT_STATUS_COLORS.pending,
+              borderRadius: 4,
+            },
+          })),
+          markLine: todayPosition
+            ? {
+                symbol: "none",
+                silent: true,
+                data: [{ xAxis: todayPosition }],
+                lineStyle: { color: "#ef4444", type: "dashed", width: 1 },
+                label: { formatter: "Today", color: "#ef4444", fontSize: 12, position: "insideEndTop" },
+              }
+            : undefined,
+        },
+      ],
+    };
+  }, [chartData, todayPosition]);
 
   if (!tasks || tasks.length === 0) {
     return (
@@ -259,51 +305,7 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
             {/* Gantt Chart */}
             <div className="overflow-x-auto">
               <div className="h-96 min-w-[700px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={chartData}
-                    layout="vertical"
-                    barSize={24}
-                    margin={{ top: 20, right: 30, left: 150, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
-                    <XAxis
-                      type="number"
-                      domain={[0, 'dataMax + 5']}
-                      tickFormatter={(value) => `Day ${value}`}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      width={140}
-                      tick={{ fontSize: 12 }}
-                    />
-                    <Tooltip content={<CustomTooltip />} />
-                    
-                    {/* Today line */}
-                    {todayPosition && (
-                      <ReferenceLine
-                        x={todayPosition}
-                        stroke="#ef4444"
-                        strokeDasharray="5 5"
-                        label={{ value: 'Today', fill: '#ef4444', fontSize: 12 }}
-                      />
-                    )}
-
-                    {/* Invisible bar for offset */}
-                    <Bar dataKey="start" stackId="a" fill="transparent" />
-                    
-                    {/* Duration bar */}
-                    <Bar dataKey="duration" stackId="a" radius={[4, 4, 4, 4]}>
-                      {chartData.map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={statusColors[entry.status] || statusColors.pending}
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                <EChart option={chartOption} height="100%" />
               </div>
             </div>
           </>

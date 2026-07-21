@@ -2,11 +2,17 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import { showPre } from "@/utils/alerts";
+import EChart from "@/components/charts/EChart";
 import {
-  BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  AreaChart, Area,
-} from "recharts";
+  textStyle,
+  baseGrid,
+  baseTooltip,
+  baseLegend,
+  axisLabel,
+  axisLine,
+  splitLine,
+  verticalGradient,
+} from "@/components/charts/chartTheme";
 import {
   BarChart3,
   Calendar,
@@ -1221,18 +1227,29 @@ export default function DeveloperActivity() {
               {/* {sessionChartData.length > 0 && (
                 <div className="rounded-xl border border-border bg-card p-6 shadow-card">
                   <h3 className="text-lg font-semibold text-foreground mb-4">Productivity per Session</h3>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={sessionChartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                      <XAxis dataKey="session" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Bar dataKey="score" name="Productivity %" fill="#0c8f6e" radius={[4,4,0,0]} />
-                      <Bar dataKey="active" name="Active (min)" fill="#0ea5e9" radius={[4,4,0,0]} />
-                      <Bar dataKey="idle" name="Idle (min)" fill="#ef4444" radius={[4,4,0,0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <EChart
+                    height={300}
+                    option={{
+                      color: ["#0c8f6e", "#0ea5e9", "#ef4444"],
+                      textStyle,
+                      grid: baseGrid,
+                      tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, ...baseTooltip },
+                      legend: { ...baseLegend, data: ["Productivity %", "Active (min)", "Idle (min)"] },
+                      xAxis: {
+                        type: "category",
+                        data: sessionChartData.map((d) => d.session),
+                        axisLabel,
+                        axisLine,
+                        axisTick: { show: false },
+                      },
+                      yAxis: { type: "value", axisLabel, splitLine },
+                      series: [
+                        { name: "Productivity %", type: "bar", data: sessionChartData.map((d) => d.score), itemStyle: { color: "#0c8f6e", borderRadius: [4, 4, 0, 0] } },
+                        { name: "Active (min)", type: "bar", data: sessionChartData.map((d) => d.active), itemStyle: { color: "#0ea5e9", borderRadius: [4, 4, 0, 0] } },
+                        { name: "Idle (min)", type: "bar", data: sessionChartData.map((d) => d.idle), itemStyle: { color: "#ef4444", borderRadius: [4, 4, 0, 0] } },
+                      ],
+                    }}
+                  />
                 </div>
               )} */}
 
@@ -1267,22 +1284,27 @@ export default function DeveloperActivity() {
                 {appPieData.length > 0 && (
                   <div className="rounded-xl border border-border bg-card p-6 shadow-card">
                     <h3 className="text-lg font-semibold text-foreground mb-4">App Usage Distribution</h3>
-                    <ResponsiveContainer width="100%" height={250}>
-                      <PieChart>
-                        <Pie
-                          data={appPieData}
-                          dataKey="value"
-                          nameKey="name"
-                          cx="50%"
-                          cy="50%"
-                          outerRadius={90}
-                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                        >
-                          {appPieData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-                        </Pie>
-                        {/* Tooltip component removed - no hover info will display */}
-                      </PieChart>
-                    </ResponsiveContainer>
+                    <EChart
+                      height={250}
+                      option={{
+                        color: CHART_COLORS,
+                        textStyle,
+                        tooltip: { trigger: "item", ...baseTooltip },
+                        series: [
+                          {
+                            type: "pie",
+                            radius: "68%",
+                            center: ["50%", "50%"],
+                            data: appPieData.map((d, i) => ({
+                              value: d.value,
+                              name: d.name,
+                              itemStyle: { color: CHART_COLORS[i % CHART_COLORS.length] },
+                            })),
+                            label: { formatter: (p) => `${p.name} ${p.percent.toFixed(0)}%` },
+                          },
+                        ],
+                      }}
+                    />
                   </div>
                 )}
               </div>
@@ -1338,17 +1360,54 @@ export default function DeveloperActivity() {
               {mouseChartData.length > 0 && (
                 <div className="rounded-xl border border-border bg-card p-6 shadow-card">
                   <h3 className="text-lg font-semibold text-foreground mb-4">Mouse Active vs Idle % Over Time</h3>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <AreaChart data={mouseChartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                      <XAxis dataKey="time" />
-                      <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
-                      <Tooltip formatter={(v) => `${Number(v).toFixed(1)}%`} />
-                      <Legend />
-                      <Area type="monotone" dataKey="active" name="Active %" stroke="#10b981" fill="#10b98140" strokeWidth={2} />
-                      <Area type="monotone" dataKey="idle" name="Idle %" stroke="#ef4444" fill="#ef444440" strokeWidth={2} />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  <EChart
+                    height={300}
+                    option={{
+                      color: ["#10b981", "#ef4444"],
+                      textStyle,
+                      grid: baseGrid,
+                      tooltip: {
+                        trigger: "axis",
+                        valueFormatter: (v) => `${Number(v).toFixed(1)}%`,
+                        ...baseTooltip,
+                      },
+                      legend: { ...baseLegend, data: ["Active %", "Idle %"] },
+                      xAxis: {
+                        type: "category",
+                        boundaryGap: false,
+                        data: mouseChartData.map((d) => d.time),
+                        axisLabel,
+                        axisLine,
+                        axisTick: { show: false },
+                      },
+                      yAxis: {
+                        type: "value",
+                        max: 100,
+                        axisLabel: { ...axisLabel, formatter: "{value}%" },
+                        splitLine,
+                      },
+                      series: [
+                        {
+                          name: "Active %",
+                          type: "line",
+                          smooth: true,
+                          showSymbol: false,
+                          lineStyle: { width: 2, color: "#10b981" },
+                          areaStyle: { color: verticalGradient("#10b981") },
+                          data: mouseChartData.map((d) => d.active),
+                        },
+                        {
+                          name: "Idle %",
+                          type: "line",
+                          smooth: true,
+                          showSymbol: false,
+                          lineStyle: { width: 2, color: "#ef4444" },
+                          areaStyle: { color: verticalGradient("#ef4444") },
+                          data: mouseChartData.map((d) => d.idle),
+                        },
+                      ],
+                    }}
+                  />
                 </div>
               )}
 
@@ -1357,19 +1416,29 @@ export default function DeveloperActivity() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="rounded-xl border border-border bg-card p-6 shadow-card">
                     <h3 className="text-lg font-semibold text-foreground mb-4">Active vs Idle Distribution</h3>
-                    <ResponsiveContainer width="100%" height={250}>
-                      <PieChart>
-                        <Pie data={[
-                          { name: "Active", value: Math.round(avgMouseActive * 100) / 100 },
-                          { name: "Idle", value: Math.round(avgMouseIdle * 100) / 100 }
-                        ]} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90}
-                          label={({ name, value }) => `${name}: ${value.toFixed(1)}%`}>
-                          <Cell fill="#10b981" />
-                          <Cell fill="#ef4444" />
-                        </Pie>
-                        <Tooltip formatter={(v) => `${Number(v).toFixed(1)}%`} />
-                      </PieChart>
-                    </ResponsiveContainer>
+                    <EChart
+                      height={250}
+                      option={{
+                        textStyle,
+                        tooltip: {
+                          trigger: "item",
+                          valueFormatter: (v) => `${Number(v).toFixed(1)}%`,
+                          ...baseTooltip,
+                        },
+                        series: [
+                          {
+                            type: "pie",
+                            radius: "68%",
+                            center: ["50%", "50%"],
+                            data: [
+                              { name: "Active", value: Math.round(avgMouseActive * 100) / 100, itemStyle: { color: "#10b981" } },
+                              { name: "Idle", value: Math.round(avgMouseIdle * 100) / 100, itemStyle: { color: "#ef4444" } },
+                            ],
+                            label: { formatter: (p) => `${p.name}: ${Number(p.value).toFixed(1)}%` },
+                          },
+                        ],
+                      }}
+                    />
                   </div>
                 </div>
               )}
@@ -1593,19 +1662,29 @@ export default function DeveloperActivity() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="rounded-xl border border-border bg-card p-6 shadow-card">
                         <h3 className="text-lg font-semibold text-foreground mb-4">Active vs Idle Time</h3>
-                        <ResponsiveContainer width="100%" height={250}>
-                          <PieChart>
-                            <Pie data={[
-                              { name: "Active", value: Math.round(totalKbActiveTime * 100) / 100 },
-                              { name: "Idle", value: Math.round(totalKbIdleTime * 100) / 100 }
-                            ]} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90}
-                              label={({ name, value }) => `${name}: ${value.toFixed(1)} min`}>
-                              <Cell fill="#10b981" />
-                              <Cell fill="#ef4444" />
-                            </Pie>
-                            <Tooltip formatter={(v) => `${Number(v).toFixed(1)} min`} />
-                          </PieChart>
-                        </ResponsiveContainer>
+                        <EChart
+                          height={250}
+                          option={{
+                            textStyle,
+                            tooltip: {
+                              trigger: "item",
+                              valueFormatter: (v) => `${Number(v).toFixed(1)} min`,
+                              ...baseTooltip,
+                            },
+                            series: [
+                              {
+                                type: "pie",
+                                radius: "68%",
+                                center: ["50%", "50%"],
+                                data: [
+                                  { name: "Active", value: Math.round(totalKbActiveTime * 100) / 100, itemStyle: { color: "#10b981" } },
+                                  { name: "Idle", value: Math.round(totalKbIdleTime * 100) / 100, itemStyle: { color: "#ef4444" } },
+                                ],
+                                label: { formatter: (p) => `${p.name}: ${Number(p.value).toFixed(1)} min` },
+                              },
+                            ],
+                          }}
+                        />
                       </div>
 
                       {/* Keystrokes Trend (AreaChart) */}
@@ -1793,27 +1872,47 @@ export default function DeveloperActivity() {
                 {appPieData.length > 0 && (
                   <div className="rounded-xl border border-border bg-card p-6 shadow-card">
                     <h3 className="text-lg font-semibold text-foreground mb-4">Time Distribution</h3>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <Pie data={appPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                          {appPieData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-                        </Pie>
-                        {/* <Tooltip formatter={(v) => `${Number(v).toFixed(1)} min`} /> */}
-                      </PieChart>
-                    </ResponsiveContainer>
+                    <EChart
+                      height={300}
+                      option={{
+                        color: CHART_COLORS,
+                        textStyle,
+                        tooltip: {
+                          trigger: "item",
+                          valueFormatter: (v) => `${Number(v).toFixed(1)} min`,
+                          ...baseTooltip,
+                        },
+                        series: [
+                          {
+                            type: "pie",
+                            radius: "68%",
+                            center: ["50%", "50%"],
+                            data: appPieData.map((d, i) => ({
+                              value: d.value,
+                              name: d.name,
+                              itemStyle: { color: CHART_COLORS[i % CHART_COLORS.length] },
+                            })),
+                            label: { formatter: (p) => `${p.name} ${p.percent.toFixed(0)}%` },
+                          },
+                        ],
+                      }}
+                    />
                   </div>
                 )}
 
                 {appBarData.length > 0 && (
                   <div className="rounded-xl border border-border bg-card p-6 shadow-card">
                     <h3 className="text-lg font-semibold text-foreground mb-4">Top Apps Usage (minutes)</h3>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={appBarData} layout="vertical">
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                        <XAxis type="number" />
-                        <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 12 }} />
-                        <Tooltip
-                          formatter={(v) => {
+                    <EChart
+                      height={300}
+                      option={{
+                        color: ["#0c8f6e"],
+                        textStyle,
+                        grid: baseGrid,
+                        tooltip: {
+                          trigger: "axis",
+                          axisPointer: { type: "shadow" },
+                          valueFormatter: (v) => {
                             // Convert minutes to seconds for calculation
                             const totalSeconds = v * 60;
 
@@ -1832,11 +1931,28 @@ export default function DeveloperActivity() {
                               const seconds = Math.round(totalSeconds % 60);
                               return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
                             }
-                          }}
-                        />
-                        <Bar dataKey="minutes" name="Minutes" fill="#0c8f6e" radius={[0, 4, 4, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
+                          },
+                          ...baseTooltip,
+                        },
+                        xAxis: { type: "value", axisLabel, splitLine },
+                        yAxis: {
+                          type: "category",
+                          data: appBarData.map((d) => d.name),
+                          inverse: true,
+                          axisLabel: { ...axisLabel, fontSize: 12 },
+                          axisLine,
+                          axisTick: { show: false },
+                        },
+                        series: [
+                          {
+                            name: "Minutes",
+                            type: "bar",
+                            data: appBarData.map((d) => d.minutes),
+                            itemStyle: { color: "#0c8f6e", borderRadius: [0, 4, 4, 0] },
+                          },
+                        ],
+                      }}
+                    />
                   </div>
                 )}
               </div>
@@ -2070,15 +2186,31 @@ export default function DeveloperActivity() {
                 return (
                   <div className="rounded-xl border border-border bg-card p-6 shadow-card">
                     <h3 className="text-lg font-semibold text-foreground mb-4">Screenshots by Application</h3>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={appScreenshotData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                        <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                        <YAxis allowDecimals={false} />
-                        <Tooltip />
-                        <Bar dataKey="value" name="Screenshots" fill="#ec4899" radius={[4,4,0,0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
+                    <EChart
+                      height={300}
+                      option={{
+                        color: ["#ec4899"],
+                        textStyle,
+                        grid: baseGrid,
+                        tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, ...baseTooltip },
+                        xAxis: {
+                          type: "category",
+                          data: appScreenshotData.map((d) => d.name),
+                          axisLabel: { ...axisLabel, fontSize: 12 },
+                          axisLine,
+                          axisTick: { show: false },
+                        },
+                        yAxis: { type: "value", minInterval: 1, axisLabel, splitLine },
+                        series: [
+                          {
+                            name: "Screenshots",
+                            type: "bar",
+                            data: appScreenshotData.map((d) => d.value),
+                            itemStyle: { color: "#ec4899", borderRadius: [4, 4, 0, 0] },
+                          },
+                        ],
+                      }}
+                    />
                   </div>
                 );
               })()} */}
