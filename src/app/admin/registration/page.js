@@ -13,6 +13,9 @@ export default function AdminRegistration() {
   const [formData, setFormData] = useState({
     fullName: "",
     company: "",
+    industry: "",
+    companySize: "",
+    country: "",
     email: "",
     password: "",
     confirmPassword: ""
@@ -274,6 +277,9 @@ export default function AdminRegistration() {
             {
               name: (formData.company || "").trim() || `${formData.fullName || "My"}'s Organization`,
               owner_id: newAdmin.id,
+              industry: formData.industry || null,
+              company_size: formData.companySize || null,
+              country: (formData.country || "").trim() || null,
               timezone: (typeof Intl !== "undefined" && Intl.DateTimeFormat().resolvedOptions().timeZone) || "UTC",
             },
           ])
@@ -411,6 +417,51 @@ export default function AdminRegistration() {
                 />
               </div>
               {errors.company && <div className="auth-field-error">{errors.company}</div>}
+            </div>
+
+            <div className="auth-field">
+              <label className="auth-label">Industry</label>
+              <div className="auth-input-wrap">
+                <select
+                  value={formData.industry}
+                  onChange={(e) => handleInputChange('industry', e.target.value)}
+                  className="auth-input"
+                >
+                  <option value="">— Select industry (optional) —</option>
+                  {["Technology","Finance","Healthcare","Education","Retail","Manufacturing","Consulting","Marketing","Other"].map((i) => (
+                    <option key={i} value={i}>{i}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="auth-field">
+              <label className="auth-label">Company Size</label>
+              <div className="auth-input-wrap">
+                <select
+                  value={formData.companySize}
+                  onChange={(e) => handleInputChange('companySize', e.target.value)}
+                  className="auth-input"
+                >
+                  <option value="">— Select size (optional) —</option>
+                  {["1-10","11-50","51-200","201-500","500+"].map((s) => (
+                    <option key={s} value={s}>{s} employees</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="auth-field">
+              <label className="auth-label">Country</label>
+              <div className="auth-input-wrap">
+                <input
+                  type="text"
+                  placeholder="Pakistan (optional)"
+                  value={formData.country}
+                  onChange={(e) => handleInputChange('country', e.target.value)}
+                  className="auth-input"
+                />
+              </div>
             </div>
 
             <div className="auth-field">
