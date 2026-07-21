@@ -4,6 +4,7 @@ import Link from "next/link";
 import { supabase } from "@/utils/supabaseClient";
 import { useRouter } from "next/navigation";
 import { SESSION_MAX_AGE_DAYS } from "@/utils/sessionPolicy";
+import { loadOrgContext } from "@/utils/orgContext";
 
 import "../auth.css";
 
@@ -56,9 +57,22 @@ export default function LoginPage() {
         loggedInData = developerData;
       }
 
+      // Multi-tenant: resolve the user's organization context (id/name/role)
+      // and carry it in the session so all data queries can scope by org.
+      const org = await loadOrgContext(
+        loggedInData.id,
+        role === "admin" ? "admin" : "developer",
+        loggedInData.organization_id || null
+      );
+
       const userSession = {
         ...loggedInData,
         role: role,
+        organization_id: org.organizationId,
+        organization_name: org.organizationName,
+        organization_logo: org.organizationLogo,
+        organization_timezone: org.organizationTimezone,
+        membership_role: org.membershipRole,
         loginTime: new Date().toISOString(),
         lastActivity: new Date().toISOString()
       };

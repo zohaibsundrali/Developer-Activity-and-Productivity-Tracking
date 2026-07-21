@@ -261,9 +261,51 @@ export default function AdminRegistration() {
         throw new Error("No data returned after registration. Please try again.");
       }
 
+      const newAdmin = data[0];
+
+      // Multi-tenant: create this admin's organization (workspace) and make
+      // them its Owner. Best-effort — a failure here must not block signup.
+      let orgId = null;
+      let orgName = null;
+      try {
+        const { data: orgRows } = await supabase
+          .from("organizations")
+          .insert([
+            {
+              name: (formData.company || "").trim() || `${formData.fullName || "My"}'s Organization`,
+              owner_id: newAdmin.id,
+              timezone: (typeof Intl !== "undefined" && Intl.DateTimeFormat().resolvedOptions().timeZone) || "UTC",
+            },
+          ])
+          .select("id, name")
+          .single();
+
+        if (orgRows?.id) {
+          orgId = orgRows.id;
+          orgName = orgRows.name;
+          // Link the admin to the org + create the owner membership.
+          await supabase.from("admin_users").update({ organization_id: orgId }).eq("id", newAdmin.id);
+          await supabase.from("memberships").insert([
+            {
+              organization_id: orgId,
+              user_id: newAdmin.id,
+              user_type: "admin",
+              email: newAdmin.email,
+              role: "owner",
+              status: "active",
+            },
+          ]);
+        }
+      } catch {
+        // Org creation is non-fatal; the account still works.
+      }
+
       const nowIso = new Date().toISOString();
       const adminSession = {
-        ...data[0],
+        ...newAdmin,
+        organization_id: orgId || newAdmin.organization_id || null,
+        organization_name: orgName,
+        membership_role: "owner",
         role: 'admin',
         loginTime: nowIso,
         lastActivity: nowIso,

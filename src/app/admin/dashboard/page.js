@@ -203,18 +203,25 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
         return;
       }
 
-      // Fetch all developers
-      const { data: developersData } = await supabase
+      // Multi-tenant: scope all data to this admin's organization.
+      const orgId = currentUser.organization_id || null;
+
+      // Fetch developers (org-scoped)
+      let developersQuery = supabase
         .from('developers')
         .select('*')
         .order('created_at', { ascending: false });
+      if (orgId) developersQuery = developersQuery.eq('organization_id', orgId);
+      const { data: developersData } = await developersQuery;
       setDevelopers(developersData || []);
 
-      // Fetch projects
-      const { data: projectsData } = await supabase
+      // Fetch projects (org-scoped)
+      let projectsQuery = supabase
         .from('projects')
         .select('*')
         .order('created_at', { ascending: false });
+      if (orgId) projectsQuery = projectsQuery.eq('organization_id', orgId);
+      const { data: projectsData } = await projectsQuery;
       setProjects(projectsData || []);
 
       // Fetch notifications
