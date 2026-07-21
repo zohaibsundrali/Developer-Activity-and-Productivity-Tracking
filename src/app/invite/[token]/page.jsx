@@ -102,124 +102,17 @@ export default function AcceptInvitePage() {
     setError("");
 
     try {
-      const email = invitation.email;
-      const isAdmin = invitation.role === "admin";
-      const userType = isAdmin ? "admin" : "developer";
-
-      let newUser = null;
-
-      if (isAdmin) {
-        // ── Admin account ──────────────────────────────
-        const { data: existingAdmin } = await supabase
-          .from("admin_users")
-          .select("id")
-          .eq("email", email)
-          .maybeSingle();
-
-        if (existingAdmin) {
-          throw new Error("An account already exists for this email.");
-        }
-
-        const { data: adminData, error: adminError } = await supabase
-          .from("admin_users")
-          .insert({
-            full_name: fullName,
-            email,
-            password,
-            company: orgName,
-            role: "admin",
-            is_verified: true,
-            organization_id: invitation.organization_id,
-          })
-          .select("*")
-          .single();
-
-        if (adminError) {
-          if (
-            (adminError.code && adminError.code === "23505") ||
-            /duplicate|unique/i.test(adminError.message || "")
-          ) {
-            throw new Error("An account already exists for this email.");
-          }
-          throw new Error(adminError.message || "Failed to create account.");
-        }
-        newUser = adminData;
-      } else {
-        // ── Developer account (manager/developer/employee/client) ──
-        const { data: existingDev } = await supabase
-          .from("developers")
-          .select("id")
-          .eq("email", email)
-          .maybeSingle();
-
-        if (existingDev) {
-          throw new Error("An account already exists for this email.");
-        }
-
-        const { data: devData, error: devError } = await supabase
-          .from("developers")
-          .insert({
-            name: fullName,
-            email,
-            password,
-            organization_id: invitation.organization_id,
-            status: "active",
-          })
-          .select("*")
-          .single();
-
-        if (devError) {
-          if (
-            (devError.code && devError.code === "23505") ||
-            /duplicate|unique/i.test(devError.message || "")
-          ) {
-            throw new Error("An account already exists for this email.");
-          }
-          throw new Error(devError.message || "Failed to create account.");
-        }
-        newUser = devData;
-      }
-
-      // ── Membership row ───────────────────────────────
-      const { error: membershipError } = await supabase.from("memberships").insert({
-        organization_id: invitation.organization_id,
-        user_id: newUser.id,
-        user_type: userType,
-        email,
-        role: invitation.role,
-        team_id: invitation.team_id || null,
-        department_id: invitation.department_id || null,
-        status: "active",
+      // Server-side acceptance (service_role): creates the user + membership +
+      // Supabase Auth account and marks the invite accepted. Bypasses RLS.
+      const res = await fetch("/api/invitations/accept", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, fullName, password }),
       });
-
-      if (membershipError) {
-        throw new Error(membershipError.message || "Failed to create membership.");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to accept invitation.");
       }
-
-      // Provision a Supabase Auth account (with org claim) so the new member
-      // can authenticate via Supabase Auth and be covered by RLS. Best-effort.
-      try {
-        await fetch("/api/auth/provision", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email,
-            password,
-            organizationId: invitation.organization_id,
-            role: invitation.role,
-            userType,
-            appUserId: newUser.id,
-          }),
-        });
-      } catch {
-        // non-fatal — legacy login fallback still works
-      }
-
-      // ── Mark invitation accepted ─────────────────────
-      await supabase
-        .from("invitations")
-        .update({ status: "accepted" })
-        .eq("id", invitation.id);
 
       router.push("/login");
     } catch (err) {

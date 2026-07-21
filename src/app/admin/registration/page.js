@@ -233,97 +233,31 @@ export default function AdminRegistration() {
         throw new Error(`Database connection failed: ${testError.message}`);
       }
 
-      const { data, error } = await supabase
-        .from("admin_users")
-        .insert([
-          {
-            full_name: formData.fullName,
-            company: formData.company,
-            email: formData.email,
-            password: formData.password,
-            is_verified: true,
-            role: "admin",
-            created_at: new Date().toISOString(),
-          },
-        ])
-        .select();
-
-      if (error) {
-        if (error.code === '23505') {
-          throw new Error("This email is already registered. Please use a different email.");
-        } else if (error.code === '42501') {
-          throw new Error("Database permission denied. Please contact administrator.");
-        } else if (error.code === '42P01') {
-          throw new Error("Database table not found. Please setup the database first.");
-        } else {
-          throw new Error(`Database error: ${error.message}`);
-        }
+      // Server-side signup (service_role): creates the admin, organization,
+      // owner membership and Supabase Auth account. Bypasses RLS so signup works
+      // once RLS is enabled.
+      const signupRes = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName: formData.fullName,
+          company: formData.company,
+          industry: formData.industry,
+          companySize: formData.companySize,
+          country: formData.country,
+          email: formData.email,
+          password: formData.password,
+          timezone: (typeof Intl !== "undefined" && Intl.DateTimeFormat().resolvedOptions().timeZone) || "UTC",
+        }),
+      });
+      const signupData = await signupRes.json().catch(() => ({}));
+      if (!signupRes.ok || !signupData.success) {
+        throw new Error(signupData.error || "Registration failed. Please try again.");
       }
 
-      if (!data || data.length === 0) {
-        throw new Error("No data returned after registration. Please try again.");
-      }
-
-      const newAdmin = data[0];
-
-      // Multi-tenant: create this admin's organization (workspace) and make
-      // them its Owner. Best-effort — a failure here must not block signup.
-      let orgId = null;
-      let orgName = null;
-      try {
-        const { data: orgRows } = await supabase
-          .from("organizations")
-          .insert([
-            {
-              name: (formData.company || "").trim() || `${formData.fullName || "My"}'s Organization`,
-              owner_id: newAdmin.id,
-              industry: formData.industry || null,
-              company_size: formData.companySize || null,
-              country: (formData.country || "").trim() || null,
-              timezone: (typeof Intl !== "undefined" && Intl.DateTimeFormat().resolvedOptions().timeZone) || "UTC",
-            },
-          ])
-          .select("id, name")
-          .single();
-
-        if (orgRows?.id) {
-          orgId = orgRows.id;
-          orgName = orgRows.name;
-          // Link the admin to the org + create the owner membership.
-          await supabase.from("admin_users").update({ organization_id: orgId }).eq("id", newAdmin.id);
-          await supabase.from("memberships").insert([
-            {
-              organization_id: orgId,
-              user_id: newAdmin.id,
-              user_type: "admin",
-              email: newAdmin.email,
-              role: "owner",
-              status: "active",
-            },
-          ]);
-        }
-      } catch {
-        // Org creation is non-fatal; the account still works.
-      }
-
-      // Provision a Supabase Auth account (with org claim) so this admin can
-      // authenticate via Supabase Auth and be covered by RLS. Best-effort.
-      try {
-        await fetch("/api/auth/provision", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: newAdmin.email,
-            password: formData.password,
-            organizationId: orgId,
-            role: "owner",
-            userType: "admin",
-            appUserId: newAdmin.id,
-          }),
-        });
-      } catch {
-        // non-fatal — legacy login fallback still works
-      }
+      const newAdmin = signupData.admin;
+      const orgId = signupData.organizationId;
+      const orgName = signupData.organizationName;
 
       const nowIso = new Date().toISOString();
       const adminSession = {
