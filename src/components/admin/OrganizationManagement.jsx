@@ -5,8 +5,9 @@ import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
 import { showSuccess, showError, showConfirm } from "@/utils/alerts";
 import {
-  Building2, Users, UserCog, Mail, Plus, Trash2, Copy, RefreshCw, Shield,
+  Building2, Users, UserCog, Mail, Plus, Trash2, Copy, RefreshCw, Shield, Settings as SettingsIcon,
 } from "lucide-react";
+import OrganizationSettings from "@/components/admin/OrganizationSettings";
 
 const ROLES = ["owner", "admin", "manager", "developer", "employee", "client"];
 
@@ -24,6 +25,7 @@ const TABS = [
   { id: "teams", label: "Teams", icon: Users },
   { id: "members", label: "Members", icon: UserCog },
   { id: "invitations", label: "Invitations", icon: Mail },
+  { id: "settings", label: "Settings", icon: SettingsIcon },
 ];
 
 export default function OrganizationManagement() {
@@ -110,6 +112,7 @@ export default function OrganizationManagement() {
       {tab === "invitations" && (
         <InvitationsTab orgId={orgId} invitations={invitations} teams={teams} departments={departments} reload={loadAll} />
       )}
+      {tab === "settings" && <OrganizationSettings />}
     </div>
   );
 }
