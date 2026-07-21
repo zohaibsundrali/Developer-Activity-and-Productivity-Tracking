@@ -12,6 +12,7 @@ import ViewDevelopers from "@/components/admin/ViewDevelopers";
 import DeveloperActivity from "@/components/admin/DeveloperActivity";
 import TaskReviewPanel from "@/components/admin/TaskReviewPanel";
 import ProductivityDashboard from "@/components/admin/ProductivityDashboard";
+import OrganizationManagement from "@/components/admin/OrganizationManagement";
 import { isSessionExpired, clearAdminSession } from "@/utils/sessionPolicy";
 
 // Authentication check function for admin
@@ -409,6 +410,8 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
         return <ViewDevelopers {...contentProps} />;
       case "task-reviews":
         return <TaskReviewPanel currentAdmin={user} />;
+      case "organization":
+        return <OrganizationManagement />;
       case "productivity":
         return <ProductivityDashboard currentAdmin={user} />;
       default:

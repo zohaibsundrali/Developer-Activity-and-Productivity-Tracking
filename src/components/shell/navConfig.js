@@ -6,6 +6,7 @@ import {
   Activity,
   Users,
   UserCircle,
+  Building2,
 } from "lucide-react";
 
 // Admin sidebar items — ids MUST match the ?section= switch in the admin dashboard.
@@ -16,6 +17,7 @@ export const ADMIN_NAV = [
   { id: "developer-activity", label: "Developer Activity", icon: Activity },
   { id: "add-developer", label: "Add Developer", icon: UserPlus },
   { id: "view-developers", label: "View Developers", icon: Users },
+  { id: "organization", label: "Organization", icon: Building2 },
   // { id: "productivity", label: "Productivity", icon: BarChart3 },
 ];
 
@@ -34,6 +36,7 @@ export const SECTION_TITLES = {
   "developer-activity": { admin: "Developer Activity" },
   "add-developer": { admin: "Add Developer" },
   "view-developers": { admin: "View Developers" },
+  organization: { admin: "Organization" },
   productivity: { admin: "Productivity" },
   projects: { developer: "My Projects" },
   account: { developer: "Account" },

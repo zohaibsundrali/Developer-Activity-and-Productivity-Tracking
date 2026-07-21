@@ -33,3 +33,18 @@ export const showInfo = (title, text, options = {}) =>
 
 export const showPre = (title, text, icon = "info") =>
   showAlert({ icon, title, html: toPreHtml(text) });
+
+// Confirmation dialog — resolves to true when the user confirms.
+export const showConfirm = async (title, text, options = {}) => {
+  const result = await Swal.fire({
+    icon: options.icon || "warning",
+    title,
+    text,
+    showCancelButton: true,
+    confirmButtonText: options.confirmButtonText || "Confirm",
+    cancelButtonText: options.cancelButtonText || "Cancel",
+    confirmButtonColor: options.confirmButtonColor || "#0c8f6e",
+    cancelButtonColor: options.cancelButtonColor || "#64748b",
+  });
+  return result.isConfirmed;
+};
