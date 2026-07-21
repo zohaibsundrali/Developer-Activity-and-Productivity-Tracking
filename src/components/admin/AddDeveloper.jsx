@@ -373,6 +373,20 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
               role: 'developer',
               status: 'active',
             }]);
+          // Provision a Supabase Auth account (with org claim) so this developer
+          // can authenticate via Supabase Auth and be covered by RLS.
+          await fetch("/api/auth/provision", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: createdDeveloper.email,
+              password: newDeveloper.password,
+              organizationId: orgId,
+              role: "developer",
+              userType: "developer",
+              appUserId: createdDeveloper.id,
+            }),
+          });
         }
       } catch { /* non-fatal */ }
 

@@ -196,6 +196,25 @@ export default function AcceptInvitePage() {
         throw new Error(membershipError.message || "Failed to create membership.");
       }
 
+      // Provision a Supabase Auth account (with org claim) so the new member
+      // can authenticate via Supabase Auth and be covered by RLS. Best-effort.
+      try {
+        await fetch("/api/auth/provision", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email,
+            password,
+            organizationId: invitation.organization_id,
+            role: invitation.role,
+            userType,
+            appUserId: newUser.id,
+          }),
+        });
+      } catch {
+        // non-fatal — legacy login fallback still works
+      }
+
       // ── Mark invitation accepted ─────────────────────
       await supabase
         .from("invitations")

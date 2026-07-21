@@ -377,6 +377,7 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
   };
 
   const handleLogout = () => {
+    try { supabase.auth.signOut(); } catch {}
     if (parentLogout) {
       parentLogout();
     } else {

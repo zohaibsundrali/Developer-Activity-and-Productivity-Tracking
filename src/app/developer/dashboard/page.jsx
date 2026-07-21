@@ -422,8 +422,9 @@ function DeveloperDashboardContent() {
   };
 
   const handleLogout = () => {
+    try { supabase.auth.signOut(); } catch {}
     clearDeveloperSession();
-    
+
     // Redirect to login
     router.push("/login");
   };

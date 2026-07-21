@@ -33,28 +33,27 @@ export default function LoginPage() {
 
     try {
       let loggedInData = null;
-      if (role === "admin") {
-        const { data: adminData, error: adminError } = await supabase
-          .from('admin_users')
-          .select('*')
-          .eq('email', email)
-          .maybeSingle();
+      const profileTable = role === "admin" ? "admin_users" : "developers";
 
-        if (adminError || !adminData || !verifyPassword(password, adminData.password)) {
-          throw new Error('Invalid admin credentials');
-        }
-        loggedInData = adminData;
+      // 1) Try Supabase Auth first — migrated users get a real JWT session
+      //    (required for DB-level RLS). Falls back to the legacy plaintext
+      //    check so no one is locked out during the transition.
+      const { data: authData } = await supabase.auth.signInWithPassword({ email, password });
+
+      // 2) Load the profile row for the selected role/table.
+      const { data: profile } = await supabase
+        .from(profileTable)
+        .select('*')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (authData?.user && profile) {
+        loggedInData = profile;                       // authenticated via Supabase Auth
+      } else if (profile && verifyPassword(password, profile.password)) {
+        loggedInData = profile;                       // legacy plaintext fallback
       } else {
-        const { data: developerData, error: developerError } = await supabase
-          .from('developers')
-          .select('*')
-          .eq('email', email)
-          .maybeSingle();
-
-        if (developerError || !developerData || !verifyPassword(password, developerData.password)) {
-          throw new Error('Invalid developer credentials');
-        }
-        loggedInData = developerData;
+        if (authData?.user) { try { await supabase.auth.signOut(); } catch {} }
+        throw new Error(`Invalid ${role} credentials`);
       }
 
       // Multi-tenant: resolve the user's organization context (id/name/role)

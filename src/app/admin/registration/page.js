@@ -306,6 +306,25 @@ export default function AdminRegistration() {
         // Org creation is non-fatal; the account still works.
       }
 
+      // Provision a Supabase Auth account (with org claim) so this admin can
+      // authenticate via Supabase Auth and be covered by RLS. Best-effort.
+      try {
+        await fetch("/api/auth/provision", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: newAdmin.email,
+            password: formData.password,
+            organizationId: orgId,
+            role: "owner",
+            userType: "admin",
+            appUserId: newAdmin.id,
+          }),
+        });
+      } catch {
+        // non-fatal — legacy login fallback still works
+      }
+
       const nowIso = new Date().toISOString();
       const adminSession = {
         ...newAdmin,
