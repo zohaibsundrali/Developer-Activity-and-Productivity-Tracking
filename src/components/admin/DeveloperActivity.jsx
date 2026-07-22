@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId } from "@/utils/orgContext";
+import { authFetch } from "@/utils/authFetch";
 import { showPre } from "@/utils/alerts";
 import EChart from "@/components/charts/EChart";
 import {
@@ -279,7 +280,7 @@ export default function DeveloperActivity() {
           .gte("start_time", start)
           .lt("start_time", end)
           .order("start_time", { ascending: false }),
-        fetch(`/api/keyboard-stats?developerId=${encodeURIComponent(devId || "")}&userId=${encodeURIComponent(dev.user_id || "")}&email=${encodeURIComponent(devEmail || "")}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`).then(r => r.json()),
+        authFetch(`/api/keyboard-stats?developerId=${encodeURIComponent(devId || "")}&userId=${encodeURIComponent(dev.user_id || "")}&email=${encodeURIComponent(devEmail || "")}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`).then(r => r.json()),
         supabase.from("app_usage").select("id, session_id, user_email, app_name, app_name_raw, window_title, start_time, end_time, duration_seconds, duration_minutes, tracked_at, created_at, is_new_app, user_login").eq("user_email", devEmail).gte("tracked_at", start).lt("tracked_at", end).order("tracked_at", { ascending: false }),
         // Screenshots schema has varied; select '*' and normalize client-side.
         supabase.from("screenshots").select("*")

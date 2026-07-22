@@ -1,17 +1,13 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
+import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
 
-// Service-role client (falls back to anon key) for privileged inserts/reads.
-function getSupabase() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  return createClient(supabaseUrl, supabaseKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
+// Roles allowed to send invitations.
+const INVITER_ROLES = ['owner', 'admin', 'manager'];
+// Roles that can be assigned via an invitation. "owner" is only grantable by an
+// existing owner (guarded below) so a lower role can't escalate someone to owner.
+const ASSIGNABLE_ROLES = ['admin', 'manager', 'developer', 'employee', 'client'];
 
 // Derive the public origin from request headers (works behind proxies).
 function getOrigin(request) {
@@ -22,31 +18,55 @@ function getOrigin(request) {
   return host ? `${proto}://${host}` : '';
 }
 
-// Read a cookie value from the request cookie header.
-function getCookie(request, name) {
-  const cookie = request.headers.get('cookie');
-  if (!cookie) return null;
-  const match = cookie.split(';').map((c) => c.trim()).find((c) => c.startsWith(`${name}=`));
-  return match ? decodeURIComponent(match.split('=').slice(1).join('=')) : null;
-}
-
 export async function POST(request) {
   try {
+    // ── Authenticate the caller and derive their org from the JWT ──
+    const auth = await getAuthedOrg(request);
+    if (!auth) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    if (!INVITER_ROLES.includes(auth.role)) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: you cannot send invitations.' },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
-    const { organizationId, email, role, teamId, departmentId } = body || {};
+    const { email, role, teamId, departmentId } = body || {};
 
     // ── Validate required fields ─────────────────────────
-    if (!organizationId || !email || !role) {
+    if (!email || !role) {
       return NextResponse.json(
-        { success: false, error: 'organizationId, email and role are required' },
+        { success: false, error: 'email and role are required' },
         { status: 400 }
       );
     }
 
-    const supabase = getSupabase();
+    // ── Validate the requested role (prevents privilege escalation) ──
+    const isOwnerGrant = role === 'owner';
+    if (isOwnerGrant && auth.role !== 'owner') {
+      return NextResponse.json(
+        { success: false, error: 'Only an owner can invite another owner.' },
+        { status: 403 }
+      );
+    }
+    if (!isOwnerGrant && !ASSIGNABLE_ROLES.includes(role)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid role.' },
+        { status: 400 }
+      );
+    }
+
+    // Org is taken from the verified JWT — never from the request body.
+    const organizationId = auth.orgId;
+    const supabase = serviceClient();
 
     const token = crypto.randomUUID();
-    const invitedBy = getCookie(request, 'admin_id') || null;
+    const invitedBy = auth.appUserId || null;
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
     // ── Insert the invitation ────────────────────────────
@@ -151,22 +171,29 @@ export async function POST(request) {
 
 export async function GET(request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const organizationId = searchParams.get('organizationId');
-
-    if (!organizationId) {
+    // ── Authenticate the caller and scope to their own org ──
+    const auth = await getAuthedOrg(request);
+    if (!auth) {
       return NextResponse.json(
-        { success: false, error: 'organizationId is required' },
-        { status: 400 }
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    if (!INVITER_ROLES.includes(auth.role)) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden' },
+        { status: 403 }
       );
     }
 
-    const supabase = getSupabase();
+    const supabase = serviceClient();
 
+    // Org comes from the verified JWT — a caller can only list their own org's
+    // invitations, never another organization's tokens.
     const { data, error } = await supabase
       .from('invitations')
       .select('*')
-      .eq('organization_id', organizationId)
+      .eq('organization_id', auth.orgId)
       .order('created_at', { ascending: false });
 
     if (error) {

@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { RefreshCw, Plus, X, Trash2, AlertTriangle, FileText, BarChart3, Calendar, Eye, Download } from "lucide-react";
 import { showError, showInfo, showSuccess, showWarning } from "@/utils/alerts";
 import { getOrgId } from "@/utils/orgContext";
+import { authFetch } from "@/utils/authFetch";
 
 const statusPill = (status) => {
   const s = String(status || "").toLowerCase();
@@ -147,7 +148,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
       setShowMetricsModal(true);
 
       const url = `/api/productivity?type=project&projectId=${project.id}&developerId=${project.assigned_developer_id}`;
-      const res = await fetch(url);
+      const res = await authFetch(url);
       const data = await res.json();
 
       if (!res.ok || !data.success) {

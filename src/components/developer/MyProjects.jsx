@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { showInfo, showWarning } from "@/utils/alerts";
+import { authFetch } from "@/utils/authFetch";
 import { Zap, CheckCircle2, Clock } from "lucide-react";
 import StatCard from "@/components/shell/StatCard";
 
@@ -86,7 +87,7 @@ export default function MyProjects({
 
       // Developer-side metrics must be scoped to the logged-in developer.
       const url = `/api/productivity?type=project&projectId=${project.id}&developerId=${encodeURIComponent(String(user.id))}`;
-      const res = await fetch(url);
+      const res = await authFetch(url);
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok || !data.success) {

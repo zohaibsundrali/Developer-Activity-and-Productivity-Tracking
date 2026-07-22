@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId } from "@/utils/orgContext";
+import { authFetch } from "@/utils/authFetch";
 import EChart from "@/components/charts/EChart";
 import {
   textStyle,
@@ -82,7 +83,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
         return;
       }
 
-      const response = await fetch(url);
+      const response = await authFetch(url);
       const data = await response.json();
 
       if (data.success) {

@@ -41,7 +41,7 @@ export async function POST(request) {
     const newAdmin = adminRows;
 
     // 2) organization
-    const { data: org } = await admin
+    const { data: org, error: orgErr } = await admin
       .from("organizations")
       .insert([{
         name: (company || "").trim() || `${fullName || "My"}'s Organization`,
@@ -56,14 +56,22 @@ export async function POST(request) {
 
     const orgId = org?.id || null;
 
-    // 3) link admin + owner membership
-    if (orgId) {
-      await admin.from("admin_users").update({ organization_id: orgId }).eq("id", newAdmin.id);
-      await admin.from("memberships").insert([{
-        organization_id: orgId, user_id: newAdmin.id, user_type: "admin",
-        email: newAdmin.email, role: "owner", status: "active",
-      }]);
+    // If the organization could not be created, roll back the admin row so we
+    // don't leave an orphaned admin with no org, and surface the real error.
+    if (orgErr || !orgId) {
+      await admin.from("admin_users").delete().eq("id", newAdmin.id);
+      return NextResponse.json(
+        { error: orgErr?.message || "Failed to create organization." },
+        { status: 500 }
+      );
     }
+
+    // 3) link admin + owner membership
+    await admin.from("admin_users").update({ organization_id: orgId }).eq("id", newAdmin.id);
+    await admin.from("memberships").insert([{
+      organization_id: orgId, user_id: newAdmin.id, user_type: "admin",
+      email: newAdmin.email, role: "owner", status: "active",
+    }]);
 
     // 4) Supabase Auth account (with org claim)
     let authUserId = null;

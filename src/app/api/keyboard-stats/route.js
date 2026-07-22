@@ -1,21 +1,31 @@
-// Replace the entire keyboard_stats/route.js with this:
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getAuthedOrg, orgScopedClient } from "@/utils/serverAuth";
 export const dynamic = "force-dynamic";
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
 
 export async function GET(request) {
   try {
+    // Authenticate the caller; reads run through an org-scoped client so RLS
+    // limits results to the caller's organization.
+    const auth = await getAuthedOrg(request);
+    if (!auth) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const supabase = orgScopedClient(auth.token);
+
     const { searchParams } = new URL(request.url);
-    const developerId = searchParams.get("developerId");
-    const userId = searchParams.get("userId");
-    const email = searchParams.get("email");
+    let developerId = searchParams.get("developerId");
+    let userId = searchParams.get("userId");
+    let email = searchParams.get("email");
     const start = searchParams.get("start");
     const end = searchParams.get("end");
 
+    // A developer viewer may only read their own keystroke data — force the
+    // identity filters to their JWT identity regardless of query params.
+    if (auth.userType === "developer") {
+      developerId = auth.appUserId;
+      userId = null;
+      email = auth.email;
+    }
 
     if (!developerId && !email && !userId) {
       return NextResponse.json(

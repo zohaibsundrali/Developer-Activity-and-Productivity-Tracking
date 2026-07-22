@@ -18,7 +18,10 @@ const DEFAULTS = {
 };
 
 export default function OrganizationSettings() {
-  const orgId = typeof window !== "undefined" ? getOrgId() : null;
+  // Resolve org id after mount to avoid a hydration mismatch.
+  const [orgId, setOrgId] = useState(null);
+  const [orgReady, setOrgReady] = useState(false);
+  useEffect(() => { setOrgId(getOrgId()); setOrgReady(true); }, []);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -98,8 +101,8 @@ export default function OrganizationSettings() {
     } finally { setSaving(false); }
   };
 
+  if (!orgReady || loading) return <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
   if (!orgId) return <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground">No organization context.</div>;
-  if (loading) return <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
 
   const inputCls = "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30";
 

@@ -1,34 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
-
-function getCookieValue(request, name) {
-  try {
-    const viaCookiesApi = request?.cookies?.get?.(name);
-    if (viaCookiesApi?.value) return viaCookiesApi.value;
-    if (typeof viaCookiesApi === 'string') return viaCookiesApi;
-  } catch {
-    // ignore
-  }
-
-  const cookieHeader = request?.headers?.get?.('cookie') || '';
-  if (!cookieHeader) return null;
-
-  const parts = cookieHeader.split(';').map((p) => p.trim());
-  for (const part of parts) {
-    if (!part) continue;
-    const eqIdx = part.indexOf('=');
-    if (eqIdx === -1) continue;
-    const key = part.slice(0, eqIdx).trim();
-    if (key !== name) continue;
-    return decodeURIComponent(part.slice(eqIdx + 1));
-  }
-  return null;
-}
+import { getAuthedOrg, orgScopedClient } from '@/utils/serverAuth';
 
 /**
  * PRODUCTIVITY CALCULATION API
@@ -51,18 +22,26 @@ function getCookieValue(request, name) {
 // Get productivity metrics
 export async function GET(request) {
   try {
+    // Authenticate the caller; the JWT is the source of truth for org + role.
+    const auth = await getAuthedOrg(request);
+    if (!auth) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    // All queries run through an org-scoped client, so RLS guarantees the
+    // caller can only ever read their own organization's data.
+    const supabase = orgScopedClient(auth.token);
+
     const { searchParams } = new URL(request.url);
     const developerId = searchParams.get('developerId');
     const projectId = searchParams.get('projectId');
     const type = searchParams.get('type') || 'project'; // 'project', 'developer', 'overall'
 
-    const isAdminViewer = Boolean(getCookieValue(request, 'admin_auth'));
-    const isDeveloperViewer = !isAdminViewer && Boolean(getCookieValue(request, 'developer_auth'));
-    const cookieDeveloperId = getCookieValue(request, 'developer_id');
+    const isAdminViewer = auth.userType === 'admin';
+    const isDeveloperViewer = auth.userType === 'developer';
 
-    // Developer viewers should be scoped to the current tab's session.
-    // Prefer an explicit developerId param (from sessionStorage) and fall back to cookie for legacy callers.
-    const effectiveDeveloperId = isDeveloperViewer ? (developerId || cookieDeveloperId) : developerId;
+    // A developer viewer is always scoped to their own identity (from the JWT),
+    // never to a developerId supplied in the query string.
+    const effectiveDeveloperId = isDeveloperViewer ? auth.appUserId : developerId;
 
     if (isDeveloperViewer && !effectiveDeveloperId) {
       return NextResponse.json(
@@ -104,19 +83,19 @@ export async function GET(request) {
         }
       }
 
-      const productivity = await calculateProjectProductivity(projectId, effectiveDeveloperId);
+      const productivity = await calculateProjectProductivity(supabase, projectId, effectiveDeveloperId);
       return NextResponse.json({ success: true, ...productivity });
     }
 
     // Developer's overall productivity
     if (type === 'developer' && effectiveDeveloperId) {
-      const productivity = await calculateDeveloperProductivity(effectiveDeveloperId);
+      const productivity = await calculateDeveloperProductivity(supabase, effectiveDeveloperId);
       return NextResponse.json({ success: true, ...productivity });
     }
 
     // Overall system productivity (admin view)
     if (type === 'overall') {
-      const productivity = await calculateOverallProductivity();
+      const productivity = await calculateOverallProductivity(supabase);
       return NextResponse.json({ success: true, ...productivity });
     }
 
@@ -135,7 +114,7 @@ export async function GET(request) {
 }
 
 // Calculate productivity for a specific project
-async function calculateProjectProductivity(projectId, developerId = null) {
+async function calculateProjectProductivity(supabase, projectId, developerId = null) {
   let query = supabase
     .from('developer_tasks')
     .select(`
@@ -273,7 +252,7 @@ async function calculateProjectProductivity(projectId, developerId = null) {
 }
 
 // Calculate developer's overall productivity across all projects
-async function calculateDeveloperProductivity(developerId) {
+async function calculateDeveloperProductivity(supabase, developerId) {
   // Get all tasks for this developer
   const { data: tasks, error } = await supabase
     .from('developer_tasks')
@@ -370,7 +349,7 @@ async function calculateDeveloperProductivity(developerId) {
 }
 
 // Calculate overall system productivity (all developers)
-async function calculateOverallProductivity() {
+async function calculateOverallProductivity(supabase) {
   // Get all developers
   const { data: developers } = await supabase
     .from('developers')
@@ -453,6 +432,17 @@ async function calculateOverallProductivity() {
 // Recalculate and update productivity metrics (can be called after task changes)
 export async function POST(request) {
   try {
+    // Only authenticated admins may trigger a recalculation, and it runs through
+    // an org-scoped client so it only ever touches the caller's own org.
+    const auth = await getAuthedOrg(request);
+    if (!auth) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (auth.userType !== 'admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const supabase = orgScopedClient(auth.token);
+
     const body = await request.json();
     const { developerId, projectId, recalculateAll } = body;
 
@@ -471,7 +461,7 @@ export async function POST(request) {
         const uniqueProjects = [...new Set(projects?.map(p => p.project_id) || [])];
         
         for (const pid of uniqueProjects) {
-          const productivity = await calculateProjectProductivity(pid, dev.id);
+          const productivity = await calculateProjectProductivity(supabase, pid, dev.id);
           
           await supabase
             .from('productivity_metrics')
@@ -499,7 +489,7 @@ export async function POST(request) {
     }
 
     if (developerId && projectId) {
-      const productivity = await calculateProjectProductivity(projectId, developerId);
+      const productivity = await calculateProjectProductivity(supabase, projectId, developerId);
       
       await supabase
         .from('productivity_metrics')

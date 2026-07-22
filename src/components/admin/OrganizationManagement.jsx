@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
+import { authFetch } from "@/utils/authFetch";
 import { showSuccess, showError, showConfirm } from "@/utils/alerts";
 import {
   Building2, Users, UserCog, Mail, Plus, Trash2, Copy, RefreshCw, Shield, Settings as SettingsIcon,
@@ -29,14 +30,23 @@ const TABS = [
 ];
 
 export default function OrganizationManagement() {
-  const orgId = typeof window !== "undefined" ? getOrgId() : null;
-  const ctx = typeof window !== "undefined" ? getOrgContext() : null;
+  // Read org context after mount only — reading window/sessionStorage during
+  // render causes a server/client hydration mismatch.
+  const [orgId, setOrgId] = useState(null);
+  const [ctx, setCtx] = useState(null);
+  const [orgReady, setOrgReady] = useState(false);
   const [tab, setTab] = useState("departments");
   const [departments, setDepartments] = useState([]);
   const [teams, setTeams] = useState([]);
   const [members, setMembers] = useState([]);
   const [invitations, setInvitations] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setOrgId(getOrgId());
+    setCtx(getOrgContext());
+    setOrgReady(true);
+  }, []);
 
   const loadAll = useCallback(async () => {
     if (!orgId) return;
@@ -60,6 +70,14 @@ export default function OrganizationManagement() {
   }, [orgId]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
+
+  if (!orgReady) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground">
+        Loading organization…
+      </div>
+    );
+  }
 
   if (!orgId) {
     return (
@@ -275,7 +293,11 @@ function TeamsTab({ orgId, teams, departments, members, reload }) {
 /* ---------------- Members ---------------- */
 function MembersTab({ teams, departments, members, reload }) {
   const update = async (id, patch) => {
-    await supabase.from("memberships").update(patch).eq("id", id);
+    const { error } = await supabase.from("memberships").update(patch).eq("id", id);
+    if (error) {
+      showError("Update failed", error.message || "Could not update member.");
+      return;
+    }
     reload();
   };
 
@@ -303,7 +325,9 @@ function MembersTab({ teams, departments, members, reload }) {
                 <select value={m.role} onChange={(e) => update(m.id, { role: e.target.value })}
                   disabled={m.role === "owner"}
                   className={`rounded-full px-2.5 py-1 text-xs font-semibold outline-none ${roleBadge(m.role)} disabled:opacity-70`}>
-                  {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                  {/* "owner" is not an assignable role here — ownership can't be
+                      granted from the member dropdown to avoid accidental escalation. */}
+                  {ROLES.filter((r) => r !== "owner").map((r) => <option key={r} value={r}>{r}</option>)}
                 </select>
               </td>
               <td className="px-4 py-3">
@@ -339,14 +363,24 @@ function InvitationsTab({ orgId, invitations, teams, departments, reload }) {
 
   const invite = async (e) => {
     e.preventDefault();
-    if (!email.trim()) return;
+    const target = email.trim().toLowerCase();
+    if (!target) return;
+
+    // Prevent sending a second pending invite to the same address.
+    const dup = invitations.find(
+      (inv) => inv.status === "pending" && (inv.email || "").toLowerCase() === target
+    );
+    if (dup) {
+      showError("Already invited", `${email.trim()} already has a pending invitation.`);
+      return;
+    }
+
     setSending(true);
     try {
-      const res = await fetch("/api/invitations", {
+      const res = await authFetch("/api/invitations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          organizationId: orgId,
           email: email.trim(),
           role,
           teamId: teamId || null,
