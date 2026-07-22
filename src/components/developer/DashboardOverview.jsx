@@ -6,9 +6,6 @@ import { Mail, CalendarDays, FolderKanban, CheckCircle2, Clock, Timer } from "lu
 import StatCard from "@/components/shell/StatCard";
 
 export default function DashboardOverview({ user, assignedProjects = [] }) {
-  const [dailyTotals, setDailyTotals] = useState({});
-  const [weeklyTotals, setWeeklyTotals] = useState([]);
-  const [totalTime, setTotalTime] = useState("00:00");
   const [recentProjects, setRecentProjects] = useState([]);
   const [todayTrackedTime, setTodayTrackedTime] = useState("00:00:00");
   const [taskStats, setTaskStats] = useState({ completed: 0, pending: 0 });
@@ -80,13 +77,6 @@ export default function DashboardOverview({ user, assignedProjects = [] }) {
     return Number.isNaN(ms) ? 0 : ms;
   }, []);
 
-  // ⏱ Minutes → HH:MM
-  const formatMinutes = useCallback((mins) => {
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-  }, []);
-
   // ⏱ Seconds → HH:MM:SS
   const formatSeconds = useCallback((totalSeconds) => {
     const h = Math.floor(totalSeconds / 3600);
@@ -134,53 +124,6 @@ export default function DashboardOverview({ user, assignedProjects = [] }) {
       console.error("[Developer Dashboard] Failed to load today's tracked time:", error);
     }
   }, [userId, userEmail, formatSeconds]);
-
-  // 📊 Fetch time data
-  const loadTimeData = useCallback(async () => {
-    if (!userId) return;
-    const { data, error } = await supabase
-      .from("time_entries")
-      .select("*")
-      .eq("user_id", userId);
-
-    if (error) {
-      return;
-    }
-
-    let daily = {};
-    let weekly = {};
-    let totalMinutes = 0;
-
-    data.forEach((entry) => {
-      const date = new Date(entry.start_time);
-      if (
-        date.getMonth() + 1 !== currentMonth ||
-        date.getFullYear() !== currentYear
-      )
-        return;
-
-      const dayKey = date.toISOString().split("T")[0];
-      daily[dayKey] = (daily[dayKey] || 0) + entry.duration_minutes;
-
-      const week = Math.ceil(date.getDate() / 7);
-      weekly[week] = (weekly[week] || 0) + entry.duration_minutes;
-
-      totalMinutes += entry.duration_minutes;
-    });
-
-    Object.keys(daily).forEach(
-      (k) => (daily[k] = formatMinutes(daily[k]))
-    );
-
-    setDailyTotals(daily);
-    setWeeklyTotals(
-      Object.keys(weekly).map((w) => ({
-        label: `Week ${w}`,
-        hours: formatMinutes(weekly[w]),
-      }))
-    );
-    setTotalTime(formatMinutes(totalMinutes));
-  }, [userId, currentMonth, currentYear, formatMinutes]);
 
   // 📁 Recent Projects
   const loadProjects = useCallback(async () => {
@@ -357,7 +300,6 @@ export default function DashboardOverview({ user, assignedProjects = [] }) {
 
       refreshDebounceRef.current = setTimeout(() => {
         void Promise.all([
-          loadTimeData(),
           loadProjects(),
           loadTodayTrackedTime(),
         ]);
@@ -368,20 +310,6 @@ export default function DashboardOverview({ user, assignedProjects = [] }) {
     const initialLoadTimer = setTimeout(scheduleRefresh, 0);
 
     // Realtime subscriptions (scoped to this developer where possible)
-    const timeEntriesChannel = supabase
-      .channel(`dev-dashboard-time-entries:${userId || "anon"}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "time_entries",
-          ...(userId ? { filter: `user_id=eq.${userId}` } : {}),
-        },
-        scheduleRefresh
-      )
-      .subscribe();
-
     const sessionsChannel = supabase
       .channel(`dev-dashboard-sessions:${userEmail || userId || "anon"}`)
       .on(
@@ -422,11 +350,10 @@ export default function DashboardOverview({ user, assignedProjects = [] }) {
         refreshDebounceRef.current = null;
       }
 
-      supabase.removeChannel(timeEntriesChannel);
       supabase.removeChannel(sessionsChannel);
       supabase.removeChannel(tasksChannel);
     };
-  }, [userId, userEmail, loadProjects, loadTimeData, loadTodayTrackedTime]);
+  }, [userId, userEmail, loadProjects, loadTodayTrackedTime]);
 
   const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
 
