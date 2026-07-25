@@ -1,7 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { supabase } from "@/utils/supabaseClient";
 
 import "../../auth.css";
 
@@ -34,15 +33,15 @@ export default function AcceptInvitePage() {
       }
 
       try {
-        const { data: invite, error: inviteError } = await supabase
-          .from("invitations")
-          .select("*")
-          .eq("token", token)
-          .maybeSingle();
+        // The invitee is NOT authenticated and `invitations` has RLS, so we
+        // must resolve the token through a service-role server route (the
+        // anon browser client would get 0 rows and show "not found").
+        const res = await fetch(`/api/invitations/lookup?token=${encodeURIComponent(token)}`);
+        const invite = await res.json().catch(() => ({}));
 
         if (!active) return;
 
-        if (inviteError || !invite) {
+        if (!res.ok || !invite || invite.error) {
           setGuard("not-found");
           setLoading(false);
           return;
@@ -61,24 +60,13 @@ export default function AcceptInvitePage() {
           setLoading(false);
           return;
         }
-        if (
-          invite.status === "expired" ||
-          (invite.expires_at && new Date(invite.expires_at) < new Date())
-        ) {
+        if (invite.status === "expired" || invite.expired) {
           setGuard("expired");
           setLoading(false);
           return;
         }
 
-        // Resolve organization name
-        const { data: org } = await supabase
-          .from("organizations")
-          .select("name")
-          .eq("id", invite.organization_id)
-          .maybeSingle();
-
-        if (!active) return;
-        if (org && org.name) setOrgName(org.name);
+        if (invite.orgName) setOrgName(invite.orgName);
 
         setLoading(false);
       } catch (err) {
