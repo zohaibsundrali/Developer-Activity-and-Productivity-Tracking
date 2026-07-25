@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getAuthedOrg } from '@/utils/serverAuth';
+
+// Roles allowed to review task plans (matches permissions.js `review_tasks`).
+const REVIEWER_ROLES = ['owner', 'admin', 'manager'];
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -33,6 +37,16 @@ export async function POST(request) {
             'Server misconfigured: missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY',
         },
         { status: 500 }
+      );
+    }
+
+    // Enforce-when-authenticated: an authenticated caller must be a reviewer.
+    // Tokenless legacy callers fall through (unchanged behaviour).
+    const auth = await getAuthedOrg(request);
+    if (auth && !REVIEWER_ROLES.includes(auth.role)) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: you are not allowed to review task plans.' },
+        { status: 403 }
       );
     }
 

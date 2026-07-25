@@ -5,6 +5,7 @@ import { RefreshCw, Users } from "lucide-react";
 import StatCard from "@/components/shell/StatCard";
 import { showError, showInfo, showPre, showSuccess, showWarning } from "@/utils/alerts";
 import { getOrgId } from "@/utils/orgContext";
+import { authFetch } from "@/utils/authFetch";
 
 export default function ViewDevelopers({ developers: initialDevelopers, onRefresh, supabase, user }) {
   const [developers, setDevelopers] = useState([]);
@@ -358,7 +359,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
         userId: devUserId,
         developerEmail: devEmail,
       }).toString();
-      const impactResponse = await fetch(`/api/developer/delete?${impactParams}`);
+      const impactResponse = await authFetch(`/api/developer/delete?${impactParams}`);
       const impactData = await impactResponse.json();
 
       if (!impactResponse.ok || !impactData.success) {
@@ -408,7 +409,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
       if (!finalConfirmed.isConfirmed) return;
 
       // ── Step 4: Execute deletion – send PRIMARY KEY only ─────────────────
-      const deleteResponse = await fetch('/api/developer/delete', {
+      const deleteResponse = await authFetch('/api/developer/delete', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

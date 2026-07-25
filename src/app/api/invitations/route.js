@@ -36,7 +36,7 @@ export async function POST(request) {
     }
 
     const body = await request.json();
-    const { email, role, teamId, departmentId } = body || {};
+    const { email, role, teamId, departmentId, projectId } = body || {};
 
     // ── Validate required fields ─────────────────────────
     if (!email || !role) {
@@ -78,6 +78,7 @@ export async function POST(request) {
         role,
         team_id: teamId || null,
         department_id: departmentId || null,
+        project_id: projectId || null,
         token,
         status: 'pending',
         invited_by: invitedBy,

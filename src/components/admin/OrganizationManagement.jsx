@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
+import { can } from "@/utils/permissions";
 import { authFetch } from "@/utils/authFetch";
 import { showSuccess, showError, showConfirm } from "@/utils/alerts";
 import {
@@ -130,7 +131,7 @@ export default function OrganizationManagement() {
       {tab === "invitations" && (
         <InvitationsTab orgId={orgId} invitations={invitations} teams={teams} departments={departments} reload={loadAll} />
       )}
-      {tab === "settings" && <OrganizationSettings />}
+      {tab === "settings" && <OrganizationSettings readOnly={!can("manage_settings")} />}
     </div>
   );
 }

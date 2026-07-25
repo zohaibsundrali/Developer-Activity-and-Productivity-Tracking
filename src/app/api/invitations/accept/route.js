@@ -34,12 +34,22 @@ export async function POST(request) {
     }
 
     const email = invite.email;
-    const isAdmin = invite.role === "admin";
-    const userType = isAdmin ? "admin" : "developer";
+    // Owner + Admin share the admin_users profile table. Owner-ness lives in the
+    // membership role + JWT (mirroring signup, where the owner's admin_users.role
+    // is stored as "admin"), so an invited owner still gets full admin access.
+    const isAdminLike = invite.role === "owner" || invite.role === "admin";
+    const isClient = invite.role === "client";
+    // Clients get their own user_type + `clients` profile row (NO developers row,
+    // so they never appear in staff lists or inherit developer data access).
+    // Manager / Employee / Developer are internal staff → developers table with
+    // user_type "developer"; their real role is preserved on the membership row
+    // and JWT app_metadata.role, which drives the role-aware staff dashboard.
+    const userType = isAdminLike ? "admin" : isClient ? "client" : "developer";
+    const profileTable = isAdminLike ? "admin_users" : isClient ? "clients" : "developers";
 
     // 2) create the profile row
     let newUser = null;
-    if (isAdmin) {
+    if (isAdminLike) {
       const { data, error } = await admin.from("admin_users").insert([{
         full_name: fullName || null, email, password, company: null,
         role: "admin", is_verified: true, organization_id: invite.organization_id,
@@ -50,6 +60,25 @@ export async function POST(request) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
       newUser = data;
+    } else if (isClient) {
+      const { data, error } = await admin.from("clients").insert([{
+        name: fullName || null, email, password, status: "active",
+        organization_id: invite.organization_id, created_at: new Date().toISOString(),
+      }]).select().single();
+      if (error) {
+        if (error.code === "23505") return NextResponse.json({ error: "An account already exists for this email." }, { status: 409 });
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
+      newUser = data;
+
+      // Link the client to the invited project (if any).
+      if (invite.project_id) {
+        await admin.from("project_clients").insert([{
+          organization_id: invite.organization_id,
+          project_id: invite.project_id,
+          client_id: newUser.id,
+        }]);
+      }
     } else {
       const { data, error } = await admin.from("developers").insert([{
         name: fullName || null, email, password, status: "active",
@@ -75,8 +104,7 @@ export async function POST(request) {
       app_metadata: { organization_id: invite.organization_id, role: invite.role, user_type: userType, app_user_id: newUser.id },
     });
     if (au?.user?.id) {
-      const tbl = isAdmin ? "admin_users" : "developers";
-      await admin.from(tbl).update({ auth_user_id: au.user.id }).eq("id", newUser.id);
+      await admin.from(profileTable).update({ auth_user_id: au.user.id }).eq("id", newUser.id);
     }
 
     // 5) mark accepted

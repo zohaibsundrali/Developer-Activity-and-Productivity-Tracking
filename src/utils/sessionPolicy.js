@@ -87,6 +87,15 @@ export function clearDeveloperSession() {
   expireCookie('developer_id');
 }
 
+export function clearClientSession() {
+  const primary = getPrimaryStorage();
+  const legacy = getLegacyStorage();
+  safeRemove(primary, 'clientUser');
+  safeRemove(legacy, 'clientUser');
+  expireCookie('client_auth');
+  expireCookie('client_id');
+}
+
 export function getSessionCookieExpiryDate(sessionOrIso) {
   const referenceIso = getSessionReferenceIso(sessionOrIso);
   const parsed = parseIsoToMs(referenceIso);
@@ -156,6 +165,10 @@ export function touchDeveloperSession(existingDeveloperSession) {
   return touchStoredSession('developerUser', 'developer_auth', 'developer_id', existingDeveloperSession);
 }
 
+export function touchClientSession(existingClientSession) {
+  return touchStoredSession('clientUser', 'client_auth', 'client_id', existingClientSession);
+}
+
 export function getStoredAdminSession() {
   const primary = getPrimaryStorage();
   const raw = safeGet(primary, 'adminUser');
@@ -178,6 +191,17 @@ export function getStoredDeveloperSession() {
   }
 }
 
+export function getStoredClientSession() {
+  const primary = getPrimaryStorage();
+  const raw = safeGet(primary, 'clientUser');
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 export function setStoredAdminSession(sessionObj) {
   const primary = getPrimaryStorage();
   const legacy = getLegacyStorage();
@@ -192,4 +216,12 @@ export function setStoredDeveloperSession(sessionObj) {
   if (!primary) return;
   safeSet(primary, 'developerUser', JSON.stringify(sessionObj));
   safeRemove(legacy, 'developerUser');
+}
+
+export function setStoredClientSession(sessionObj) {
+  const primary = getPrimaryStorage();
+  const legacy = getLegacyStorage();
+  if (!primary) return;
+  safeSet(primary, 'clientUser', JSON.stringify(sessionObj));
+  safeRemove(legacy, 'clientUser');
 }
