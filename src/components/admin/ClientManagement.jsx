@@ -7,8 +7,21 @@ import { authFetch } from "@/utils/authFetch";
 import { showSuccess, showError, showConfirm } from "@/utils/alerts";
 import {
   Handshake, Link2, Megaphone, Receipt, CheckSquare, LifeBuoy, Mail, Plus,
-  Trash2, Copy, RefreshCw, Send, Building2, MessageSquare,
+  Trash2, Copy, RefreshCw, Send, Building2, MessageSquare, Upload, FileText, Check,
 } from "lucide-react";
+
+// Fire a best-effort client email notification. Never throws / never blocks the UI.
+async function notifyClients(payload) {
+  try {
+    await authFetch("/api/notify/client", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    /* email is best-effort */
+  }
+}
 
 const TABS = [
   { id: "clients", label: "Clients", icon: Handshake },
@@ -496,8 +509,10 @@ function ClientAnnouncementsTab({ orgId, admin, projects, announcements, reload 
         published_at: new Date().toISOString(),
       }]);
       if (error) throw error;
+      const t = title.trim();
+      notifyClients({ kind: "announcement", title: t, message: body.trim() || null, projectId: projectId || null });
       setTitle(""); setBody(""); setProjectId("");
-      showSuccess("Announcement published", `"${title.trim()}" is now visible to clients.`);
+      showSuccess("Announcement published", `"${t}" is now visible to clients.`);
       reload();
     } catch (err) {
       showError("Failed", err.message || "Could not publish announcement.");
@@ -577,13 +592,34 @@ function ClientInvoicesTab({ orgId, admin, clients, projects, invoices, reload }
   const [status, setStatus] = useState("draft");
   const [issuedAt, setIssuedAt] = useState("");
   const [dueAt, setDueAt] = useState("");
+  const [pdfFile, setPdfFile] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState(null);
 
   const clientName = (id) => {
     const c = clients.find((x) => x.id === id);
     return c ? (c.name || c.email) : "—";
   };
   const projName = (id) => projects.find((p) => p.id === id)?.name || "—";
+
+  // Upload a PDF to the private `invoices` storage bucket and stamp pdf_path.
+  // The client-side /api/client/invoices/[id]/pdf route signs this same path.
+  const uploadInvoicePdf = async (invoiceId, file) => {
+    const clean = file.name.replace(/[^a-zA-Z0-9.\-]/g, "_");
+    const path = `${orgId}/${invoiceId}/${Date.now()}_${clean}`;
+    const { error: upErr } = await supabase.storage
+      .from("invoices")
+      .upload(path, file, { upsert: true, contentType: file.type || "application/pdf" });
+    if (upErr) {
+      if (/bucket/i.test(upErr.message) && /not found/i.test(upErr.message)) {
+        throw new Error("Create a PRIVATE storage bucket named 'invoices' in Supabase first.");
+      }
+      throw upErr;
+    }
+    const { error: updErr } = await supabase.from("invoices").update({ pdf_path: path }).eq("id", invoiceId);
+    if (updErr) throw updErr;
+    return path;
+  };
 
   const add = async (e) => {
     e.preventDefault();
@@ -593,7 +629,7 @@ function ClientInvoicesTab({ orgId, admin, clients, projects, invoices, reload }
     }
     setSaving(true);
     try {
-      const { error } = await supabase.from("invoices").insert([{
+      const { data: inserted, error } = await supabase.from("invoices").insert([{
         organization_id: orgId,
         client_id: clientId || null,
         project_id: projectId || null,
@@ -605,10 +641,30 @@ function ClientInvoicesTab({ orgId, admin, clients, projects, invoices, reload }
         issued_at: issuedAt ? new Date(issuedAt).toISOString() : null,
         due_at: dueAt ? new Date(dueAt).toISOString() : null,
         created_by: admin?.id || null,
-      }]);
+      }]).select("id").single();
       if (error) throw error;
+
+      if (pdfFile && inserted?.id) {
+        try {
+          await uploadInvoicePdf(inserted.id, pdfFile);
+        } catch (upErr) {
+          showError("PDF upload failed", `Invoice saved, but the PDF didn't attach: ${upErr.message}`);
+        }
+      }
+
+      // Clients can't see drafts, so only notify for non-draft invoices.
+      if (status !== "draft") {
+        notifyClients({
+          kind: "invoice",
+          title: `Invoice ${number.trim()}`,
+          message: `${currency || "USD"} ${(amount ? Number(amount) : 0).toFixed(2)}${title.trim() ? ` — ${title.trim()}` : ""}`,
+          clientId: clientId || null,
+          projectId: projectId || null,
+        });
+      }
+
       setClientId(""); setProjectId(""); setNumber(""); setTitle(""); setAmount("");
-      setCurrency("USD"); setStatus("draft"); setIssuedAt(""); setDueAt("");
+      setCurrency("USD"); setStatus("draft"); setIssuedAt(""); setDueAt(""); setPdfFile(null);
       showSuccess("Invoice created", `Invoice ${number.trim()} added.`);
       reload();
     } catch (err) {
@@ -619,7 +675,29 @@ function ClientInvoicesTab({ orgId, admin, clients, projects, invoices, reload }
   const changeStatus = async (inv, next) => {
     const { error } = await supabase.from("invoices").update({ status: next }).eq("id", inv.id);
     if (error) { showError("Update failed", error.message || "Could not update invoice."); return; }
+    // Notify the client when an invoice moves out of draft (becomes visible).
+    if (inv.status === "draft" && next !== "draft") {
+      notifyClients({
+        kind: "invoice",
+        title: `Invoice ${inv.number}`,
+        message: `${inv.currency || "USD"} ${Number(inv.amount || 0).toFixed(2)}`,
+        clientId: inv.client_id || null,
+        projectId: inv.project_id || null,
+      });
+    }
     reload();
+  };
+
+  const onRowUpload = async (inv, file) => {
+    if (!file) return;
+    setBusyId(inv.id);
+    try {
+      await uploadInvoicePdf(inv.id, file);
+      showSuccess("PDF attached", `PDF added to invoice ${inv.number}.`);
+      reload();
+    } catch (err) {
+      showError("Upload failed", err.message || "Could not upload the PDF.");
+    } finally { setBusyId(null); }
   };
 
   const money = (inv) => `${inv.currency || "USD"} ${Number(inv.amount || 0).toFixed(2)}`;
@@ -683,9 +761,19 @@ function ClientInvoicesTab({ orgId, admin, clients, projects, invoices, reload }
               className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30" />
           </div>
         </div>
+        <label className="mb-1 block text-xs font-medium text-foreground">PDF (optional)</label>
+        <label className="mb-3 flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-input bg-background px-3 py-2 text-sm text-muted-foreground hover:border-primary">
+          <Upload className="h-4 w-4" />
+          <span className="truncate">{pdfFile ? pdfFile.name : "Attach an invoice PDF"}</span>
+          <input type="file" accept="application/pdf" className="hidden"
+            onChange={(e) => setPdfFile(e.target.files?.[0] || null)} />
+        </label>
         <button disabled={saving} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
           <Plus className="h-4 w-4" /> {saving ? "Creating…" : "Create invoice"}
         </button>
+        <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
+          PDF needs a private Supabase storage bucket named <code>invoices</code>.
+        </p>
       </form>
 
       <div className="lg:col-span-2">
@@ -701,6 +789,7 @@ function ClientInvoicesTab({ orgId, admin, clients, projects, invoices, reload }
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Amount</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Due</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">PDF</th>
                 </tr>
               </thead>
               <tbody>
@@ -718,6 +807,22 @@ function ClientInvoicesTab({ orgId, admin, clients, projects, invoices, reload }
                         className={`rounded-full px-2.5 py-1 text-xs font-semibold outline-none ${statusPill(inv.status)}`}>
                         {INVOICE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>
+                    </td>
+                    <td className="px-4 py-3">
+                      <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                        title={inv.pdf_path ? "Replace PDF" : "Attach PDF"}>
+                        {busyId === inv.id ? (
+                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        ) : inv.pdf_path ? (
+                          <Check className="h-3.5 w-3.5 text-success" />
+                        ) : (
+                          <Upload className="h-3.5 w-3.5" />
+                        )}
+                        {inv.pdf_path ? "PDF" : "Upload"}
+                        <input type="file" accept="application/pdf" className="hidden"
+                          disabled={busyId === inv.id}
+                          onChange={(e) => onRowUpload(inv, e.target.files?.[0] || null)} />
+                      </label>
                     </td>
                   </tr>
                 ))}
@@ -764,8 +869,10 @@ function ClientApprovalsTab({ orgId, admin, clients, projects, links, approvals,
         created_by: admin?.id || null,
       }]);
       if (error) throw error;
+      const t = title.trim();
+      notifyClients({ kind: "approval", title: t, message: description.trim() || null, projectId });
       setProjectId(""); setTitle(""); setDescription(""); setItemType("deliverable"); setItemRef("");
-      showSuccess("Approval requested", `"${title.trim()}" sent to the client.`);
+      showSuccess("Approval requested", `"${t}" sent to the client.`);
       reload();
     } catch (err) {
       showError("Failed", err.message || "Could not create approval request.");
