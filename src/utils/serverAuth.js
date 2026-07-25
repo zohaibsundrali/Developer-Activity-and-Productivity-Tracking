@@ -65,3 +65,36 @@ export function serviceClient() {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
+
+// ── Client-portal auth ────────────────────────────────────────────────
+// Verify the caller is an authenticated CLIENT and resolve the set of project
+// ids they are linked to. Returns null for non-clients / unauthenticated, so
+// every /api/client/* route is closed to admins, developers, and anon callers.
+//
+// Returned shape: { ...authedOrg, projectIds: string[], clientId }
+// projectIds is the authoritative scope — client routes MUST filter every query
+// by it (defense-in-depth on top of RLS), and never trust a project id from the
+// request without checking membership in this list.
+export async function getAuthedClient(request) {
+  const auth = await getAuthedOrg(request);
+  if (!auth) return null;
+  if (auth.userType !== "client" && auth.role !== "client") return null;
+
+  const clientId = auth.appUserId;
+  if (!clientId) return null;
+
+  const svc = serviceClient();
+  const { data, error } = await svc
+    .from("project_clients")
+    .select("project_id")
+    .eq("client_id", clientId)
+    .eq("organization_id", auth.orgId);
+
+  const projectIds = error ? [] : (data || []).map((r) => r.project_id).filter(Boolean);
+  return { ...auth, clientId, projectIds };
+}
+
+// Guard: is a given project id inside the client's allowed set?
+export function clientCanAccessProject(authClient, projectId) {
+  return !!projectId && Array.isArray(authClient?.projectIds) && authClient.projectIds.includes(projectId);
+}

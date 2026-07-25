@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getAuthedOrg } from '@/utils/serverAuth';
+
+// Roles allowed to review task submissions (matches permissions.js `review_tasks`).
+const REVIEWER_ROLES = ['owner', 'admin', 'manager'];
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -9,6 +13,16 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // Admin approves or rejects a task submission
 export async function POST(request) {
   try {
+    // Enforce-when-authenticated: an authenticated caller must be an owner/admin/
+    // manager. Tokenless legacy callers fall through (unchanged behaviour).
+    const auth = await getAuthedOrg(request);
+    if (auth && !REVIEWER_ROLES.includes(auth.role)) {
+      return NextResponse.json(
+        { error: 'Forbidden: you are not allowed to review submissions.' },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const {
       submissionId,
@@ -317,6 +331,14 @@ async function updateProductivityMetrics(developerId, projectId) {
 // Get pending or reviewed submissions for admin
 export async function GET(request) {
   try {
+    const auth = await getAuthedOrg(request);
+    if (auth && !REVIEWER_ROLES.includes(auth.role)) {
+      return NextResponse.json(
+        { error: 'Forbidden: you are not allowed to view submissions.' },
+        { status: 403 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') || 'pending';
     const adminId = searchParams.get('adminId');

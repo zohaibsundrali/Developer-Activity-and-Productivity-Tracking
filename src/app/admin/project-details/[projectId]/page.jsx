@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 import { showError, showWarning } from "@/utils/alerts";
 import { isSessionExpired, clearAdminSession } from "@/utils/sessionPolicy";
+import { authFetch } from "@/utils/authFetch";
 
 const statusPill = (status) => {
   const s = String(status || "").toLowerCase();
@@ -132,7 +133,7 @@ export default function AdminProjectDetailsPage() {
     try {
       setProcessing(true);
 
-      const res = await fetch("/api/task-plan/review", {
+      const res = await authFetch("/api/task-plan/review", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -176,7 +177,7 @@ export default function AdminProjectDetailsPage() {
     try {
       setProcessing(true);
 
-      const res = await fetch("/api/task-plan/review", {
+      const res = await authFetch("/api/task-plan/review", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -38,9 +38,14 @@ export function can(action) {
   const r = getRole();
   if (!r) return false;
   switch (action) {
+    // Owner-only: organization-level configuration + destructive org actions.
+    // Every org always has an Owner (the signup creator), so these stay
+    // reachable; a plain Admin gets view-only access to settings.
     case "manage_org":
-    case "manage_members":
     case "manage_settings":
+    case "delete_org":
+      return r === "owner";
+    case "manage_members":
     case "invite_members":
     case "create_developer":
     case "delete_developer":

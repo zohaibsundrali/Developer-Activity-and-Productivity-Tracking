@@ -21,13 +21,16 @@ export default function Sidebar({
   mobileOpen = false,
   onCloseMobile,
 }) {
-  const displayName = user?.full_name || user?.name || (role === "admin" ? "Admin" : "Developer");
+  // Pretty role word (owner/admin/manager/developer/employee/client).
+  const roleWord = role ? role.charAt(0).toUpperCase() + role.slice(1) : "Developer";
+  const displayName = user?.full_name || user?.name || roleWord;
   const displayEmail = user?.email || "";
   const initial = (displayName || "U").charAt(0).toUpperCase();
-  // Multi-tenant: show the organization/workspace name when available.
+  // Multi-tenant: show the role alongside the organization/workspace name so
+  // Manager/Employee (and every other role) is visible in the sidebar.
   const roleLabel = user?.organization_name
-    ? user.organization_name
-    : (role === "admin" ? "Admin Workspace" : "Developer Workspace");
+    ? `${roleWord} · ${user.organization_name}`
+    : `${roleWord} Workspace`;
 
   const handleNav = (id) => {
     onNavigate?.(id);

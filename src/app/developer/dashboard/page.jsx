@@ -3,12 +3,13 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 import AppShell from "@/components/shell/AppShell";
-import { DEVELOPER_NAV, sectionTitle } from "@/components/shell/navConfig";
+import { staffNav, sectionTitle } from "@/components/shell/navConfig";
 import NotificationDropdown from "@/components/developer/NotificationDropdown";
 import DashboardOverview from "@/components/developer/DashboardOverview";
 import MyProjects from "@/components/developer/MyProjects";
 import ProjectDetails from "@/components/developer/ProjectDetails";
 import Account from "@/components/developer/Account";
+import TeamPanel from "@/components/developer/TeamPanel";
 import { isSessionExpired, clearDeveloperSession, touchDeveloperSession } from "@/utils/sessionPolicy";
 
 // Authentication check karne ka function
@@ -454,10 +455,17 @@ function DeveloperDashboardContent() {
       return <ProjectDetails />;
     }
 
+    // Manager-only oversight section. Guard by role so a developer/employee
+    // can't reach it by editing the URL (?section=team).
+    const effectiveRole = user?.membership_role || "developer";
+    const isManager = ["manager", "admin", "owner"].includes(effectiveRole);
+
     // Render based on active section
     switch (activeSection) {
       case "projects":
         return <MyProjects {...contentProps} />;
+      case "team":
+        return isManager ? <TeamPanel /> : <DashboardOverview {...contentProps} />;
       case "account":
         return <Account user={user} />;
       case "overview":
@@ -477,16 +485,18 @@ function DeveloperDashboardContent() {
     );
   }
 
+  const effectiveRole = user?.membership_role || "developer";
+
   return (
     <AppShell
-      role="developer"
+      role={effectiveRole}
       brandName="DevTrack"
-      navItems={DEVELOPER_NAV}
+      navItems={staffNav(effectiveRole)}
       activeSection={activeSection}
       onNavigate={handleSectionChange}
       user={user}
       onLogout={handleLogout}
-      title={sectionTitle(activeSection, "developer")}
+      title={sectionTitle(activeSection, effectiveRole)}
       subtitle={user?.name ? `Welcome back, ${user.name}` : undefined}
       notificationSlot={
         <NotificationDropdown

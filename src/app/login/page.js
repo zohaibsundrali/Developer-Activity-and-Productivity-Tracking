@@ -33,7 +33,8 @@ export default function LoginPage() {
 
     try {
       let loggedInData = null;
-      const profileTable = role === "admin" ? "admin_users" : "developers";
+      const profileTable =
+        role === "admin" ? "admin_users" : role === "client" ? "clients" : "developers";
 
       // 1) Try Supabase Auth first — migrated users get a real JWT session
       //    (required for DB-level RLS). Falls back to the legacy plaintext
@@ -60,7 +61,7 @@ export default function LoginPage() {
       // and carry it in the session so all data queries can scope by org.
       const org = await loadOrgContext(
         loggedInData.id,
-        role === "admin" ? "admin" : "developer",
+        role === "admin" ? "admin" : role === "client" ? "client" : "developer",
         loggedInData.organization_id || null
       );
 
@@ -85,6 +86,15 @@ export default function LoginPage() {
         document.cookie = `admin_auth=true; expires=${expiryDate.toUTCString()}; path=/`;
         document.cookie = `admin_id=${loggedInData.id}; expires=${expiryDate.toUTCString()}; path=/; HttpOnly; Secure`;
         setTimeout(() => { router.push("/admin/dashboard"); }, 100);
+      } else if (role === "client") {
+        sessionStorage.setItem("clientUser", JSON.stringify(userSession));
+        localStorage.removeItem("clientUser");
+        window.dispatchEvent(new Event('auth-change'));
+        const expiryDate = new Date();
+        expiryDate.setDate(expiryDate.getDate() + SESSION_MAX_AGE_DAYS);
+        document.cookie = `client_auth=true; expires=${expiryDate.toUTCString()}; path=/`;
+        document.cookie = `client_id=${loggedInData.id}; expires=${expiryDate.toUTCString()}; path=/`;
+        setTimeout(() => { router.push("/client"); }, 100);
       } else {
         sessionStorage.setItem("developerUser", JSON.stringify(userSession));
         localStorage.removeItem("developerUser");
@@ -125,8 +135,9 @@ export default function LoginPage() {
             type="button"
             onClick={() => setRole("developer")}
             className={`auth-role-btn ${role === "developer" ? "active" : "inactive"}`}
+            title="Developers, Managers and Employees sign in here"
           >
-            Developer
+            Team Member
           </button>
           <button
             type="button"
@@ -134,6 +145,13 @@ export default function LoginPage() {
             className={`auth-role-btn ${role === "admin" ? "active" : "inactive"}`}
           >
             Admin
+          </button>
+          <button
+            type="button"
+            onClick={() => setRole("client")}
+            className={`auth-role-btn ${role === "client" ? "active" : "inactive"}`}
+          >
+            Client
           </button>
         </div>
 
@@ -206,7 +224,7 @@ export default function LoginPage() {
           )}
 
           <button type="submit" disabled={loading} className="auth-submit-btn">
-            {loading ? <><span className="auth-spinner" />Signing in...</> : `Sign in as ${role === "developer" ? "Developer" : "Admin"}`}
+            {loading ? <><span className="auth-spinner" />Signing in...</> : `Sign in as ${role === "developer" ? "Team Member" : role.charAt(0).toUpperCase() + role.slice(1)}`}
           </button>
         </form>
 

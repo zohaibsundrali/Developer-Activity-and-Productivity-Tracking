@@ -16,8 +16,17 @@ export function middleware(request: NextRequest) {
   // Check if accessing protected admin routes
   if (pathname.startsWith('/admin')) {
     const adminUser = request.cookies.get('admin_auth')
-    
+
     if (!adminUser) {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
+  }
+
+  // Check if accessing protected client-portal routes
+  if (pathname.startsWith('/client')) {
+    const clientUser = request.cookies.get('client_auth')
+
+    if (!clientUser) {
       return NextResponse.redirect(new URL('/login', request.url))
     }
   }
@@ -28,6 +37,7 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     '/developer/:path*',
-    '/admin/:path*'
+    '/admin/:path*',
+    '/client/:path*'
   ]
 }

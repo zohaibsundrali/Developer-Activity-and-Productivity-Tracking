@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { showError, showSuccess, showWarning } from "@/utils/alerts";
 import { getSignedSubmissionUrl } from "@/utils/submissionFiles";
+import { authFetch } from "@/utils/authFetch";
 import {
   RefreshCw,
   ClipboardList,
@@ -26,7 +27,7 @@ export default function TaskReviewPanel({ currentAdmin }) {
   const fetchSubmissions = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch(
+      const response = await authFetch(
         `/api/admin-review?adminId=${currentAdmin.id}&status=${reviewStatus}`
       );
       const data = await response.json();
@@ -68,7 +69,7 @@ export default function TaskReviewPanel({ currentAdmin }) {
     try {
       setProcessing(true);
 
-      const response = await fetch("/api/admin-review", {
+      const response = await authFetch("/api/admin-review", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

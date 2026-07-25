@@ -13,9 +13,13 @@ export function getOrgContext() {
   if (typeof window === "undefined") return null;
   try {
     const raw =
-      sessionStorage.getItem("adminUser") || sessionStorage.getItem("developerUser");
+      sessionStorage.getItem("adminUser") ||
+      sessionStorage.getItem("developerUser") ||
+      sessionStorage.getItem("clientUser");
     if (!raw) return null;
     const s = JSON.parse(raw);
+    const userType =
+      s.role === "admin" ? "admin" : s.role === "client" ? "client" : "developer";
     return {
       organizationId: s.organization_id || null,
       organizationName: s.organization_name || null,
@@ -23,7 +27,7 @@ export function getOrgContext() {
       organizationTimezone: s.organization_timezone || null,
       role: s.membership_role || s.role || null,
       userId: s.id || null,
-      userType: s.role === "admin" ? "admin" : "developer",
+      userType,
     };
   } catch {
     return null;

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId } from "@/utils/orgContext";
 import { showSuccess, showError } from "@/utils/alerts";
-import { Building2, Clock, Bell, Shield, Upload, Save, Loader2 } from "lucide-react";
+import { Building2, Clock, Bell, Shield, Upload, Save, Loader2, Lock } from "lucide-react";
 
 const INDUSTRIES = ["Technology", "Finance", "Healthcare", "Education", "Retail", "Manufacturing", "Consulting", "Marketing", "Other"];
 const SIZES = ["1-10", "11-50", "51-200", "201-500", "500+"];
@@ -17,7 +17,7 @@ const DEFAULTS = {
   security: { session_days: 7, require_strong_password: false },
 };
 
-export default function OrganizationSettings() {
+export default function OrganizationSettings({ readOnly = false }) {
   // Resolve org id after mount to avoid a hydration mismatch.
   const [orgId, setOrgId] = useState(null);
   const [orgReady, setOrgReady] = useState(false);
@@ -81,7 +81,7 @@ export default function OrganizationSettings() {
   };
 
   const save = async () => {
-    if (!orgId) return;
+    if (!orgId || readOnly) return;
     setSaving(true);
     try {
       const { error } = await supabase.from("organizations").update({
@@ -107,7 +107,16 @@ export default function OrganizationSettings() {
   const inputCls = "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30";
 
   return (
-    <div className="space-y-5">
+    <fieldset disabled={readOnly} className="m-0 min-w-0 space-y-5 border-0 p-0">
+      {readOnly && (
+        <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm text-foreground">
+          <Lock className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+          <p>
+            <span className="font-semibold">View-only.</span> Only the organization
+            Owner can change these settings.
+          </p>
+        </div>
+      )}
       {/* Company profile */}
       <section className="rounded-xl border border-border bg-card p-6 shadow-card">
         <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-foreground"><Building2 className="h-4 w-4 text-primary" /> Company Profile</h3>
@@ -196,14 +205,16 @@ export default function OrganizationSettings() {
         </div>
       </section>
 
-      <div className="flex justify-end">
-        <button onClick={save} disabled={saving}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          {saving ? "Saving…" : "Save changes"}
-        </button>
-      </div>
-    </div>
+      {!readOnly && (
+        <div className="flex justify-end">
+          <button onClick={save} disabled={saving}
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {saving ? "Saving…" : "Save changes"}
+          </button>
+        </div>
+      )}
+    </fieldset>
   );
 }
 

@@ -31,6 +31,75 @@ export default function AdminRegistration() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const router = useRouter();
 
+  // "create" = start a new organization (owner). "join" = accept an emailed
+  // invite code and join an existing organization with the invited role.
+  const [mode, setMode] = useState("create");
+  const [joinData, setJoinData] = useState({
+    token: "",
+    fullName: "",
+    password: "",
+    confirmPassword: "",
+  });
+  const [joinLoading, setJoinLoading] = useState(false);
+
+  const handleJoinChange = (field, value) => {
+    const v = field === "token" ? value.trim() : sanitizeInput(value);
+    setJoinData((prev) => ({ ...prev, [field]: v }));
+    if (errors[field]) setErrors((prev) => ({ ...prev, [field]: "" }));
+  };
+
+  const switchMode = (next) => {
+    setMode(next);
+    setErrors({});
+  };
+
+  const handleJoin = async (e) => {
+    e.preventDefault();
+    setErrors({});
+
+    const token = joinData.token.trim();
+    if (!token) return setErrors({ token: "Invite code is required" });
+    if (!joinData.fullName || !joinData.fullName.trim())
+      return setErrors({ fullName: "Full name is required" });
+    if (!validatePassword(joinData.password).isValid)
+      return setErrors({ password: "Password does not meet requirements" });
+    if (joinData.password !== joinData.confirmPassword)
+      return setErrors({ confirmPassword: "Passwords do not match" });
+
+    setJoinLoading(true);
+    try {
+      // Reuse the secure server-side accept endpoint: it validates the invite
+      // token, creates the profile + membership + Supabase Auth account with the
+      // role the admin assigned, and links the org. No open self-serve join.
+      const res = await fetch("/api/invitations/accept", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token,
+          fullName: joinData.fullName.trim(),
+          password: joinData.password,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Could not join. Please check your invite code.");
+      }
+
+      const roleWord = data.role
+        ? data.role.charAt(0).toUpperCase() + data.role.slice(1)
+        : "member";
+      showSuccess(
+        "You're in!",
+        `Your ${roleWord} account is ready. Please sign in to continue.`
+      );
+      router.push("/login");
+    } catch (err) {
+      setErrors({ general: err.message });
+    } finally {
+      setJoinLoading(false);
+    }
+  };
+
   const handleGoToHome = () => {
     router.push("/");
   };
@@ -315,8 +384,20 @@ export default function AdminRegistration() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.964-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
             </svg>
           </div>
-          <h1>{step === 1 ? "Create Admin Access" : "Verify Email"}</h1>
-          <p>{step === 1 ? "Set up your workspace access for the tracking dashboard." : "We sent a verification code to your inbox."}</p>
+          <h1>
+            {step === 2
+              ? "Verify Email"
+              : mode === "join"
+              ? "Join an Organization"
+              : "Create Admin Access"}
+          </h1>
+          <p>
+            {step === 2
+              ? "We sent a verification code to your inbox."
+              : mode === "join"
+              ? "Enter the invite code your organization sent you."
+              : "Set up your workspace access for the tracking dashboard."}
+          </p>
         </div>
 
 
@@ -331,6 +412,24 @@ export default function AdminRegistration() {
         )}
 
         {step === 1 ? (
+          <>
+          <div className="auth-role-wrap">
+            <button
+              type="button"
+              onClick={() => switchMode("create")}
+              className={`auth-role-btn ${mode === "create" ? "active" : "inactive"}`}
+            >
+              Create organization
+            </button>
+            <button
+              type="button"
+              onClick={() => switchMode("join")}
+              className={`auth-role-btn ${mode === "join" ? "active" : "inactive"}`}
+            >
+              Join with code
+            </button>
+          </div>
+          {mode === "create" ? (
           <form onSubmit={handleRegister}>
             <div className="auth-field">
               <label className="auth-label">Full Name</label>
@@ -505,6 +604,123 @@ export default function AdminRegistration() {
               {loading ? <><span className="auth-spinner" />Processing...</> : "Register Account"}
             </button>
           </form>
+          ) : (
+          <form onSubmit={handleJoin}>
+            <div className="auth-info-box">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <p>Paste the invite code from the email your organization sent you.</p>
+            </div>
+
+            <div className="auth-field">
+              <label className="auth-label">Invite Code</label>
+              <div className="auth-input-wrap">
+                <span className="auth-input-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
+                  </svg>
+                </span>
+                <input
+                  type="text"
+                  placeholder="e.g. 3f9c2a10-…"
+                  value={joinData.token}
+                  onChange={(e) => handleJoinChange('token', e.target.value)}
+                  className={`auth-input ${errors.token ? 'error' : ''}`}
+                  required
+                />
+              </div>
+              {errors.token && <div className="auth-field-error">{errors.token}</div>}
+            </div>
+
+            <div className="auth-field">
+              <label className="auth-label">Full Name</label>
+              <div className="auth-input-wrap">
+                <span className="auth-input-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                  </svg>
+                </span>
+                <input
+                  type="text"
+                  placeholder="John Doe"
+                  value={joinData.fullName}
+                  onChange={(e) => handleJoinChange('fullName', e.target.value)}
+                  className={`auth-input ${errors.fullName ? 'error' : ''}`}
+                  required
+                />
+              </div>
+              {errors.fullName && <div className="auth-field-error">{errors.fullName}</div>}
+            </div>
+
+            <div className="auth-field">
+              <label className="auth-label">Password</label>
+              <div className="auth-input-wrap">
+                <span className="auth-input-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                  </svg>
+                </span>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Min. 8 characters"
+                  value={joinData.password}
+                  onChange={(e) => handleJoinChange('password', e.target.value)}
+                  className={`auth-input ${errors.password ? 'error' : ''}`}
+                  style={{ paddingRight: '2.75rem' }}
+                  required
+                />
+                <button type="button" className="auth-eye-btn" onClick={() => setShowPassword(!showPassword)}>
+                  {showPassword ? (
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>
+                  ) : (
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                  )}
+                </button>
+              </div>
+              {joinData.password && (
+                <div className="auth-pw-reqs">
+                  <div className={`auth-pw-req ${validatePassword(joinData.password).requirements.minLength ? 'met' : 'unmet'}`}><div className="auth-pw-req-dot" />8+ chars</div>
+                  <div className={`auth-pw-req ${validatePassword(joinData.password).requirements.hasUpperCase ? 'met' : 'unmet'}`}><div className="auth-pw-req-dot" />Uppercase</div>
+                  <div className={`auth-pw-req ${validatePassword(joinData.password).requirements.hasLowerCase ? 'met' : 'unmet'}`}><div className="auth-pw-req-dot" />Lowercase</div>
+                  <div className={`auth-pw-req ${validatePassword(joinData.password).requirements.hasNumbers ? 'met' : 'unmet'}`}><div className="auth-pw-req-dot" />Number</div>
+                  <div className={`auth-pw-req ${validatePassword(joinData.password).requirements.hasSpecialChar ? 'met' : 'unmet'}`}><div className="auth-pw-req-dot" />Special</div>
+                </div>
+              )}
+            </div>
+
+            <div className="auth-field">
+              <label className="auth-label">Confirm Password</label>
+              <div className="auth-input-wrap">
+                <span className="auth-input-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                  </svg>
+                </span>
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  placeholder="Repeat password"
+                  value={joinData.confirmPassword}
+                  onChange={(e) => handleJoinChange('confirmPassword', e.target.value)}
+                  className={`auth-input ${errors.confirmPassword ? 'error' : ''}`}
+                  style={{ paddingRight: '2.75rem' }}
+                  required
+                />
+                <button type="button" className="auth-eye-btn" onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
+                  {showConfirmPassword ? (
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>
+                  ) : (
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                  )}
+                </button>
+              </div>
+              {errors.confirmPassword && <div className="auth-field-error">{errors.confirmPassword}</div>}
+            </div>
+
+            <button type="submit" disabled={joinLoading} className="auth-submit-btn">
+              {joinLoading ? <><span className="auth-spinner" />Joining...</> : "Join Organization"}
+            </button>
+          </form>
+          )}
+          </>
         ) : (
           <form onSubmit={verifyCodeAndRegister}>
             <div className="auth-info-box">
