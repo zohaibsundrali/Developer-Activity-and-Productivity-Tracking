@@ -16,6 +16,17 @@
 --  FORMAT NOTE: one statement per physical line, no DO/$$ blocks — the
 --  target SQL editor splits input on newlines and semicolons.
 --
+--  IMPORTANT: the Supabase SQL editor runs the whole script in ONE
+--  TRANSACTION. A single failing statement rolls the entire migration back, so
+--  every table referenced below must exist. Confirmed present via pg_policies;
+--  `developer_activities` does NOT exist in this database and is deliberately
+--  absent from this file.
+--
+--  Several permissive policies were created by hand in the Supabase dashboard
+--  and appear in no migration file (developer_sessions, the extra keyboard_stats
+--  and screenshots read policies, browser_usage.track_insert). They were found
+--  by querying pg_policies against the live database and are dropped here.
+--
 --  SAFETY: verified that no browser-side code writes to the tracking
 --  tables, activity_logs or admin_reviews (all writes go through
 --  service-role API routes, which bypass RLS). Browser writes to
@@ -34,6 +45,14 @@ drop policy if exists "Allow all access to task_submissions" on public.task_subm
 drop policy if exists "Allow all access to productivity_metrics" on public.productivity_metrics;
 drop policy if exists "Allow all access to activity_logs" on public.activity_logs;
 drop policy if exists "Allow all access to admin_reviews" on public.admin_reviews;
+
+-- Dashboard-created permissive policies found on the live database. Each one
+-- granted read (or read+write) to PUBLIC, which includes the anon key that ships
+-- in the browser bundle.
+drop policy if exists "Allow all operations" on public.developer_sessions;
+drop policy if exists "Allow public read access on keyboard_stats" on public.keyboard_stats;
+drop policy if exists "Allow read access" on public.keyboard_stats;
+drop policy if exists "Allow reading screenshots" on public.screenshots;
 
 -- ---------------------------------------------------------------------
 -- 2) activity_logs + admin_reviews never had an org policy at all.
@@ -155,8 +174,20 @@ drop policy if exists track_insert on public.screenshots;
 create policy track_insert on public.screenshots for insert to authenticated with check (organization_id = public.auth_org() and not public.auth_is_client());
 drop policy if exists track_insert on public.developer_logins;
 create policy track_insert on public.developer_logins for insert to authenticated with check (organization_id = public.auth_org() and not public.auth_is_client());
-drop policy if exists track_insert on public.developer_activities;
-create policy track_insert on public.developer_activities for insert to authenticated with check (organization_id = public.auth_org() and not public.auth_is_client());
+drop policy if exists track_insert on public.browser_usage;
+create policy track_insert on public.browser_usage for insert to authenticated with check (organization_id = public.auth_org() and not public.auth_is_client());
+
+-- NOTE: `developer_activities` is intentionally absent — the table does not
+-- exist in this database. /api/track-activity writes only there, so that route
+-- has been returning 500 on every call; nothing in the codebase reads the table.
+
+-- ---------------------------------------------------------------------
+-- 11) developer_sessions — an orphan table: referenced nowhere in the
+--     application or in any migration, yet it carried a fully open
+--     "Allow all operations" policy. RLS stays enabled with no policy, so
+--     access is denied by default. Add a policy here if it ever gains a use.
+-- ---------------------------------------------------------------------
+alter table public.developer_sessions enable row level security;
 
 -- =====================================================================
 -- Verify after applying — all three should return zero rows:
