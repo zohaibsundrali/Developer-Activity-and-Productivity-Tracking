@@ -25,19 +25,12 @@ begin;
 alter table public.developer_tasks
   add column if not exists task_type text default 'feature';
 
--- Add the CHECK only if it isn't already present (idempotent re-run safe).
-do $$
-begin
-  if not exists (
-    select 1 from pg_constraint
-    where conrelid = 'public.developer_tasks'::regclass
-      and conname  = 'developer_tasks_task_type_check'
-  ) then
-    alter table public.developer_tasks
-      add constraint developer_tasks_task_type_check
-      check (task_type in ('feature','bug','improvement','research','documentation','story'));
-  end if;
-end $$;
+-- Idempotent re-run safe: drop-if-exists then add (no PL/pgSQL needed).
+alter table public.developer_tasks
+  drop constraint if exists developer_tasks_task_type_check;
+alter table public.developer_tasks
+  add constraint developer_tasks_task_type_check
+  check (task_type in ('feature','bug','improvement','research','documentation','story'));
 
 -- ---------------------------------------------------------------------
 -- 2) Generic PM activity feed (task history + project activity timeline).
@@ -82,62 +75,36 @@ create index if not exists idx_time_logs_dev  on public.task_time_logs(developer
 create index if not exists idx_time_logs_proj on public.task_time_logs(project_id);
 
 -- ---------------------------------------------------------------------
--- 4) Widen notifications.type CHECK to cover PM/automation categories.
---    Drop the existing type CHECK (identified by it mentioning
---    'task_submitted', which only the type enum does) and re-add the
---    superset. Existing values are all preserved.
+-- 4) Widen notification categories — plain SQL (no PL/pgSQL, so SQL editors
+--    that split on ';' can't break it). The old inline CHECK blocked new
+--    types AND was violated by an existing production value, so we simply
+--    DROP the restrictive check; the app layer validates `type`. (A widened
+--    CHECK can be re-added later once the legacy values are reconciled.)
 -- ---------------------------------------------------------------------
-do $$
-declare c record;
-begin
-  if to_regclass('public.notifications') is not null then
-    for c in
-      select con.conname
-      from pg_constraint con
-      join pg_class rel on rel.oid = con.conrelid
-      join pg_namespace ns on ns.oid = rel.relnamespace
-      where ns.nspname = 'public' and rel.relname = 'notifications' and con.contype = 'c'
-        and pg_get_constraintdef(con.oid) ilike '%task_submitted%'
-    loop
-      execute format('alter table public.notifications drop constraint %I', c.conname);
-    end loop;
-
-    if not exists (
-      select 1 from pg_constraint
-      where conrelid = 'public.notifications'::regclass
-        and conname  = 'notifications_type_check'
-    ) then
-      alter table public.notifications
-        add constraint notifications_type_check
-        check (type in (
-          -- existing categories
-          'task_submitted','task_approved','task_rejected','project_assigned',
-          'deadline_reminder','productivity_alert','file_uploaded','review_required',
-          -- new PM / automation categories
-          'task_comment','task_mention','task_assigned','due_reminder',
-          'automation','task_updated','sprint_update'
-        ));
-    end if;
-  end if;
-end $$;
+alter table public.notifications drop constraint if exists notifications_type_check;
 
 -- ---------------------------------------------------------------------
 -- 5) stamp_org trigger + RLS on the two new tables (non-clients full org
 --    access; clients denied — identical posture to the 016 PM tables).
+--    Written out per-table as plain SQL (no DO loop).
 -- ---------------------------------------------------------------------
-do $$
-declare t text;
-begin
-  foreach t in array array['pm_activity','task_time_logs'] loop
-    execute format('drop trigger if exists trg_stamp_org on public.%I', t);
-    execute format('create trigger trg_stamp_org before insert on public.%I for each row execute function public.stamp_org()', t);
-    execute format('alter table public.%I enable row level security', t);
-    execute format('drop policy if exists org_isolation on public.%I', t);
-    execute format($f$create policy org_isolation on public.%I for all to authenticated
-      using (organization_id = public.auth_org() and not public.auth_is_client())
-      with check (organization_id = public.auth_org() and not public.auth_is_client())$f$, t);
-  end loop;
-end $$;
+drop trigger if exists trg_stamp_org on public.pm_activity;
+create trigger trg_stamp_org before insert on public.pm_activity
+  for each row execute function public.stamp_org();
+alter table public.pm_activity enable row level security;
+drop policy if exists org_isolation on public.pm_activity;
+create policy org_isolation on public.pm_activity for all to authenticated
+  using (organization_id = public.auth_org() and not public.auth_is_client())
+  with check (organization_id = public.auth_org() and not public.auth_is_client());
+
+drop trigger if exists trg_stamp_org on public.task_time_logs;
+create trigger trg_stamp_org before insert on public.task_time_logs
+  for each row execute function public.stamp_org();
+alter table public.task_time_logs enable row level security;
+drop policy if exists org_isolation on public.task_time_logs;
+create policy org_isolation on public.task_time_logs for all to authenticated
+  using (organization_id = public.auth_org() and not public.auth_is_client())
+  with check (organization_id = public.auth_org() and not public.auth_is_client());
 
 commit;
 

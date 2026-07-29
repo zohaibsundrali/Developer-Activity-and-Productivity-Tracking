@@ -24,6 +24,35 @@ export const TASK_TYPES = ["feature", "bug", "improvement", "research", "documen
 
 export const SPRINT_STATUS = ["planned", "active", "completed"];
 
+// The multiple-view types (ClickUp-style). 'kanban' reuses the board columns.
+export const VIEW_TYPES = ["kanban", "list", "table", "calendar", "timeline", "workload"];
+
+// Canonical column metadata (shared by every view for consistent labels/tones).
+export const STATUS_META = {
+  pending: { label: "To Do", tone: "muted" },
+  in_progress: { label: "In Progress", tone: "info" },
+  awaiting_approval: { label: "In Review", tone: "warning" },
+  completed: { label: "Done", tone: "success" },
+};
+
+// Map any off-pipeline status onto one of the visible board columns.
+const STATUS_ALIAS = {
+  reviewed: "awaiting_approval",
+  in_review: "awaiting_approval",
+  rejected: "pending",
+  todo: "pending",
+  open: "pending",
+  doing: "in_progress",
+  done: "completed",
+  approved: "completed",
+};
+const COLUMN_ID_SET = new Set(BOARD_COLUMNS.map((c) => c.id));
+export function normalizeStatus(status) {
+  if (status && COLUMN_ID_SET.has(status)) return status;
+  if (status && STATUS_ALIAS[status]) return STATUS_ALIAS[status];
+  return "pending";
+}
+
 // ---- Tasks -----------------------------------------------------------
 export async function loadTasks(projectId) {
   let q = supabase
@@ -58,17 +87,33 @@ export async function createTask(projectId, patch) {
   return { task: data, error };
 }
 
-export async function updateTask(taskId, patch) {
+// updateTask(taskId, patch, logCtx?) — logCtx is optional; when provided
+// ({ projectId, action, meta }) an entry is written to the pm_activity feed.
+// Callers that omit logCtx behave exactly as before (no logging).
+export async function updateTask(taskId, patch, logCtx = null) {
   const { error } = await supabase
     .from("developer_tasks")
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq("id", taskId);
+  if (!error && logCtx) {
+    try {
+      await logActivity({
+        projectId: logCtx.projectId || null,
+        entityType: "task",
+        entityId: taskId,
+        action: logCtx.action || "updated",
+        meta: logCtx.meta || {},
+      });
+    } catch {
+      /* activity logging is best-effort */
+    }
+  }
   return { error };
 }
 
 // Move a task to a new status column / position (Kanban drag-drop).
-export async function moveTask(taskId, { status, position }) {
-  return updateTask(taskId, { status, position });
+export async function moveTask(taskId, { status, position }, logCtx = null) {
+  return updateTask(taskId, { status, position }, logCtx);
 }
 
 // ---- Sprints & Epics -------------------------------------------------
@@ -201,8 +246,8 @@ export async function assignTaskToSprint(taskId, sprintId) {
 export async function setTaskEpic(taskId, epicId) {
   return updateTask(taskId, { epic_id: epicId || null });
 }
-export async function setTaskType(taskId, taskType) {
-  return updateTask(taskId, { task_type: taskType || "feature" });
+export async function setTaskType(taskId, taskType, logCtx = null) {
+  return updateTask(taskId, { task_type: taskType || "feature" }, logCtx);
 }
 export async function setStoryPoints(taskId, points) {
   const n = points === "" || points == null ? null : Number(points);
@@ -264,6 +309,44 @@ export function computeBurndown(sprint, tasks) {
   return { days, ideal, actual, totalPoints };
 }
 
+// ---- Saved views (saved_views, 016) -------------------------------------
+export async function loadSavedViews(projectId) {
+  const orgId = getOrgId();
+  let q = supabase.from("saved_views").select("*").eq("organization_id", orgId).order("created_at");
+  if (projectId) q = q.eq("project_id", projectId);
+  const { data } = await q;
+  return data || [];
+}
+export async function saveView(projectId, { id, name, view_type = "kanban", config = {}, is_shared = false }) {
+  const orgId = getOrgId();
+  const ctx = getOrgContext();
+  if (id) {
+    const { error } = await supabase
+      .from("saved_views")
+      .update({ name, view_type, config, is_shared })
+      .eq("id", id);
+    return { error };
+  }
+  const { data, error } = await supabase
+    .from("saved_views")
+    .insert({
+      organization_id: orgId,
+      project_id: projectId,
+      user_id: ctx?.userId || null,
+      name,
+      view_type,
+      config,
+      is_shared,
+    })
+    .select()
+    .single();
+  return { view: data, error };
+}
+export async function deleteView(id) {
+  const { error } = await supabase.from("saved_views").delete().eq("id", id);
+  return { error };
+}
+
 // ---- Activity feed (pm_activity, 017) -----------------------------------
 export async function logActivity({ projectId, entityType, entityId, action, meta = {} }) {
   const orgId = getOrgId();
@@ -289,6 +372,179 @@ export async function loadActivity({ projectId, entityType, entityId, limit = 50
   if (entityId) q = q.eq("entity_id", entityId);
   const { data } = await q;
   return data || [];
+}
+
+// ---- Project labels (project_labels, 016) ---------------------------------
+export async function loadLabels(projectId) {
+  const orgId = getOrgId();
+  let q = supabase.from("project_labels").select("*").eq("organization_id", orgId).order("name");
+  if (projectId) q = q.eq("project_id", projectId);
+  const { data } = await q;
+  return data || [];
+}
+export async function createLabel(projectId, { name, color = "#6C82FF" }) {
+  const orgId = getOrgId();
+  const { data, error } = await supabase
+    .from("project_labels")
+    .insert({ organization_id: orgId, project_id: projectId, name, color })
+    .select()
+    .single();
+  return { label: data, error };
+}
+export async function deleteLabel(id) {
+  const { error } = await supabase.from("project_labels").delete().eq("id", id);
+  return { error };
+}
+// Task labels live on developer_tasks.labels (text[]); this just persists them.
+export async function setTaskLabels(taskId, labels, logCtx = null) {
+  return updateTask(taskId, { labels: labels || [] }, logCtx);
+}
+
+// ---- Custom fields (project_custom_fields, 016) ---------------------------
+export async function loadCustomFields(projectId) {
+  const orgId = getOrgId();
+  let q = supabase.from("project_custom_fields").select("*").eq("organization_id", orgId).order("sort_order");
+  if (projectId) q = q.eq("project_id", projectId);
+  const { data } = await q;
+  return data || [];
+}
+export async function createCustomField(projectId, { name, field_type = "text", options = [] }) {
+  const orgId = getOrgId();
+  const { data, error } = await supabase
+    .from("project_custom_fields")
+    .insert({ organization_id: orgId, project_id: projectId, name, field_type, options })
+    .select()
+    .single();
+  return { field: data, error };
+}
+export async function deleteCustomField(id) {
+  const { error } = await supabase.from("project_custom_fields").delete().eq("id", id);
+  return { error };
+}
+// Custom-field values live on developer_tasks.custom_fields (jsonb, keyed by field id).
+export async function setTaskCustomFields(taskId, customFields, logCtx = null) {
+  return updateTask(taskId, { custom_fields: customFields || {} }, logCtx);
+}
+
+// ---- Recurring config (developer_tasks.is_recurring / recurrence) ----------
+// Config only; actual spawning is handled by the automation scheduler (Phase E).
+export async function setRecurring(taskId, { is_recurring, recurrence }, logCtx = null) {
+  return updateTask(taskId, { is_recurring: !!is_recurring, recurrence: recurrence || {} }, logCtx);
+}
+
+// ---- Milestones / phases (milestones, 014) --------------------------------
+export const MILESTONE_STATUS = ["pending", "in_progress", "completed"];
+export async function loadMilestones(projectId) {
+  const orgId = getOrgId();
+  const { data } = await supabase
+    .from("milestones")
+    .select("*")
+    .eq("organization_id", orgId)
+    .eq("project_id", projectId)
+    .order("sort_order", { ascending: true })
+    .order("due_date", { ascending: true, nullsFirst: false });
+  return data || [];
+}
+export async function saveMilestone(projectId, patch) {
+  const orgId = getOrgId();
+  if (patch.id) {
+    const { id, ...rest } = patch;
+    const { error } = await supabase
+      .from("milestones")
+      .update({ ...rest, updated_at: new Date().toISOString() })
+      .eq("id", id);
+    if (!error) await logActivity({ projectId, entityType: "milestone", entityId: id, action: "updated", meta: { title: patch.title } });
+    return { error };
+  }
+  const { data, error } = await supabase
+    .from("milestones")
+    .insert({ organization_id: orgId, project_id: projectId, ...patch })
+    .select()
+    .single();
+  if (!error && data) await logActivity({ projectId, entityType: "milestone", entityId: data.id, action: "created", meta: { title: data.title } });
+  return { milestone: data, error };
+}
+export async function deleteMilestone(id) {
+  const { error } = await supabase.from("milestones").delete().eq("id", id);
+  return { error };
+}
+
+// ---- Project templates (projects.is_template + clone) ----------------------
+export async function setProjectTemplate(projectId, isTemplate) {
+  const { error } = await supabase.from("projects").update({ is_template: !!isTemplate }).eq("id", projectId);
+  return { error };
+}
+// Clone a project (and optionally its tasks) into a fresh project. Tasks are
+// copied with status reset to 'pending' and their PM fields preserved.
+export async function cloneProject(sourceProjectId, newName, { copyTasks = true } = {}) {
+  const orgId = getOrgId();
+  const { data: src, error: srcErr } = await supabase
+    .from("projects")
+    .select("*")
+    .eq("id", sourceProjectId)
+    .single();
+  if (srcErr || !src) return { error: srcErr || new Error("Source project not found") };
+
+  const today = new Date().toISOString().slice(0, 10);
+  const {
+    id, created_at, updated_at, // stripped
+    name, status, progress, total_tasks_count, completed_tasks_count, total_productivity_score,
+    task_plan_submitted, task_plan_status, task_plan_submitted_at, task_plan_reviewed_at,
+    task_plan_reviewed_by, task_plan_rejection_reason,
+    ...carry
+  } = src;
+  const insertRow = {
+    ...carry,
+    organization_id: orgId,
+    name: newName || `${name} (copy)`,
+    status: "pending",
+    progress: 0,
+    is_template: false,
+    archived: false,
+    created_at: new Date().toISOString(),
+  };
+  const { data: proj, error: projErr } = await supabase.from("projects").insert(insertRow).select().single();
+  if (projErr || !proj) return { error: projErr || new Error("Clone failed") };
+
+  if (copyTasks) {
+    const { data: srcTasks } = await supabase.from("developer_tasks").select("*").eq("project_id", sourceProjectId);
+    const rows = (srcTasks || []).map((t) => {
+      const { id: _i, created_at: _c, updated_at: _u, submitted_at, reviewed_at, reviewed_by,
+        actual_completion_date, admin_comments, rejection_reason, is_on_time, productivity_points,
+        ...keep } = t;
+      return {
+        ...keep,
+        organization_id: orgId,
+        project_id: proj.id,
+        status: "pending",
+        start_date: t.start_date || today,
+        end_date: t.end_date || today,
+        created_at: new Date().toISOString(),
+      };
+    });
+    if (rows.length) await supabase.from("developer_tasks").insert(rows);
+  }
+  await logActivity({ projectId: proj.id, entityType: "project", entityId: proj.id, action: "created", meta: { clonedFrom: sourceProjectId, name: insertRow.name } });
+  return { project: proj, error: null };
+}
+
+// ---- Project health (derived, no I/O) -------------------------------------
+// Computes progress %, counts and a simple risk flag from a task array + project.
+export function computeProjectHealth(project, tasks) {
+  const list = tasks || [];
+  const total = list.length;
+  const done = list.filter((t) => DONE_STATUSES.has(t.status)).length;
+  const inProgress = list.filter((t) => t.status === "in_progress").length;
+  const today = ymd(new Date());
+  const overdue = list.filter(
+    (t) => !DONE_STATUSES.has(t.status) && (t.due_date || t.end_date) && ymd(t.due_date || t.end_date) < today
+  ).length;
+  const progress = total ? Math.round((done / total) * 100) : (project?.progress || 0);
+  const deadline = project?.end_date || project?.deadline || null;
+  const deadlinePassed = deadline ? ymd(deadline) < today && progress < 100 : false;
+  // risk: overdue tasks, or deadline passed while incomplete
+  const risk = deadlinePassed || overdue > 0 ? (deadlinePassed || overdue > 2 ? "high" : "medium") : "low";
+  return { total, done, inProgress, overdue, progress, deadline, deadlinePassed, risk };
 }
 
 // Upload a task attachment to the private `task-submissions` bucket (already used

@@ -17,13 +17,17 @@ import {
   BarChart3,
   LayoutGrid,
   Rocket,
+  Columns3,
+  Gauge,
 } from "lucide-react";
 
 // Admin sidebar items — ids MUST match the ?section= switch in the admin dashboard.
 export const ADMIN_NAV = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "all-projects", label: "All Projects", icon: FolderKanban },
+  { id: "project-hub", label: "Project Hub", icon: Gauge },
   { id: "board", label: "Board", icon: LayoutGrid },
+  { id: "views", label: "Views", icon: Columns3 },
   { id: "sprints", label: "Sprints", icon: Rocket },
   { id: "task-reviews", label: "Task Reviews", icon: ClipboardCheck },
   { id: "developer-activity", label: "Developer Activity", icon: Activity },
@@ -64,7 +68,9 @@ export const EMPLOYEE_NAV = [
 export const ADMIN_SECTION_ROLES = {
   overview: null,
   "all-projects": ["owner", "admin"],
+  "project-hub": ["owner", "admin", "manager", "team_lead"],
   board: ["owner", "admin"],
+  views: ["owner", "admin", "manager", "team_lead"],
   sprints: ["owner", "admin", "manager", "team_lead"],
   "task-reviews": ["owner", "admin"],
   "developer-activity": ["owner", "admin"],
@@ -111,7 +117,9 @@ export const CLIENT_NAV = [
 export const SECTION_TITLES = {
   overview: { admin: "Dashboard Overview", developer: "Dashboard", client: "Overview" },
   "all-projects": { admin: "All Projects" },
+  "project-hub": { admin: "Project Hub" },
   board: { admin: "Project Board" },
+  views: { admin: "Project Views" },
   sprints: { admin: "Sprints & Agile" },
   "task-reviews": { admin: "Task Reviews" },
   "developer-activity": { admin: "Developer Activity" },
