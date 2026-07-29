@@ -16,6 +16,7 @@ import {
   Contact,
   BarChart3,
   LayoutGrid,
+  Rocket,
 } from "lucide-react";
 
 // Admin sidebar items — ids MUST match the ?section= switch in the admin dashboard.
@@ -23,6 +24,7 @@ export const ADMIN_NAV = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "all-projects", label: "All Projects", icon: FolderKanban },
   { id: "board", label: "Board", icon: LayoutGrid },
+  { id: "sprints", label: "Sprints", icon: Rocket },
   { id: "task-reviews", label: "Task Reviews", icon: ClipboardCheck },
   { id: "developer-activity", label: "Developer Activity", icon: Activity },
   { id: "add-developer", label: "Add Developer", icon: UserPlus },
@@ -63,6 +65,7 @@ export const ADMIN_SECTION_ROLES = {
   overview: null,
   "all-projects": ["owner", "admin"],
   board: ["owner", "admin"],
+  sprints: ["owner", "admin", "manager", "team_lead"],
   "task-reviews": ["owner", "admin"],
   "developer-activity": ["owner", "admin"],
   "add-developer": ["owner", "admin", "hr"],
@@ -109,6 +112,7 @@ export const SECTION_TITLES = {
   overview: { admin: "Dashboard Overview", developer: "Dashboard", client: "Overview" },
   "all-projects": { admin: "All Projects" },
   board: { admin: "Project Board" },
+  sprints: { admin: "Sprints & Agile" },
   "task-reviews": { admin: "Task Reviews" },
   "developer-activity": { admin: "Developer Activity" },
   "add-developer": { admin: "Add Developer" },

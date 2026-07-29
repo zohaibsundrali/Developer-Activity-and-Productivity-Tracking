@@ -17,6 +17,7 @@ import ClientManagement from "@/components/admin/ClientManagement";
 import EmployeeDirectory from "@/components/admin/EmployeeDirectory";
 import TeamStats from "@/components/admin/TeamStats";
 import ProjectBoard from "@/components/admin/ProjectBoard";
+import AgileWorkspace from "@/components/admin/AgileWorkspace";
 import { isSessionExpired, clearAdminSession } from "@/utils/sessionPolicy";
 
 // Authentication check function for admin
@@ -416,6 +417,8 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
         return <AllProjects {...contentProps} />;
       case "board":
         return <ProjectBoard />;
+      case "sprints":
+        return <AgileWorkspace />;
       case "add-developer":
         return <AddDeveloper {...contentProps} />;
       case "developer-activity":
