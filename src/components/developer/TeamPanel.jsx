@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/utils/supabaseClient";
-import { getOrgId } from "@/utils/orgContext";
+import { getOrgId, getOrgContext } from "@/utils/orgContext";
 import StatCard from "@/components/shell/StatCard";
 import {
   Users,
@@ -41,11 +41,13 @@ export default function TeamPanel() {
   const [members, setMembers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [error, setError] = useState("");
+  const [myUserId, setMyUserId] = useState(null);
 
   const fetchTeam = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
+      setMyUserId(getOrgContext()?.userId || null);
       const orgId = getOrgId();
       if (!orgId) {
         setError("No organization context found for your account.");
@@ -57,7 +59,7 @@ export default function TeamPanel() {
       // Team members for this org (exclude clients — they are not staff).
       const { data: memberRows } = await supabase
         .from("memberships")
-        .select("id, user_id, user_type, email, role, team_id, department_id, status")
+        .select("id, user_id, user_type, email, role, team_id, department_id, status, reports_to")
         .eq("organization_id", orgId)
         .neq("user_type", "client");
 
@@ -82,6 +84,8 @@ export default function TeamPanel() {
           profile?.full_name || profile?.name || (m.email ? m.email.split("@")[0] : "Member");
         return {
           id: m.id,
+          userId: m.user_id,
+          reportsTo: m.reports_to || null,
           name,
           email: profile?.email || m.email || "",
           role: m.role || m.user_type || "developer",
@@ -117,6 +121,8 @@ export default function TeamPanel() {
   }, [fetchTeam]);
 
   const activeCount = members.filter((m) => m.status === "active").length;
+  // Direct reports = staff whose reporting manager is the current user.
+  const myReports = myUserId ? members.filter((m) => m.reportsTo && m.reportsTo === myUserId) : [];
 
   if (loading) {
     return (
@@ -131,6 +137,28 @@ export default function TeamPanel() {
 
   return (
     <div className="space-y-6">
+      {/* Direct reports — only shown to a supervisor who has assigned reports. */}
+      {myReports.length > 0 && (
+        <div className="rounded-xl border border-primary/30 bg-primary/5 p-5 shadow-card">
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
+            <ShieldCheck className="h-[18px] w-[18px] text-primary" />
+            Your direct reports ({myReports.length})
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            {myReports.map((m) => (
+              <span key={m.id}
+                className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
+                  {(m.name || "U").charAt(0).toUpperCase()}
+                </span>
+                {m.name}
+                <span className="text-muted-foreground">· {pretty(m.role)}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Summary tiles */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard title="Team members" value={members.length} icon={Users} tone="primary" />

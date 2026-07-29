@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 import AppShell from "@/components/shell/AppShell";
-import { ADMIN_NAV, sectionTitle } from "@/components/shell/navConfig";
+import { adminNavFor, canAccessAdminSection, sectionTitle } from "@/components/shell/navConfig";
 import NotificationDropdown from "@/components/admin/NotificationDropdown";
 import DashboardOverview from "@/components/admin/DashboardOverview";
 import AllProjects from "@/components/admin/AllProjects";
@@ -14,6 +14,9 @@ import TaskReviewPanel from "@/components/admin/TaskReviewPanel";
 import ProductivityDashboard from "@/components/admin/ProductivityDashboard";
 import OrganizationManagement from "@/components/admin/OrganizationManagement";
 import ClientManagement from "@/components/admin/ClientManagement";
+import EmployeeDirectory from "@/components/admin/EmployeeDirectory";
+import TeamStats from "@/components/admin/TeamStats";
+import ProjectBoard from "@/components/admin/ProjectBoard";
 import { isSessionExpired, clearAdminSession } from "@/utils/sessionPolicy";
 
 // Authentication check function for admin
@@ -401,9 +404,18 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
       onLogout: handleLogout
     };
 
+    // Per-role guard: a section the role can't access falls back to Overview
+    // (defense-in-depth — blocks access via a hand-edited ?section= URL too).
+    const role = user?.membership_role || "admin";
+    if (!canAccessAdminSection(activeSection, role)) {
+      return <DashboardOverview {...contentProps} />;
+    }
+
     switch (activeSection) {
       case "all-projects":
         return <AllProjects {...contentProps} />;
+      case "board":
+        return <ProjectBoard />;
       case "add-developer":
         return <AddDeveloper {...contentProps} />;
       case "developer-activity":
@@ -412,6 +424,10 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
         return <ViewDevelopers {...contentProps} />;
       case "task-reviews":
         return <TaskReviewPanel currentAdmin={user} />;
+      case "employees":
+        return <EmployeeDirectory />;
+      case "team-stats":
+        return <TeamStats />;
       case "organization":
         return <OrganizationManagement />;
       case "clients":
@@ -446,11 +462,13 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
     router.push(`/admin/dashboard?section=${sectionId}`);
   };
 
+  const role = user?.membership_role || "admin";
+
   return (
     <AppShell
       role="admin"
       brandName="DevTrack"
-      navItems={ADMIN_NAV}
+      navItems={adminNavFor(role)}
       activeSection={activeSection}
       onNavigate={handleNavigate}
       user={user}

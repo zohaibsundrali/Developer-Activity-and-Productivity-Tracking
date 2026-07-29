@@ -458,7 +458,7 @@ function DeveloperDashboardContent() {
     // Manager-only oversight section. Guard by role so a developer/employee
     // can't reach it by editing the URL (?section=team).
     const effectiveRole = user?.membership_role || "developer";
-    const isManager = ["manager", "admin", "owner"].includes(effectiveRole);
+    const isManager = ["manager", "team_lead", "hr", "admin", "owner"].includes(effectiveRole);
 
     // Render based on active section
     switch (activeSection) {
