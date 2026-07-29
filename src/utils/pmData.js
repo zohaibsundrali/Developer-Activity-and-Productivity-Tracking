@@ -84,6 +84,15 @@ export async function createTask(projectId, patch) {
     ...patch,
   };
   const { data, error } = await supabase.from("developer_tasks").insert(row).select().single();
+  if (!error && data) {
+    // Fire "task created" automations. Best-effort: never blocks task creation.
+    try {
+      const { runAutomations } = await import("@/utils/automation");
+      await runAutomations({ event: "task_created", task: data, projectId });
+    } catch {
+      /* automation is non-critical */
+    }
+  }
   return { task: data, error };
 }
 
@@ -112,8 +121,57 @@ export async function updateTask(taskId, patch, logCtx = null) {
 }
 
 // Move a task to a new status column / position (Kanban drag-drop).
+// Fires "status changed" automations after a successful move (best-effort).
 export async function moveTask(taskId, { status, position }, logCtx = null) {
-  return updateTask(taskId, { status, position }, logCtx);
+  // Capture the previous status so automations can match on `from`.
+  let prev = null;
+  try {
+    const { data } = await supabase
+      .from("developer_tasks")
+      .select("id, status, priority, task_type, developer_id, project_id, labels, task_title")
+      .eq("id", taskId)
+      .single();
+    prev = data || null;
+  } catch {
+    prev = null;
+  }
+
+  const res = await updateTask(taskId, { status, position }, logCtx);
+  if (!res.error && prev && prev.status !== status) {
+    try {
+      const { runAutomations } = await import("@/utils/automation");
+      await runAutomations({
+        event: "status_changed",
+        task: { ...prev, status },
+        prev,
+        projectId: prev.project_id,
+      });
+    } catch {
+      /* automation is non-critical */
+    }
+  }
+  return res;
+}
+
+// Assign a task and fire "assigned" automations.
+export async function assignTask(taskId, developerId, logCtx = null) {
+  const res = await updateTask(taskId, { developer_id: developerId || null }, logCtx);
+  if (!res.error && developerId) {
+    try {
+      const { data } = await supabase
+        .from("developer_tasks")
+        .select("id, status, priority, task_type, developer_id, project_id, labels, task_title")
+        .eq("id", taskId)
+        .single();
+      if (data) {
+        const { runAutomations } = await import("@/utils/automation");
+        await runAutomations({ event: "assigned", task: data, projectId: data.project_id });
+      }
+    } catch {
+      /* automation is non-critical */
+    }
+  }
+  return res;
 }
 
 // ---- Sprints & Epics -------------------------------------------------
@@ -372,6 +430,133 @@ export async function loadActivity({ projectId, entityType, entityId, limit = 50
   if (entityId) q = q.eq("entity_id", entityId);
   const { data } = await q;
   return data || [];
+}
+
+// ---- Task time tracking (task_time_logs, 017) -----------------------------
+// Explicit per-task timing. This is the ONLY exact task-level time source:
+// the desktop tracker records per-developer sessions with no task linkage.
+
+// Seconds → "2h 15m" / "45m" / "30s".
+export function formatDuration(seconds) {
+  const s = Math.max(0, Math.round(Number(seconds) || 0));
+  if (s < 60) return `${s}s`;
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h) return m ? `${h}h ${m}m` : `${h}h`;
+  return `${m}m`;
+}
+
+// The current user's running timer (ended_at is null), if any.
+export async function getActiveTimer() {
+  const ctx = getOrgContext();
+  const orgId = getOrgId();
+  if (!ctx?.userId || !orgId) return null;
+  const { data } = await supabase
+    .from("task_time_logs")
+    .select("*")
+    .eq("organization_id", orgId)
+    .eq("developer_id", ctx.userId)
+    .is("ended_at", null)
+    .order("started_at", { ascending: false })
+    .limit(1);
+  return (data && data[0]) || null;
+}
+
+// Start timing a task. Any other running timer for this user is stopped first
+// so a user can only be on one task at a time.
+export async function startTaskTimer(taskId, projectId) {
+  const orgId = getOrgId();
+  const ctx = getOrgContext();
+  if (!ctx?.userId) return { error: new Error("No signed-in user") };
+
+  const running = await getActiveTimer();
+  if (running) await stopTaskTimer(running);
+
+  const { data, error } = await supabase
+    .from("task_time_logs")
+    .insert({
+      organization_id: orgId,
+      task_id: taskId,
+      project_id: projectId || null,
+      developer_id: ctx.userId,
+      started_at: new Date().toISOString(),
+      source: "web_timer",
+    })
+    .select()
+    .single();
+  if (!error) {
+    await logActivity({ projectId, entityType: "task", entityId: taskId, action: "timer_started", meta: {} });
+  }
+  return { log: data, error };
+}
+
+// Stop a running timer and persist the elapsed seconds.
+export async function stopTaskTimer(log, note = null) {
+  if (!log?.id) return { error: new Error("No timer to stop") };
+  const endedAt = new Date();
+  const startedAt = new Date(log.started_at);
+  const seconds = Number.isNaN(startedAt.getTime())
+    ? 0
+    : Math.max(0, Math.round((endedAt.getTime() - startedAt.getTime()) / 1000));
+  const { error } = await supabase
+    .from("task_time_logs")
+    .update({ ended_at: endedAt.toISOString(), seconds, note: note || log.note || null })
+    .eq("id", log.id);
+  if (!error) {
+    await logActivity({
+      projectId: log.project_id,
+      entityType: "task",
+      entityId: log.task_id,
+      action: "timer_stopped",
+      meta: { seconds },
+    });
+  }
+  return { seconds, error };
+}
+
+// Manually log time (no live timer) — seconds is required.
+export async function addManualTimeLog({ taskId, projectId, seconds, note }) {
+  const orgId = getOrgId();
+  const ctx = getOrgContext();
+  const now = new Date();
+  const start = new Date(now.getTime() - (Number(seconds) || 0) * 1000);
+  const { data, error } = await supabase
+    .from("task_time_logs")
+    .insert({
+      organization_id: orgId,
+      task_id: taskId,
+      project_id: projectId || null,
+      developer_id: ctx?.userId || null,
+      started_at: start.toISOString(),
+      ended_at: now.toISOString(),
+      seconds: Math.max(0, Number(seconds) || 0),
+      source: "manual",
+      note: note || null,
+    })
+    .select()
+    .single();
+  return { log: data, error };
+}
+
+export async function loadTimeLogs({ taskId, projectId, developerId, from, to } = {}) {
+  const orgId = getOrgId();
+  let q = supabase
+    .from("task_time_logs")
+    .select("*")
+    .eq("organization_id", orgId)
+    .order("started_at", { ascending: false });
+  if (taskId) q = q.eq("task_id", taskId);
+  if (projectId) q = q.eq("project_id", projectId);
+  if (developerId) q = q.eq("developer_id", developerId);
+  if (from) q = q.gte("started_at", from);
+  if (to) q = q.lte("started_at", to);
+  const { data } = await q;
+  return data || [];
+}
+
+// Total logged seconds for a task (completed logs only).
+export function sumSeconds(logs) {
+  return (logs || []).reduce((s, l) => s + (Number(l.seconds) || 0), 0);
 }
 
 // ---- Project labels (project_labels, 016) ---------------------------------

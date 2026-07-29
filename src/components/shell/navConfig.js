@@ -19,6 +19,8 @@ import {
   Rocket,
   Columns3,
   Gauge,
+  FileBarChart,
+  Zap,
 } from "lucide-react";
 
 // Admin sidebar items — ids MUST match the ?section= switch in the admin dashboard.
@@ -31,6 +33,8 @@ export const ADMIN_NAV = [
   { id: "sprints", label: "Sprints", icon: Rocket },
   { id: "task-reviews", label: "Task Reviews", icon: ClipboardCheck },
   { id: "developer-activity", label: "Developer Activity", icon: Activity },
+  { id: "reports", label: "Reports", icon: FileBarChart },
+  { id: "automation", label: "Automation", icon: Zap },
   { id: "add-developer", label: "Add Developer", icon: UserPlus },
   { id: "view-developers", label: "View Developers", icon: Users },
   { id: "employees", label: "Employees", icon: Contact },
@@ -74,6 +78,8 @@ export const ADMIN_SECTION_ROLES = {
   sprints: ["owner", "admin", "manager", "team_lead"],
   "task-reviews": ["owner", "admin"],
   "developer-activity": ["owner", "admin"],
+  reports: ["owner", "admin", "manager", "team_lead"],
+  automation: ["owner", "admin"],
   "add-developer": ["owner", "admin", "hr"],
   "view-developers": ["owner", "admin", "hr"],
   employees: ["owner", "admin", "hr"],
@@ -123,6 +129,8 @@ export const SECTION_TITLES = {
   sprints: { admin: "Sprints & Agile" },
   "task-reviews": { admin: "Task Reviews" },
   "developer-activity": { admin: "Developer Activity" },
+  reports: { admin: "Reports & Analytics" },
+  automation: { admin: "Workflow Automation" },
   "add-developer": { admin: "Add Developer" },
   "view-developers": { admin: "View Developers" },
   employees: { admin: "Employees" },

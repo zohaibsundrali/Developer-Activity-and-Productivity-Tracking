@@ -20,6 +20,8 @@ import ProjectBoard from "@/components/admin/ProjectBoard";
 import AgileWorkspace from "@/components/admin/AgileWorkspace";
 import ProjectViews from "@/components/admin/ProjectViews";
 import ProjectOverview from "@/components/admin/ProjectOverview";
+import ReportsDashboard from "@/components/admin/ReportsDashboard";
+import AutomationRules from "@/components/admin/AutomationRules";
 import { isSessionExpired, clearAdminSession } from "@/utils/sessionPolicy";
 
 // Authentication check function for admin
@@ -425,6 +427,10 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
         return <ProjectViews />;
       case "project-hub":
         return <ProjectOverview />;
+      case "reports":
+        return <ReportsDashboard />;
+      case "automation":
+        return <AutomationRules />;
       case "add-developer":
         return <AddDeveloper {...contentProps} />;
       case "developer-activity":
