@@ -69,6 +69,21 @@ function getLegacyStorage() {
   return window.localStorage;
 }
 
+/**
+ * Clear the server-issued signed session cookie.
+ *
+ * It is HttpOnly, so JavaScript cannot expire it directly — the server has to
+ * do it. Fire-and-forget: sign-out must never block on this request.
+ */
+function clearServerSession() {
+  if (typeof window === 'undefined') return;
+  try {
+    fetch('/api/auth/session', { method: 'DELETE', keepalive: true }).catch(() => {});
+  } catch {
+    /* sign-out proceeds regardless */
+  }
+}
+
 export function clearAdminSession() {
   const primary = getPrimaryStorage();
   const legacy = getLegacyStorage();
@@ -76,6 +91,7 @@ export function clearAdminSession() {
   safeRemove(legacy, 'adminUser');
   expireCookie('admin_auth');
   expireCookie('admin_id');
+  clearServerSession();
 }
 
 export function clearDeveloperSession() {
@@ -85,6 +101,7 @@ export function clearDeveloperSession() {
   safeRemove(legacy, 'developerUser');
   expireCookie('developer_auth');
   expireCookie('developer_id');
+  clearServerSession();
 }
 
 export function clearClientSession() {
@@ -94,6 +111,7 @@ export function clearClientSession() {
   safeRemove(legacy, 'clientUser');
   expireCookie('client_auth');
   expireCookie('client_id');
+  clearServerSession();
 }
 
 export function getSessionCookieExpiryDate(sessionOrIso) {

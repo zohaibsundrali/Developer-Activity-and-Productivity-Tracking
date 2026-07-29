@@ -102,13 +102,15 @@ export async function DELETE(request) {
     const body = await request.json().catch(() => ({}));
     const { developerId, developerEmail, userId, adminId, adminEmail } = body;
 
-    // ── 0. JWT authorization (defense-in-depth) ──────────────────────────────
-    // When the caller sends a Supabase Auth token (all current UI callers do),
-    // require an owner/admin. This blocks any authenticated non-admin (e.g. a
-    // developer/client JWT) from calling this destructive route. Legacy callers
-    // without a token fall through to the existing added_by check below.
+    // ── 0. JWT authorization (fail-closed) ───────────────────────────────────
+    // Require a valid Supabase Auth token and an owner/admin role. This blocks
+    // any unauthenticated caller and any authenticated non-admin (e.g. a
+    // developer/client JWT) from calling this destructive route.
     const auth = await getAuthedOrg(request);
-    if (auth && !["owner", "admin"].includes(auth.role)) {
+    if (!auth) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    if (!["owner", "admin"].includes(auth.role)) {
       return NextResponse.json(
         { success: false, error: 'Forbidden: only an owner or admin may delete developers.' },
         { status: 403 }
@@ -159,19 +161,11 @@ export async function DELETE(request) {
     // This is the single source of truth – prevents ANY cross-developer pollution.
     const devId = developer.id;
 
-    // Cross-org guard: an authenticated admin may only delete developers inside
-    // their own organization.
-    if (auth && developer.organization_id && developer.organization_id !== auth.orgId) {
+    // Cross-org guard: an admin may only delete developers inside their own
+    // organization. Org + role from the JWT is the sole authority here.
+    if (developer.organization_id !== auth.orgId) {
       return NextResponse.json(
         { success: false, error: 'Forbidden: this developer belongs to another organization.' },
-        { status: 403 }
-      );
-    }
-
-    // ── 3. Authorization ─────────────────────────────────────────────────────
-    if (!isAdminAuthorizedForDeveloper(developer, adminId, adminEmail)) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: you can only delete developers you added.' },
         { status: 403 }
       );
     }
@@ -266,9 +260,12 @@ export async function DELETE(request) {
  */
 export async function GET(request) {
   try {
-    // Same enforce-when-authenticated guard as DELETE (read-only impact preview).
+    // Same fail-closed guard as DELETE (read-only impact preview).
     const auth = await getAuthedOrg(request);
-    if (auth && !["owner", "admin"].includes(auth.role)) {
+    if (!auth) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    if (!["owner", "admin"].includes(auth.role)) {
       return NextResponse.json(
         { success: false, error: 'Forbidden: only an owner or admin may view this.' },
         { status: 403 }

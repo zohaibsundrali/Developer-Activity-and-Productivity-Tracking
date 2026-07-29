@@ -1,14 +1,34 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getAuthedOrg } from '@/utils/serverAuth';
+
+export const dynamic = 'force-dynamic';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
+/**
+ * SECURITY (audit finding C7): both handlers previously had NO authentication
+ * and used the service-role key, and GET applied no organization filter — so an
+ * unauthenticated request returned every tenant's submissions, and anyone could
+ * submit fabricated proof-of-work against any task in any organization.
+ *
+ * Both are now fail-closed, and every query is scoped to the caller's org.
+ */
+
 // Submit task for review (Developer)
 export async function POST(request) {
   try {
+    const auth = await getAuthedOrg(request);
+    if (!auth) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (auth.userType === 'client') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const body = await request.json();
     const { 
       taskId, 
@@ -38,11 +58,18 @@ export async function POST(request) {
       );
     }
 
-    // Get task details to validate deadline
+    // A developer may only submit as themselves; the id is taken from the
+    // verified token rather than the request body.
+    const actingDeveloperId =
+      auth.userType === 'developer' ? auth.appUserId || developerId : developerId;
+
+    // Get task details to validate deadline. Scoped to the caller's org so a
+    // task id from another tenant cannot be acted on.
     const { data: task, error: taskError } = await supabase
       .from('developer_tasks')
       .select('*, projects(*)')
       .eq('id', taskId)
+      .eq('organization_id', auth.orgId)
       .single();
 
     if (taskError) {
@@ -213,11 +240,23 @@ export async function POST(request) {
 // Get submissions for a task or project (Admin)
 export async function GET(request) {
   try {
+    const auth = await getAuthedOrg(request);
+    if (!auth) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (auth.userType === 'client') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const { searchParams } = new URL(request.url);
     const taskId = searchParams.get('taskId');
     const projectId = searchParams.get('projectId');
-    const developerId = searchParams.get('developerId');
+    const requestedDeveloperId = searchParams.get('developerId');
     const status = searchParams.get('status');
+
+    // Developers may only ever see their own submissions.
+    const developerId =
+      auth.userType === 'developer' ? auth.appUserId : requestedDeveloperId;
 
     let query = supabase
       .from('task_submissions')
@@ -241,6 +280,7 @@ export async function GET(request) {
           deadline
         )
       `)
+      .eq('organization_id', auth.orgId)
       .order('submitted_at', { ascending: false });
 
     if (taskId) {

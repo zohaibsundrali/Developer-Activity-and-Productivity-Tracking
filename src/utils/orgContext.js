@@ -51,11 +51,14 @@ export async function loadOrgContext(userId, userType, fallbackOrgId = null) {
     organizationLogo: null,
     organizationTimezone: null,
     membershipRole: null,
+    // Membership lifecycle state. `suspended`/`terminated` members must not be
+    // allowed to sign in — see isMembershipActive() below (audit finding C10).
+    membershipStatus: null,
   };
   try {
     const { data: membership } = await supabase
       .from("memberships")
-      .select("organization_id, role")
+      .select("organization_id, role, status")
       .eq("user_id", userId)
       .eq("user_type", userType)
       .maybeSingle();
@@ -63,6 +66,7 @@ export async function loadOrgContext(userId, userType, fallbackOrgId = null) {
     if (membership) {
       ctx.organizationId = membership.organization_id || ctx.organizationId;
       ctx.membershipRole = membership.role || null;
+      ctx.membershipStatus = membership.status || null;
     }
 
     if (ctx.organizationId) {
@@ -81,6 +85,24 @@ export async function loadOrgContext(userId, userType, fallbackOrgId = null) {
     // best-effort — return whatever we resolved
   }
   return ctx;
+}
+
+/**
+ * Is this membership allowed to sign in?
+ *
+ * Deactivating or offboarding someone writes `memberships.status`, but nothing
+ * used to read it — a suspended employee kept full access (audit finding C10).
+ * Login now calls this before establishing a session.
+ *
+ * Unknown/absent status is treated as active so that legacy rows created before
+ * the column was populated keep working; only an explicit non-active state
+ * blocks sign-in.
+ */
+const BLOCKED_MEMBERSHIP_STATUSES = ["suspended", "terminated", "inactive", "offboarded"];
+
+export function isMembershipActive(status) {
+  if (!status) return true;
+  return !BLOCKED_MEMBERSHIP_STATUSES.includes(String(status).toLowerCase());
 }
 
 /**
