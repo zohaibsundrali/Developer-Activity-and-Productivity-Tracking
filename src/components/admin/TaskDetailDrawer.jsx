@@ -27,6 +27,7 @@ import {
 } from "@/utils/pmData";
 import { getOrgContext } from "@/utils/orgContext";
 import { showError, showSuccess } from "@/utils/alerts";
+import TaskExtras from "@/components/admin/TaskExtras";
 
 // ---- constants & small helpers --------------------------------------
 const STATUS_OPTIONS = [
@@ -734,6 +735,16 @@ export default function TaskDetailDrawer({
               Save
             </button>
           </div>
+        </div>
+
+        {/* 3b. Advanced fields (type, labels, recurring, custom fields, history) */}
+        <div className={`${CARD_CLASS} mb-4`}>
+          <TaskExtras
+            task={task}
+            projectId={task?.project_id}
+            members={members}
+            onChanged={onChanged}
+          />
         </div>
 
         {/* 4. Subtasks ------------------------------------------------ */}
