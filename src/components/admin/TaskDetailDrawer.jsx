@@ -28,6 +28,7 @@ import {
 import { getOrgContext } from "@/utils/orgContext";
 import { showError, showSuccess } from "@/utils/alerts";
 import TaskExtras from "@/components/admin/TaskExtras";
+import TaskTimer from "@/components/admin/TaskTimer";
 
 // ---- constants & small helpers --------------------------------------
 const STATUS_OPTIONS = [
@@ -735,6 +736,16 @@ export default function TaskDetailDrawer({
               Save
             </button>
           </div>
+        </div>
+
+        {/* 3a. Time tracking ------------------------------------------ */}
+        <div className={`${CARD_CLASS} mb-4`}>
+          <TaskTimer
+            task={task}
+            projectId={task?.project_id}
+            members={members}
+            onChanged={onChanged}
+          />
         </div>
 
         {/* 3b. Advanced fields (type, labels, recurring, custom fields, history) */}

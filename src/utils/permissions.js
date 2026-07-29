@@ -64,6 +64,7 @@ export function can(action) {
     // Project administration — Owner, Admin.
     case "create_project":
     case "delete_project":
+    case "manage_automation":
       return ADMINS.includes(r);
     // Task/team oversight — Owner, Admin, Manager, Team Lead.
     case "review_tasks":
