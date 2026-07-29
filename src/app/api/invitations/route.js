@@ -4,10 +4,10 @@ import crypto from 'crypto';
 import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
 
 // Roles allowed to send invitations.
-const INVITER_ROLES = ['owner', 'admin', 'manager'];
+const INVITER_ROLES = ['owner', 'admin', 'hr', 'manager'];
 // Roles that can be assigned via an invitation. "owner" is only grantable by an
 // existing owner (guarded below) so a lower role can't escalate someone to owner.
-const ASSIGNABLE_ROLES = ['admin', 'manager', 'developer', 'employee', 'client'];
+const ASSIGNABLE_ROLES = ['admin', 'manager', 'team_lead', 'hr', 'developer', 'employee', 'client'];
 
 // Derive the public origin from request headers (works behind proxies).
 function getOrigin(request) {

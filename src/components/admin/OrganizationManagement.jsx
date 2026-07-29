@@ -11,13 +11,22 @@ import {
 } from "lucide-react";
 import OrganizationSettings from "@/components/admin/OrganizationSettings";
 
-const ROLES = ["owner", "admin", "manager", "developer", "employee", "client"];
+const ROLES = ["owner", "admin", "manager", "team_lead", "hr", "developer", "employee", "client"];
+
+// Human label for a role slug (team_lead -> "Team Lead").
+export const roleLabel = (role) =>
+  String(role || "")
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 
 const roleBadge = (role) => {
   const r = String(role || "").toLowerCase();
   if (r === "owner") return "bg-primary/10 text-primary";
   if (r === "admin") return "bg-info/10 text-info";
   if (r === "manager") return "bg-violet-500/10 text-violet-600";
+  if (r === "team_lead") return "bg-indigo-500/10 text-indigo-600";
+  if (r === "hr") return "bg-pink-500/10 text-pink-600";
   if (r === "client") return "bg-warning/10 text-warning";
   return "bg-muted text-muted-foreground";
 };
@@ -328,7 +337,7 @@ function MembersTab({ teams, departments, members, reload }) {
                   className={`rounded-full px-2.5 py-1 text-xs font-semibold outline-none ${roleBadge(m.role)} disabled:opacity-70`}>
                   {/* "owner" is not an assignable role here — ownership can't be
                       granted from the member dropdown to avoid accidental escalation. */}
-                  {ROLES.filter((r) => r !== "owner").map((r) => <option key={r} value={r}>{r}</option>)}
+                  {ROLES.filter((r) => r !== "owner").map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
                 </select>
               </td>
               <td className="px-4 py-3">
@@ -427,7 +436,7 @@ function InvitationsTab({ orgId, invitations, teams, departments, reload }) {
         <label className="mb-1 block text-xs font-medium text-foreground">Role</label>
         <select value={role} onChange={(e) => setRole(e.target.value)}
           className="mb-3 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
-          {ROLES.filter((r) => r !== "owner").map((r) => <option key={r} value={r}>{r}</option>)}
+          {ROLES.filter((r) => r !== "owner").map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
         </select>
         <label className="mb-1 block text-xs font-medium text-foreground">Team</label>
         <select value={teamId} onChange={(e) => setTeamId(e.target.value)}
@@ -464,7 +473,7 @@ function InvitationsTab({ orgId, invitations, teams, departments, reload }) {
                 {invitations.map((inv) => (
                   <tr key={inv.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-3 text-sm font-medium text-foreground">{inv.email}</td>
-                    <td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${roleBadge(inv.role)}`}>{inv.role}</span></td>
+                    <td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${roleBadge(inv.role)}`}>{roleLabel(inv.role)}</span></td>
                     <td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadge(inv.status)}`}>{inv.status}</span></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">

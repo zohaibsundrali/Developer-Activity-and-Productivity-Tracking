@@ -34,10 +34,12 @@ export async function POST(request) {
     }
 
     const email = invite.email;
-    // Owner + Admin share the admin_users profile table. Owner-ness lives in the
-    // membership role + JWT (mirroring signup, where the owner's admin_users.role
-    // is stored as "admin"), so an invited owner still gets full admin access.
-    const isAdminLike = invite.role === "owner" || invite.role === "admin";
+    // Owner + Admin + HR share the admin_users profile table (they run the admin
+    // console: HR manages the employee directory). The real role lives on the
+    // membership + JWT, so an invited owner/hr keeps their true role while getting
+    // admin-dashboard access.
+    const isAdminLike =
+      invite.role === "owner" || invite.role === "admin" || invite.role === "hr";
     const isClient = invite.role === "client";
     // Clients get their own user_type + `clients` profile row (NO developers row,
     // so they never appear in staff lists or inherit developer data access).
