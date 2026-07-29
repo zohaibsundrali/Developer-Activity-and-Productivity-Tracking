@@ -40,10 +40,15 @@ export async function POST(request) {
       );
     }
 
-    // Enforce-when-authenticated: an authenticated caller must be a reviewer.
-    // Tokenless legacy callers fall through (unchanged behaviour).
+    // Fail-closed auth: caller must present a valid token and be a reviewer.
     const auth = await getAuthedOrg(request);
-    if (auth && !REVIEWER_ROLES.includes(auth.role)) {
+    if (!auth) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    if (auth.userType === 'client') {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
+    if (!REVIEWER_ROLES.includes(auth.role)) {
       return NextResponse.json(
         { success: false, error: 'Forbidden: you are not allowed to review task plans.' },
         { status: 403 }
@@ -82,6 +87,7 @@ export async function POST(request) {
       // Use `*` to avoid hard-failing when some deployments have different columns.
       .select('*')
       .eq('id', normalizedProjectId)
+      .eq('organization_id', auth.orgId)
       .single();
 
     if (projectError) {
@@ -100,15 +106,15 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
     }
 
-    const adminEmailNormalized = normalizeEmail(adminEmail);
+    const adminEmailNormalized = normalizeEmail(auth.email);
     const addedByAdminEmail = normalizeEmail(project.added_by_admin);
     const addedByEmailMatch = Boolean(adminEmailNormalized) && addedByAdminEmail === adminEmailNormalized;
 
     const isAllowedAdmin =
-      project.created_by === adminId ||
-      project.added_by === adminId ||
+      project.created_by === auth.appUserId ||
+      project.added_by === auth.appUserId ||
       // Some deployments include `admin_id` on projects; treat it as allowed when present.
-      project.admin_id === adminId ||
+      project.admin_id === auth.appUserId ||
       // Some flows link ownership by email.
       addedByEmailMatch;
 
@@ -137,7 +143,7 @@ export async function POST(request) {
     const updatePayload = {
       task_plan_status: nextStatus,
       task_plan_reviewed_at: reviewedAt,
-      task_plan_reviewed_by: adminId,
+      task_plan_reviewed_by: auth.appUserId,
       task_plan_rejection_reason: action === 'reject' ? String(rejectionReason).trim() : null,
     };
 
@@ -145,6 +151,7 @@ export async function POST(request) {
       .from('projects')
       .update(updatePayload)
       .eq('id', normalizedProjectId)
+      .eq('organization_id', auth.orgId)
       .select('*')
       .single();
 

@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { RefreshCw, Users, AlertTriangle } from "lucide-react";
 import { showError, showSuccess, showWarning } from "@/utils/alerts";
 import { getOrgId } from "@/utils/orgContext";
+import { authFetch } from "@/utils/authFetch";
 
 const formatDate = (dateString) => {
   if (!dateString) return 'Recently';
@@ -375,13 +376,14 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
             }]);
           // Provision a Supabase Auth account (with org claim) so this developer
           // can authenticate via Supabase Auth and be covered by RLS.
-          await fetch("/api/auth/provision", {
+          // authFetch attaches the admin's Bearer token; the route derives the
+          // organization from that token (it no longer accepts one from the body).
+          await authFetch("/api/auth/provision", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               email: createdDeveloper.email,
               password: newDeveloper.password,
-              organizationId: orgId,
               role: "developer",
               userType: "developer",
               appUserId: createdDeveloper.id,

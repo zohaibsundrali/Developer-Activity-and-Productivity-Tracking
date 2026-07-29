@@ -38,15 +38,40 @@ export async function getAuthedOrg(request) {
   const orgId = meta.organization_id || null;
   if (!orgId) return null;
 
+  // Deactivated / offboarded members lose API access immediately, not merely
+  // at token expiry. memberships.status used to be written and never read, so
+  // suspending someone had no effect (audit finding C10). An absent membership
+  // row or status is treated as active so legacy accounts keep working.
+  const appUserId = meta.app_user_id || null;
+  const userType = meta.user_type || null;
+  if (appUserId && userType) {
+    const { data: membership } = await admin
+      .from("memberships")
+      .select("status")
+      .eq("organization_id", orgId)
+      .eq("user_id", appUserId)
+      .eq("user_type", userType)
+      .maybeSingle();
+    if (membership && !isActiveStatus(membership.status)) return null;
+  }
+
   return {
     token,
     userId: data.user.id,
     email: data.user.email || null,
     orgId,
     role: meta.role || null,
-    userType: meta.user_type || null,
-    appUserId: meta.app_user_id || null,
+    userType,
+    appUserId,
   };
+}
+
+// Mirrors isMembershipActive() in src/utils/orgContext.js. Kept inline so the
+// server never imports a client module.
+const BLOCKED_MEMBERSHIP_STATUSES = ["suspended", "terminated", "inactive", "offboarded"];
+function isActiveStatus(status) {
+  if (!status) return true;
+  return !BLOCKED_MEMBERSHIP_STATUSES.includes(String(status).toLowerCase());
 }
 
 // A Supabase client bound to the caller's JWT. All reads/writes through it are

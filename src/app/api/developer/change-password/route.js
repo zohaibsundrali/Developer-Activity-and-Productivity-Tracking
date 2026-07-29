@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { getAuthedOrg } from '@/utils/serverAuth';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -20,16 +20,18 @@ export async function POST(request) {
       );
     }
 
-    const body = await request.json().catch(() => ({}));
-    const bodyDeveloperId = normalizeString(body?.developerId);
-
-    const cookieStore = await cookies();
-    const isLoggedIn = Boolean(cookieStore.get('developer_auth')?.value);
-    const developerId = bodyDeveloperId || normalizeString(cookieStore.get('developer_id')?.value);
-
-    if (!isLoggedIn || !developerId) {
+    const auth = await getAuthedOrg(request);
+    if (!auth) {
       return jsonError('Unauthorized.', 401);
     }
+    // Never trust a developer id from the body or a cookie — the target is
+    // always the caller themselves.
+    const developerId = auth.appUserId;
+    if (!developerId) {
+      return jsonError('Unauthorized.', 401);
+    }
+
+    const body = await request.json().catch(() => ({}));
     const currentPassword = normalizeString(body?.currentPassword);
     const newPassword = normalizeString(body?.newPassword);
     const confirmNewPassword = normalizeString(body?.confirmNewPassword);
@@ -60,6 +62,7 @@ export async function POST(request) {
       .from('developers')
       .select('id, password')
       .eq('id', developerId)
+      .eq('organization_id', auth.orgId)
       .maybeSingle();
 
     if (fetchError) {

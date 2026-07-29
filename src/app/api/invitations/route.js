@@ -8,6 +8,12 @@ const INVITER_ROLES = ['owner', 'admin', 'hr', 'manager'];
 // Roles that can be assigned via an invitation. "owner" is only grantable by an
 // existing owner (guarded below) so a lower role can't escalate someone to owner.
 const ASSIGNABLE_ROLES = ['admin', 'manager', 'team_lead', 'hr', 'developer', 'employee', 'client'];
+// Mirrors ROLE_RANK in src/utils/permissions.js — an inviter can only grant a
+// role that ranks strictly below their own.
+const ROLE_RANK = {
+  owner: 8, admin: 7, manager: 6, hr: 5,
+  team_lead: 4, developer: 3, employee: 2, client: 1,
+};
 
 // Derive the public origin from request headers (works behind proxies).
 function getOrigin(request) {
@@ -58,6 +64,15 @@ export async function POST(request) {
       return NextResponse.json(
         { success: false, error: 'Invalid role.' },
         { status: 400 }
+      );
+    }
+    // An inviter may never grant a role at or above their own rank. Without
+    // this an hr (rank 5) or manager (rank 6) could invite a full admin
+    // (rank 7) and escalate through the invitation flow (audit finding H3).
+    if ((ROLE_RANK[role] || 0) >= (ROLE_RANK[auth.role] || 0)) {
+      return NextResponse.json(
+        { success: false, error: `You cannot invite someone as "${role}".` },
+        { status: 403 }
       );
     }
 

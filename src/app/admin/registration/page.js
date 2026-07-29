@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import emailjs from "@emailjs/browser";
 import { showInfo, showPre, showSuccess } from "@/utils/alerts";
 import { SESSION_MAX_AGE_DAYS } from "@/utils/sessionPolicy";
+import { authFetch } from "@/utils/authFetch";
 
 import "../../auth.css";
 
@@ -347,6 +348,13 @@ export default function AdminRegistration() {
         expiryDate.setDate(expiryDate.getDate() + SESSION_MAX_AGE_DAYS);
         document.cookie = `admin_auth=true; expires=${expiryDate.toUTCString()}; path=/`;
         document.cookie = `admin_id=${adminSession.id}; expires=${expiryDate.toUTCString()}; path=/`;
+      } catch {
+      }
+
+      // Issue the signed, HttpOnly session cookie the middleware validates.
+      // Without it the new admin would be bounced straight back to /login.
+      try {
+        await authFetch("/api/auth/session", { method: "POST" });
       } catch {
       }
 

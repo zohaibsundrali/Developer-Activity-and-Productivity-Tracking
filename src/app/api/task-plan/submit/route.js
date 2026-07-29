@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getAuthedOrg } from '@/utils/serverAuth';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -8,8 +9,22 @@ const supabaseAdmin = createClient(
 
 export async function POST(request) {
   try {
+    const auth = await getAuthedOrg(request);
+    if (!auth) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    if (auth.userType === 'client') {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
+
     const body = await request.json().catch(() => ({}));
-    const { projectId, developerId } = body;
+    let { projectId, developerId } = body;
+
+    // A developer caller can only ever submit as themselves — never trust the
+    // body's developerId for that role.
+    if (auth.userType === 'developer') {
+      developerId = auth.appUserId;
+    }
 
     if (!projectId || !developerId) {
       return NextResponse.json(
@@ -23,6 +38,7 @@ export async function POST(request) {
       .from('projects')
       .select('id, assigned_developer_id, task_plan_status')
       .eq('id', projectId)
+      .eq('organization_id', auth.orgId)
       .single();
 
     if (projectError || !project) {

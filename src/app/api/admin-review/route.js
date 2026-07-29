@@ -13,10 +13,15 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // Admin approves or rejects a task submission
 export async function POST(request) {
   try {
-    // Enforce-when-authenticated: an authenticated caller must be an owner/admin/
-    // manager. Tokenless legacy callers fall through (unchanged behaviour).
+    // Fail-closed auth: caller must present a valid token and be a reviewer.
     const auth = await getAuthedOrg(request);
-    if (auth && !REVIEWER_ROLES.includes(auth.role)) {
+    if (!auth) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (auth.userType === 'client') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (!REVIEWER_ROLES.includes(auth.role)) {
       return NextResponse.json(
         { error: 'Forbidden: you are not allowed to review submissions.' },
         { status: 403 }
@@ -64,6 +69,7 @@ export async function POST(request) {
       .from('developer_tasks')
       .select('*')
       .eq('id', taskId)
+      .eq('organization_id', auth.orgId)
       .single();
 
     if (taskError || !task) {
@@ -80,6 +86,7 @@ export async function POST(request) {
       .from('projects')
       .select('id, created_by, added_by')
       .eq('id', task.project_id)
+      .eq('organization_id', auth.orgId)
       .single();
 
     if (projectError || !project) {
@@ -91,8 +98,8 @@ export async function POST(request) {
     }
 
     const isOwner =
-      project.created_by === adminId ||
-      project.added_by === adminId;
+      project.created_by === auth.appUserId ||
+      project.added_by === auth.appUserId;
 
     if (!isOwner) {
       return NextResponse.json(
@@ -106,6 +113,7 @@ export async function POST(request) {
       .from('task_submissions')
       .select('*')
       .eq('id', submissionId)
+      .eq('organization_id', auth.orgId)
       .single();
 
     if (subError || !submission) {
@@ -140,13 +148,14 @@ export async function POST(request) {
         is_on_time: action === 'approve' ? isOnTime : null,
         productivity_points: productivityPoints,
         actual_completion_date: action === 'approve' ? reviewedAt.split('T')[0] : null,
-        reviewed_by: adminId,
+        reviewed_by: auth.appUserId,
         reviewed_at: reviewedAt,
         admin_comments: comments,
         rejection_reason: action === 'reject' ? rejectionReason : null,
         updated_at: reviewedAt
       })
-      .eq('id', taskId);
+      .eq('id', taskId)
+      .eq('organization_id', auth.orgId);
 
     if (updateTaskError) {
       console.error('Task update error:', updateTaskError);
@@ -161,12 +170,13 @@ export async function POST(request) {
       .from('task_submissions')
       .update({
         is_reviewed: true,
-        reviewed_by: adminId,
+        reviewed_by: auth.appUserId,
         reviewed_at: reviewedAt,
         review_status: action === 'approve' ? 'approved' : 'rejected',
         review_comments: action === 'approve' ? comments : rejectionReason
       })
-      .eq('id', submissionId);
+      .eq('id', submissionId)
+      .eq('organization_id', auth.orgId);
 
     if (updateSubError) {
       console.error('Submission update error:', updateSubError);
@@ -176,8 +186,8 @@ export async function POST(request) {
     const { error: adminReviewError } = await supabase
       .from('admin_reviews')
       .insert({
-        admin_id: adminId,
-        admin_email: adminEmail,
+        admin_id: auth.appUserId,
+        admin_email: auth.email,
         admin_name: adminName,
         task_id: taskId,
         submission_id: submissionId,
@@ -214,7 +224,7 @@ export async function POST(request) {
       });
 
     // Update productivity metrics
-    await updateProductivityMetrics(task.developer_id, task.project_id);
+    await updateProductivityMetrics(task.developer_id, task.project_id, auth.orgId);
 
     // Create notification for developer
     const notificationMessage = action === 'approve'
@@ -225,7 +235,7 @@ export async function POST(request) {
       .from('notifications')
       .insert({
         developer_id: task.developer_id,
-        admin_id: adminId,
+        admin_id: auth.appUserId,
         type: action === 'approve' ? 'task_approved' : 'task_rejected',
         title: action === 'approve' ? 'Task Approved' : 'Task Rejected',
         message: notificationMessage,
@@ -256,14 +266,15 @@ export async function POST(request) {
 }
 
 // Helper function to update productivity metrics
-async function updateProductivityMetrics(developerId, projectId) {
+async function updateProductivityMetrics(developerId, projectId, organizationId) {
   try {
     // Get all tasks for this developer and project
     const { data: tasks, error } = await supabase
       .from('developer_tasks')
       .select('status, is_on_time, productivity_points')
       .eq('developer_id', developerId)
-      .eq('project_id', projectId);
+      .eq('project_id', projectId)
+      .eq('organization_id', organizationId);
 
     if (error || !tasks) return;
 
@@ -321,7 +332,8 @@ async function updateProductivityMetrics(developerId, projectId) {
         progress: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,
         updated_at: new Date().toISOString()
       })
-      .eq('id', projectId);
+      .eq('id', projectId)
+      .eq('organization_id', organizationId);
 
   } catch (error) {
     console.error('Update productivity metrics error:', error);
@@ -332,7 +344,13 @@ async function updateProductivityMetrics(developerId, projectId) {
 export async function GET(request) {
   try {
     const auth = await getAuthedOrg(request);
-    if (auth && !REVIEWER_ROLES.includes(auth.role)) {
+    if (!auth) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (auth.userType === 'client') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (!REVIEWER_ROLES.includes(auth.role)) {
       return NextResponse.json(
         { error: 'Forbidden: you are not allowed to view submissions.' },
         { status: 403 }
@@ -356,7 +374,8 @@ export async function GET(request) {
     const { data: adminProjects, error: projectsError } = await supabase
       .from('projects')
       .select('id')
-      .or(`created_by.eq.${adminId},added_by.eq.${adminId}`);
+      .or(`created_by.eq.${adminId},added_by.eq.${adminId}`)
+      .eq('organization_id', auth.orgId);
 
     if (projectsError) {
       console.error('Admin projects lookup error:', projectsError);
@@ -405,6 +424,7 @@ export async function GET(request) {
         )
         .eq('review_status', 'pending')
         .in('project_id', projectIds)
+        .eq('organization_id', auth.orgId)
         .order('submitted_at', { ascending: false });
 
     } else if (status === 'reviewed') {
@@ -436,6 +456,7 @@ export async function GET(request) {
         )
         .in('review_status', ['approved', 'rejected'])
         .in('project_id', projectIds)
+        .eq('organization_id', auth.orgId)
         .order('submitted_at', { ascending: false });
 
     } else {

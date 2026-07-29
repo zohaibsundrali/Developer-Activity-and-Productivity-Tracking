@@ -1,36 +1,15 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getAuthedOrg } from '@/utils/serverAuth';
 
 export const dynamic = 'force-dynamic';
+
+const STAFF_ROLES = ['owner', 'admin', 'manager', 'team_lead'];
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
-
-function getCookieValue(request, name) {
-  try {
-    const viaCookiesApi = request?.cookies?.get?.(name);
-    if (viaCookiesApi?.value) return viaCookiesApi.value;
-    if (typeof viaCookiesApi === 'string') return viaCookiesApi;
-  } catch {
-    // ignore
-  }
-
-  const cookieHeader = request?.headers?.get?.('cookie') || '';
-  if (!cookieHeader) return null;
-
-  const parts = cookieHeader.split(';').map((p) => p.trim());
-  for (const part of parts) {
-    if (!part) continue;
-    const eqIdx = part.indexOf('=');
-    if (eqIdx === -1) continue;
-    const key = part.slice(0, eqIdx).trim();
-    if (key !== name) continue;
-    return decodeURIComponent(part.slice(eqIdx + 1));
-  }
-  return null;
-}
 
 export async function GET(request) {
   try {
@@ -42,13 +21,34 @@ export async function GET(request) {
       return NextResponse.json({ success: false, error: 'Missing projectId' }, { status: 400 });
     }
 
-    // Authorize strictly as developer. Note: admin_auth may coexist in the same browser;
-    // for this endpoint we only care that developer_auth + developer_id are present.
-    const isDeveloperViewer = Boolean(getCookieValue(request, 'developer_auth'));
-    const developerId = developerIdParam || getCookieValue(request, 'developer_id');
-
-    if (!isDeveloperViewer || !developerId) {
+    const auth = await getAuthedOrg(request);
+    if (!auth) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    let developerId;
+    if (auth.userType === 'developer') {
+      // A developer can only ever view their own gantt chart — never trust a
+      // developerId supplied via query string.
+      developerId = auth.appUserId;
+    } else if (STAFF_ROLES.includes(auth.role)) {
+      developerId = developerIdParam;
+      if (!developerId) {
+        return NextResponse.json({ success: false, error: 'Missing developerId' }, { status: 400 });
+      }
+      // Verify the requested developer belongs to the caller's organization.
+      const { data: devCheck, error: devCheckError } = await supabase
+        .from('developers')
+        .select('id')
+        .eq('id', developerId)
+        .eq('organization_id', auth.orgId)
+        .maybeSingle();
+
+      if (devCheckError || !devCheck) {
+        return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      }
+    } else {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
     // Enforce project assignment
@@ -56,6 +56,7 @@ export async function GET(request) {
       .from('projects')
       .select('id, name, description, deadline, progress, status, assigned_developer_id')
       .eq('id', projectId)
+      .eq('organization_id', auth.orgId)
       .single();
 
     if (projectError) {
@@ -88,6 +89,7 @@ export async function GET(request) {
       )
       .eq('project_id', projectId)
       .eq('developer_id', developerId)
+      .eq('organization_id', auth.orgId)
       .order('task_order', { ascending: true });
 
     if (tasksError) {

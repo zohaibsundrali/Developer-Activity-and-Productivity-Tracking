@@ -4,7 +4,8 @@ import Link from "next/link";
 import { supabase } from "@/utils/supabaseClient";
 import { useRouter } from "next/navigation";
 import { SESSION_MAX_AGE_DAYS } from "@/utils/sessionPolicy";
-import { loadOrgContext } from "@/utils/orgContext";
+import { loadOrgContext, isMembershipActive } from "@/utils/orgContext";
+import { authFetch } from "@/utils/authFetch";
 
 import "../auth.css";
 
@@ -65,6 +66,16 @@ export default function LoginPage() {
         loggedInData.organization_id || null
       );
 
+      // Deactivated / offboarded members must not get a session. Previously
+      // memberships.status was written but never read, so suspending someone
+      // had no effect on their access (audit finding C10).
+      if (!isMembershipActive(org.membershipStatus)) {
+        try { await supabase.auth.signOut(); } catch {}
+        throw new Error(
+          "Your account has been deactivated. Please contact your administrator."
+        );
+      }
+
       const userSession = {
         ...loggedInData,
         role: role,
@@ -76,6 +87,18 @@ export default function LoginPage() {
         loginTime: new Date().toISOString(),
         lastActivity: new Date().toISOString()
       };
+
+      // Exchange the verified Supabase JWT for a signed, HttpOnly session
+      // cookie. The middleware validates that signature — the legacy
+      // `*_auth=true` cookies below are no longer trusted for authorization
+      // (audit finding C5), they remain only for existing client-side reads.
+      const sessionRes = await authFetch("/api/auth/session", { method: "POST" });
+      if (!sessionRes.ok) {
+        try { await supabase.auth.signOut(); } catch {}
+        throw new Error(
+          "Could not establish a secure session. Please try again."
+        );
+      }
 
       if (role === "admin") {
         sessionStorage.setItem("adminUser", JSON.stringify(userSession));

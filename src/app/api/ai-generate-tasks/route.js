@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import mammoth from 'mammoth';
 import { createClient } from '@supabase/supabase-js';
+import { getAuthedOrg } from '@/utils/serverAuth';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -58,19 +59,66 @@ async function callHFRouter(model, prompt) {
   return data.choices[0].message.content;
 }
 
+/**
+ * Only files served by our own Supabase Storage may be fetched.
+ *
+ * SECURITY (audit finding C7): `fileUrl` was passed straight to fetch() with no
+ * validation, so a caller could point this at cloud metadata (169.254.169.254)
+ * or any internal service and have the response fed into the LLM prompt —
+ * server-side request forgery.
+ */
+function isAllowedFileUrl(rawUrl) {
+  let url;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'https:') return false;
+
+  const supabaseHost = (() => {
+    try {
+      return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).host;
+    } catch {
+      return null;
+    }
+  })();
+  if (!supabaseHost) return false;
+
+  return url.host === supabaseHost;
+}
+
 export async function POST(request) {
   try {
+    // Fail closed: only authenticated staff may drive AI task generation.
+    const auth = await getAuthedOrg(request);
+    if (!auth) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (auth.userType === 'client') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const { projectId, fileUrl } = await request.json();
 
     if (!projectId || !fileUrl) {
       return NextResponse.json({ error: 'Missing projectId or fileUrl' }, { status: 400 });
     }
 
-    // 1. Fetch project details
+    if (!isAllowedFileUrl(fileUrl)) {
+      return NextResponse.json(
+        { error: 'fileUrl must reference this project\'s own storage' },
+        { status: 400 }
+      );
+    }
+
+    // 1. Fetch project details — scoped to the caller's organization so a
+    //    project id from another tenant cannot be targeted.
     const { data: project, error: projectError } = await supabaseAdmin
       .from('projects')
       .select('assigned_developer_id, name, created_at, assigned_at, assigned_date')
       .eq('id', projectId)
+      .eq('organization_id', auth.orgId)
       .single();
 
     if (projectError || !project) {
