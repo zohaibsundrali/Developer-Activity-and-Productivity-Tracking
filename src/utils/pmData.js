@@ -112,20 +112,50 @@ function transitionError(from, to) {
   return new Error(`A task cannot go from "${statusLabel(from)}" to "${statusLabel(to)}".`);
 }
 
-// ---- Tasks -----------------------------------------------------------
-export async function loadTasks(projectId) {
-  let q = supabase
-    .from("developer_tasks")
-    .select("*")
-    .order("position", { ascending: true, nullsFirst: false })
-    .order("task_order", { ascending: true });
-  if (projectId) q = q.eq("project_id", projectId);
-  else {
-    const orgId = getOrgId();
-    if (orgId) q = q.eq("organization_id", orgId);
+// ---- Paging ----------------------------------------------------------
+// PostgREST caps a single response at 1000 rows and says nothing about it, so
+// an unpaged `.select()` silently returns a partial set that then gets counted,
+// grouped and charted as if it were everything. Walk explicit ranges instead,
+// and stop at a ceiling so one large tenant cannot exhaust the browser.
+const PAGE_SIZE = 1000;
+const MAX_TASK_ROWS = 10000;
+const MAX_TIME_LOG_ROWS = 10000;
+
+async function fetchPaged(buildQuery, maxRows) {
+  const rows = [];
+  let truncated = false;
+  for (let offset = 0; offset < maxRows; offset += PAGE_SIZE) {
+    const size = Math.min(PAGE_SIZE, maxRows - offset);
+    const { data, error } = await buildQuery().range(offset, offset + size - 1);
+    if (error) return { rows, error, truncated };
+    const batch = data || [];
+    rows.push(...batch);
+    if (batch.length < size) return { rows, error: null, truncated: false };
+    if (rows.length >= maxRows) truncated = true;
   }
-  const { data, error } = await q;
-  return { tasks: data || [], error };
+  return { rows, error: null, truncated };
+}
+
+// ---- Tasks -----------------------------------------------------------
+// `truncated` is additive — existing callers destructure { tasks, error } and
+// are unaffected.
+export async function loadTasks(projectId) {
+  const orgId = getOrgId();
+  const build = () => {
+    let q = supabase
+      .from("developer_tasks")
+      .select("*")
+      .order("position", { ascending: true, nullsFirst: false })
+      .order("task_order", { ascending: true })
+      // Ties on position/task_order would otherwise let a row appear on two
+      // pages or on none, so the ranges need a stable final sort key.
+      .order("id", { ascending: true });
+    if (projectId) q = q.eq("project_id", projectId);
+    else if (orgId) q = q.eq("organization_id", orgId);
+    return q;
+  };
+  const { rows, error, truncated } = await fetchPaged(build, MAX_TASK_ROWS);
+  return { tasks: rows, error, truncated };
 }
 
 export async function createTask(projectId, patch) {
@@ -741,18 +771,22 @@ export async function addManualTimeLog({ taskId, projectId, seconds, note }) {
 
 export async function loadTimeLogs({ taskId, projectId, developerId, from, to } = {}) {
   const orgId = getOrgId();
-  let q = supabase
-    .from("task_time_logs")
-    .select("*")
-    .eq("organization_id", orgId)
-    .order("started_at", { ascending: false });
-  if (taskId) q = q.eq("task_id", taskId);
-  if (projectId) q = q.eq("project_id", projectId);
-  if (developerId) q = q.eq("developer_id", developerId);
-  if (from) q = q.gte("started_at", from);
-  if (to) q = q.lte("started_at", to);
-  const { data } = await q;
-  return data || [];
+  const build = () => {
+    let q = supabase
+      .from("task_time_logs")
+      .select("*")
+      .eq("organization_id", orgId)
+      .order("started_at", { ascending: false })
+      .order("id", { ascending: true });
+    if (taskId) q = q.eq("task_id", taskId);
+    if (projectId) q = q.eq("project_id", projectId);
+    if (developerId) q = q.eq("developer_id", developerId);
+    if (from) q = q.gte("started_at", from);
+    if (to) q = q.lte("started_at", to);
+    return q;
+  };
+  const { rows } = await fetchPaged(build, MAX_TIME_LOG_ROWS);
+  return rows;
 }
 
 // Total logged seconds for a task (completed logs only).
