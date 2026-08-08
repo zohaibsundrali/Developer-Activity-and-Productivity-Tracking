@@ -365,15 +365,29 @@ async function calculateOverallProductivity(supabase) {
     };
   }
 
-  // Calculate productivity for each developer
+  // One query for the whole organization instead of one per developer.
+  //
+  // This mapped over every developer and issued a query inside the loop, so an
+  // organization with 500 people cost 501 round trips in a single request — the
+  // kind of shape that is fine in development and times out in production.
+  // Tasks are fetched once and grouped in memory.
+  const developerIds = developers.map((d) => d.id);
+  const tasksByDeveloper = new Map();
+  if (developerIds.length) {
+    const { data: allOrgTasks } = await supabase
+      .from('developer_tasks')
+      .select('status, is_on_time, project_id, developer_id')
+      .in('developer_id', developerIds);
+    for (const t of allOrgTasks || []) {
+      const bucket = tasksByDeveloper.get(t.developer_id);
+      if (bucket) bucket.push(t);
+      else tasksByDeveloper.set(t.developer_id, [t]);
+    }
+  }
+
   const developersBreakdown = await Promise.all(
     developers.map(async (dev) => {
-      const { data: tasks } = await supabase
-        .from('developer_tasks')
-        .select('status, is_on_time, project_id')
-        .eq('developer_id', dev.id);
-
-      const allTasks = tasks || [];
+      const allTasks = tasksByDeveloper.get(dev.id) || [];
       const completed = allTasks.filter(t => t.status === 'completed');
       const onTime = completed.filter(t => t.is_on_time === true).length;
       const late = completed.filter(t => t.is_on_time === false).length;

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Users, FolderKanban, Bell, RefreshCw, Mail, BadgeCheck, User } from "lucide-react";
 import StatCard from "@/components/shell/StatCard";
 import { getOrgId } from "@/utils/orgContext";
+import { setVisibleInterval } from "@/hooks/useVisibleInterval";
 
 export default function DashboardOverview({ user, developers, projects, notifications, onRefresh, supabase }) {
   const [realTimeStats, setRealTimeStats] = useState({
@@ -96,12 +97,25 @@ export default function DashboardOverview({ user, developers, projects, notifica
         orFilters.push(`added_by_admin.ilike.%${adminEmail}%`);
       }
 
+      // These three reads exist only to produce counters, and they run every
+      // 30 seconds. Fetching whole rows to call .length shipped every developer,
+      // project and unread notification row to the browser on each tick; the
+      // notifications one carried message bodies for a number. `head: true`
+      // returns the count and no rows at all.
       let devsQuery = supabase
         .from('developers')
-        .select('*')
+        .select('*', { count: 'exact', head: true })
         .or(orFilters.join(','));
       if (orgId) devsQuery = devsQuery.eq('organization_id', orgId);
-      const { data: myDevsData } = await devsQuery;
+      const { count: myDevsCount } = await devsQuery;
+
+      let activeDevsQuery = supabase
+        .from('developers')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'active')
+        .or(orFilters.join(','));
+      if (orgId) activeDevsQuery = activeDevsQuery.eq('organization_id', orgId);
+      const { count: activeDevsCount } = await activeDevsQuery;
 
       // Fetch projects created/assigned by this admin
       const projectOrFilters = [];
@@ -115,25 +129,25 @@ export default function DashboardOverview({ user, developers, projects, notifica
 
       let projectsQuery = supabase
         .from('projects')
-        .select('*')
+        .select('*', { count: 'exact', head: true })
         .or(projectOrFilters.join(','));
       if (orgId) projectsQuery = projectsQuery.eq('organization_id', orgId);
-      const { data: myProjectsData } = await projectsQuery;
+      const { count: myProjectsCount } = await projectsQuery;
 
       // Fetch unread notifications
       let notificationsQuery = supabase
         .from('notifications')
-        .select('*')
+        .select('*', { count: 'exact', head: true })
         .eq('read', false)
         .or(`admin_id.eq.${adminId},admin_email.ilike.%${adminEmail}%`);
       if (orgId) notificationsQuery = notificationsQuery.eq('organization_id', orgId);
-      const { data: unreadNotifications } = await notificationsQuery;
+      const { count: unreadCount } = await notificationsQuery;
 
       // Calculate statistics
-      const myDevelopers = myDevsData?.length || 0;
-      const myProjects = myProjectsData?.length || 0;
-      const activeDevelopers = myDevsData?.filter(dev => dev.status === 'active').length || 0;
-      const pendingNotifications = unreadNotifications?.length || 0;
+      const myDevelopers = myDevsCount || 0;
+      const myProjects = myProjectsCount || 0;
+      const activeDevelopers = activeDevsCount || 0;
+      const pendingNotifications = unreadCount || 0;
 
       setRealTimeStats({
         myDevelopers,
@@ -152,13 +166,13 @@ export default function DashboardOverview({ user, developers, projects, notifica
 
   // Auto-refresh every 30 seconds
   useEffect(() => {
-    const interval = setInterval(() => {
+    // Paused while the tab is hidden: this fired three org-wide count
+    // queries every 30 seconds whether or not anyone was looking.
+    return setVisibleInterval(() => {
       if (supabase && user) {
         fetchRealTimeData();
       }
-    }, 30000); // 30 seconds
-
-    return () => clearInterval(interval);
+    }, 30000);
   }, [supabase, user]);
 
   const formatTime = (date) => {

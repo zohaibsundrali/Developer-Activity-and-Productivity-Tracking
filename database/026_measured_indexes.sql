@@ -1,0 +1,46 @@
+-- =====================================================================
+--  026 - Indexes added because a benchmark showed they were missing
+-- =====================================================================
+--  Every index here was chosen from EXPLAIN ANALYZE against a seeded dataset,
+--  not from reading the code: 1.05M rows across developer_tasks (100k),
+--  screenshots (400k), keyboard_stats (400k) and task_time_logs (200k), with
+--  one organization deliberately grown to 50k tasks to represent a large
+--  tenant.
+--
+--  WHAT THE BENCHMARK FOUND
+--   reportsData pages developer_tasks with .eq(organization_id).order(id) —
+--   a shape no existing index covered. 022 has (organization_id, created_at),
+--   which the planner used instead and then top-N sorted on id. At 2.5k tasks
+--   per org that costs little, which is why it was invisible; at 50k it is the
+--   difference between an index scan and sorting the whole organization:
+--
+--     first page  (limit 1000)              11.1 ms -> 4.7 ms
+--     deep page   (offset 20000, limit 1000) 86.4 ms -> 26.0 ms
+--
+--   The remaining 26 ms is inherent to OFFSET paging, which must walk and
+--   discard every skipped row. Keyset pagination would remove it, but that
+--   changes the pager's contract and is not a performance-only change.
+--
+--  WHAT THE BENCHMARK ALSO SHOWED - and why nothing else was added
+--   The 022 and 025 indexes already cover the other hot shapes, measured on the
+--   same dataset:
+--     board by project                 12.6 ms -> 2.5 ms
+--     board org-wide                   32.3 ms -> 11.2 ms
+--     screenshots by developer+window  77.4 ms -> 1.2 ms
+--     keyboard stats by email+window   72.3 ms -> 9.3 ms
+--     time logs by org+window          43.9 ms -> 1.9 ms
+--   No further index changed a plan, so none were added. An index that the
+--   planner will not choose is write amplification for nothing.
+--
+--  FORMAT NOTE: one statement per physical line, no DO blocks, no double-quoted
+--  identifiers. The Supabase editor also shows only the LAST statement's
+--  result, so run verify queries ONE AT A TIME.
+-- =====================================================================
+
+create index if not exists idx_dev_tasks_org_id on public.developer_tasks (organization_id, id);
+
+
+-- =====================================================================
+--  VERIFY (read-only). Run on its own - expected: 1 row.
+-- =====================================================================
+-- select indexname from pg_indexes where schemaname = 'public' and indexname = 'idx_dev_tasks_org_id';

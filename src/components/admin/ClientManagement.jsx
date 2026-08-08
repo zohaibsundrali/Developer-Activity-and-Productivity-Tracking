@@ -97,13 +97,16 @@ export default function ClientManagement() {
     setLoading(true);
     try {
       const [cl, pc, prj, ann, inv, apr, thr] = await Promise.all([
-        supabase.from("clients").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }),
-        supabase.from("project_clients").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }),
-        supabase.from("projects").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }),
-        supabase.from("announcements").select("*").eq("organization_id", orgId).order("published_at", { ascending: false }),
-        supabase.from("invoices").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }),
-        supabase.from("approvals").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }),
-        supabase.from("support_threads").select("*").eq("organization_id", orgId).order("last_message_at", { ascending: false }),
+        // Never select("*") here: clients carries a legacy plaintext `password`
+        // column, and a wildcard shipped every client's credential into the
+        // admin's browser on each load of this screen. The UI reads only these.
+        supabase.from("clients").select("id, name, email, company, status, created_at").eq("organization_id", orgId).order("created_at", { ascending: false }).limit(2000),
+        supabase.from("project_clients").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }).limit(2000),
+        supabase.from("projects").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }).limit(2000),
+        supabase.from("announcements").select("*").eq("organization_id", orgId).order("published_at", { ascending: false }).limit(2000),
+        supabase.from("invoices").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }).limit(2000),
+        supabase.from("approvals").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }).limit(2000),
+        supabase.from("support_threads").select("*").eq("organization_id", orgId).order("last_message_at", { ascending: false }).limit(2000),
       ]);
       setClients(cl.data || []);
       setProjectClients(pc.data || []);

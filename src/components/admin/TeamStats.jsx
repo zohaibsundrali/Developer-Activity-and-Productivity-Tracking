@@ -75,14 +75,24 @@ export default function TeamStats() {
       depts = [];
     }
 
-    // Attendance / online — developer_logins (may key by developer_id or email;
-    // timestamp may live on login_time or created_at). Tolerate missing table.
+    // Attendance / online — developer_logins.
+    //
+    // This asked for every login row the organization had ever recorded, with
+    // no date filter and no limit, to answer two questions that only ever look
+    // at "the last 15 minutes" and "today". On a long-lived tenant that table
+    // is one row per sign-in, forever. The window below is what the component
+    // actually reads, and the columns are the ones this table really has —
+    // developer_email and created_at do not exist on it.
+    const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     let loginRows = [];
     try {
       const { data } = await supabase
         .from("developer_logins")
-        .select("developer_id, developer_email, login_time, created_at")
-        .eq("organization_id", orgId);
+        .select("developer_id, login_time")
+        .eq("organization_id", orgId)
+        .gte("login_time", sinceIso)
+        .order("login_time", { ascending: false })
+        .limit(2000);
       loginRows = data || [];
     } catch {
       loginRows = [];
@@ -95,7 +105,8 @@ export default function TeamStats() {
       const { data } = await supabase
         .from("productivity_metrics")
         .select("developer_id, productivity_score, active_time, total_time")
-        .eq("organization_id", orgId);
+        .eq("organization_id", orgId)
+        .limit(5000);
       metricRows = data || [];
     } catch {
       metricRows = [];
