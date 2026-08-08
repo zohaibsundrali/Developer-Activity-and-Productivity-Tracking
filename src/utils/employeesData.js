@@ -2,6 +2,7 @@ import { supabase } from "@/utils/supabaseClient";
 import { uploadOrgFile } from "@/utils/orgFiles";
 import { getOrgId } from "@/utils/orgContext";
 import { notify, dailyDedupeKey } from "@/utils/notifications";
+import { authFetch } from "@/utils/authFetch";
 
 /**
  * Employee data access for the Team & Employee Management module.
@@ -142,23 +143,165 @@ async function notifyTeamAssignment(orgId, emp, teamId) {
   await Promise.all(sends);
 }
 
+/**
+ * Reporting hierarchy: `memberships.reports_to` holds another member's
+ * user_id, and nothing about a uuid column stops it closing a loop — A reports
+ * to B while B reports to A, or a longer A→B→C→A, or the degenerate A→A. Any
+ * walk up the chain (an org chart, an approval ladder, "notify my manager")
+ * then never terminates.
+ *
+ * Migration 037 is the enforcement: a BEFORE INSERT OR UPDATE trigger on
+ * memberships refuses the write, and it catches every writer including
+ * OrganizationManagement.jsx, which patches memberships straight from the
+ * browser. What the trigger cannot do is explain itself — it surfaces as a
+ * Postgres check violation. This function is the explanation, computed from
+ * the directory the caller already loaded, so the person gets a sentence with
+ * names in it instead of an error code.
+ *
+ * Same bound as the trigger, for the same reason: if a cycle already exists in
+ * the data, walking it without a limit hangs the tab.
+ */
+export const MAX_REPORTING_DEPTH = 64;
+
+/**
+ * Returns a human-readable reason `userId` may not report to `reportsTo`, or
+ * null if the line is legal.
+ *
+ * `employees` is the loadEmployees() shape ({ userId, reportsTo, name, email }).
+ * Rows missing from it simply end the walk early — this check is allowed to be
+ * incomplete, because 037 is the one that must not be.
+ */
+export function reportingCycleError({ employees, userId, reportsTo }) {
+  if (!userId || !reportsTo) return null;
+
+  const me = String(userId);
+  const target = String(reportsTo);
+  const list = Array.isArray(employees) ? employees : [];
+  const nameOf = new Map(list.map((e) => [String(e.userId), e.name || e.email || String(e.userId)]));
+  const parentOf = new Map(
+    list.map((e) => [String(e.userId), e.reportsTo ? String(e.reportsTo) : null])
+  );
+  const label = (id) => nameOf.get(id) || id;
+  const meName = label(me);
+
+  if (target === me) {
+    return `${meName} cannot report to themselves.`;
+  }
+
+  // Walk up from the PROPOSED manager. The row being edited is never followed
+  // — we stop the moment we reach it — so the stale reports_to still sitting in
+  // `employees` for that row cannot mislead the walk.
+  const chain = [];
+  let cursor = target;
+  let hops = 0;
+  while (cursor) {
+    if (cursor === me) {
+      const via =
+        chain.length > 1 ? ` (${chain.join(" reports to ")} reports to ${meName})` : "";
+      return `That would create a reporting loop: ${label(target)} already reports to ${meName}${
+        chain.length > 1 ? " indirectly" : ""
+      }${via}. Pick a different manager, or clear ${label(target)}'s manager first.`;
+    }
+    hops += 1;
+    if (hops > MAX_REPORTING_DEPTH) {
+      return `The reporting chain above ${meName} is more than ${MAX_REPORTING_DEPTH} levels deep, or already contains a loop. Fix the existing chain before changing this line.`;
+    }
+    chain.push(label(cursor));
+    const next = parentOf.get(cursor);
+    cursor = next ? String(next) : null;
+  }
+
+  return null;
+}
+
+/**
+ * A role change is the ONE membership field the browser may not write.
+ *
+ * `memberships.role` is only half of a member's role: RLS reads the other half
+ * out of the JWT (app_metadata.role, via public.auth_role() — migration 018),
+ * and the browser cannot touch that. Writing the row alone produced a demotion
+ * that never took effect and a promotion that unlocked the UI but failed every
+ * write. /api/admin/members/role writes both, in the safe order, after checking
+ * the caller against the verified token.
+ *
+ * Returns the same { error } shape as the direct patch it replaces.
+ */
+async function changeMemberRole(membershipId, role) {
+  try {
+    const res = await authFetch("/api/admin/members/role", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ membershipId, role }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) {
+      return {
+        error: {
+          message: data?.error || "Could not change the role.",
+          code: "role_change_failed",
+        },
+      };
+    }
+    return { error: null };
+  } catch (err) {
+    return {
+      error: {
+        message: err?.message || "Could not change the role.",
+        code: "role_change_failed",
+      },
+    };
+  }
+}
+
 // Update a member's org fields (role/team/department/reports_to/status) and
 // upsert their rich profile. Pass only the patches you want to change.
-export async function saveEmployee({ orgId, emp, membershipPatch, profilePatch }) {
+//
+// `employees` is optional and used only for the readable cycle message above;
+// omit it and the write still goes to the database, which refuses cycles on
+// its own.
+export async function saveEmployee({ orgId, emp, membershipPatch, profilePatch, employees }) {
   try {
     if (membershipPatch && Object.keys(membershipPatch).length) {
-      const { error } = await supabase
-        .from("memberships")
-        .update({ ...membershipPatch, updated_at: new Date().toISOString() })
-        .eq("id", emp.membershipId);
-      if (error) return { error };
+      // Checked before the write so the refusal reads as a sentence rather
+      // than a raw check-constraint violation. 037 repeats it in the database,
+      // which is where it actually counts.
+      if ("reports_to" in membershipPatch && membershipPatch.reports_to) {
+        const message = reportingCycleError({
+          employees,
+          userId: emp?.userId,
+          reportsTo: membershipPatch.reports_to,
+        });
+        if (message) return { error: { message, code: "reporting_cycle" } };
+      }
+
+      // `role` leaves the direct patch and goes through the API route; every
+      // other field is still a plain RLS-checked update from the browser.
+      const { role: nextRole, ...directPatch } = membershipPatch;
+
+      // The form submits the whole patch every time, so `role` being present
+      // says nothing on its own — only a different value is a change. The
+      // comparison is load-bearing rather than an optimisation: the route
+      // refuses a self-role-change, so re-sending an unchanged role would make
+      // an admin editing their OWN team or department fail.
+      if (nextRole && String(nextRole) !== String(emp?.role || "")) {
+        const { error } = await changeMemberRole(emp.membershipId, nextRole);
+        if (error) return { error };
+      }
+
+      if (Object.keys(directPatch).length) {
+        const { error } = await supabase
+          .from("memberships")
+          .update({ ...directPatch, updated_at: new Date().toISOString() })
+          .eq("id", emp.membershipId);
+        if (error) return { error };
+      }
 
       // The form submits the whole membership patch every time, so `team_id`
       // being present says nothing on its own — only a different value is a
       // move. Announced from here rather than at the end of the function
       // because the move is already persisted at this point, and a later
       // profile failure must not decide whether anyone was told about it.
-      const nextTeamId = membershipPatch.team_id;
+      const nextTeamId = directPatch.team_id;
       if (nextTeamId && String(nextTeamId) !== String(emp?.teamId || "")) {
         try {
           await notifyTeamAssignment(orgId || getOrgId(), emp, nextTeamId);

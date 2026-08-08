@@ -302,12 +302,41 @@ function TeamsTab({ orgId, teams, departments, members, reload }) {
 
 /* ---------------- Members ---------------- */
 function MembersTab({ teams, departments, members, reload }) {
+  // `role` is the one field that cannot be patched from the browser.
+  //
+  // A member's role lives in TWO places: `memberships.role`, which this table
+  // shows, and app_metadata.role in the member's JWT, which is what RLS
+  // actually enforces (public.auth_role(), migration 018). Writing the row
+  // alone left the JWT claim untouched, so a demotion never took effect — the
+  // demoted account kept passing every RLS check, including the one that let it
+  // put its own role back — and a promotion only unlocked the UI. The API route
+  // writes both, in the order that keeps a partial failure restrictive, and
+  // refuses the changes this table cannot police (self-demotion, granting
+  // owner, HR reaching above itself).
   const update = async (id, patch) => {
-    const { error } = await supabase.from("memberships").update(patch).eq("id", id);
-    if (error) {
-      showError("Update failed", error.message || "Could not update member.");
-      return;
+    const { role, ...directPatch } = patch;
+
+    if (role !== undefined) {
+      const res = await authFetch("/api/admin/members/role", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ membershipId: id, role }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        showError("Role change failed", data?.error || "Could not change the role.");
+        return;
+      }
     }
+
+    if (Object.keys(directPatch).length) {
+      const { error } = await supabase.from("memberships").update(directPatch).eq("id", id);
+      if (error) {
+        showError("Update failed", error.message || "Could not update member.");
+        return;
+      }
+    }
+
     reload();
   };
 

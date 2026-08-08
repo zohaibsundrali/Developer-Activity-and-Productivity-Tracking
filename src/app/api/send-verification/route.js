@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import nodemailer from 'nodemailer';
+import { sendEmail } from '@/utils/emailService';
 
 export const dynamic = 'force-dynamic';
 
@@ -84,15 +84,6 @@ export async function POST(request) {
     const type = ALLOWED_TYPES.includes(body.type) ? body.type : 'login';
     const role = ALLOWED_ROLES.includes(body.role) ? body.role : 'user';
 
-    // Create transporter
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.GMAIL_EMAIL, // zohaibytautomation@gmail.com
-        pass: process.env.GMAIL_APP_PASSWORD, // App password
-      },
-    });
-
     // Determine email subject and content based on type
     const getEmailContent = () => {
       if (type === "login") {
@@ -114,15 +105,10 @@ export async function POST(request) {
 
     const emailContent = getEmailContent();
 
-    // Email options
-    const mailOptions = {
-      from: {
-        name: 'Developer Activity Tracking System',
-        address: process.env.GMAIL_EMAIL
-      },
-      to: email,
-      subject: emailContent.subject,
-      html: `
+    // The From address and transport now come from the provider seam
+    // (src/utils/emailProvider.js) instead of being built here, so this route
+    // gets retries, rate limiting and an email_log row like every other send.
+    const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <div style="background: #009578; color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0;">
             <h1>${emailContent.title}</h1>
@@ -140,7 +126,7 @@ export async function POST(request) {
             <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
               <p><strong>Name:</strong> ${userName}</p>
               <p><strong>Company:</strong> ${company}</p>
-              <p><strong>Email:</strong> ${email}</p>
+              <p><strong>Email:</strong> ${escapeHtml(email, 254)}</p>
               <p><strong>Role:</strong> ${role.charAt(0).toUpperCase() + role.slice(1)}</p>
             </div>
             
@@ -149,26 +135,40 @@ export async function POST(request) {
           
          
         </div>
-      `,
-    };
+      `;
 
-    // Send email
-    const result = await transporter.sendMail(mailOptions);
-    
+    // Send through the single send path. It never throws: a failure comes back
+    // as { ok: false }, so the 500 below is reserved for real bugs.
+    const result = await sendEmail({
+      to: email,
+      subject: emailContent.subject,
+      html,
+      template: 'verification',
+    });
+
+    if (!result.ok) {
+      // `result.error` is already redacted by the provider seam — no key
+      // material can reach a response body through here.
+      return NextResponse.json(
+        { success: false, error: 'Failed to send verification code', details: result.error },
+        { status: 502 }
+      );
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Verification code sent successfully',
       to: email,
-      messageId: result.messageId
+      messageId: result.messageId,
+      mode: result.mode,
     });
 
   } catch (error) {
+    // No `details` here: transport errors used to be echoed straight back to
+    // the browser, and an SMTP client will happily quote the credential it
+    // just tried in its own message.
     return NextResponse.json(
-      { 
-        success: false,
-        error: 'Failed to send verification code',
-        details: error.message 
-      },
+      { success: false, error: 'Failed to send verification code' },
       { status: 500 }
     );
   }

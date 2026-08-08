@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { serviceClient } from "@/utils/serverAuth";
+import { recordEvent } from "@/utils/systemEvents";
 
 export const dynamic = "force-dynamic";
 
@@ -200,6 +201,29 @@ async function runJobs() {
     summary.recurringSpawned += spawned.length;
   } catch (err) {
     summary.errors.push({ job: "recurring", message: err?.message || String(err) });
+  }
+
+  // Monitoring (best effort, never throws — see src/utils/systemEvents.js).
+  //
+  // Placed here rather than inside either catch on purpose: this job swallows
+  // every failure into `summary.errors` and still answers 200, so nothing
+  // upstream ever learns that the nightly run did half its work. Both catches
+  // AND the per-batch insert errors — which never throw at all — land in that
+  // array, so this is the one point in the file that sees every way the run can
+  // fail. No behaviour changes: the same summary is returned either way.
+  //
+  // orgId is null because a run spans every tenant; the failure belongs to the
+  // platform, not to one organization.
+  if (summary.errors.length) {
+    const first = summary.errors[0];
+    await recordEvent({
+      orgId: null,
+      type: "cron.job_failed",
+      severity: "error",
+      source: "cron",
+      message: `Nightly cron finished with ${summary.errors.length} failure(s): ${first?.message || "unknown"}`,
+      context: { job: first?.job, count: summary.errors.length, route: "/api/cron" },
+    });
   }
 
   return summary;

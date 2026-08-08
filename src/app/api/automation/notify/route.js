@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { checkFeatureAccess } from "@/utils/entitlements";
-import { sendMail, notifyEmailHtml, mailerConfigured } from "@/utils/mailer";
+import { sendTemplatedEmail, emailMode } from "@/utils/emailService";
 
 export const dynamic = "force-dynamic";
 
@@ -94,39 +94,50 @@ export async function POST(request) {
     // ── Optional email (best-effort; never fails the request) ──
     let emailed = 0;
     let emailSkipped = null;
+    let mode = null;
     if (sendEmail) {
-      if (!mailerConfigured()) {
-        emailSkipped = "Mailer not configured (GMAIL_EMAIL / GMAIL_APP_PASSWORD unset)";
-      } else {
-        // Resolve real addresses: membership.email, else the developers/admin_users row.
-        const missing = allowed.filter((m) => !m.email);
-        const emailById = new Map(allowed.filter((m) => m.email).map((m) => [m.user_id, m.email]));
-        if (missing.length) {
-          const devIds = missing.filter((m) => m.user_type !== "admin").map((m) => m.user_id);
-          const adminIds = missing.filter((m) => m.user_type === "admin").map((m) => m.user_id);
-          if (devIds.length) {
-            const { data } = await svc.from("developers").select("id, email").in("id", devIds);
-            (data || []).forEach((d) => d.email && emailById.set(d.id, d.email));
-          }
-          if (adminIds.length) {
-            const { data } = await svc.from("admin_users").select("id, email").in("id", adminIds);
-            (data || []).forEach((a) => a.email && emailById.set(a.id, a.email));
-          }
+      // No provider check up front: with none configured the send falls
+      // through to the mock, which records every message in email_log. That is
+      // the difference between "we skipped it" and "we have no idea".
+      mode = emailMode();
+      if (mode === "mock") {
+        emailSkipped = "No email provider configured (RESEND_API_KEY / GMAIL_* unset) — recorded in email_log";
+      }
+
+      // Resolve real addresses: membership.email, else the developers/admin_users row.
+      const missing = allowed.filter((m) => !m.email);
+      const emailById = new Map(allowed.filter((m) => m.email).map((m) => [m.user_id, m.email]));
+      if (missing.length) {
+        const devIds = missing.filter((m) => m.user_type !== "admin").map((m) => m.user_id);
+        const adminIds = missing.filter((m) => m.user_type === "admin").map((m) => m.user_id);
+        if (devIds.length) {
+          const { data } = await svc.from("developers").select("id, email").in("id", devIds);
+          (data || []).forEach((d) => d.email && emailById.set(d.id, d.email));
         }
+        if (adminIds.length) {
+          const { data } = await svc.from("admin_users").select("id, email").in("id", adminIds);
+          (data || []).forEach((a) => a.email && emailById.set(a.id, a.email));
+        }
+      }
 
-        const html = notifyEmailHtml({
-          orgName: org?.name || "Your workspace",
-          heading: subject,
-          body: message || `Task "${task?.task_title || "Untitled"}" was updated.`,
-        });
-
-        for (const to of emailById.values()) {
-          try {
-            const res = await sendMail({ to, subject, html, text: message });
-            if (res?.ok) emailed += 1;
-          } catch {
-            /* per-recipient failure is non-fatal */
-          }
+      for (const to of emailById.values()) {
+        try {
+          const res = await sendTemplatedEmail({
+            template: "automation",
+            to,
+            organizationId: auth.orgId,
+            subject,
+            data: {
+              orgName: org?.name || "Your workspace",
+              subject,
+              heading: subject,
+              message: message || `Task "${task?.task_title || "Untitled"}" was updated.`,
+              taskTitle: task?.task_title || "",
+            },
+          });
+          if (res?.delivered) emailed += 1;
+        } catch {
+          /* per-recipient failure is non-fatal */
         }
       }
     }
@@ -135,6 +146,7 @@ export async function POST(request) {
       ok: true,
       notified: rows.length,
       emailed,
+      ...(mode ? { emailMode: mode } : {}),
       ...(emailSkipped ? { emailSkipped } : {}),
     });
   } catch (err) {

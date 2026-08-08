@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import nodemailer from 'nodemailer';
 import crypto from 'crypto';
+import { sendTemplatedEmail } from '@/utils/emailService';
 import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
 import { checkSeatLimitForRole, checkFeatureAccess } from '@/utils/entitlements';
 
@@ -143,6 +143,7 @@ export async function POST(request) {
     const origin = getOrigin(request);
     const inviteLink = `${origin}/invite/${token}`;
     let emailed = false;
+    let emailMode = null;
 
     try {
       // Look up the organization name for a friendlier email.
@@ -154,59 +155,26 @@ export async function POST(request) {
         .maybeSingle();
       if (org && org.name) orgName = org.name;
 
-      const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: process.env.GMAIL_EMAIL,
-          pass: process.env.GMAIL_APP_PASSWORD,
-        },
-      });
-
       const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
 
-      const mailOptions = {
-        from: {
-          name: 'Developer Activity Tracking System',
-          address: process.env.GMAIL_EMAIL,
-        },
+      // One send path: the `invitation` template escapes orgName and roleLabel
+      // (both were interpolated raw into markup here), the provider seam picks
+      // Resend / SMTP / mock, transient failures are retried, and the outcome
+      // lands in email_log.
+      const sendResult = await sendTemplatedEmail({
+        template: 'invitation',
         to: email,
-        subject: `You've been invited${orgName ? ` to ${orgName}` : ''}`,
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <div style="background: #009578; color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0;">
-              <h1>You're Invited</h1>
-            </div>
-
-            <div style="padding: 30px; background: white;">
-              <p>Hello,</p>
-
-              <p>You have been invited to join ${orgName ? `<strong>${orgName}</strong>` : 'the workspace'} as a <strong>${roleLabel}</strong>.</p>
-
-              <p>Click the button below to accept your invitation and set up your account:</p>
-
-              <div style="text-align: center; margin: 28px 0;">
-                <a href="${inviteLink}" style="background: #009578; color: #fff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: bold; display: inline-block;">
-                  Accept Invitation
-                </a>
-              </div>
-
-              <p style="font-size: 13px; color: #666;">Or paste this link into your browser:</p>
-              <p style="font-size: 13px; word-break: break-all;"><a href="${inviteLink}">${inviteLink}</a></p>
-
-              <p style="font-size: 13px; color: #999; margin-top: 24px;">This invitation expires in 7 days.</p>
-            </div>
-          </div>
-        `,
-      };
-
-      await transporter.sendMail(mailOptions);
-      emailed = true;
+        organizationId,
+        data: { orgName, roleLabel, inviteUrl: inviteLink, expiresInDays: 7 },
+      });
+      emailed = Boolean(sendResult.delivered);
+      emailMode = sendResult.mode;
     } catch (emailError) {
       // Best-effort only — invitation still succeeds without the email.
       emailed = false;
     }
 
-    return NextResponse.json({ success: true, invitation, emailed });
+    return NextResponse.json({ success: true, invitation, emailed, emailMode });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: 'Failed to process invitation', details: error.message },

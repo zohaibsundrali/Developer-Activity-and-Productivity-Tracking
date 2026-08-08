@@ -22,6 +22,7 @@ import {
   FileBarChart,
   Zap,
   CreditCard,
+  HeartPulse,
 } from "lucide-react";
 
 // Admin sidebar items — ids MUST match the ?section= switch in the admin dashboard.
@@ -43,6 +44,7 @@ export const ADMIN_NAV = [
   { id: "organization", label: "Organization", icon: Building2 },
   { id: "clients", label: "Clients", icon: Handshake },
   { id: "billing", label: "Billing", icon: CreditCard },
+  { id: "system-health", label: "System Health", icon: HeartPulse },
   // { id: "productivity", label: "Productivity", icon: BarChart3 },
 ];
 
@@ -89,6 +91,9 @@ export const ADMIN_SECTION_ROLES = {
   organization: ["owner", "admin", "hr"],
   clients: ["owner", "admin"],
   billing: ["owner", "admin"],
+  // Infrastructure failure detail — same two roles the RLS policy on
+  // system_events admits (migration 038).
+  "system-health": ["owner", "admin"],
 };
 
 export function canAccessAdminSection(section, role) {
@@ -141,6 +146,7 @@ export const SECTION_TITLES = {
   organization: { admin: "Organization" },
   clients: { admin: "Clients" },
   billing: { admin: "Billing & Subscription" },
+  "system-health": { admin: "System Health" },
   productivity: { admin: "Productivity" },
   projects: { developer: "My Projects", client: "My Projects" },
   account: { developer: "Account", client: "Account" },

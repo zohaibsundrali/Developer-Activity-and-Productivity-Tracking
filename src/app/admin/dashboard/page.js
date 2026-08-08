@@ -23,6 +23,7 @@ import ProjectOverview from "@/components/admin/ProjectOverview";
 import ReportsDashboard from "@/components/admin/ReportsDashboard";
 import AutomationRules from "@/components/admin/AutomationRules";
 import BillingSubscription from "@/components/admin/BillingSubscription";
+import SystemHealth from "@/components/admin/SystemHealth";
 import { isSessionExpired, clearAdminSession } from "@/utils/sessionPolicy";
 
 // Authentication check function for admin
@@ -247,6 +248,8 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
         return <ClientManagement />;
       case "billing":
         return <BillingSubscription />;
+      case "system-health":
+        return <SystemHealth />;
       case "productivity":
         return <ProductivityDashboard currentAdmin={user} />;
       default:
