@@ -26,14 +26,21 @@ const supabase = createClient(
  *      uploads cannot be enumerated even while the bucket remains public.
  *   4. Payload size cap.
  *
- * STILL OUTSTANDING (Phase 2): the `documents` bucket is public and has no
- * policy in version control. Screenshots should move to a private bucket read
- * through signed URLs — that requires changing every reader, so it is not done
- * here. Existing rows keep their old public_url and remain enumerable.
+ * PHASE 2 (audit finding H2): screenshots no longer go to the public `documents`
+ * bucket at all. They are written to the PRIVATE `monitoring` bucket created in
+ * migration 019, and readers mint short-lived signed URLs via
+ * `src/utils/screenshotFiles.js`. A storage policy limits signing to members of
+ * the owning organization, so the org id in the path is enforced by the database.
+ *
+ * Rows written before this change keep their old public_url and still render;
+ * they remain publicly reachable until those objects are migrated across.
  */
 
 // ~8 MB of base64 ≈ 6 MB of PNG.
 const MAX_BASE64_CHARS = 8 * 1024 * 1024;
+
+// Private bucket — must match SCREENSHOT_BUCKET in src/utils/screenshotFiles.js.
+const SCREENSHOT_BUCKET = 'monitoring';
 
 function ingestAuthorized(request) {
   const secret = process.env.DESKTOP_INGEST_SECRET;
@@ -50,7 +57,7 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { developer_id, image_data, session_id, context, timestamp } = await request.json();
+    const { developer_id, image_data, context, timestamp } = await request.json();
 
     if (!developer_id || !image_data) {
       return NextResponse.json(
@@ -73,13 +80,14 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Unknown developer' }, { status: 403 });
     }
 
-    // Org-prefixed and unguessable. The org prefix also matches the folder
-    // convention a future bucket policy will key on.
+    // The leading path segment is the organization id — the storage policy in
+    // migration 019 reads it to decide who may sign this object. The random
+    // component keeps objects unguessable.
     const orgPrefix = developer.organization_id || 'unassigned';
-    const fileName = `screenshots/${orgPrefix}/${developer.id}/${Date.now()}-${crypto.randomUUID()}.png`;
+    const fileName = `${orgPrefix}/${developer.id}/${Date.now()}-${crypto.randomUUID()}.png`;
 
     const { error: uploadError } = await supabase.storage
-      .from('documents')
+      .from(SCREENSHOT_BUCKET)
       .upload(fileName, base64ToBuffer(image_data), {
         contentType: 'image/png',
         upsert: false
@@ -87,21 +95,17 @@ export async function POST(request) {
 
     if (uploadError) throw uploadError;
 
-    const { data: urlData } = supabase.storage
-      .from('documents')
-      .getPublicUrl(fileName);
-
-    // Save to database. Only REAL columns of the screenshots table are written:
-    // public_url is the canonical URL the desktop app writes and every reader
-    // displays. (image_url / thumbnail_url / activity_context / session_id do
-    // NOT exist in this table's schema and previously made this insert fail.)
+    // Save to database. Only REAL columns of the screenshots table are written.
+    // public_url is deliberately left null for private-bucket objects: there is
+    // no durable URL any more, readers sign storage_path on demand. (image_url /
+    // thumbnail_url / activity_context / session_id do NOT exist in this
+    // table's schema and previously made this insert fail.)
     const { error } = await supabase
       .from('screenshots')
       .insert([
         {
           developer_id: developer.id,
           organization_id: developer.organization_id,
-          public_url: urlData.publicUrl,
           storage_path: fileName,
           filename: fileName.split('/').pop(),
           annotation_text: context || null,
@@ -111,28 +115,10 @@ export async function POST(request) {
 
     if (error) throw error;
 
-    // Also record as activity
-    await supabase
-      .from('developer_activities')
-      .insert([
-        {
-          developer_id: developer.id,
-          organization_id: developer.organization_id,
-          activity_type: 'screenshot',
-          activity_data: {
-            context: context,
-            image_url: urlData.publicUrl
-          },
-          session_id,
-          productivity_score: 0.7,
-          timestamp: safeTimestamp(timestamp)
-        }
-      ]);
-
     return NextResponse.json({
       success: true,
       message: 'Screenshot uploaded successfully',
-      url: urlData.publicUrl
+      path: fileName
     });
 
   } catch {

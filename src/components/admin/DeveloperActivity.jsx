@@ -4,6 +4,7 @@ import { supabase } from "@/utils/supabaseClient";
 import { getOrgId } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
 import { showPre } from "@/utils/alerts";
+import { resolveScreenshotUrls } from "@/utils/screenshotFiles";
 import EChart from "@/components/charts/EChart";
 import {
   textStyle,
@@ -446,7 +447,10 @@ export default function DeveloperActivity() {
         const key = r?.id || `${r?.developer_id || ""}-${r?.created_at || ""}-${r?.timestamp || ""}`;
         if (!merged.has(key)) merged.set(key, r);
       });
-      finalScreenshots = Array.from(merged.values())
+      // Sign private-bucket rows first: they carry no durable public_url, so the
+      // URL filter below would otherwise discard every Phase 2 screenshot.
+      const resolvedShots = await resolveScreenshotUrls(Array.from(merged.values()));
+      finalScreenshots = resolvedShots
         .map((r) => {
           const imageUrl = r?.public_url || r?.image_url || r?.thumbnail_url || r?.publicUrl || null;
           const displayTs = r?.timestamp || r?.created_at || null;
@@ -709,7 +713,10 @@ export default function DeveloperActivity() {
     };
 
     const shouldInclude = (row) => {
-      const imageUrl = row?.public_url || row?.image_url || row?.thumbnail_url || row?.publicUrl;
+      // Private-bucket rows have no public_url — a storage_path is enough,
+      // the URL is signed on ingest below.
+      const imageUrl =
+        row?.public_url || row?.image_url || row?.thumbnail_url || row?.publicUrl || row?.storage_path;
       if (!imageUrl) return false;
       const displayTs = row?.timestamp || row?.created_at;
       if (!displayTs) return false;
@@ -719,6 +726,19 @@ export default function DeveloperActivity() {
       return t >= startMs && t < endMs;
     };
 
+    // Sign (if private) then prepend. Shared by both realtime subscriptions.
+    const ingest = async (incoming) => {
+      if (!shouldInclude(incoming)) return;
+      const [signed] = await resolveScreenshotUrls([incoming]);
+      const row = normalizeRow(signed || incoming);
+      if (!row.public_url) return;
+      setScreenshots(prev => {
+        if (row.id && prev.some(s => s.id === row.id)) return prev;
+        return [row, ...prev];
+      });
+      setLastUpdated(new Date());
+    };
+
     const ssChannel = supabase
       .channel("screenshots-realtime")
       .on("postgres_changes", {
@@ -726,29 +746,13 @@ export default function DeveloperActivity() {
         schema: "public",
         table: "screenshots",
         filter: `developer_id=eq.${dev.id}`,
-      }, (payload) => {
-        if (!shouldInclude(payload.new)) return;
-        const row = normalizeRow(payload.new);
-        setScreenshots(prev => {
-          if (row.id && prev.some(s => s.id === row.id)) return prev;
-          return [row, ...prev];
-        });
-        setLastUpdated(new Date());
-      })
+      }, (payload) => { ingest(payload.new); })
       .on("postgres_changes", {
         event: "INSERT",
         schema: "public",
         table: "screenshots",
         filter: `developer_email=eq.${dev.email}`,
-      }, (payload) => {
-        if (!shouldInclude(payload.new)) return;
-        const row = normalizeRow(payload.new);
-        setScreenshots(prev => {
-          if (row.id && prev.some(s => s.id === row.id)) return prev;
-          return [row, ...prev];
-        });
-        setLastUpdated(new Date());
-      })
+      }, (payload) => { ingest(payload.new); })
       .subscribe();
     screenshotChannelRef.current = ssChannel;
     return () => { supabase.removeChannel(ssChannel); };
@@ -2084,7 +2088,7 @@ export default function DeveloperActivity() {
                       onClick={async () => {
                         const { data, error } = await supabase
                           .from("screenshots")
-                          .select("id, developer_id, developer_email, public_url, image_url, thumbnail_url, timestamp, created_at")
+                          .select("id, developer_id, developer_email, public_url, image_url, thumbnail_url, storage_path, timestamp, created_at")
                           .limit(5);
                         showPre(
                           "Screenshot diagnostics",
@@ -2092,7 +2096,7 @@ export default function DeveloperActivity() {
                             ? `RLS Error: ${error.message}`
                             : `Found ${data?.length || 0} total screenshots.\n${
                                 data?.length
-                                  ? `Sample: developer_email=${data[0].developer_email}, developer_id=${data[0].developer_id}, has_url=${Boolean(data[0].public_url || data[0].image_url || data[0].thumbnail_url)}`
+                                  ? `Sample: developer_email=${data[0].developer_email}, developer_id=${data[0].developer_id}, has_url=${Boolean(data[0].public_url || data[0].image_url || data[0].thumbnail_url)}, storage_path=${data[0].storage_path || "(none)"}`
                                   : "Table is empty."
                               }`,
                           error ? "error" : "info"
