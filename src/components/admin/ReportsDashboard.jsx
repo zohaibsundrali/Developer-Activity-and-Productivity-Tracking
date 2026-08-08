@@ -155,6 +155,32 @@ function normalizeRange(range) {
 
 const sum = (arr) => (Array.isArray(arr) ? arr.reduce((s, n) => s + (Number(n) || 0), 0) : 0);
 
+/**
+ * The time and delay tables are row-per-event, so they run into the thousands
+ * on a busy month and rendering them all stalls the tab. Paging keeps the DOM
+ * bounded; exports and totals still use the complete row set.
+ */
+const ROWS_PER_PAGE = 50;
+
+/** Compact pager. Renders nothing when everything already fits on one page. */
+function TablePager({ page, pageCount, total, shown, onPage }) {
+  if (pageCount <= 1) return null;
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-sm">
+      <span className="text-muted-foreground">{`Showing ${shown} of ${total} rows`}</span>
+      <div className="flex items-center gap-1.5">
+        <button type="button" onClick={() => onPage(page - 1)} disabled={page <= 1} className={BTN_CLASS}>
+          Previous
+        </button>
+        <span className="px-1 text-xs text-muted-foreground">{`Page ${page} of ${pageCount}`}</span>
+        <button type="button" onClick={() => onPage(page + 1)} disabled={page >= pageCount} className={BTN_CLASS}>
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 
 export default function ReportsDashboard() {
@@ -165,6 +191,8 @@ export default function ReportsDashboard() {
   const [exporting, setExporting] = useState(false);
   const [tab, setTab] = useState("overview");
   const [nonce, setNonce] = useState(0);
+  const [timePage, setTimePage] = useState(1);
+  const [delayPage, setDelayPage] = useState(1);
 
   /* ---- data ---- */
   // Refresh re-runs the effect below rather than duplicating the fetch, so the
@@ -211,7 +239,7 @@ export default function ReportsDashboard() {
   const dist = useMemo(
     () =>
       bundle
-        ? statusDistribution(bundle.tasks)
+        ? bundle.statusCounts || statusDistribution(bundle.tasks)
         : { pending: 0, in_progress: 0, awaiting_approval: 0, completed: 0 },
     [bundle]
   );
@@ -228,6 +256,26 @@ export default function ReportsDashboard() {
   }, [trend]);
 
   const totalTimedHours = useMemo(() => sum(timeRows.map((r) => r.hours)), [timeRows]);
+
+  /* ---- paged slices (the totals above stay over the full row set) ---- */
+  const timePageCount = Math.max(1, Math.ceil(timeRows.length / ROWS_PER_PAGE));
+  const delayPageCount = Math.max(1, Math.ceil(delayRows.length / ROWS_PER_PAGE));
+  const timeStart = (Math.min(timePage, timePageCount) - 1) * ROWS_PER_PAGE;
+  const delayStart = (Math.min(delayPage, delayPageCount) - 1) * ROWS_PER_PAGE;
+  const pagedTimeRows = useMemo(
+    () => timeRows.slice(timeStart, timeStart + ROWS_PER_PAGE),
+    [timeRows, timeStart]
+  );
+  const pagedDelayRows = useMemo(
+    () => delayRows.slice(delayStart, delayStart + ROWS_PER_PAGE),
+    [delayRows, delayStart]
+  );
+
+  // A new bundle means new rows underneath — go back to the first page.
+  useEffect(() => {
+    setTimePage(1);
+    setDelayPage(1);
+  }, [bundle]);
 
   /* ---- charts ---- */
   const trendOption = useMemo(() => {
@@ -761,9 +809,9 @@ export default function ReportsDashboard() {
                         </tr>
                       </thead>
                       <tbody>
-                        {timeRows.map((r, i) => (
+                        {pagedTimeRows.map((r, i) => (
                           <tr
-                            key={`${r.date}-${r.developer}-${r.task}-${i}`}
+                            key={`${r.date}-${r.developer}-${r.task}-${timeStart + i}`}
                             className="border-t border-border hover:bg-muted/40"
                           >
                             <td className="whitespace-nowrap px-3 py-2 tabular-nums text-muted-foreground">
@@ -781,6 +829,13 @@ export default function ReportsDashboard() {
                       </tbody>
                     </table>
                   </div>
+                  <TablePager
+                    page={Math.min(timePage, timePageCount)}
+                    pageCount={timePageCount}
+                    total={timeRows.length}
+                    shown={pagedTimeRows.length}
+                    onPage={setTimePage}
+                  />
                   <div className="mt-3 flex items-center justify-end gap-2 border-t border-border pt-3 text-sm">
                     <span className="text-muted-foreground">Total:</span>
                     <span className="font-semibold tabular-nums text-foreground">
@@ -819,9 +874,9 @@ export default function ReportsDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {delayRows.map((r, i) => (
+                      {pagedDelayRows.map((r, i) => (
                         <tr
-                          key={`${r.task}-${r.due}-${i}`}
+                          key={`${r.task}-${r.due}-${delayStart + i}`}
                           className="border-t border-border hover:bg-muted/40"
                         >
                           <td className="px-3 py-2 font-medium text-foreground">{cell(r.task)}</td>
@@ -847,6 +902,15 @@ export default function ReportsDashboard() {
                     </tbody>
                   </table>
                 </div>
+              )}
+              {delayRows.length > 0 && (
+                <TablePager
+                  page={Math.min(delayPage, delayPageCount)}
+                  pageCount={delayPageCount}
+                  total={delayRows.length}
+                  shown={pagedDelayRows.length}
+                  onPage={setDelayPage}
+                />
               )}
             </div>
           )}

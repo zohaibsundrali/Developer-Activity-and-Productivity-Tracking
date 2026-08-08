@@ -1,4 +1,5 @@
 import { supabase } from "@/utils/supabaseClient";
+import { uploadOrgFile } from "@/utils/orgFiles";
 
 /**
  * Employee data access for the Team & Employee Management module.
@@ -103,14 +104,11 @@ export async function setEmployeeStatus(emp, status) {
   return { error };
 }
 
-// Upload an employee photo to the shared `documents` bucket; returns public URL.
+// Upload an employee photo to the PRIVATE `org-files` bucket and return its
+// storage path. Photos are PII, so they are no longer written to the public
+// bucket where any URL holder could fetch them. Callers persist the returned
+// path in employee_profiles.photo_url; render it via resolveOrgFileUrl, which
+// still passes through the full URLs stored before this change.
 export async function uploadEmployeePhoto(orgId, userId, file) {
-  const clean = file.name.replace(/[^a-zA-Z0-9.\-]/g, "_");
-  const path = `employee-photos/${orgId}/${userId}/${Date.now()}_${clean}`;
-  const { error } = await supabase.storage
-    .from("documents")
-    .upload(path, file, { upsert: true, cacheControl: "3600", contentType: file.type || "image/*" });
-  if (error) throw error;
-  const { data } = supabase.storage.from("documents").getPublicUrl(path);
-  return data?.publicUrl || "";
+  return uploadOrgFile({ orgId, category: "employee-photos", subPath: String(userId || "unassigned"), file });
 }

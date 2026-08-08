@@ -4,6 +4,7 @@ import { RefreshCw, Plus, X, Trash2, AlertTriangle, FileText, BarChart3, Calenda
 import { showError, showInfo, showSuccess, showWarning } from "@/utils/alerts";
 import { getOrgId } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
+import { uploadOrgFile, resolveOrgFileUrl } from "@/utils/orgFiles";
 
 const statusPill = (status) => {
   const s = String(status || "").toLowerCase();
@@ -247,28 +248,15 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
     }
   };
 
+  // Project requirement documents used to land in the PUBLIC `documents` bucket
+  // at the bucket ROOT with no organization prefix at all, so one tenant's files
+  // sat beside another's and any URL holder could read them. They now go to the
+  // private `org-files` bucket under the caller's org, and the stored value is a
+  // storage path rather than a URL (audit finding H2).
   const handleFileUpload = async (file) => {
     try {
       setUploadingFile(true);
-
-      // Create unique file name
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
-
-      // Upload file to Supabase Storage
-      const { data, error } = await supabase.storage
-        .from('documents')
-        .upload(fileName, file);
-
-      if (error) throw error;
-
-      // Get public URL for the uploaded file
-      const { data: urlData } = supabase.storage
-        .from('documents')
-        .getPublicUrl(fileName);
-
-      return urlData.publicUrl;
-
+      return await uploadOrgFile({ orgId: getOrgId(), category: 'project-docs', file });
     } catch (error) {
       showError("Upload failed", `File upload failed: ${error.message}`);
       return null;
@@ -277,16 +265,19 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
     }
   };
 
-  const generateAiTasks = async (projectId, fileUrl, fileName) => {
-    if (!projectId || !fileUrl) return null;
+  // filePath is the private storage path returned by the upload. The route
+  // signs it server-side; it is no longer a fetchable URL. authFetch is required
+  // because the route resolves the caller's organization from their token.
+  const generateAiTasks = async (projectId, filePath, fileName) => {
+    if (!projectId || !filePath) return null;
     const lowerName = (fileName || "").toLowerCase();
     if (!lowerName.endsWith(".docx")) return null;
 
     try {
-      const res = await fetch("/api/ai-generate-tasks", {
+      const res = await authFetch("/api/ai-generate-tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, fileUrl }),
+        body: JSON.stringify({ projectId, filePath }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -505,10 +496,17 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
     }
   };
 
+  // file_url now holds a private storage path. Sign it on click so the link is
+  // short-lived; rows written before the move still hold a full URL and
+  // resolveOrgFileUrl passes those through unchanged.
   const handleDownloadFile = async (project) => {
-    if (project.file_url) {
-      window.open(project.file_url, '_blank');
+    if (!project.file_url) return;
+    const url = await resolveOrgFileUrl(project.file_url);
+    if (!url) {
+      showError("Unavailable", "That file could not be opened. It may have been removed.");
+      return;
     }
+    window.open(url, '_blank');
   };
 
   const removeSelectedFile = () => {

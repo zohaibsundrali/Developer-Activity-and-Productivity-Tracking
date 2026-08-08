@@ -14,6 +14,7 @@ const STATUS_TONE_CLASS = {
   info: "bg-info/15 text-info",
   warning: "bg-warning/15 text-warning",
   success: "bg-success/15 text-success",
+  destructive: "bg-destructive/15 text-destructive",
 };
 
 const PRIORITY_STYLES = {

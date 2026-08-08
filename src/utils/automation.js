@@ -1,6 +1,7 @@
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
+import { isTransitionAllowed, REVIEW_ONLY_STATUSES } from "@/utils/pmData";
 
 /**
  * Workflow automation engine (ClickUp/Jira style).
@@ -11,7 +12,8 @@ import { authFetch } from "@/utils/authFetch";
  * never touch data its author couldn't touch by hand.
  *
  * Loop safety: actions write to developer_tasks with a plain supabase update
- * (never via moveTask/updateTask), so an automation can't re-trigger automations.
+ * (never via changeTaskStatus/updateTask), so an automation can't re-trigger
+ * automations. `set_status` still checks the transition rules before writing.
  * Every failure is swallowed and reported through the returned `errors` array —
  * automation must never break the user's actual task edit.
  */
@@ -126,6 +128,15 @@ async function applyAction(action, ctx, errors) {
       }
       case "set_status": {
         if (!action.status || action.status === task.status) return;
+        // The same transition rules the boards obey. An automation that wrote
+        // `completed`/`rejected` straight to the column would close work with no
+        // submission, no review record and no productivity points.
+        if (!isTransitionAllowed(task.status, action.status)) {
+          throw new Error(
+            `Refused status change ${task.status || "pending"} → ${action.status}` +
+              (REVIEW_ONLY_STATUSES.has(action.status) ? " (decided in review)" : "")
+          );
+        }
         const { error } = await supabase
           .from("developer_tasks")
           .update({ status: action.status, updated_at: new Date().toISOString() })

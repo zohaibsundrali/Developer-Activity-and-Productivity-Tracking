@@ -15,6 +15,7 @@ import EmployeeProfileEditor from "@/components/admin/EmployeeProfileEditor";
 import { getOrgId } from "@/utils/orgContext";
 import { loadEmployees, setEmployeeStatus } from "@/utils/employeesData";
 import { can } from "@/utils/permissions";
+import { resolveOrgFileUrls } from "@/utils/orgFiles";
 
 /**
  * Admin → Employees directory.
@@ -113,6 +114,25 @@ export default function EmployeeDirectory() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Employee photos live in the private `org-files` bucket, so their stored
+  // value is a path rather than a URL. Sign the whole page in one round trip;
+  // rows written before the move still hold a full URL and pass straight through.
+  const [photoUrls, setPhotoUrls] = useState(new Map());
+  useEffect(() => {
+    let cancelled = false;
+    const stored = (employees || []).map((e) => e.profile?.photo_url).filter(Boolean);
+    if (!stored.length) {
+      setPhotoUrls(new Map());
+      return undefined;
+    }
+    resolveOrgFileUrls(stored).then((map) => {
+      if (!cancelled) setPhotoUrls(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [employees]);
 
   // Resolve a userId → employee name (for "Reports to").
   const nameByUserId = useMemo(() => {
@@ -364,7 +384,7 @@ export default function EmployeeDirectory() {
             </thead>
             <tbody>
               {visible.map((emp) => {
-                const photo = emp.profile?.photo_url || null;
+                const photo = photoUrls.get(emp.profile?.photo_url) || null;
                 const initial =
                   (emp.name || emp.email || "?").trim().charAt(0).toUpperCase() ||
                   "?";

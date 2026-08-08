@@ -47,6 +47,14 @@ const CHART_COLORS = ["#0c8f6e", "#0ea5e9", "#7c3aed", "#f59e0b", "#ef4444", "#1
 const POLL_INTERVAL = 10_000; // 10 seconds
 const MOUSE_PAGE_SIZE = 50;
 
+// The tracker tables gain a row a minute per developer and this dashboard polls
+// every 10s, so every read is capped. The caps sit well above a realistic day
+// (or month, for the wider ranges) of activity for one developer.
+const SESSION_LIMIT = 500;
+const APP_USAGE_LIMIT = 1000;
+const SCREENSHOT_LIMIT = 200;
+const LOGIN_LIMIT = 500;
+
 export default function DeveloperActivity() {
   const [currentAdmin, setCurrentAdmin] = useState(null);
   const [developers, setDevelopers] = useState([]);
@@ -280,22 +288,24 @@ export default function DeveloperActivity() {
           .or(sessionFilters)
           .gte("start_time", start)
           .lt("start_time", end)
-          .order("start_time", { ascending: false }),
+          .order("start_time", { ascending: false })
+          .limit(SESSION_LIMIT),
         authFetch(`/api/keyboard-stats?developerId=${encodeURIComponent(devId || "")}&userId=${encodeURIComponent(dev.user_id || "")}&email=${encodeURIComponent(devEmail || "")}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`).then(r => r.json()),
-        supabase.from("app_usage").select("id, session_id, user_email, app_name, app_name_raw, window_title, start_time, end_time, duration_seconds, duration_minutes, tracked_at, created_at, is_new_app, user_login").eq("user_email", devEmail).gte("tracked_at", start).lt("tracked_at", end).order("tracked_at", { ascending: false }),
+        supabase.from("app_usage").select("id, session_id, user_email, app_name, app_name_raw, window_title, start_time, end_time, duration_seconds, duration_minutes, tracked_at, created_at, is_new_app, user_login").eq("user_email", devEmail).gte("tracked_at", start).lt("tracked_at", end).order("tracked_at", { ascending: false }).limit(APP_USAGE_LIMIT),
         // Screenshots schema has varied; select '*' and normalize client-side.
         supabase.from("screenshots").select("*")
           .or(`developer_id.eq.${devId},developer_email.eq.${devEmail}`)
           .gte("timestamp", start)
           .lt("timestamp", end)
-          .order("timestamp", { ascending: false }),
+          .order("timestamp", { ascending: false })
+          .limit(SCREENSHOT_LIMIT),
         // Fallback for rows missing `timestamp`: use created_at but keep the same date range.
         supabase.from("screenshots").select("*")
           .or(`developer_id.eq.${devId},developer_email.eq.${devEmail}`)
           .gte("created_at", start)
           .lt("created_at", end)
           .order("created_at", { ascending: false })
-          .limit(200),
+          .limit(SCREENSHOT_LIMIT),
         devEmail
           ? supabase
             .from("productivity_sessions")
@@ -303,6 +313,7 @@ export default function DeveloperActivity() {
             .eq("user_email", devEmail)
             .gte("start_time", start)
             .lt("start_time", end)
+            .limit(SESSION_LIMIT)
           : Promise.resolve({ data: [], error: null }),
       ]);
 
@@ -324,17 +335,17 @@ export default function DeveloperActivity() {
         const endIso = end;
         const attempts = [
           // Preferred: keyed by developer_id + login_time
-          () => supabase.from("developer_logins").select("*").eq("developer_id", devId).gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }),
+          () => supabase.from("developer_logins").select("*").eq("developer_id", devId).gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }).limit(LOGIN_LIMIT),
           // Fallback: keyed by email + login_time
-          () => supabase.from("developer_logins").select("*").eq("developer_email", devEmail).gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }),
-          () => supabase.from("developer_logins").select("*").eq("user_email", devEmail).gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }),
-          () => supabase.from("developer_logins").select("*").eq("email", devEmail).gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }),
+          () => supabase.from("developer_logins").select("*").eq("developer_email", devEmail).gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }).limit(LOGIN_LIMIT),
+          () => supabase.from("developer_logins").select("*").eq("user_email", devEmail).gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }).limit(LOGIN_LIMIT),
+          () => supabase.from("developer_logins").select("*").eq("email", devEmail).gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }).limit(LOGIN_LIMIT),
           // Fallback: some schemas may only have created_at
-          () => supabase.from("developer_logins").select("*").eq("developer_id", devId).gte("created_at", startIso).lt("created_at", endIso).order("created_at", { ascending: true }),
-          () => supabase.from("developer_logins").select("*").eq("developer_email", devEmail).gte("created_at", startIso).lt("created_at", endIso).order("created_at", { ascending: true }),
+          () => supabase.from("developer_logins").select("*").eq("developer_id", devId).gte("created_at", startIso).lt("created_at", endIso).order("created_at", { ascending: true }).limit(LOGIN_LIMIT),
+          () => supabase.from("developer_logins").select("*").eq("developer_email", devEmail).gte("created_at", startIso).lt("created_at", endIso).order("created_at", { ascending: true }).limit(LOGIN_LIMIT),
           // Last resort: date-bounded fetch then client-side filter
-          () => supabase.from("developer_logins").select("*").gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }).limit(500),
-          () => supabase.from("developer_logins").select("*").gte("created_at", startIso).lt("created_at", endIso).order("created_at", { ascending: true }).limit(500),
+          () => supabase.from("developer_logins").select("*").gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }).limit(LOGIN_LIMIT),
+          () => supabase.from("developer_logins").select("*").gte("created_at", startIso).lt("created_at", endIso).order("created_at", { ascending: true }).limit(LOGIN_LIMIT),
         ];
 
         let lastError = null;
@@ -405,7 +416,8 @@ export default function DeveloperActivity() {
           .or(sessionFilters)
           .gte("created_at", start)
           .lt("created_at", end)
-          .order("created_at", { ascending: false });
+          .order("created_at", { ascending: false })
+          .limit(SESSION_LIMIT);
         if (sByCreatedAt?.length) finalSessions = sByCreatedAt;
       }
 
@@ -418,19 +430,21 @@ export default function DeveloperActivity() {
             .or(sessionFilters)
             .gte("start_time", start)
             .lt("start_time", end)
-            .order("start_time", { ascending: false }),
-          supabase.from("app_usage").select("id, session_id, user_email, app_name, app_name_raw, window_title, start_time, end_time, duration_seconds, duration_minutes, tracked_at, created_at, is_new_app, user_login").eq("user_email", devEmail).gte("tracked_at", start).lt("tracked_at", end).order("tracked_at", { ascending: false }),
+            .order("start_time", { ascending: false })
+            .limit(SESSION_LIMIT),
+          supabase.from("app_usage").select("id, session_id, user_email, app_name, app_name_raw, window_title, start_time, end_time, duration_seconds, duration_minutes, tracked_at, created_at, is_new_app, user_login").eq("user_email", devEmail).gte("tracked_at", start).lt("tracked_at", end).order("tracked_at", { ascending: false }).limit(APP_USAGE_LIMIT),
           supabase.from("screenshots").select("*")
             .or(`developer_id.eq.${devId},developer_email.eq.${devEmail}`)
             .gte("timestamp", start)
             .lt("timestamp", end)
-            .order("timestamp", { ascending: false }),
+            .order("timestamp", { ascending: false })
+            .limit(SCREENSHOT_LIMIT),
           supabase.from("screenshots").select("*")
             .or(`developer_id.eq.${devId},developer_email.eq.${devEmail}`)
             .gte("created_at", start)
             .lt("created_at", end)
             .order("created_at", { ascending: false })
-            .limit(200),
+            .limit(SCREENSHOT_LIMIT),
         ]);
         finalSessions = s2.data || [];
         finalApp = a2.data || [];

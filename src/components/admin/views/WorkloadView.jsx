@@ -8,13 +8,14 @@ import { SEMANTIC, baseGrid, baseTooltip, axisLabel, splitLine, FONT_FAMILY } fr
 import { ListChecks, Users, UserX, Target } from "lucide-react";
 
 // Canonical status columns (order matters for the stacked series + table).
-const STATUS_COLUMNS = ["pending", "in_progress", "awaiting_approval", "completed"];
+const STATUS_COLUMNS = ["pending", "in_progress", "awaiting_approval", "completed", "rejected"];
 
 const STATUS_COLOR = {
   pending: SEMANTIC.muted,
   in_progress: SEMANTIC.info,
   awaiting_approval: SEMANTIC.warning,
   completed: SEMANTIC.success,
+  rejected: SEMANTIC.danger,
 };
 
 const UNASSIGNED_KEY = "__unassigned__";
@@ -31,7 +32,7 @@ export default function WorkloadView({ tasks, employees }) {
         buckets.set(key, {
           key,
           name,
-          counts: { pending: 0, in_progress: 0, awaiting_approval: 0, completed: 0 },
+          counts: { pending: 0, in_progress: 0, awaiting_approval: 0, completed: 0, rejected: 0 },
           total: 0,
           points: 0,
         });
@@ -163,6 +164,7 @@ export default function WorkloadView({ tasks, employees }) {
                 <th className="px-3 py-2 text-right">In Progress</th>
                 <th className="px-3 py-2 text-right">In Review</th>
                 <th className="px-3 py-2 text-right">Done</th>
+                <th className="px-3 py-2 text-right">Rejected</th>
                 <th className="px-3 py-2 text-right">Total</th>
                 <th className="px-3 py-2 text-right">Points</th>
               </tr>
@@ -182,6 +184,7 @@ export default function WorkloadView({ tasks, employees }) {
                       {r.counts.awaiting_approval}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.counts.completed}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.counts.rejected}</td>
                     <td className="px-3 py-2 text-right font-semibold tabular-nums text-foreground">{r.total}</td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       <span className="inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">

@@ -101,13 +101,24 @@ export async function POST(request) {
       return row;
     });
 
-    const { error } = await supabase.from('developer_activities').insert(rows);
-    if (error) throw error;
-
+    // `developer_activities` does not exist in the database and never has, so
+    // this endpoint has been returning 500 on every call since it was written.
+    // Nothing reads that table: the desktop tracker already writes the real
+    // per-signal tables (keyboard_stats, mouse_activities, app_usage,
+    // browser_usage, screenshots, productivity_sessions), which is where every
+    // report and dashboard reads from.
+    //
+    // Creating the table would start accumulating rows from an endpoint that is
+    // still unauthenticated whenever DESKTOP_INGEST_SECRET is unset, with no
+    // consumer — so the payload is validated and acknowledged, and nothing is
+    // written. Answering 200 rather than 500 also stops installed agents
+    // retrying a call that can never succeed.
     return NextResponse.json({
       success: true,
-      message: 'Activities tracked successfully',
-      count: rows.length,
+      message: 'Accepted. This endpoint is retired; per-signal tables are the system of record.',
+      accepted: rows.length,
+      stored: 0,
+      deprecated: true,
     });
   } catch {
     return NextResponse.json(

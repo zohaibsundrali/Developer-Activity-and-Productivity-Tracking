@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@emailjs/browser": "^4.4.1",
@@ -36,10 +38,11 @@
   "devDependencies": {
     "autoprefixer": "^10.4.16",
     "baseline-browser-mapping": "^2.10.20",
-    "eslint": "9.39.4",
-    "eslint-config-next": "16.2.4",
+    "eslint": "8.57.1",
+    "eslint-config-next": "14.0.0",
     "playwright": "^1.48.0",
     "postcss": "^8.4.31",
-    "tailwindcss": "^3.3.5"
+    "tailwindcss": "^3.3.5",
+    "vitest": "^3.2.4"
   }
 }

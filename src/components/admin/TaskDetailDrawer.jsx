@@ -16,6 +16,8 @@ import {
 import {
   updateTask,
   createTask,
+  changeTaskStatus,
+  allowedTransitions,
   loadTaskDetail,
   addComment,
   addChecklistItem,
@@ -31,15 +33,6 @@ import TaskExtras from "@/components/admin/TaskExtras";
 import TaskTimer from "@/components/admin/TaskTimer";
 
 // ---- constants & small helpers --------------------------------------
-const STATUS_OPTIONS = [
-  "pending",
-  "in_progress",
-  "awaiting_approval",
-  "reviewed",
-  "completed",
-  "rejected",
-];
-
 const DEPENDENCY_TYPES = ["blocks", "blocked_by", "relates_to"];
 
 // "in_progress" -> "In Progress"
@@ -271,6 +264,33 @@ export default function TaskDetailDrawer({
         }
       } catch (err) {
         showError("Could not save", err?.message || String(err));
+      } finally {
+        setSavingField(null);
+      }
+    },
+    [taskId, onChanged]
+  );
+
+  // Status is the one field that is never a plain column write: the legal moves
+  // depend on where the task sits, and Done/Rejected belong to the review flow.
+  const handleStatusChange = useCallback(
+    async (next) => {
+      if (!taskId || !next) return;
+      setSavingField("status");
+      try {
+        const { error } = await changeTaskStatus(taskId, next);
+        if (error) {
+          showError("Status unchanged", error.message || String(error));
+          return;
+        }
+        setForm((prev) => ({ ...(prev || {}), status: next }));
+        try {
+          onChanged?.();
+        } catch {
+          /* noop */
+        }
+      } catch (err) {
+        showError("Status unchanged", err?.message || String(err));
       } finally {
         setSavingField(null);
       }
@@ -510,6 +530,10 @@ export default function TaskDetailDrawer({
 
   const currentStatus = form?.status || task?.status || "pending";
   const currentPriority = form?.priority || task?.priority || "medium";
+  const statusChoices = [
+    currentStatus,
+    ...allowedTransitions(currentStatus).filter((s) => s !== currentStatus),
+  ];
 
   return (
     <>
@@ -555,14 +579,18 @@ export default function TaskDetailDrawer({
               <select
                 className={INPUT_CLASS}
                 value={currentStatus}
-                onChange={(e) => saveField("status", e.target.value)}
+                disabled={statusChoices.length < 2}
+                onChange={(e) => handleStatusChange(e.target.value)}
               >
-                {STATUS_OPTIONS.map((s) => (
+                {statusChoices.map((s) => (
                   <option key={s} value={s}>
                     {pretty(s)}
                   </option>
                 ))}
               </select>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Completed and Rejected are decided in Task Reviews.
+              </p>
             </div>
             <div>
               <label className={LABEL_CLASS}>Priority</label>

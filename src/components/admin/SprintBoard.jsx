@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  moveTask,
+  changeTaskStatus,
+  normalizeStatus,
   BOARD_COLUMNS,
   computeBurndown,
 } from "@/utils/pmData";
@@ -30,26 +31,6 @@ import {
 /* -------------------------------------------------------------------------- */
 /*  Constants / helpers                                                        */
 /* -------------------------------------------------------------------------- */
-
-const COLUMN_IDS = new Set(BOARD_COLUMNS.map((c) => c.id));
-
-// Map any off-pipeline status onto one of the visible columns.
-const STATUS_ALIAS = {
-  reviewed: "awaiting_approval",
-  in_review: "awaiting_approval",
-  rejected: "pending",
-  todo: "pending",
-  open: "pending",
-  doing: "in_progress",
-  done: "completed",
-  approved: "completed",
-};
-
-function normalizeStatus(status) {
-  if (status && COLUMN_IDS.has(status)) return status;
-  if (status && STATUS_ALIAS[status]) return STATUS_ALIAS[status];
-  return "pending"; // bucket unknowns into To Do
-}
 
 const DONE_STATUSES = new Set(["completed", "reviewed"]);
 
@@ -286,11 +267,20 @@ export default function SprintBoard({
       if (!task) return;
       if (normalizeStatus(task.status) === columnId) return; // no move needed
 
+      const target = BOARD_COLUMNS.find((c) => c.id === columnId);
+      if (target?.reviewOnly) {
+        showError(
+          "Not a drop target",
+          `"${target.label}" is decided in Task Reviews, not by moving a card.`
+        );
+        return;
+      }
+
       // Optimistic local update for snappiness.
       setStatusOverrides((prev) => ({ ...prev, [task.id]: columnId }));
 
       try {
-        const { error } = await moveTask(task.id, { status: columnId });
+        const { error } = await changeTaskStatus(task.id, columnId);
         if (error) {
           showError("Move failed", error.message || String(error));
           await onChanged?.(); // revert to server truth
@@ -398,6 +388,7 @@ export default function SprintBoard({
               key={col.id}
               onDragOver={(e) => {
                 e.preventDefault();
+                if (col.reviewOnly) return; // never signals a valid drop
                 if (dragOverCol !== col.id) setDragOverCol(col.id);
               }}
               onDragLeave={() =>

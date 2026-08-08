@@ -12,7 +12,7 @@ import {
   ACTION_TYPES,
 } from "@/utils/automation";
 import { loadEmployees } from "@/utils/employeesData";
-import { loadLabels, BOARD_COLUMNS, PRIORITIES, TASK_TYPES } from "@/utils/pmData";
+import { loadLabels, BOARD_COLUMNS, DRAGGABLE_COLUMNS, PRIORITIES, TASK_TYPES } from "@/utils/pmData";
 import { showError, showSuccess } from "@/utils/alerts";
 import {
   Plus,
@@ -174,7 +174,7 @@ function defaultAction(type) {
     case "assign":
       return { type: "assign", userId: "" };
     case "set_status":
-      return { type: "set_status", status: (BOARD_COLUMNS || [])[0]?.id || "pending" };
+      return { type: "set_status", status: (DRAGGABLE_COLUMNS || [])[0]?.id || "pending" };
     case "set_priority":
       return { type: "set_priority", priority: (PRIORITIES || [])[0] || "low" };
     case "add_label":
@@ -468,7 +468,8 @@ export default function AutomationRules() {
             aria-label="Set status to"
           >
             <option value="">Select status…</option>
-            {(BOARD_COLUMNS || []).map((c) => (
+            {/* Review outcomes are omitted: the engine refuses to write them. */}
+            {(DRAGGABLE_COLUMNS || []).map((c) => (
               <option key={c.id} value={c.id}>
                 {c.label}
               </option>
