@@ -500,6 +500,7 @@ function DeveloperDashboardContent() {
       subtitle={user?.name ? `Welcome back, ${user.name}` : undefined}
       notificationSlot={
         <NotificationDropdown
+          user={user}
           notifications={notifications || []}
           unreadCount={unreadCount}
           onMarkAllAsRead={handleMarkAllAsRead}

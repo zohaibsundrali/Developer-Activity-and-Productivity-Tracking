@@ -495,6 +495,7 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
       subtitle={user?.full_name ? `Signed in as ${user.full_name}` : undefined}
       notificationSlot={
         <NotificationDropdown
+          user={user}
           notifications={notifications || []}
           unreadCount={unreadCount}
           onMarkAllAsRead={handleMarkAllAsRead}
