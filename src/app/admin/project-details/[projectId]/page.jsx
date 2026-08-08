@@ -5,14 +5,28 @@ import { supabase } from "@/utils/supabaseClient";
 import { showError, showWarning } from "@/utils/alerts";
 import { isSessionExpired, clearAdminSession } from "@/utils/sessionPolicy";
 import { authFetch } from "@/utils/authFetch";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  ErrorState,
+  Field,
+  PageHeader,
+  Section,
+  Skeleton,
+  SkeletonCard,
+} from "@/components/ui";
+import { ArrowLeft, Check, ClipboardList, X } from "lucide-react";
 
-const statusPill = (status) => {
+// The plan/task status vocabulary here is wider than the board's, so it is
+// mapped to a Badge variant rather than reusing the board's StatusPill.
+const statusVariant = (status) => {
   const s = String(status || "").toLowerCase();
-  if (["completed", "done", "approved", "active", "reviewed"].includes(s)) return "bg-success/10 text-success";
-  if (["in_progress", "in progress", "awaiting_approval", "pending_review"].includes(s)) return "bg-info/10 text-info";
-  if (["pending", "assigned", "draft", "on_hold"].includes(s)) return "bg-warning/10 text-warning";
-  if (["rejected", "cancelled", "overdue"].includes(s)) return "bg-destructive/10 text-destructive";
-  return "bg-muted text-muted-foreground";
+  if (["completed", "done", "approved", "active", "reviewed"].includes(s)) return "success";
+  if (["in_progress", "in progress", "awaiting_approval", "pending_review"].includes(s)) return "info";
+  if (["pending", "assigned", "draft", "on_hold"].includes(s)) return "warning";
+  if (["rejected", "cancelled", "overdue"].includes(s)) return "destructive";
+  return "secondary";
 };
 
 const checkAdminAuth = () => {
@@ -224,137 +238,252 @@ export default function AdminProjectDetailsPage() {
   const canReviewPlan = taskPlanSubmitted && taskPlanStatus === "pending";
   const isPlanApproved = taskPlanStatus === "approved";
 
+  const backToProjects = () => router.push("/admin/dashboard?section=all-projects");
+
+  const pageFrame = (children) => (
+    <div className="min-h-screen bg-background">
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">{children}</div>
+    </div>
+  );
+
   if (loading) {
-    return (
-      <div className="min-h-screen bg-muted flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-          <div className="text-xl text-muted-foreground mt-4">Loading project details...</div>
+    return pageFrame(
+      <>
+        <PageHeader
+          title="Project details"
+          breadcrumbs={[
+            { label: "Projects", href: "/admin/dashboard?section=all-projects" },
+            { label: "Details" },
+          ]}
+        />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="space-y-6 lg:col-span-1">
+            <SkeletonCard lines={7} />
+            <SkeletonCard lines={4} />
+          </div>
+          <div className="lg:col-span-2">
+            <div className="space-y-3 rounded-xl border border-border bg-card p-5 shadow-card">
+              <Skeleton className="h-4 w-24" />
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="space-y-2 rounded-lg border border-border p-4">
+                  <Skeleton className="h-4 w-2/3" />
+                  <Skeleton className="h-3 w-full" />
+                  <Skeleton className="h-3 w-1/3" />
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   if (error) {
-    return (
-      <div className="min-h-screen bg-muted flex items-center justify-center">
-        <div className="text-center bg-card p-8 rounded-xl border border-border shadow-card">
-          <div className="text-destructive text-xl mb-4">Error Loading Project</div>
-          <p className="text-muted-foreground mb-6">{error}</p>
-          <button
-            onClick={() => router.push("/admin/dashboard?section=all-projects")}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-          >
-            Back to Projects
-          </button>
+    return pageFrame(
+      <>
+        <PageHeader
+          title="Project details"
+          breadcrumbs={[
+            { label: "Projects", href: "/admin/dashboard?section=all-projects" },
+            { label: "Details" },
+          ]}
+        />
+        <ErrorState
+          title="Couldn't load this project"
+          description={error}
+          onRetry={() => fetchProjectDetails()}
+        />
+        <div className="mt-4 flex justify-center">
+          <Button variant="outline" size="lg" onClick={backToProjects}>
+            <ArrowLeft aria-hidden="true" />
+            Back to projects
+          </Button>
         </div>
-      </div>
+      </>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-muted py-8">
-      <div className="max-w-6xl mx-auto px-4">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">Project Details</h1>
-            <p className="text-muted-foreground mt-1">{project?.name}</p>
-          </div>
-          <button
-            onClick={() => router.push("/admin/dashboard?section=all-projects")}
-            className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+  return pageFrame(
+    <>
+      <PageHeader
+        title="Project details"
+        description={project?.name}
+        breadcrumbs={[
+          { label: "Projects", href: "/admin/dashboard?section=all-projects" },
+          { label: project?.name || "Details" },
+        ]}
+        actions={
+          <Button variant="outline" size="lg" onClick={backToProjects}>
+            <ArrowLeft aria-hidden="true" />
+            Back to projects
+          </Button>
+        }
+      />
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-1">
+          <Section title="Project info" className="rounded-xl border border-border bg-card p-5 shadow-card">
+            <dl className="grid grid-cols-1 gap-x-4 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-1">
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Assigned to
+                </dt>
+                <dd className="text-foreground">
+                  {project?.assigned_developer_name || "Not assigned"}
+                </dd>
+              </div>
+              <div className="min-w-0">
+                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Email
+                </dt>
+                <dd className="truncate text-foreground">
+                  {project?.assigned_developer_email || "N/A"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Deadline
+                </dt>
+                <dd className="tabular-nums text-foreground">{formatDate(project?.deadline)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Created
+                </dt>
+                <dd className="tabular-nums text-foreground">{formatDate(project?.created_at)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Plan status
+                </dt>
+                <dd>
+                  <Badge variant={statusVariant(taskPlanStatus)} size="sm">
+                    {taskPlanStatus}
+                  </Badge>
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Submitted
+                </dt>
+                <dd className="text-foreground">{taskPlanSubmitted ? "Yes" : "No"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Submitted at
+                </dt>
+                <dd className="tabular-nums text-foreground">
+                  {formatDate(project?.task_plan_submitted_at)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Reviewed
+                </dt>
+                <dd className="tabular-nums text-foreground">
+                  {formatDate(project?.task_plan_reviewed_at)}
+                </dd>
+              </div>
+            </dl>
+
+            {project?.task_plan_rejection_reason && (
+              <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                <p className="font-medium">Rejection reason</p>
+                <p className="mt-1 whitespace-pre-wrap">{project.task_plan_rejection_reason}</p>
+              </div>
+            )}
+          </Section>
+
+          <Section
+            title="Task plan review"
+            className="rounded-xl border border-border bg-card p-5 shadow-card"
           >
-            Back to Projects
-          </button>
+            <div className="space-y-3">
+              <Button
+                size="lg"
+                className="w-full"
+                onClick={handleApprovePlan}
+                disabled={processing || isPlanApproved || !canReviewPlan}
+              >
+                <Check aria-hidden="true" />
+                {isPlanApproved ? "Task plan approved" : "Approve task plan"}
+              </Button>
+
+              {!canReviewPlan && !isPlanApproved && (
+                <p className="rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+                  Approve/Reject will be enabled after the developer clicks “Save Task Plan”.
+                </p>
+              )}
+
+              <Field label="Rejection reason" htmlFor="plan-rejection-reason">
+                <textarea
+                  id="plan-rejection-reason"
+                  rows={3}
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors duration-150 placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
+                  placeholder="Explain why the plan is rejected"
+                  disabled={isPlanApproved || !canReviewPlan}
+                />
+              </Field>
+
+              <Button
+                variant="destructive"
+                size="lg"
+                className="w-full"
+                onClick={handleRejectPlan}
+                disabled={processing || isPlanApproved || !canReviewPlan}
+              >
+                <X aria-hidden="true" />
+                Reject task plan
+              </Button>
+            </div>
+          </Section>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1">
-            <div className="bg-card rounded-xl border border-border shadow-card p-5">
-              <h2 className="text-lg font-semibold text-foreground mb-3">Project Info</h2>
-              <div className="space-y-2 text-sm text-muted-foreground">
-                <p><span className="font-medium text-foreground">Assigned to:</span> {project?.assigned_developer_name || "Not assigned"}</p>
-                <p><span className="font-medium text-foreground">Email:</span> {project?.assigned_developer_email || "N/A"}</p>
-                <p><span className="font-medium text-foreground">Deadline:</span> {formatDate(project?.deadline)}</p>
-                <p><span className="font-medium text-foreground">Created:</span> {formatDate(project?.created_at)}</p>
-                <p className="flex items-center gap-2"><span className="font-medium text-foreground">Plan status:</span> <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${statusPill(taskPlanStatus)}`}>{taskPlanStatus}</span></p>
-                <p><span className="font-medium text-foreground">Submitted:</span> {taskPlanSubmitted ? "Yes" : "No"}</p>
-                <p><span className="font-medium text-foreground">Submitted at:</span> {formatDate(project?.task_plan_submitted_at)}</p>
-                <p><span className="font-medium text-foreground">Reviewed:</span> {formatDate(project?.task_plan_reviewed_at)}</p>
-              </div>
-              {project?.task_plan_rejection_reason && (
-                <div className="mt-3 p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-sm text-destructive">
-                  <span className="font-medium">Rejection reason:</span> {project.task_plan_rejection_reason}
-                </div>
-              )}
-            </div>
-
-            <div className="bg-card rounded-xl border border-border shadow-card p-5 mt-6">
-              <h2 className="text-lg font-semibold text-foreground mb-3">Task Plan Review</h2>
-              <div className="space-y-3">
-                <button
-                  onClick={handleApprovePlan}
-                  disabled={processing || isPlanApproved || !canReviewPlan}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-success py-2 text-sm font-semibold text-success-foreground transition-colors hover:bg-success/90 disabled:opacity-50"
-                >
-                  {isPlanApproved ? "Task Plan Approved" : "Approve Task Plan"}
-                </button>
-                {!canReviewPlan && !isPlanApproved && (
-                  <div className="text-xs text-muted-foreground bg-muted border border-border rounded-lg p-3">
-                    Approve/Reject will be enabled after the developer clicks “Save Task Plan”.
-                  </div>
-                )}
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">Rejection Reason</label>
-                  <textarea
-                    rows="3"
-                    value={rejectionReason}
-                    onChange={(e) => setRejectionReason(e.target.value)}
-                    className="w-full border border-input bg-background rounded-lg px-3 py-2 focus:border-primary focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                    placeholder="Explain why the plan is rejected"
-                    disabled={isPlanApproved || !canReviewPlan}
-                  />
-                </div>
-                <button
-                  onClick={handleRejectPlan}
-                  disabled={processing || isPlanApproved || !canReviewPlan}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-destructive py-2 text-sm font-semibold text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:opacity-50"
-                >
-                  Reject Task Plan
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="lg:col-span-2">
-            <div className="bg-card rounded-xl border border-border shadow-card p-5">
-              <h2 className="text-lg font-semibold text-foreground mb-4">Tasks</h2>
-              {tasks.length === 0 ? (
-                <p className="text-muted-foreground">No tasks submitted for this project.</p>
-              ) : (
-                <div className="space-y-3">
-                  {tasks.map((task, index) => (
-                    <div key={task.id} className="border border-border rounded-lg p-4 bg-muted/50">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <p className="font-semibold text-foreground">{index + 1}. {formatTaskTitle(task.task_title)}</p>
-                          <p className="text-sm text-muted-foreground mt-1">{task.task_description || "No description"}</p>
-                          <p className="text-xs text-muted-foreground mt-2">
-                            {formatDate(task.start_date)} - {formatDate(task.end_date)}
-                          </p>
-                        </div>
-                        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${statusPill(task.status || "pending")}`}>
-                          {task.status || "pending"}
-                        </span>
+        <div className="lg:col-span-2">
+          <Section
+            title="Tasks"
+            description={`${tasks.length} task${tasks.length === 1 ? "" : "s"} in this plan`}
+            className="rounded-xl border border-border bg-card p-5 shadow-card"
+          >
+            {tasks.length === 0 ? (
+              <EmptyState
+                icon={ClipboardList}
+                title="No tasks submitted"
+                description="The developer has not added any tasks to this project's plan yet."
+              />
+            ) : (
+              <ol className="space-y-3">
+                {tasks.map((task, index) => (
+                  <li
+                    key={task.id}
+                    className="rounded-lg border border-border bg-muted/30 p-4"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium text-foreground">
+                          <span className="tabular-nums text-muted-foreground">{index + 1}.</span>{" "}
+                          {formatTaskTitle(task.task_title)}
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {task.task_description || "No description"}
+                        </p>
+                        <p className="mt-2 text-xs tabular-nums text-muted-foreground">
+                          {formatDate(task.start_date)} – {formatDate(task.end_date)}
+                        </p>
                       </div>
+                      <Badge variant={statusVariant(task.status || "pending")} size="sm">
+                        {task.status || "pending"}
+                      </Badge>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </Section>
         </div>
       </div>
-    </div>
+    </>
   );
 }

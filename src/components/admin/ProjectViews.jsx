@@ -23,6 +23,8 @@ import TableView from "@/components/admin/views/TableView";
 import CalendarView from "@/components/admin/views/CalendarView";
 import TimelineView from "@/components/admin/views/TimelineView";
 import WorkloadView from "@/components/admin/views/WorkloadView";
+import { SELECT_CLASS, ViewSkeleton } from "@/components/admin/views/viewKit";
+import { Button, EmptyState, Skeleton, Tabs, Toolbar } from "@/components/ui";
 import {
   LayoutGrid,
   List as ListIcon,
@@ -30,7 +32,6 @@ import {
   CalendarDays,
   GanttChartSquare,
   Users,
-  Search,
   RefreshCw,
   Bookmark,
   BookmarkPlus,
@@ -45,9 +46,6 @@ const VIEW_META = {
   timeline: { label: "Timeline", icon: GanttChartSquare },
   workload: { label: "Workload", icon: Users },
 };
-
-const INPUT_CLASS =
-  "rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30";
 
 const EMPTY_FILTERS = { search: "", priority: "all", assignee: "all", sprint: "all", type: "all" };
 
@@ -187,24 +185,37 @@ export default function ProjectViews() {
 
   const onOpenTask = useCallback((task) => setSelectedTask(task), []);
 
+  const activeFilterCount = useMemo(
+    () =>
+      Object.entries(filters).filter(([k, v]) =>
+        k === "search" ? Boolean(String(v).trim()) : v !== "all"
+      ).length,
+    [filters]
+  );
+
   /* ---- render ---- */
   if (loadingProjects) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-primary/30 border-t-primary" />
+      <div className="space-y-6">
+        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+          <div className="flex flex-wrap items-center gap-3">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="ml-auto h-8 w-64" />
+          </div>
+          <Skeleton className="mt-4 h-8 w-full" />
+        </div>
+        <ViewSkeleton viewType="kanban" />
       </div>
     );
   }
 
   if (!projects.length) {
     return (
-      <div className="rounded-xl border border-border bg-card p-8 text-center shadow-card">
-        <LayoutGrid className="mx-auto h-8 w-8 text-muted-foreground" />
-        <p className="mt-3 text-sm font-medium text-foreground">No projects yet</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Create a project first to view its work across boards, lists and timelines.
-        </p>
-      </div>
+      <EmptyState
+        icon={LayoutGrid}
+        title="No projects yet"
+        description="Create a project first to view its work across boards, lists, calendars and timelines."
+      />
     );
   }
 
@@ -237,16 +248,19 @@ export default function ProjectViews() {
   };
 
   return (
-    <div className="space-y-4">
-      {/* Toolbar */}
-      <div className="rounded-xl border border-border bg-card p-3 shadow-card space-y-3">
-        {/* row 1: project + view tabs */}
-        <div className="flex flex-wrap items-center gap-2">
+    <div className="space-y-6">
+      {/* One toolbar for all six views: project, view tabs, filters, saved views. */}
+      <div className="rounded-xl border border-border bg-card shadow-card">
+        {/* row 1: project + saved views */}
+        <div className="flex flex-wrap items-center gap-2 px-4 pt-4">
+          <label htmlFor="views-project" className="sr-only">
+            Select project
+          </label>
           <select
+            id="views-project"
             value={projectId || ""}
             onChange={(e) => setProjectId(e.target.value || null)}
-            className={INPUT_CLASS}
-            aria-label="Select project"
+            className={`${SELECT_CLASS} font-medium`}
           >
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
@@ -255,111 +269,166 @@ export default function ProjectViews() {
             ))}
           </select>
 
-          <div className="ml-auto flex flex-wrap items-center gap-1 rounded-lg border border-border bg-background p-1">
-            {VIEW_TYPES.map((v) => {
-              const meta = VIEW_META[v];
-              const Icon = meta.icon;
-              const active = viewType === v;
-              return (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setViewType(v)}
-                  className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors ${
-                    active
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span className="hidden sm:inline">{meta.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* row 2: filters + saved views */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              value={filters.search}
-              onChange={(e) => setFilter("search", e.target.value)}
-              placeholder="Search tasks…"
-              className={`${INPUT_CLASS} pl-8`}
-              aria-label="Search tasks"
-            />
-          </div>
-
-          <select value={filters.priority} onChange={(e) => setFilter("priority", e.target.value)} className={INPUT_CLASS} aria-label="Filter by priority">
-            <option value="all">All priorities</option>
-            {PRIORITIES.map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
-
-          <select value={filters.type} onChange={(e) => setFilter("type", e.target.value)} className={INPUT_CLASS} aria-label="Filter by type">
-            <option value="all">All types</option>
-            {TASK_TYPES.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-
-          <select value={filters.assignee} onChange={(e) => setFilter("assignee", e.target.value)} className={INPUT_CLASS} aria-label="Filter by assignee">
-            <option value="all">All assignees</option>
-            <option value="unassigned">Unassigned</option>
-            {(employees || []).map((emp) => (
-              <option key={emp.userId || emp.membershipId} value={emp.userId}>{emp.name}</option>
-            ))}
-          </select>
-
-          <select value={filters.sprint} onChange={(e) => setFilter("sprint", e.target.value)} className={INPUT_CLASS} aria-label="Filter by sprint">
-            <option value="all">All sprints</option>
-            {(sprints || []).map((s) => (
-              <option key={s.id} value={String(s.id)}>{s.name || `Sprint ${s.id}`}</option>
-            ))}
-          </select>
-
-          {/* saved views */}
-          <div className="ml-auto flex items-center gap-1.5">
+          <div className="ml-auto flex flex-wrap items-center gap-2">
             <div className="relative flex items-center">
-              <Bookmark className="pointer-events-none absolute left-2.5 h-4 w-4 text-muted-foreground" />
+              <Bookmark
+                className="pointer-events-none absolute left-2.5 h-4 w-4 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <label htmlFor="views-saved" className="sr-only">
+                Saved views
+              </label>
               <select
+                id="views-saved"
                 value={activeViewId}
                 onChange={(e) => applyView(views.find((v) => v.id === e.target.value) || null)}
-                className={`${INPUT_CLASS} pl-8`}
-                aria-label="Saved views"
+                className={`${SELECT_CLASS} pl-8`}
               >
                 <option value="">Saved views…</option>
                 {views.map((v) => (
-                  <option key={v.id} value={v.id}>{v.name}</option>
+                  <option key={v.id} value={v.id}>
+                    {v.name}
+                  </option>
                 ))}
               </select>
             </div>
             {activeViewId && (
-              <button type="button" onClick={handleDeleteView} title="Delete saved view" className="rounded-lg border border-border bg-background p-2 text-muted-foreground hover:border-destructive hover:text-destructive">
-                <Trash2 className="h-4 w-4" />
-              </button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleDeleteView}
+                aria-label="Delete saved view"
+                title="Delete saved view"
+              >
+                <Trash2 aria-hidden="true" />
+              </Button>
             )}
-            <button type="button" onClick={handleSaveView} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:border-primary">
-              <BookmarkPlus className="h-4 w-4" /> Save view
-            </button>
-            <button type="button" onClick={reload} disabled={loading} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:border-primary disabled:opacity-60">
-              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Refresh
-            </button>
+            <Button variant="outline" size="default" onClick={handleSaveView}>
+              <BookmarkPlus aria-hidden="true" /> Save view
+            </Button>
+            <Button variant="outline" size="default" onClick={reload} disabled={loading}>
+              <RefreshCw className={loading ? "animate-spin" : undefined} aria-hidden="true" />
+              Refresh
+            </Button>
           </div>
+        </div>
+
+        {/* row 2: the view switcher */}
+        <Tabs
+          className="mt-3 px-4"
+          aria-label="Project view"
+          tabs={VIEW_TYPES.map((v) => {
+            const meta = VIEW_META[v];
+            const Icon = meta.icon;
+            return {
+              id: v,
+              label: (
+                <span className="inline-flex items-center gap-1.5">
+                  <Icon className="h-4 w-4" aria-hidden="true" />
+                  <span className="hidden sm:inline">{meta.label}</span>
+                  <span className="sr-only sm:hidden">{meta.label}</span>
+                </span>
+              ),
+            };
+          })}
+          active={viewType}
+          onChange={(id) => setViewType(id)}
+        />
+
+        {/* row 3: the filters every view shares */}
+        <div className="px-4 py-3">
+          <Toolbar
+            search={{
+              value: filters.search,
+              onChange: (value) => setFilter("search", value),
+              placeholder: "Search tasks…",
+              label: "Search tasks",
+            }}
+            filters={
+              <>
+                <label htmlFor="views-priority" className="sr-only">
+                  Filter by priority
+                </label>
+                <select
+                  id="views-priority"
+                  value={filters.priority}
+                  onChange={(e) => setFilter("priority", e.target.value)}
+                  className={SELECT_CLASS}
+                >
+                  <option value="all">All priorities</option>
+                  {PRIORITIES.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+
+                <label htmlFor="views-type" className="sr-only">
+                  Filter by type
+                </label>
+                <select
+                  id="views-type"
+                  value={filters.type}
+                  onChange={(e) => setFilter("type", e.target.value)}
+                  className={SELECT_CLASS}
+                >
+                  <option value="all">All types</option>
+                  {TASK_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+
+                <label htmlFor="views-assignee" className="sr-only">
+                  Filter by assignee
+                </label>
+                <select
+                  id="views-assignee"
+                  value={filters.assignee}
+                  onChange={(e) => setFilter("assignee", e.target.value)}
+                  className={SELECT_CLASS}
+                >
+                  <option value="all">All assignees</option>
+                  <option value="unassigned">Unassigned</option>
+                  {(employees || []).map((emp) => (
+                    <option key={emp.userId || emp.membershipId} value={emp.userId}>
+                      {emp.name}
+                    </option>
+                  ))}
+                </select>
+
+                <label htmlFor="views-sprint" className="sr-only">
+                  Filter by sprint
+                </label>
+                <select
+                  id="views-sprint"
+                  value={filters.sprint}
+                  onChange={(e) => setFilter("sprint", e.target.value)}
+                  className={SELECT_CLASS}
+                >
+                  <option value="all">All sprints</option>
+                  {(sprints || []).map((s) => (
+                    <option key={s.id} value={String(s.id)}>
+                      {s.name || `Sprint ${s.id}`}
+                    </option>
+                  ))}
+                </select>
+              </>
+            }
+            actions={
+              activeFilterCount > 0 ? (
+                <Button variant="ghost" size="default" onClick={() => setFilters(EMPTY_FILTERS)}>
+                  Clear filters
+                </Button>
+              ) : null
+            }
+          />
         </div>
       </div>
 
       {/* View surface */}
-      {loading && !tasks.length ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-primary/30 border-t-primary" />
-        </div>
-      ) : (
-        renderView()
-      )}
+      {loading && !tasks.length ? <ViewSkeleton viewType={viewType} /> : renderView()}
 
       {selectedTask && (
         <TaskDetailDrawer

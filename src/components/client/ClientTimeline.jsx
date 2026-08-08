@@ -9,11 +9,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CalendarDays } from "lucide-react";
 import { authFetch } from "@/utils/authFetch";
 import {
-  Spinner,
+  ClientPage,
+  Panel,
   EmptyState,
   ErrorState,
-  SectionHeader,
   LoadMoreButton,
+  TimelineSkeleton,
   kindMeta,
   formatDateTime,
   formatRelativeTime,
@@ -88,79 +89,74 @@ export default function ClientTimeline({ projectId, showHeader = false, projectN
     }
   }, [cursor, pageLoading, fetchPage]);
 
-  const header = showHeader ? (
-    <SectionHeader
-      title="Activity"
-      subtitle={projectName ? `Everything that has happened on ${projectName}` : "Everything that has happened on this project"}
-    />
-  ) : null;
+  const title = showHeader ? "Activity" : undefined;
+  const description = showHeader
+    ? projectName
+      ? `Everything that has happened on ${projectName}`
+      : "Everything that has happened on this project"
+    : undefined;
 
   if (loading) {
     return (
-      <div>
-        {header}
-        <Spinner label="Loading activity…" />
-      </div>
+      <ClientPage title={title} description={description}>
+        <TimelineSkeleton />
+      </ClientPage>
     );
   }
 
   if (error) {
     return (
-      <div className="space-y-4">
-        {header}
+      <ClientPage title={title} description={description}>
         <ErrorState message={error} onRetry={load} />
-      </div>
+      </ClientPage>
     );
   }
 
   if (events.length === 0) {
     return (
-      <div>
-        {header}
+      <ClientPage title={title} description={description}>
         <EmptyState
           icon={CalendarDays}
           title="No activity yet"
           message="Updates, milestones, comments and approvals will appear here as your project moves."
         />
-      </div>
+      </ClientPage>
     );
   }
 
   return (
-    <div className="space-y-4">
-      {header}
-
-      <ol className="relative space-y-4 border-l border-border pl-5 sm:pl-6">
+    <ClientPage title={title} description={description}>
+      <ol className="relative space-y-5 border-l border-border pl-6 sm:pl-7">
         {events.map((event) => {
           const meta = kindMeta(event.kind);
           const Icon = meta.icon;
           return (
             <li key={event.id} className="relative">
               <span
-                className={`absolute -left-[30px] top-3 flex h-6 w-6 items-center justify-center rounded-full border-2 border-card sm:-left-[34px] ${meta.tone}`}
+                className={`absolute -left-[36px] top-5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-card sm:-left-[40px] ${meta.tone}`}
               >
-                <Icon className="h-3 w-3" />
+                <Icon className="h-3 w-3" aria-hidden="true" />
               </span>
-              <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                  <p className="min-w-0 font-semibold text-foreground">{event.title}</p>
+              <Panel className="space-y-2">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+                  <p className="min-w-0 text-lg font-semibold leading-snug text-foreground">{event.title}</p>
                   <span
-                    className="whitespace-nowrap text-xs text-muted-foreground"
+                    className="whitespace-nowrap text-sm text-muted-foreground"
                     title={formatDateTime(event.created_at)}
                   >
                     {formatRelativeTime(event.created_at)}
                   </span>
                 </div>
                 {event.body && (
-                  <p className="mt-1.5 whitespace-pre-line break-words text-sm text-muted-foreground">
+                  <p className="whitespace-pre-line break-words text-[15px] leading-relaxed text-muted-foreground">
                     {event.body}
                   </p>
                 )}
-                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  <span className={`rounded-full px-2 py-0.5 font-medium ${meta.tone}`}>{meta.label}</span>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pt-1 text-sm text-muted-foreground">
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${meta.tone}`}>{meta.label}</span>
                   {event.actor_name && <span>{event.actor_name}</span>}
                 </div>
-              </div>
+              </Panel>
             </li>
           );
         })}
@@ -169,6 +165,6 @@ export default function ClientTimeline({ projectId, showHeader = false, projectN
       {pageError && <ErrorState message={pageError} onRetry={loadMore} />}
 
       {hasMore && !pageError && <LoadMoreButton onClick={loadMore} loading={pageLoading} label="Load older activity" />}
-    </div>
+    </ClientPage>
   );
 }

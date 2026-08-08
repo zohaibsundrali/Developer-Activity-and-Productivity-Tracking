@@ -1,11 +1,19 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+} from "@/components/ui";
 import { User, Mail, ShieldCheck, Eye, EyeOff, CheckCircle, AlertTriangle, LockKeyhole } from "lucide-react";
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -112,14 +120,14 @@ export default function Account({ user }) {
           <CardDescription className="text-[15px] text-muted-foreground">Your profile details.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div className="rounded-xl border border-border bg-muted/50 p-4 transition-all hover:-translate-y-0.5 hover:shadow-md">
+          <div className="rounded-xl border border-border bg-muted/50 p-4 transition-colors duration-150 hover:border-primary/40">
             <div className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <User className="h-5 w-5" />
             </div>
             <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Name</p>
             <p className="mt-1 text-sm font-semibold text-foreground break-words">{name}</p>
           </div>
-          <div className="rounded-xl border border-border bg-muted/50 p-4 transition-all hover:-translate-y-0.5 hover:shadow-md">
+          <div className="rounded-xl border border-border bg-muted/50 p-4 transition-colors duration-150 hover:border-primary/40">
             <div className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <Mail className="h-5 w-5" />
             </div>

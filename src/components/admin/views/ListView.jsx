@@ -2,14 +2,24 @@
 
 import { useMemo, useState } from "react";
 import { BOARD_COLUMNS, STATUS_META, normalizeStatus } from "@/utils/pmData";
-import { Layers } from "lucide-react";
+import { Badge } from "@/components/ui";
+import { List as ListIcon } from "lucide-react";
+import {
+  Avatar,
+  DueDate,
+  PointsBadge,
+  SELECT_CLASS,
+  TONE_DOT_CLASS,
+  TypeBadge,
+  VIEW_ROW_CLASS,
+  ViewEmpty,
+  ViewToolbar,
+  taskRef,
+} from "@/components/admin/views/viewKit";
 
 /* -------------------------------------------------------------------------- */
 /*  Constants / helpers                                                        */
 /* -------------------------------------------------------------------------- */
-
-const INPUT_CLASS =
-  "rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30";
 
 const PRIORITY_DOT = {
   low: "bg-muted-foreground",
@@ -26,22 +36,14 @@ const GROUP_OPTIONS = [
   { id: "none", label: "None" },
 ];
 
-function formatDue(value) {
-  if (!value) return null;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
 /* -------------------------------------------------------------------------- */
 /*  Task row                                                                   */
 /* -------------------------------------------------------------------------- */
 
 function TaskRow({ task, assigneeName, onOpenTask }) {
   const priority = task?.priority || "medium";
-  const points = task?.story_points;
-  const due = formatDue(task?.due_date || task?.end_date);
   const open = () => onOpenTask && onOpenTask(task);
+  const ref = taskRef(task);
 
   return (
     <div
@@ -54,35 +56,40 @@ function TaskRow({ task, assigneeName, onOpenTask }) {
           open();
         }
       }}
-      className="flex cursor-pointer items-center gap-3 border-b border-border px-4 py-2.5 last:border-0 hover:bg-muted/40"
+      className={`${VIEW_ROW_CLASS} cursor-pointer border-b border-border last:border-0`}
     >
       <span
         className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[priority] || PRIORITY_DOT.medium}`}
+        title={`${priority} priority`}
         aria-hidden="true"
       />
+      <span className="sr-only">{priority} priority</span>
 
-      <span className="flex-1 truncate text-sm font-medium text-foreground">
+      {ref ? (
+        <span className="hidden w-20 shrink-0 font-mono text-[10px] uppercase tracking-wide text-muted-foreground sm:inline">
+          {ref}
+        </span>
+      ) : null}
+
+      <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
         {task?.task_title || "Untitled task"}
       </span>
 
-      {task?.task_type && (
-        <span className="hidden rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground sm:inline-flex">
-          {task.task_type}
-        </span>
-      )}
-
-      {points != null && points !== "" && (
-        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary tabular-nums">
-          {points} pt
-        </span>
-      )}
-
-      <span className="hidden w-28 truncate text-right text-[11px] text-muted-foreground sm:inline-block">
-        {assigneeName || "Unassigned"}
+      <span className="hidden shrink-0 sm:inline-flex">
+        <TypeBadge type={task?.task_type} />
       </span>
 
-      <span className="w-14 shrink-0 text-right text-[11px] text-muted-foreground tabular-nums">
-        {due || ""}
+      <PointsBadge points={task?.story_points} />
+
+      <span className="hidden w-36 shrink-0 items-center gap-2 sm:flex">
+        <Avatar name={assigneeName} />
+        <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
+          {assigneeName || "Unassigned"}
+        </span>
+      </span>
+
+      <span className="w-20 shrink-0 text-right">
+        <DueDate value={task?.due_date || task?.end_date} />
       </span>
     </div>
   );
@@ -102,6 +109,7 @@ function buildGroups(groupBy, tasks, { sprints, epics, employees }) {
     return BOARD_COLUMNS.map((col) => ({
       key: col.id,
       name: STATUS_META[col.id]?.label || col.label,
+      tone: STATUS_META[col.id]?.tone || "muted",
       items: buckets[col.id] || [],
     }));
   }
@@ -184,16 +192,19 @@ export default function ListView({ tasks, employees, sprints, epics, onOpenTask 
 
   return (
     <div className="space-y-4">
-      {/* Controls */}
-      <div className="flex items-center gap-2">
-        <label htmlFor="list-group-by" className="text-sm font-medium text-muted-foreground">
+      <ViewToolbar
+        icon={ListIcon}
+        title="List"
+        description={`${totalTasks} task${totalTasks === 1 ? "" : "s"}`}
+      >
+        <label htmlFor="list-group-by" className="text-xs font-medium text-muted-foreground">
           Group by
         </label>
         <select
           id="list-group-by"
           value={groupBy}
           onChange={(e) => setGroupBy(e.target.value)}
-          className={INPUT_CLASS}
+          className={SELECT_CLASS}
         >
           {GROUP_OPTIONS.map((o) => (
             <option key={o.id} value={o.id}>
@@ -201,28 +212,31 @@ export default function ListView({ tasks, employees, sprints, epics, onOpenTask 
             </option>
           ))}
         </select>
-      </div>
+      </ViewToolbar>
 
-      {/* Groups */}
       {totalTasks === 0 || visibleGroups.length === 0 ? (
-        <div className="rounded-xl border border-border bg-card p-8 text-center shadow-card">
-          <Layers className="mx-auto h-8 w-8 text-muted-foreground" />
-          <p className="mt-3 text-sm font-medium text-foreground">No tasks</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Tasks will appear here once they are created.
-          </p>
-        </div>
+        <ViewEmpty />
       ) : (
         visibleGroups.map((group) => (
           <div
             key={group.key}
             className="overflow-hidden rounded-xl border border-border bg-card shadow-card"
           >
-            <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-              <h3 className="text-sm font-semibold text-foreground">{group.name}</h3>
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground tabular-nums">
+            <div className="flex h-12 items-center gap-2 border-b border-border bg-muted/30 px-4">
+              {group.tone ? (
+                <span
+                  className={`h-2 w-2 shrink-0 rounded-full ${
+                    TONE_DOT_CLASS[group.tone] || TONE_DOT_CLASS.muted
+                  }`}
+                  aria-hidden="true"
+                />
+              ) : null}
+              <h3 className="truncate text-xs font-semibold uppercase tracking-wide text-foreground">
+                {group.name}
+              </h3>
+              <Badge variant="secondary" size="sm" className="ml-auto tabular-nums">
                 {group.items.length}
-              </span>
+              </Badge>
             </div>
 
             <div>

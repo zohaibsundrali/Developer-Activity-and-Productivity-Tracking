@@ -63,67 +63,78 @@ export default function ProjectManagementSection() {
           return (
             <div
               key={index}
-              className={`${colorClasses[stat.color]} rounded-xl p-4 border text-center transition-all hover:scale-[1.02] hover:shadow-card`}
+              className="rounded-xl border border-border bg-card p-4 text-center shadow-card"
             >
-              <IconComponent className="w-6 h-6 mx-auto mb-2" />
-              <div className="text-xl font-bold text-foreground">{stat.value}</div>
-              <div className="text-xs text-muted-foreground">{stat.label}</div>
+              <span
+                className={`${colorClasses[stat.color]} mx-auto mb-2.5 flex h-9 w-9 items-center justify-center rounded-lg border`}
+              >
+                <IconComponent className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <div className="text-xl font-semibold tracking-tight text-foreground">{stat.value}</div>
+              <div className="mt-0.5 text-xs text-muted-foreground">{stat.label}</div>
             </div>
           );
         })}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Project Planning Card */}
-        <div className="bg-card rounded-2xl shadow-card border border-border overflow-hidden hover:shadow-elevated transition-shadow duration-300">
-          <div className="bg-muted/50 px-6 py-4 border-b border-border">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary rounded-xl">
-                <ClipboardList className="w-5 h-5 text-primary-foreground" />
-              </div>
+        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
+          <div className="border-b border-border bg-muted/50 px-5 py-5 sm:px-6">
+            <div className="flex items-start gap-4">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                <ClipboardList className="h-5 w-5" aria-hidden="true" />
+              </span>
               <div>
-                <h3 className="text-xl font-bold text-foreground">Project Planning</h3>
-                <p className="text-muted-foreground text-sm font-light">
+                <h3 className="text-lg font-semibold tracking-tight text-foreground">Project planning</h3>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
                   Create work breakdown structures, estimate tasks, and track actual vs. estimated time and budget.
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="p-6">
+          <div className="p-5 sm:p-6">
             <div className="space-y-3">
               {projectFeatures.map((feature, index) => {
                 const IconComponent = feature.icon;
                 return (
-                  <div 
-                    key={index} 
-                    className="flex items-center justify-between py-3 px-4 rounded-lg hover:bg-muted transition-colors group"
+                  <div
+                    key={index}
+                    className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 transition-colors duration-150 hover:bg-muted"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="p-1.5 bg-primary/10 rounded-lg group-hover:bg-primary/20 transition-colors">
-                        <IconComponent className="w-4 h-4 text-primary" />
-                      </div>
-                      <span className="text-foreground font-medium">{feature.name}</span>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                        <IconComponent className="h-4 w-4" aria-hidden="true" />
+                      </span>
+                      <span className="truncate text-sm font-medium text-foreground">{feature.name}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <CheckCircle className="w-5 h-5 text-success" />
-                      <span className="text-xs font-semibold text-success">Included</span>
-                    </div>
+                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-success/10 px-2 py-1 text-xs font-medium text-success">
+                      <CheckCircle className="h-3 w-3" aria-hidden="true" />
+                      Included
+                    </span>
                   </div>
                 );
               })}
             </div>
 
             {/* Progress Bar */}
-            <div className="mt-6 p-4 bg-muted/50 rounded-xl border border-border">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-sm font-medium text-foreground">Overall Progress</span>
-                <span className="text-sm font-bold text-primary">72%</span>
+            <div className="mt-6 rounded-xl border border-border bg-muted/40 p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-sm font-medium text-foreground">Overall progress</span>
+                <span className="text-sm font-semibold text-primary">72%</span>
               </div>
-              <div className="w-full bg-muted rounded-full h-2.5">
-                <div className="bg-primary h-2.5 rounded-full w-[72%]"></div>
+              <div
+                className="h-2 w-full overflow-hidden rounded-full bg-border"
+                role="progressbar"
+                aria-label="Overall progress"
+                aria-valuenow={72}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
+                <div className="h-2 w-[72%] rounded-full bg-primary"></div>
               </div>
-              <div className="flex justify-between mt-2 text-xs text-muted-foreground">
+              <div className="mt-3 flex flex-wrap justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 <span>Started: 8 tasks</span>
                 <span>Completed: 18 tasks</span>
                 <span>Remaining: 7 tasks</span>
@@ -133,89 +144,85 @@ export default function ProjectManagementSection() {
         </div>
 
         {/* Reports & Invoices Card */}
-        <div className="bg-card rounded-2xl shadow-card border border-border overflow-hidden hover:shadow-elevated transition-shadow duration-300">
-          <div className="bg-muted/50 px-6 py-4 border-b border-border">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary rounded-xl">
-                <FileText className="w-5 h-5 text-primary-foreground" />
-              </div>
+        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
+          <div className="border-b border-border bg-muted/50 px-5 py-5 sm:px-6">
+            <div className="flex items-start gap-4">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                <FileText className="h-5 w-5" aria-hidden="true" />
+              </span>
               <div>
-                <h3 className="text-xl font-bold text-foreground">Reports & Invoices</h3>
-                <p className="text-muted-foreground text-sm font-light">
+                <h3 className="text-lg font-semibold tracking-tight text-foreground">Reports &amp; invoices</h3>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
                   Generate professional reports and invoices with multiple export options.
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="p-6">
-            <div className="space-y-3">
+          <div className="p-5 sm:p-6">
+            <ul className="space-y-1">
               {reportFeatures.map((item, index) => (
-                <div 
-                  key={index} 
-                  className="flex items-center p-3 rounded-lg hover:bg-muted transition-colors group"
+                <li
+                  key={index}
+                  className="flex items-start gap-3 rounded-lg p-2.5 transition-colors duration-150 hover:bg-muted"
                 >
-                  <div className="flex-shrink-0 mt-0.5">
-                    <CheckCircle className="w-5 h-5 text-primary group-hover:scale-110 transition-transform" />
-                  </div>
-                  <span className="text-foreground ml-3 text-sm leading-relaxed">{item}</span>
-                </div>
+                  <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                  <span className="text-sm leading-relaxed text-foreground">{item}</span>
+                </li>
               ))}
-            </div>
+            </ul>
 
             {/* Export Options */}
             <div className="mt-6">
-              <h5 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                <Download className="w-4 h-4" />
-                Export Options
+              <h5 className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                Export options
               </h5>
-              <div className="grid grid-cols-2 gap-2">
+              {/* Illustrative, not interactive — these are a preview of the
+                  in-app export bar, so they must not be focusable dead ends. */}
+              <ul className="grid grid-cols-2 gap-2">
                 {exportOptions.map((option, index) => {
                   const IconComponent = option.icon;
                   const colorClasses = {
-                    red: 'bg-destructive/10 text-destructive border-destructive/20 hover:bg-destructive/20',
-                    green: 'bg-success/10 text-success border-success/20 hover:bg-success/20',
-                    blue: 'bg-info/10 text-info border-info/20 hover:bg-info/20',
-                    purple: 'bg-primary/10 text-primary border-primary/20 hover:bg-primary/20'
+                    red: 'text-destructive',
+                    green: 'text-success',
+                    blue: 'text-info',
+                    purple: 'text-primary'
                   };
                   return (
-                    <button 
+                    <li
                       key={index}
-                      className={`${colorClasses[option.color]} p-3 rounded-lg border text-xs font-medium transition-all hover:scale-[1.02] flex items-center justify-center gap-2`}
+                      className="flex items-center justify-center gap-2 rounded-lg border border-border bg-muted/40 p-3 text-xs font-medium text-foreground"
                     >
-                      <IconComponent className="w-4 h-4" />
+                      <IconComponent
+                        className={`${colorClasses[option.color]} h-4 w-4`}
+                        aria-hidden="true"
+                      />
                       {option.label}
-                    </button>
+                    </li>
                   );
-                })}  
-              </div>
+                })}
+              </ul>
             </div>
 
             {/* Recent Activity */}
-            <div className="mt-6 pt-6 border-t border-border">
-              <div className="flex items-center justify-between mb-3">
-                <h5 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                  <Eye className="w-4 h-4" />
-                  Recent Activity
-                </h5>
-                <button className="text-xs text-primary hover:text-primary/80 font-medium">
-                  View All
-                </button>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Report generated for Q4 2024</span>
-                  <span className="text-muted-foreground/70">2 min ago</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Invoice #INV-2024-042 sent</span>
-                  <span className="text-muted-foreground/70">1 hour ago</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Weekly productivity report</span>
-                  <span className="text-muted-foreground/70">3 hours ago</span>
-                </div>
-              </div>
+            <div className="mt-6 border-t border-border pt-6">
+              <h5 className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                Recent activity
+              </h5>
+              <ul className="space-y-2.5">
+                {[
+                  ['Report generated for Q4 2024', '2 min ago'],
+                  ['Invoice #INV-2024-042 sent', '1 hour ago'],
+                  ['Weekly productivity report', '3 hours ago'],
+                ].map(([label, when]) => (
+                  <li key={label} className="flex items-baseline justify-between gap-4 text-xs">
+                    <span className="truncate text-foreground">{label}</span>
+                    <span className="shrink-0 text-muted-foreground">{when}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         </div>

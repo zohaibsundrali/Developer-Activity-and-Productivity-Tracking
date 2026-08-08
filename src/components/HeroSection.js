@@ -1,86 +1,66 @@
-import { ArrowRight, Play, Sparkles, Zap, Users, BarChart3 } from 'lucide-react';
+import { ArrowRight, BarChart3, Sparkles, Users, Zap } from 'lucide-react';
+
+const stats = [
+  { icon: Users, value: '10K+', label: 'Active users' },
+  { icon: BarChart3, value: '40%', label: 'Productivity boost' },
+  { icon: Zap, value: '4.9★', label: 'Average rating' },
+];
 
 export default function HeroSection() {
   return (
-    <section className="relative pt-20 pb-16 px-6 overflow-hidden bg-muted/50">
-      {/* Animated background elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary/10 rounded-full blur-3xl"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-primary/10 rounded-full blur-3xl"></div>
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/5 rounded-full blur-3xl"></div>
-      </div>
-
-      <div className="container mx-auto max-w-6xl relative z-10">
-        <div className="text-center">
-          {/* Badge */}
-          <div className="inline-flex items-center gap-2 bg-primary/10 backdrop-blur-sm px-4 py-2 rounded-full mb-6 border border-primary/20">
-            <Sparkles className="w-4 h-4 text-primary" />
-            <span className="text-sm font-medium text-primary">AI-Powered Productivity Suite</span>
-          </div>
-
-          {/* Main Heading */}
-          <h1 className="text-4xl md:text-5xl lg:text-7xl font-black mb-6 leading-[1.1] tracking-tight">
-            <span className="text-foreground">Smart Developer</span>
-            <br />
-            <span className="text-primary">
-              Activity Tracking
-            </span>
-          </h1>
-
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-10 font-light leading-relaxed">
-            Transform developer activity tracking into actionable insights with
-            <span className="font-semibold text-foreground"> AI-powered analytics</span> and
-            <span className="font-semibold text-foreground"> real-time monitoring</span> for maximum team productivity.
+    <section className="bg-muted/30 py-20 lg:py-28">
+      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-3xl text-center">
+          <p className="mb-6 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground">
+            <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+            AI-powered productivity suite
           </p>
 
-          {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
-            <a
-              href="#platforms"
-              className="group inline-flex items-center gap-2 rounded-lg bg-primary px-8 py-3.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 shadow-card"
-            >
-              Explore Features
-              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </a>
+          <h1 className="text-4xl font-semibold leading-[1.05] tracking-[-0.03em] text-foreground sm:text-5xl lg:text-6xl">
+            Smart developer
+            <br />
+            <span className="text-primary">activity tracking</span>
+          </h1>
+
+          <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
+            Turn raw developer activity into decisions you can defend — automatic time capture,
+            real-time monitoring and reports your team will actually read.
+          </p>
+
+          <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <a
               href="/admin/registration"
-              className="group inline-flex items-center gap-2 rounded-lg border border-border bg-card px-8 py-3.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+              className="group inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-7 text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:w-auto"
             >
-              <Play className="w-4 h-4" />
-              Watch Demo
+              Start for free
+              <ArrowRight
+                className="h-4 w-4 transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none motion-reduce:group-hover:translate-x-0"
+                aria-hidden="true"
+              />
+            </a>
+            <a
+              href="#platforms"
+              className="inline-flex h-11 w-full items-center justify-center rounded-lg border border-border bg-card px-7 text-sm font-medium text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:w-auto"
+            >
+              See how it works
             </a>
           </div>
+        </div>
 
-          {/* Stats / Social Proof */}
-          <div className="flex flex-wrap justify-center items-center gap-8 pt-6 border-t border-border">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                <Users className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <div className="font-bold text-foreground">10K+</div>
-                <div className="text-xs text-muted-foreground">Active Users</div>
-              </div>
+        <div className="mx-auto mt-16 grid max-w-3xl grid-cols-1 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-3">
+          {stats.map(({ icon: Icon, value, label }) => (
+            <div key={label} className="flex items-center gap-3 bg-card px-6 py-5">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Icon className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <span>
+                <span className="block text-lg font-semibold tracking-tight text-foreground">
+                  {value}
+                </span>
+                <span className="block text-xs text-muted-foreground">{label}</span>
+              </span>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-info/10 rounded-full flex items-center justify-center">
-                <BarChart3 className="w-5 h-5 text-info" />
-              </div>
-              <div>
-                <div className="font-bold text-foreground">40%</div>
-                <div className="text-xs text-muted-foreground">Productivity Boost</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-warning/10 rounded-full flex items-center justify-center">
-                <Zap className="w-5 h-5 text-warning" />
-              </div>
-              <div>
-                <div className="font-bold text-foreground">4.9★</div>
-                <div className="text-xs text-muted-foreground">User Rating</div>
-              </div>
-            </div>
-          </div>
+          ))}
         </div>
       </div>
     </section>

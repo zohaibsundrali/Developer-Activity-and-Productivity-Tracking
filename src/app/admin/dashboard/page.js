@@ -25,6 +25,66 @@ import AutomationRules from "@/components/admin/AutomationRules";
 import BillingSubscription from "@/components/admin/BillingSubscription";
 import SystemHealth from "@/components/admin/SystemHealth";
 import { isSessionExpired, clearAdminSession } from "@/utils/sessionPolicy";
+import { Skeleton } from "@/components/ui";
+
+// Presentational only: labels the sidebar groups the nav items into. Keys are
+// the same section ids the switch below uses; it changes no ordering, no
+// filtering and no access rule — `adminNavFor(role)` still decides membership.
+const ADMIN_NAV_GROUPS = {
+  overview: "Overview",
+  "all-projects": "Delivery",
+  "project-hub": "Delivery",
+  board: "Delivery",
+  views: "Delivery",
+  sprints: "Delivery",
+  "task-reviews": "Delivery",
+  "developer-activity": "Insights",
+  reports: "Insights",
+  automation: "Insights",
+  "add-developer": "People",
+  "view-developers": "People",
+  employees: "People",
+  "team-stats": "People",
+  organization: "Workspace",
+  clients: "Workspace",
+  billing: "Workspace",
+  "system-health": "Workspace",
+};
+
+const withNavGroups = (items) =>
+  items.map((item) => ({ ...item, group: ADMIN_NAV_GROUPS[item.id] || "Workspace" }));
+
+// The chrome is already on screen while the first fetch runs, so the wait
+// should look like the dashboard rather than a spinner on an empty page.
+function DashboardBootSkeleton() {
+  return (
+    <div className="min-h-screen bg-background" aria-busy="true">
+      <span className="sr-only">Loading dashboard…</span>
+      <div className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-64 lg:flex-col lg:border-r lg:border-sidebar-border lg:bg-sidebar" />
+      <div className="flex min-h-screen flex-col lg:pl-64">
+        <div className="flex h-16 items-center gap-3 border-b border-border bg-card px-4 sm:px-6">
+          <Skeleton className="h-5 w-40" />
+          <div className="ml-auto flex items-center gap-3">
+            <Skeleton className="h-9 w-9 rounded-full" />
+            <Skeleton className="h-9 w-9 rounded-full" />
+          </div>
+        </div>
+        <div className="flex-1 space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+          <div className="space-y-2">
+            <Skeleton className="h-7 w-56" />
+            <Skeleton className="h-4 w-72" />
+          </div>
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-36 w-full rounded-xl" />
+            ))}
+          </div>
+          <Skeleton className="h-64 w-full rounded-xl" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Authentication check function for admin
 const checkAdminAuth = () => {
@@ -97,14 +157,7 @@ const withAdminAuth = (WrappedComponent) => {
     };
 
     if (loading) {
-      return (
-        <div className="flex min-h-screen items-center justify-center bg-background">
-          <div className="flex flex-col items-center gap-3">
-            <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-primary/30 border-t-primary" />
-            <div className="text-sm font-medium text-muted-foreground">Loading…</div>
-          </div>
-        </div>
-      );
+      return <DashboardBootSkeleton />;
     }
 
     if (!isAuthenticated) {
@@ -258,20 +311,13 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
   };
 
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-primary/30 border-t-primary" />
-          <div className="text-sm font-medium text-muted-foreground">Loading…</div>
-        </div>
-      </div>
-    );
+    return <DashboardBootSkeleton />;
   }
 
   if (!user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="text-sm font-medium text-muted-foreground">Redirecting to login…</div>
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <p className="text-sm font-medium text-muted-foreground">Redirecting to login…</p>
       </div>
     );
   }
@@ -286,7 +332,7 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
     <AppShell
       role="admin"
       brandName="DevTrack"
-      navItems={adminNavFor(role)}
+      navItems={withNavGroups(adminNavFor(role))}
       activeSection={activeSection}
       onNavigate={handleNavigate}
       user={user}

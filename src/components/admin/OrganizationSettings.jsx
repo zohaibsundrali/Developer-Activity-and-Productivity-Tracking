@@ -4,6 +4,10 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId } from "@/utils/orgContext";
 import { showSuccess, showError } from "@/utils/alerts";
+import {
+  Card, CardHeader, CardTitle, CardDescription, CardContent,
+  EmptyState, ErrorState, Skeleton, Field, Button, Input,
+} from "@/components/ui";
 import { Building2, Clock, Bell, Shield, Upload, Save, Loader2, Lock } from "lucide-react";
 
 const INDUSTRIES = ["Technology", "Finance", "Healthcare", "Education", "Retail", "Manufacturing", "Consulting", "Marketing", "Other"];
@@ -17,6 +21,61 @@ const DEFAULTS = {
   security: { session_days: 7, require_strong_password: false },
 };
 
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+const CONTROL = `w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors duration-150 ${FOCUS_RING}`;
+
+/** A skeleton shaped like the settings form, not a spinner on a blank page. */
+function SettingsFormSkeleton() {
+  return (
+    <div className="space-y-6" role="status" aria-busy="true" aria-label="Loading organization settings">
+      <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
+        <Skeleton className="h-4 w-40" />
+        <div className="mt-4 flex flex-col gap-6 md:flex-row">
+          <div className="flex flex-col items-center gap-3">
+            <Skeleton className="h-24 w-24 rounded-2xl" />
+            <Skeleton className="h-7 w-28" />
+          </div>
+          <div className="grid flex-1 gap-4 sm:grid-cols-2">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="space-y-1.5">
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-9 w-full" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
+        <Skeleton className="h-4 w-36" />
+        <div className="mt-4 flex flex-wrap items-end gap-4">
+          <Skeleton className="h-9 w-28" />
+          <Skeleton className="h-9 w-28" />
+          <Skeleton className="h-9 w-64" />
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
+        <Skeleton className="h-4 w-48" />
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-11 w-full" />)}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
+        <Skeleton className="h-4 w-24" />
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-11 w-full" />
+        </div>
+      </div>
+
+      <span className="sr-only">Loading…</span>
+    </div>
+  );
+}
+
 export default function OrganizationSettings({ readOnly = false }) {
   // Resolve org id after mount to avoid a hydration mismatch.
   const [orgId, setOrgId] = useState(null);
@@ -25,6 +84,9 @@ export default function OrganizationSettings({ readOnly = false }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  // Presentation-only: surfaces the failure `load` already caught so the screen
+  // can offer a retry instead of silently showing the empty default form.
+  const [loadError, setLoadError] = useState(null);
   const [org, setOrg] = useState(null);
   const [form, setForm] = useState({
     name: "", logo_url: "", industry: "", company_size: "", country: "", timezone: "UTC",
@@ -34,6 +96,7 @@ export default function OrganizationSettings({ readOnly = false }) {
   const load = useCallback(async () => {
     if (!orgId) { setLoading(false); return; }
     setLoading(true);
+    setLoadError(null);
     try {
       const { data } = await supabase.from("organizations").select("*").eq("id", orgId).maybeSingle();
       if (data) {
@@ -48,8 +111,8 @@ export default function OrganizationSettings({ readOnly = false }) {
           security: { ...DEFAULTS.security, ...(data.settings?.security || {}) },
         });
       }
-    } catch {
-      /* ignore */
+    } catch (err) {
+      setLoadError(err?.message || "Could not load your organization settings.");
     } finally { setLoading(false); }
   }, [orgId]);
 
@@ -101,139 +164,177 @@ export default function OrganizationSettings({ readOnly = false }) {
     } finally { setSaving(false); }
   };
 
-  if (!orgReady || loading) return <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
-  if (!orgId) return <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground">No organization context.</div>;
-
-  const inputCls = "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30";
+  if (!orgReady || loading) return <SettingsFormSkeleton />;
+  if (!orgId) return (
+    <EmptyState
+      icon={Building2}
+      title="No organization context"
+      description="We couldn't tell which workspace these settings belong to. Please sign in again."
+    />
+  );
+  if (loadError) return (
+    <ErrorState title="Couldn't load organization settings" description={loadError} onRetry={load} />
+  );
 
   return (
-    <fieldset disabled={readOnly} className="m-0 min-w-0 space-y-5 border-0 p-0">
+    <fieldset disabled={readOnly} className="m-0 min-w-0 space-y-6 border-0 p-0">
       {readOnly && (
-        <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm text-foreground">
-          <Lock className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+        <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm text-foreground sm:p-5">
+          <Lock aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
           <p>
             <span className="font-semibold">View-only.</span> Only the organization
             Owner can change these settings.
           </p>
         </div>
       )}
+
       {/* Company profile */}
-      <section className="rounded-xl border border-border bg-card p-6 shadow-card">
-        <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-foreground"><Building2 className="h-4 w-4 text-primary" /> Company Profile</h3>
-        <div className="flex flex-col gap-6 md:flex-row">
-          <div className="flex flex-col items-center gap-3">
-            <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border border-border bg-muted">
-              {form.logo_url
-                ? <img src={form.logo_url} alt="Logo" className="h-full w-full object-cover" />
-                : <Building2 className="h-8 w-8 text-muted-foreground" />}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Building2 aria-hidden="true" className="h-4 w-4 text-primary" /> Company Profile
+          </CardTitle>
+          <CardDescription>How this workspace is identified across the product.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col gap-6 md:flex-row">
+            <div className="flex flex-col items-center gap-3">
+              <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border border-border bg-muted">
+                {form.logo_url
+                  ? <img src={form.logo_url} alt="Organization logo" className="h-full w-full object-cover" />
+                  : <Building2 aria-hidden="true" className="h-5 w-5 text-muted-foreground" />}
+              </div>
+              <label className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors duration-150 hover:bg-muted focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background`}>
+                {uploading
+                  ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                  : <Upload aria-hidden="true" className="h-4 w-4" />}
+                {uploading ? "Uploading…" : "Upload logo"}
+                <input type="file" accept="image/*" className="sr-only" onChange={uploadLogo} disabled={uploading} />
+              </label>
             </div>
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted">
-              {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-              {uploading ? "Uploading…" : "Upload logo"}
-              <input type="file" accept="image/*" className="hidden" onChange={uploadLogo} disabled={uploading} />
-            </label>
+            <div className="grid flex-1 gap-4 sm:grid-cols-2">
+              <Field label="Organization name" htmlFor="org-name">
+                <Input id="org-name" value={form.name} onChange={(e) => setField("name", e.target.value)} />
+              </Field>
+              <Field label="Industry" htmlFor="org-industry">
+                <select id="org-industry" value={form.industry} onChange={(e) => setField("industry", e.target.value)} className={CONTROL}>
+                  <option value="">— Select —</option>
+                  {INDUSTRIES.map((i) => <option key={i} value={i}>{i}</option>)}
+                </select>
+              </Field>
+              <Field label="Company size" htmlFor="org-size">
+                <select id="org-size" value={form.company_size} onChange={(e) => setField("company_size", e.target.value)} className={CONTROL}>
+                  <option value="">— Select —</option>
+                  {SIZES.map((s) => <option key={s} value={s}>{s} employees</option>)}
+                </select>
+              </Field>
+              <Field label="Country" htmlFor="org-country">
+                <Input id="org-country" value={form.country} onChange={(e) => setField("country", e.target.value)} placeholder="Pakistan" />
+              </Field>
+              <Field label="Timezone" htmlFor="org-timezone">
+                <select id="org-timezone" value={form.timezone} onChange={(e) => setField("timezone", e.target.value)} className={CONTROL}>
+                  {TIMEZONES.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </Field>
+            </div>
           </div>
-          <div className="grid flex-1 gap-4 sm:grid-cols-2">
-            <Field label="Organization name"><input value={form.name} onChange={(e) => setField("name", e.target.value)} className={inputCls} /></Field>
-            <Field label="Industry">
-              <select value={form.industry} onChange={(e) => setField("industry", e.target.value)} className={inputCls}>
-                <option value="">— Select —</option>
-                {INDUSTRIES.map((i) => <option key={i} value={i}>{i}</option>)}
-              </select>
-            </Field>
-            <Field label="Company size">
-              <select value={form.company_size} onChange={(e) => setField("company_size", e.target.value)} className={inputCls}>
-                <option value="">— Select —</option>
-                {SIZES.map((s) => <option key={s} value={s}>{s} employees</option>)}
-              </select>
-            </Field>
-            <Field label="Country"><input value={form.country} onChange={(e) => setField("country", e.target.value)} placeholder="Pakistan" className={inputCls} /></Field>
-            <Field label="Timezone">
-              <select value={form.timezone} onChange={(e) => setField("timezone", e.target.value)} className={inputCls}>
-                {TIMEZONES.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </Field>
-          </div>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
 
       {/* Working hours */}
-      <section className="rounded-xl border border-border bg-card p-6 shadow-card">
-        <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-foreground"><Clock className="h-4 w-4 text-primary" /> Working Hours</h3>
-        <div className="flex flex-wrap items-end gap-4">
-          <Field label="Start"><input type="time" value={settings.working_hours.start} onChange={(e) => setWH("start", e.target.value)} className={inputCls} /></Field>
-          <Field label="End"><input type="time" value={settings.working_hours.end} onChange={(e) => setWH("end", e.target.value)} className={inputCls} /></Field>
-          <div>
-            <p className="mb-1 text-xs font-medium text-foreground">Working days</p>
-            <div className="flex flex-wrap gap-1.5">
-              {DAYS.map(([d, label]) => {
-                const on = settings.working_hours.days.includes(d);
-                return (
-                  <button key={d} type="button" onClick={() => toggleDay(d)}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${on ? "bg-primary text-primary-foreground" : "border border-border bg-card text-muted-foreground hover:bg-muted"}`}>
-                    {label}
-                  </button>
-                );
-              })}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Clock aria-hidden="true" className="h-4 w-4 text-primary" /> Working Hours
+          </CardTitle>
+          <CardDescription>Used for attendance windows and deadline reminders.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap items-end gap-4">
+            <Field label="Start" htmlFor="wh-start">
+              <Input id="wh-start" type="time" value={settings.working_hours.start} onChange={(e) => setWH("start", e.target.value)} />
+            </Field>
+            <Field label="End" htmlFor="wh-end">
+              <Input id="wh-end" type="time" value={settings.working_hours.end} onChange={(e) => setWH("end", e.target.value)} />
+            </Field>
+            <div className="space-y-1.5">
+              <p className="text-sm font-medium text-foreground" id="working-days-label">Working days</p>
+              <div role="group" aria-labelledby="working-days-label" className="flex flex-wrap gap-1.5">
+                {DAYS.map(([d, label]) => {
+                  const on = settings.working_hours.days.includes(d);
+                  return (
+                    <Button key={d} type="button" size="xs" variant={on ? "default" : "outline"}
+                      onClick={() => toggleDay(d)} aria-pressed={on}>
+                      {label}
+                    </Button>
+                  );
+                })}
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
 
       {/* Notifications */}
-      <section className="rounded-xl border border-border bg-card p-6 shadow-card">
-        <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-foreground"><Bell className="h-4 w-4 text-primary" /> Notification Preferences</h3>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Toggle label="Email notifications" checked={settings.notifications.email} onChange={(v) => setNotif("email", v)} />
-          <Toggle label="Task submission alerts" checked={settings.notifications.task_alerts} onChange={(v) => setNotif("task_alerts", v)} />
-          <Toggle label="Deadline reminders" checked={settings.notifications.deadline_reminders} onChange={(v) => setNotif("deadline_reminders", v)} />
-          <Toggle label="Weekly reports" checked={settings.notifications.weekly_reports} onChange={(v) => setNotif("weekly_reports", v)} />
-        </div>
-      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Bell aria-hidden="true" className="h-4 w-4 text-primary" /> Notification Preferences
+          </CardTitle>
+          <CardDescription>What this organization emails out by default.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Toggle label="Email notifications" checked={settings.notifications.email} onChange={(v) => setNotif("email", v)} />
+            <Toggle label="Task submission alerts" checked={settings.notifications.task_alerts} onChange={(v) => setNotif("task_alerts", v)} />
+            <Toggle label="Deadline reminders" checked={settings.notifications.deadline_reminders} onChange={(v) => setNotif("deadline_reminders", v)} />
+            <Toggle label="Weekly reports" checked={settings.notifications.weekly_reports} onChange={(v) => setNotif("weekly_reports", v)} />
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Security */}
-      <section className="rounded-xl border border-border bg-card p-6 shadow-card">
-        <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-foreground"><Shield className="h-4 w-4 text-primary" /> Security</h3>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Session timeout (days)">
-            <input type="number" min={1} max={90} value={settings.security.session_days}
-              onChange={(e) => setSec("session_days", Number(e.target.value) || 7)} className={inputCls} />
-          </Field>
-          <div className="flex items-end">
-            <Toggle label="Require strong passwords" checked={settings.security.require_strong_password} onChange={(v) => setSec("require_strong_password", v)} />
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Shield aria-hidden="true" className="h-4 w-4 text-primary" /> Security
+          </CardTitle>
+          <CardDescription>Session length and password rules for this workspace.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Session timeout (days)" htmlFor="sec-session-days" hint="Between 1 and 90 days.">
+              <Input id="sec-session-days" type="number" min={1} max={90} value={settings.security.session_days}
+                onChange={(e) => setSec("session_days", Number(e.target.value) || 7)} />
+            </Field>
+            <div className="flex items-end">
+              <Toggle label="Require strong passwords" checked={settings.security.require_strong_password} onChange={(v) => setSec("require_strong_password", v)} />
+            </div>
           </div>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
 
       {!readOnly && (
         <div className="flex justify-end">
-          <button onClick={save} disabled={saving}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          <Button type="button" onClick={save} disabled={saving}>
+            {saving
+              ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+              : <Save aria-hidden="true" className="h-4 w-4" />}
             {saving ? "Saving…" : "Save changes"}
-          </button>
+          </Button>
         </div>
       )}
     </fieldset>
   );
 }
 
-function Field({ label, children }) {
-  return (
-    <div>
-      <label className="mb-1 block text-xs font-medium text-foreground">{label}</label>
-      {children}
-    </div>
-  );
-}
-
 function Toggle({ label, checked, onChange }) {
   return (
-    <button type="button" onClick={() => onChange(!checked)}
-      className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2.5 text-left transition-colors hover:bg-muted">
+    <button type="button" onClick={() => onChange(!checked)} role="switch" aria-checked={checked}
+      className={`flex w-full items-center justify-between rounded-lg border border-border bg-background px-3 py-2.5 text-left transition-colors duration-150 hover:bg-muted ${FOCUS_RING}`}>
       <span className="text-sm font-medium text-foreground">{label}</span>
-      <span className={`relative h-5 w-9 rounded-full transition-colors ${checked ? "bg-primary" : "bg-muted-foreground/30"}`}>
-        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${checked ? "left-[18px]" : "left-0.5"}`} />
+      <span aria-hidden="true" className={`relative h-5 w-9 shrink-0 rounded-full transition-colors duration-150 ${checked ? "bg-primary" : "bg-muted-foreground/30"}`}>
+        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-background shadow-card transition-all duration-150 motion-reduce:transition-none ${checked ? "left-[18px]" : "left-0.5"}`} />
       </span>
     </button>
   );

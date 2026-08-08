@@ -4,6 +4,16 @@ import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
 import StatCard from "@/components/shell/StatCard";
 import {
+  Badge,
+  Button,
+  EmptyState,
+  ErrorState,
+  Section,
+  Skeleton,
+  SkeletonTable,
+  StatusPill,
+} from "@/components/ui";
+import {
   Users,
   RefreshCw,
   FolderKanban,
@@ -22,13 +32,15 @@ import {
  * manager only ever sees their own organization's data.
  */
 
-const ROLE_TONE = {
-  owner: "bg-violet-500/10 text-violet-600",
-  admin: "bg-primary/10 text-primary",
-  manager: "bg-info/10 text-info",
-  developer: "bg-success/10 text-success",
-  employee: "bg-muted text-muted-foreground",
-  client: "bg-warning/10 text-warning",
+// Role → Badge variant. There is no violet token in the palette, so `owner`
+// uses the neutral outline rather than reintroducing a literal colour.
+const ROLE_VARIANT = {
+  owner: "outline",
+  admin: "default",
+  manager: "info",
+  developer: "success",
+  employee: "secondary",
+  client: "warning",
 };
 
 function pretty(role) {
@@ -124,15 +136,35 @@ export default function TeamPanel() {
   // Direct reports = staff whose reporting manager is the current user.
   const myReports = myUserId ? members.filter((m) => m.reportsTo && m.reportsTo === myUserId) : [];
 
+  // Skeletons shaped like the loaded page: three tiles, then the roster table.
   if (loading) {
     return (
-      <div className="flex min-h-[40vh] items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-primary/30 border-t-primary" />
-          <div className="text-sm font-medium text-muted-foreground">Loading team…</div>
+      <div className="space-y-6" aria-busy="true">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <StatCard key={i} title="" value="" loading />
+          ))}
+        </div>
+        <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
+          <Skeleton className="mb-4 h-4 w-32" />
+          <SkeletonTable rows={5} cols={5} />
+        </div>
+        <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
+          <Skeleton className="mb-4 h-4 w-40" />
+          <div className="space-y-3">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-10 w-full" />
+            ))}
+          </div>
         </div>
       </div>
     );
+  }
+
+  // A failed load is an error surface with a retry, not a red strip above
+  // three zeroed tiles that look like real data.
+  if (error) {
+    return <ErrorState title="Couldn't load your team" description={error} onRetry={fetchTeam} />;
   }
 
   return (
@@ -166,80 +198,63 @@ export default function TeamPanel() {
         <StatCard title="Projects" value={projects.length} icon={FolderKanban} tone="info" />
       </div>
 
-      {error && (
-        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-          {error}
-        </div>
-      )}
-
       {/* Team roster */}
-      <div className="rounded-xl border border-border bg-card shadow-card">
-        <div className="flex items-center justify-between border-b border-border px-5 py-4">
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <Users className="h-[18px] w-[18px] text-primary" />
-            Team roster
-          </h3>
-          <button
-            onClick={fetchTeam}
-            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
+      <Section
+        title="Team roster"
+        description="Everyone in your organization, ranked by role."
+        actions={
+          <Button variant="outline" size="sm" onClick={fetchTeam}>
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
             Refresh
-          </button>
-        </div>
-
+          </Button>
+        }
+        className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5"
+      >
         {members.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
-            <UserCircle className="h-10 w-10 text-muted-foreground/40" />
-            <p className="text-sm font-medium text-muted-foreground">No team members yet.</p>
-          </div>
+          <EmptyState
+            icon={UserCircle}
+            title="No team members yet"
+            description="People added to your organization appear here."
+          />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[720px] divide-y divide-border text-sm">
               <thead>
-                <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  <th className="px-5 py-3">Member</th>
-                  <th className="px-5 py-3">Role</th>
-                  <th className="px-5 py-3">Team</th>
-                  <th className="px-5 py-3">Department</th>
-                  <th className="px-5 py-3">Status</th>
+                <tr className="text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <th scope="col" className="px-4 py-3">Member</th>
+                  <th scope="col" className="px-4 py-3">Role</th>
+                  <th scope="col" className="px-4 py-3">Team</th>
+                  <th scope="col" className="px-4 py-3">Department</th>
+                  <th scope="col" className="px-4 py-3">Status</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-border">
                 {members.map((m) => (
-                  <tr key={m.id} className="border-b border-border/60 last:border-0">
-                    <td className="px-5 py-3">
+                  <tr key={m.id} className="h-12 transition-colors duration-150 hover:bg-muted/40">
+                    <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
                           {(m.name || "U").charAt(0).toUpperCase()}
                         </div>
                         <div className="min-w-0">
-                          <p className="truncate font-medium text-foreground">{m.name}</p>
-                          <p className="truncate text-xs text-muted-foreground">{m.email}</p>
+                          <p className="truncate font-medium text-foreground" title={m.name}>{m.name}</p>
+                          <p className="truncate text-xs text-muted-foreground" title={m.email}>{m.email}</p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-5 py-3">
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                          ROLE_TONE[m.role] || "bg-muted text-muted-foreground"
-                        }`}
-                      >
+                    <td className="px-4 py-3">
+                      <Badge variant={ROLE_VARIANT[m.role] || "secondary"} size="sm">
                         {pretty(m.role)}
-                      </span>
+                      </Badge>
                     </td>
-                    <td className="px-5 py-3 text-muted-foreground">{m.team || "—"}</td>
-                    <td className="px-5 py-3 text-muted-foreground">{m.department || "—"}</td>
-                    <td className="px-5 py-3">
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                          m.status === "active"
-                            ? "bg-success/10 text-success"
-                            : "bg-muted text-muted-foreground"
-                        }`}
-                      >
-                        {pretty(m.status)}
-                      </span>
+                    <td className="px-4 py-3 text-muted-foreground">{m.team || "—"}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{m.department || "—"}</td>
+                    <td className="px-4 py-3">
+                      <StatusPill
+                        status={m.status === "active" ? "active" : "inactive"}
+                        label={pretty(m.status)}
+                        size="sm"
+                      />
                     </td>
                   </tr>
                 ))}
@@ -247,49 +262,51 @@ export default function TeamPanel() {
             </table>
           </div>
         )}
-      </div>
+      </Section>
 
       {/* Org projects (read-only) */}
-      <div className="rounded-xl border border-border bg-card shadow-card">
-        <div className="border-b border-border px-5 py-4">
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <FolderKanban className="h-[18px] w-[18px] text-primary" />
-            Projects overview
-          </h3>
-        </div>
+      <Section
+        title="Projects overview"
+        description="Read-only view of every project in the organization."
+        className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5"
+      >
         {projects.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
-            <FolderKanban className="h-10 w-10 text-muted-foreground/40" />
-            <p className="text-sm font-medium text-muted-foreground">No projects yet.</p>
-          </div>
+          <EmptyState
+            icon={FolderKanban}
+            title="No projects yet"
+            description="Projects created in your organization appear here."
+          />
         ) : (
-          <ul className="divide-y divide-border/60">
-            {projects.map((p) => (
-              <li key={p.id} className="flex items-center gap-4 px-5 py-3">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-foreground">{p.name}</p>
-                  {p.deadline && (
-                    <p className="text-xs text-muted-foreground">
-                      Due {new Date(p.deadline).toLocaleDateString()}
-                    </p>
-                  )}
-                </div>
-                <div className="w-32 shrink-0">
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full rounded-full bg-primary"
-                      style={{ width: `${Math.min(100, Math.max(0, Number(p.progress) || 0))}%` }}
-                    />
+          <ul className="divide-y divide-border">
+            {projects.map((p) => {
+              const progress = Math.min(100, Math.max(0, Number(p.progress) || 0));
+              return (
+                <li key={p.id} className="flex min-h-12 flex-wrap items-center gap-x-4 gap-y-2 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium text-foreground" title={p.name}>{p.name}</p>
+                    {p.deadline && (
+                      <p className="text-xs tabular-nums text-muted-foreground">
+                        Due {new Date(p.deadline).toLocaleDateString()}
+                      </p>
+                    )}
                   </div>
-                </div>
-                <span className="w-24 shrink-0 text-right text-xs font-medium capitalize text-muted-foreground">
-                  {p.status || "—"}
-                </span>
-              </li>
-            ))}
+                  <div className="flex w-40 shrink-0 items-center gap-2">
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-primary" style={{ width: `${progress}%` }} />
+                    </div>
+                    <span className="w-9 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                      {progress}%
+                    </span>
+                  </div>
+                  <span className="w-24 shrink-0 text-right text-xs font-medium capitalize text-muted-foreground">
+                    {p.status || "—"}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         )}
-      </div>
+      </Section>
     </div>
   );
 }

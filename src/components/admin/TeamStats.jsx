@@ -9,11 +9,20 @@ import {
   Clock,
   BarChart3,
   RefreshCw,
+  AlertTriangle,
 } from "lucide-react";
 import { getOrgId } from "@/utils/orgContext";
 import { loadEmployees } from "@/utils/employeesData";
 import { supabase } from "@/utils/supabaseClient";
 import StatCard from "@/components/shell/StatCard";
+import {
+  PageHeader,
+  Section,
+  EmptyState,
+  ErrorState,
+  Button,
+  Skeleton,
+} from "@/components/ui";
 
 /**
  * Admin "Team Stats" — organization-wide team / department / attendance /
@@ -47,6 +56,63 @@ function isSameLocalDay(a, b) {
   );
 }
 
+const pct = (part, whole) =>
+  whole > 0 ? Math.round((part / whole) * 100) : 0;
+
+/**
+ * One horizontal bar. Label and value sit on their own line above the track so
+ * a long department name can never collide with its number, and the label
+ * truncates rather than wrapping the row to two heights.
+ */
+function BarRow({ label, value, share, width, tone = "primary" }) {
+  const toneClass = tone === "info" ? "bg-info" : "bg-primary";
+  return (
+    <li>
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="min-w-0 truncate text-sm text-foreground" title={label}>
+          {label}
+        </span>
+        <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
+          <span className="font-semibold text-foreground">{value}</span>
+          {share != null ? (
+            <span className="ml-1.5 text-xs">({share}%)</span>
+          ) : null}
+        </span>
+      </div>
+      <div
+        className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted"
+        role="progressbar"
+        aria-label={`${label}: ${value}`}
+        aria-valuenow={value}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
+        <div
+          className={`h-full rounded-full transition-[width] duration-150 ${toneClass}`}
+          style={{ width: `${width}%` }}
+        />
+      </div>
+    </li>
+  );
+}
+
+/** Chart-shaped skeleton: a few label/bar pairs. */
+function ChartSkeleton({ rows = 4 }) {
+  return (
+    <ul className="space-y-4">
+      {Array.from({ length: rows }).map((_, i) => (
+        <li key={i}>
+          <div className="flex items-center justify-between gap-3">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-4 w-10" />
+          </div>
+          <Skeleton className="mt-1.5 h-2 w-full rounded-full" />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function TeamStats() {
   const [loading, setLoading] = useState(true);
   const [employees, setEmployees] = useState([]);
@@ -54,10 +120,14 @@ export default function TeamStats() {
   const [departments, setDepartments] = useState([]);
   const [logins, setLogins] = useState([]);
   const [metrics, setMetrics] = useState([]);
+  // Which of the three sources threw. Purely for the error state — every
+  // fallback below is exactly what it was before.
+  const [failedSources, setFailedSources] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     const orgId = getOrgId();
+    const failed = [];
 
     // Employees / teams / departments — loadEmployees already returns safe
     // defaults, but wrap defensively in case of an unexpected throw.
@@ -73,6 +143,7 @@ export default function TeamStats() {
       emp = [];
       tms = [];
       depts = [];
+      failed.push("employees");
     }
 
     // Attendance / online — developer_logins.
@@ -96,6 +167,7 @@ export default function TeamStats() {
       loginRows = data || [];
     } catch {
       loginRows = [];
+      failed.push("attendance");
     }
 
     // Productivity metrics — aggregate per developer_id. Columns may be absent,
@@ -110,6 +182,7 @@ export default function TeamStats() {
       metricRows = data || [];
     } catch {
       metricRows = [];
+      failed.push("productivity");
     }
 
     setEmployees(emp);
@@ -117,6 +190,7 @@ export default function TeamStats() {
     setDepartments(depts);
     setLogins(loginRows);
     setMetrics(metricRows);
+    setFailedSources(failed);
     setLoading(false);
   }, []);
 
@@ -262,224 +336,324 @@ export default function TeamStats() {
   const attendancePct =
     headcount > 0 ? Math.round((presentCount / headcount) * 100) : 0;
 
+  const maxTeamCount = teamPerf.reduce((m, t) => Math.max(m, t.count), 0);
+
   // ---- Render -------------------------------------------------------------
 
+  const header = (
+    <PageHeader
+      title="Team stats"
+      description="Organization-wide team, department, attendance & performance overview."
+      actions={
+        <Button
+          variant="outline"
+          onClick={load}
+          disabled={loading}
+          aria-label="Refresh team stats"
+        >
+          <RefreshCw
+            className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+            aria-hidden="true"
+          />
+          Refresh
+        </Button>
+      }
+    />
+  );
+
+  // Loading — skeletons shaped like the stat row and the charts, so nothing
+  // jumps when the numbers arrive.
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-primary/30 border-t-primary" />
+      <div className="space-y-6">
+        {header}
+
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="rounded-xl border border-border bg-card p-5 shadow-card"
+            >
+              <Skeleton className="h-11 w-11 rounded-xl" />
+              <Skeleton className="mt-4 h-8 w-16" />
+              <Skeleton className="mt-2 h-4 w-24" />
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="rounded-xl border border-border bg-card p-5 shadow-card"
+            >
+              <Skeleton className="h-4 w-44" />
+              <div className="mt-5">
+                <ChartSkeleton rows={4} />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <span className="sr-only" role="status">
+          Loading team stats…
+        </span>
       </div>
     );
   }
 
+  // Everything that feeds this page comes from the directory. If that call
+  // failed there is nothing to chart, so offer a retry instead of five empty
+  // panels pretending the org has no people.
+  if (failedSources.includes("employees") && headcount === 0) {
+    return (
+      <div className="space-y-6">
+        {header}
+        <ErrorState
+          title="Couldn't load team stats"
+          description="The employee directory could not be read, so none of these figures can be calculated."
+          onRetry={load}
+        />
+      </div>
+    );
+  }
+
+  const partialFailures = failedSources.filter((s) => s !== "employees");
+
   return (
     <div className="space-y-6">
-      {/* Header + refresh */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
-            <BarChart3 className="h-5 w-5 text-primary" />
-            Team Stats
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Organization-wide team, department, attendance &amp; performance
-            overview.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={load}
-          className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-card transition-colors hover:bg-muted"
+      {header}
+
+      {partialFailures.length > 0 && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-3 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning"
         >
-          <RefreshCw className="h-4 w-4" />
-          Refresh
-        </button>
-      </div>
+          <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 flex-1">
+            {partialFailures.length === 1
+              ? `The ${partialFailures[0]} data couldn't be loaded — those panels are empty.`
+              : "Attendance and productivity data couldn't be loaded — those panels are empty."}
+          </span>
+          <Button variant="outline" size="sm" onClick={load}>
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+            Retry
+          </Button>
+        </div>
+      )}
 
       {/* Stat row */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
         <StatCard title="Headcount" value={headcount} icon={Users} tone="primary" />
         <StatCard title="Active" value={activeCount} icon={Activity} tone="success" />
         <StatCard title="Online now" value={onlineCount} icon={Clock} tone="info" />
-        <StatCard title="Departments" value={deptCount} icon={Building2} tone="violet" />
-        <StatCard title="Teams" value={teamCount} icon={Users} tone="warning" />
+        <StatCard title="Departments" value={deptCount} icon={Building2} tone="warning" />
+        <StatCard title="Teams" value={teamCount} icon={Users} tone="primary" />
       </div>
 
-      {/* Employee distribution by role */}
-      <section className="rounded-xl border border-border bg-card p-5 shadow-card">
-        <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <Users className="h-4 w-4 text-primary" />
-          Employee distribution by role
-        </h3>
-        {roleRows.length === 0 ? (
-          <p className="mt-4 text-sm text-muted-foreground">
-            No employees to summarize yet.
-          </p>
-        ) : (
-          <ul className="mt-4 space-y-3">
-            {roleRows.map((r) => {
-              const pct =
-                maxRoleCount > 0 ? Math.round((r.count / maxRoleCount) * 100) : 0;
-              return (
-                <li key={r.role}>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-foreground">{prettyLabel(r.role)}</span>
-                    <span className="tabular-nums text-muted-foreground">
-                      {r.count}
-                    </span>
-                  </div>
-                  <div className="mt-1.5 h-2 w-full rounded-full bg-muted">
-                    <div
-                      className="h-full rounded-full bg-primary"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-
-      {/* By department */}
-      <section className="rounded-xl border border-border bg-card p-5 shadow-card">
-        <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <Building2 className="h-4 w-4 text-primary" />
-          By department
-        </h3>
-        {deptRows.length === 0 ? (
-          <p className="mt-4 text-sm text-muted-foreground">
-            No department data available.
-          </p>
-        ) : (
-          <ul className="mt-4 space-y-3">
-            {deptRows.map((d) => {
-              const pct =
-                maxDeptCount > 0 ? Math.round((d.count / maxDeptCount) * 100) : 0;
-              return (
-                <li key={d.name}>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-foreground">{d.name}</span>
-                    <span className="tabular-nums text-muted-foreground">
-                      {d.count}
-                    </span>
-                  </div>
-                  <div className="mt-1.5 h-2 w-full rounded-full bg-muted">
-                    <div
-                      className="h-full rounded-full bg-primary"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-
-      {/* Team performance */}
-      <section className="rounded-xl border border-border bg-card p-5 shadow-card">
-        <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <TrendingUp className="h-4 w-4 text-primary" />
-          Team performance
-        </h3>
-        {teamPerf.length === 0 ? (
-          <p className="mt-4 text-sm text-muted-foreground">
-            No teams configured yet.
-          </p>
-        ) : (
-          <ul className="mt-4 divide-y divide-border">
-            {teamPerf.map((t) => (
-              <li
-                key={t.id}
-                className="flex items-center justify-between py-2.5 text-sm first:pt-0 last:pb-0"
-              >
-                <span className="text-foreground">{t.name}</span>
-                <span className="flex items-center gap-4 text-muted-foreground">
-                  <span className="tabular-nums">
-                    {t.count} {t.count === 1 ? "member" : "members"}
-                  </span>
-                  {t.avg != null && (
-                    <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-primary">
-                      {Math.round(t.avg)} avg
-                    </span>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {/* Attendance today */}
-      <section className="rounded-xl border border-border bg-card p-5 shadow-card">
-        <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <Clock className="h-4 w-4 text-primary" />
-          Attendance today
-        </h3>
+      {/* Attendance today — the number an HR manager checks first. */}
+      <Section
+        title="Attendance today"
+        description="People with at least one sign-in since midnight."
+      >
         {headcount === 0 ? (
-          <p className="mt-4 text-sm text-muted-foreground">
-            No employees to track attendance for.
-          </p>
+          <EmptyState
+            icon={Clock}
+            title="Nobody to track yet"
+            description="Attendance appears here once the organization has employees."
+          />
         ) : (
-          <div className="mt-4">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-foreground">
-                <span className="tabular-nums font-semibold">{presentCount}</span>{" "}
-                present
-              </span>
-              <span className="tabular-nums text-muted-foreground">
-                {presentCount} / {headcount} ({attendancePct}%)
-              </span>
+          <div>
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <p className="text-3xl font-bold tabular-nums text-foreground">
+                {presentCount}
+                <span className="ml-2 text-sm font-medium text-muted-foreground">
+                  of {headcount} present
+                </span>
+              </p>
+              <p className="text-sm font-semibold tabular-nums text-foreground">
+                {attendancePct}%
+              </p>
             </div>
-            <div className="mt-1.5 h-2 w-full rounded-full bg-muted">
+            <div
+              className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-muted"
+              role="progressbar"
+              aria-label="Attendance today"
+              aria-valuenow={attendancePct}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
               <div
-                className="h-full rounded-full bg-primary"
+                className="h-full rounded-full bg-primary transition-[width] duration-150"
                 style={{ width: `${attendancePct}%` }}
               />
             </div>
-            {logins.length === 0 && (
-              <p className="mt-3 text-xs text-muted-foreground">
-                No login activity recorded.
-              </p>
-            )}
+            <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-muted-foreground">
+              <span>
+                <span className="font-semibold tabular-nums text-foreground">
+                  {onlineCount}
+                </span>{" "}
+                online in the last 15 minutes
+              </span>
+              {logins.length === 0 && <span>No login activity recorded.</span>}
+            </div>
           </div>
         )}
-      </section>
+      </Section>
 
-      {/* Productivity ranking */}
-      <section className="rounded-xl border border-border bg-card p-5 shadow-card">
-        <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <BarChart3 className="h-4 w-4 text-primary" />
-          Productivity ranking
-        </h3>
-        {rankRows.length === 0 ? (
-          <p className="mt-4 text-sm text-muted-foreground">
-            No productivity data available yet.
-          </p>
-        ) : (
-          <ol className="mt-4 space-y-2.5">
-            {rankRows.map((r, i) => (
-              <li
-                key={`${r.name}-${i}`}
-                className="flex items-center justify-between text-sm"
-              >
-                <span className="flex items-center gap-3">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-semibold tabular-nums text-muted-foreground">
-                    {i + 1}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Employee distribution by role */}
+        <Section
+          title="Distribution by role"
+          description="Share of headcount in each role."
+        >
+          {roleRows.length === 0 ? (
+            <EmptyState
+              icon={Users}
+              title="No employees to summarize"
+              description="Roles appear here as soon as people join the organization."
+            />
+          ) : (
+            <ul className="space-y-4">
+              {roleRows.map((r) => (
+                <BarRow
+                  key={r.role}
+                  label={prettyLabel(r.role)}
+                  value={r.count}
+                  share={pct(r.count, headcount)}
+                  width={pct(r.count, maxRoleCount)}
+                />
+              ))}
+            </ul>
+          )}
+        </Section>
+
+        {/* By department */}
+        <Section
+          title="By department"
+          description="Where people sit across the org."
+        >
+          {deptRows.length === 0 ? (
+            <EmptyState
+              icon={Building2}
+              title="No department data"
+              description="Assign departments on an employee's profile to populate this."
+            />
+          ) : (
+            <ul className="space-y-4">
+              {deptRows.map((d) => (
+                <BarRow
+                  key={d.name}
+                  label={d.name}
+                  value={d.count}
+                  share={pct(d.count, headcount)}
+                  width={pct(d.count, maxDeptCount)}
+                  tone="info"
+                />
+              ))}
+            </ul>
+          )}
+        </Section>
+
+        {/* Team performance */}
+        <Section
+          title="Team performance"
+          description={
+            hasMetrics
+              ? "Members per team, with average productivity score where recorded."
+              : "Members per team."
+          }
+        >
+          {teamPerf.length === 0 ? (
+            <EmptyState
+              icon={TrendingUp}
+              title="No teams configured"
+              description="Create a team to compare size and performance side by side."
+            />
+          ) : (
+            <ul className="space-y-4">
+              {teamPerf.map((t) => (
+                <li key={t.id}>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span
+                      className="min-w-0 truncate text-sm text-foreground"
+                      title={t.name}
+                    >
+                      {t.name}
+                    </span>
+                    <span className="flex shrink-0 items-baseline gap-3">
+                      <span className="text-sm tabular-nums text-muted-foreground">
+                        {t.count} {t.count === 1 ? "member" : "members"}
+                      </span>
+                      {t.avg != null && (
+                        <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-primary">
+                          {Math.round(t.avg)} avg
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  <div
+                    className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted"
+                    role="progressbar"
+                    aria-label={`${t.name}: ${t.count} members`}
+                    aria-valuenow={t.count}
+                    aria-valuemin={0}
+                    aria-valuemax={maxTeamCount || 1}
+                  >
+                    <div
+                      className="h-full rounded-full bg-primary transition-[width] duration-150"
+                      style={{ width: `${pct(t.count, maxTeamCount)}%` }}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+
+        {/* Productivity ranking */}
+        <Section
+          title="Productivity ranking"
+          description="Top five by average score, falling back to active time."
+        >
+          {rankRows.length === 0 ? (
+            <EmptyState
+              icon={BarChart3}
+              title="No productivity data yet"
+              description="Rankings appear once tracked activity has been recorded for this organization."
+            />
+          ) : (
+            <ol className="divide-y divide-border">
+              {rankRows.map((r, i) => (
+                <li
+                  key={`${r.name}-${i}`}
+                  className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span
+                      aria-hidden="true"
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold tabular-nums text-muted-foreground"
+                    >
+                      {i + 1}
+                    </span>
+                    <span
+                      className="min-w-0 truncate text-sm text-foreground"
+                      title={r.name || undefined}
+                    >
+                      {r.name || "Unnamed"}
+                    </span>
                   </span>
-                  <span className="text-foreground">{r.name}</span>
-                </span>
-                <span className="tabular-nums font-semibold text-foreground">
-                  {r.score != null
-                    ? `${Math.round(r.score)} score`
-                    : `${Math.round(r.active)} active`}
-                </span>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
+                  <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
+                    {r.score != null
+                      ? `${Math.round(r.score)} score`
+                      : `${Math.round(r.active)} active`}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </Section>
+      </div>
     </div>
   );
 }

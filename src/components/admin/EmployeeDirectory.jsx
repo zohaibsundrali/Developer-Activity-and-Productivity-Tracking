@@ -3,15 +3,28 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Users,
-  Search,
   RefreshCw,
   Pencil,
   Power,
   Building2,
   UserCircle,
+  FilterX,
 } from "lucide-react";
 import StatCard from "@/components/shell/StatCard";
 import EmployeeProfileEditor from "@/components/admin/EmployeeProfileEditor";
+import {
+  PageHeader,
+  Toolbar,
+  DataTable,
+  Badge,
+  StatusPill,
+  EmptyState,
+  ErrorState,
+  Button,
+  Skeleton,
+  SkeletonTable,
+  SkeletonList,
+} from "@/components/ui";
 import { getOrgId } from "@/utils/orgContext";
 import { loadEmployees, setEmployeeStatus } from "@/utils/employeesData";
 import { can } from "@/utils/permissions";
@@ -23,32 +36,39 @@ import { resolveOrgFileUrls } from "@/utils/orgFiles";
  * Self-loading table of the org's non-client members with a compact stats
  * header, a client-side search/filter/sort toolbar, and a per-row editor +
  * quick activate/deactivate toggle (gated behind `manage_employees`).
+ *
+ * Presentation notes: the row is the unit an HR manager scans, so it reads
+ * avatar → name → role → team → status left to right, and drops to a card list
+ * below `md` where eight columns stop being legible.
  */
 
-// role → badge classes
-const ROLE_BADGES = {
-  owner: "bg-primary/10 text-primary",
-  admin: "bg-info/10 text-info",
-  manager: "bg-violet-500/10 text-violet-600",
-  team_lead: "bg-indigo-500/10 text-indigo-600",
-  hr: "bg-pink-500/10 text-pink-600",
-  developer: "bg-success/10 text-success",
-  employee: "bg-muted text-muted-foreground",
+// role → Badge variant. Status/role is never colour alone: the badge always
+// carries its label too.
+const ROLE_VARIANTS = {
+  owner: "default",
+  admin: "info",
+  manager: "secondary",
+  team_lead: "secondary",
+  hr: "secondary",
+  developer: "success",
+  employee: "outline",
 };
 
-function roleBadgeClass(role) {
-  return ROLE_BADGES[role] || "bg-muted text-muted-foreground";
+function roleVariant(role) {
+  return ROLE_VARIANTS[role] || "outline";
 }
 
-// status → badge classes
-const STATUS_BADGES = {
-  active: "bg-success/10 text-success",
-  invited: "bg-warning/10 text-warning",
-  suspended: "bg-destructive/10 text-destructive",
+// membership status → StatusPill status (which encodes shape as well as colour,
+// so "active" and "suspended" stay distinguishable without colour vision).
+const STATUS_PILLS = {
+  active: "active",
+  invited: "pending",
+  inactive: "inactive",
+  suspended: "error",
 };
 
-function statusBadgeClass(status) {
-  return STATUS_BADGES[status] || "bg-muted text-muted-foreground";
+function statusPill(status) {
+  return STATUS_PILLS[status] || "unknown";
 }
 
 // snake_case / lowercase → "Pretty Label"
@@ -58,14 +78,61 @@ const prettyLabel = (s) =>
     .map((w) => (w[0]?.toUpperCase() || "") + w.slice(1))
     .join(" ");
 
-const inputClass =
-  "rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30";
+const selectClass =
+  "h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 const SORTS = {
   name: "Name A-Z",
   role: "Role",
   joined: "Recently joined",
 };
+
+/** Avatar + name + email — the identity cell, shared by the table and the cards. */
+function EmployeeIdentity({ emp, photo, size = "md" }) {
+  const initial =
+    (emp.name || emp.email || "?").trim().charAt(0).toUpperCase() || "?";
+  const box = size === "lg" ? "h-11 w-11" : "h-9 w-9";
+
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      {photo ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={photo}
+          alt=""
+          className={`${box} shrink-0 rounded-full border border-border object-cover`}
+        />
+      ) : (
+        <div
+          aria-hidden="true"
+          className={`${box} flex shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary`}
+        >
+          {initial}
+        </div>
+      )}
+      <div className="min-w-0">
+        <div className="truncate font-medium text-foreground">
+          {emp.name || "—"}
+        </div>
+        <div className="truncate text-xs text-muted-foreground">
+          {emp.email || "—"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** One labelled fact inside a mobile card. */
+function CardFact({ label, children }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="mt-0.5 truncate text-sm text-foreground">{children}</dd>
+    </div>
+  );
+}
 
 export default function EmployeeDirectory() {
   const [employees, setEmployees] = useState([]);
@@ -219,43 +286,243 @@ export default function EmployeeDirectory() {
 
   const orgId = getOrgId();
 
-  // ── Loading state ──────────────────────────────────────────────────────────
+  // Filter chrome is purely local view state — resetting it touches nothing
+  // that is fetched, saved or permission-checked.
+  const filtersActive =
+    search.trim() !== "" ||
+    roleFilter !== "all" ||
+    deptFilter !== "all" ||
+    teamFilter !== "all" ||
+    statusFilter !== "all";
+
+  const clearFilters = () => {
+    setSearch("");
+    setRoleFilter("all");
+    setDeptFilter("all");
+    setTeamFilter("all");
+    setStatusFilter("all");
+  };
+
+  const header = (
+    <PageHeader
+      title="Employees"
+      description="Directory of everyone in your organization."
+      actions={
+        <Button
+          variant="outline"
+          onClick={load}
+          disabled={loading}
+          aria-label="Refresh employee directory"
+        >
+          <RefreshCw
+            className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+            aria-hidden="true"
+          />
+          Refresh
+        </Button>
+      }
+    />
+  );
+
+  // ── Loading ────────────────────────────────────────────────────────────────
+  // Skeletons shaped like the stats row, the toolbar and the table, so the page
+  // does not reflow the moment data lands.
   if (loading) {
     return (
-      <div className="rounded-xl border border-border bg-card p-10 shadow-card">
-        <div className="flex flex-col items-center justify-center gap-3 py-8">
-          <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-primary/30 border-t-primary" />
-          <p className="text-sm text-muted-foreground">Loading employees…</p>
+      <div className="space-y-6">
+        {header}
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="rounded-xl border border-border bg-card p-5 shadow-card"
+            >
+              <Skeleton className="h-11 w-11 rounded-xl" />
+              <Skeleton className="mt-4 h-8 w-20" />
+              <Skeleton className="mt-2 h-4 w-28" />
+            </div>
+          ))}
         </div>
+
+        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <Skeleton className="h-10 w-full lg:max-w-sm" />
+            <div className="flex flex-wrap gap-3">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <Skeleton key={i} className="h-10 w-32" />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+          <div className="hidden md:block">
+            <SkeletonTable rows={8} cols={6} />
+          </div>
+          <div className="md:hidden">
+            <SkeletonList rows={5} />
+          </div>
+        </div>
+
+        <span className="sr-only" role="status">
+          Loading employees…
+        </span>
       </div>
     );
   }
 
+  // ── Error (nothing loaded) ─────────────────────────────────────────────────
+  if (error && employees.length === 0) {
+    return (
+      <div className="space-y-6">
+        {header}
+        <ErrorState
+          title="Couldn't load employees"
+          description={error}
+          onRetry={load}
+        />
+      </div>
+    );
+  }
+
+  const columns = [
+    {
+      key: "employee",
+      header: "Employee",
+      width: "24%",
+      render: (emp) => (
+        <EmployeeIdentity
+          emp={emp}
+          photo={photoUrls.get(emp.profile?.photo_url) || null}
+        />
+      ),
+    },
+    {
+      key: "designation",
+      header: "Designation",
+      render: (emp) => (
+        <span className="block max-w-[16ch] truncate text-foreground lg:max-w-none">
+          {emp.profile?.designation || (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: "role",
+      header: "Role",
+      render: (emp) =>
+        emp.role ? (
+          <Badge variant={roleVariant(emp.role)} size="sm">
+            {prettyLabel(emp.role)}
+          </Badge>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
+    {
+      key: "department",
+      header: "Department",
+      render: (emp) =>
+        emp.departmentName || <span className="text-muted-foreground">—</span>,
+    },
+    {
+      key: "team",
+      header: "Team",
+      render: (emp) =>
+        emp.teamName || <span className="text-muted-foreground">—</span>,
+    },
+    {
+      key: "reportsTo",
+      header: "Reports to",
+      render: (emp) => {
+        const name = emp.reportsTo ? nameByUserId.get(emp.reportsTo) : null;
+        return name || <span className="text-muted-foreground">—</span>;
+      },
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (emp) => (
+        <StatusPill
+          status={statusPill(emp.status)}
+          label={prettyLabel(emp.status) || "Unknown"}
+        />
+      ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      align: "right",
+      render: (emp) => (
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSelected(emp)}
+            aria-label={`Edit ${emp.name || "employee"}`}
+          >
+            <Pencil className="h-4 w-4" aria-hidden="true" />
+            Edit
+          </Button>
+          {canManage && (
+            <Button
+              variant={emp.status === "active" ? "destructive" : "outline"}
+              size="sm"
+              onClick={() => handleToggleStatus(emp)}
+              disabled={togglingId === emp.membershipId}
+              aria-label={`${
+                emp.status === "active" ? "Deactivate" : "Activate"
+              } ${emp.name || "employee"}`}
+            >
+              <Power className="h-4 w-4" aria-hidden="true" />
+              {togglingId === emp.membershipId
+                ? "Saving…"
+                : emp.status === "active"
+                ? "Deactivate"
+                : "Activate"}
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  const emptyState = (
+    <EmptyState
+      icon={Users}
+      title={
+        employees.length === 0
+          ? "No employees yet"
+          : "No employees match your filters"
+      }
+      description={
+        employees.length === 0
+          ? "Nobody has joined this organization yet. Invited members appear here as soon as they accept."
+          : "Try a different search term, or widen the role, department, team and status filters."
+      }
+      action={
+        employees.length > 0 && filtersActive ? (
+          <Button variant="outline" onClick={clearFilters}>
+            <FilterX className="h-4 w-4" aria-hidden="true" />
+            Clear filters
+          </Button>
+        ) : null
+      }
+    />
+  );
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight text-foreground">
-            Employees
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Directory of everyone in your organization.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={load}
-          disabled={loading}
-          className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-50"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </button>
-      </div>
+      {header}
 
+      {/* A failed status toggle keeps the loaded directory on screen. */}
       {error && (
-        <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+        <div
+          role="alert"
+          className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        >
           {error}
         </div>
       )}
@@ -278,252 +545,199 @@ export default function EmployeeDirectory() {
           title="Departments"
           value={departments.length}
           icon={Building2}
-          tone="info"
+          tone="warning"
         />
-        <StatCard title="Teams" value={teams.length} icon={Users} tone="violet" />
+        <StatCard title="Teams" value={teams.length} icon={Users} tone="primary" />
       </div>
 
       {/* Toolbar */}
-      <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-        <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
-          <div className="relative flex-1 lg:min-w-[220px]">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search name, email, designation…"
-              className={`${inputClass} w-full pl-9`}
-            />
-          </div>
+      <Toolbar
+        search={{
+          value: search,
+          // Toolbar hands back the string value first, not the event.
+          onChange: (value) => setSearch(value),
+          placeholder: "Search name, email, designation…",
+        }}
+        filters={
+          <>
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              className={selectClass}
+              aria-label="Filter by role"
+            >
+              <option value="all">All roles</option>
+              {roles.map((r) => (
+                <option key={r} value={r}>
+                  {prettyLabel(r)}
+                </option>
+              ))}
+            </select>
 
-          <select
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value)}
-            className={inputClass}
-            aria-label="Filter by role"
-          >
-            <option value="all">All roles</option>
-            {roles.map((r) => (
-              <option key={r} value={r}>
-                {prettyLabel(r)}
-              </option>
-            ))}
-          </select>
+            <select
+              value={deptFilter}
+              onChange={(e) => setDeptFilter(e.target.value)}
+              className={selectClass}
+              aria-label="Filter by department"
+            >
+              <option value="all">All departments</option>
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
 
-          <select
-            value={deptFilter}
-            onChange={(e) => setDeptFilter(e.target.value)}
-            className={inputClass}
-            aria-label="Filter by department"
-          >
-            <option value="all">All departments</option>
-            {departments.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
+            <select
+              value={teamFilter}
+              onChange={(e) => setTeamFilter(e.target.value)}
+              className={selectClass}
+              aria-label="Filter by team"
+            >
+              <option value="all">All teams</option>
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
 
-          <select
-            value={teamFilter}
-            onChange={(e) => setTeamFilter(e.target.value)}
-            className={inputClass}
-            aria-label="Filter by team"
-          >
-            <option value="all">All teams</option>
-            {teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className={selectClass}
+              aria-label="Filter by status"
+            >
+              <option value="all">All statuses</option>
+              <option value="active">Active</option>
+              <option value="invited">Invited</option>
+              <option value="suspended">Suspended</option>
+            </select>
 
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className={inputClass}
-            aria-label="Filter by status"
-          >
-            <option value="all">All statuses</option>
-            <option value="active">Active</option>
-            <option value="invited">Invited</option>
-            <option value="suspended">Suspended</option>
-          </select>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className={selectClass}
+              aria-label="Sort employees"
+            >
+              {Object.entries(SORTS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </>
+        }
+        actions={
+          filtersActive ? (
+            <Button variant="ghost" onClick={clearFilters}>
+              <FilterX className="h-4 w-4" aria-hidden="true" />
+              Clear filters
+            </Button>
+          ) : null
+        }
+      />
 
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-            className={inputClass}
-            aria-label="Sort employees"
-          >
-            {Object.entries(SORTS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </div>
+      {/* Result count — the quiet line that tells you the filters did something. */}
+      <p className="-mt-3 text-sm text-muted-foreground" aria-live="polite">
+        {visible.length === employees.length
+          ? `${employees.length} ${employees.length === 1 ? "person" : "people"}`
+          : `${visible.length} of ${employees.length} ${
+              employees.length === 1 ? "person" : "people"
+            }`}
+      </p>
+
+      {/* Table — md and up. Eight columns are unreadable on a phone, so the
+          card list below takes over rather than letting the page scroll sideways. */}
+      <div className="hidden md:block">
+        {/* DataTable owns its own overflow-x-auto wrapper. */}
+        <DataTable
+          columns={columns}
+          rows={visible}
+          keyField="membershipId"
+          empty={emptyState}
+        />
       </div>
 
-      {/* Table */}
-      <div className="rounded-xl border border-border bg-card shadow-card">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                <th className="px-5 py-3">Employee</th>
-                <th className="px-4 py-3">Designation</th>
-                <th className="px-4 py-3">Role</th>
-                <th className="px-4 py-3">Department</th>
-                <th className="px-4 py-3">Team</th>
-                <th className="px-4 py-3">Reports to</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((emp) => {
-                const photo = photoUrls.get(emp.profile?.photo_url) || null;
-                const initial =
-                  (emp.name || emp.email || "?").trim().charAt(0).toUpperCase() ||
-                  "?";
-                const reportsToName = emp.reportsTo
-                  ? nameByUserId.get(emp.reportsTo) || "—"
-                  : "—";
-                const isToggling = togglingId === emp.membershipId;
+      {/* Card list — below md. */}
+      <div className="space-y-3 md:hidden">
+        {visible.length === 0
+          ? emptyState
+          : visible.map((emp) => {
+              const photo = photoUrls.get(emp.profile?.photo_url) || null;
+              const reportsToName = emp.reportsTo
+                ? nameByUserId.get(emp.reportsTo) || "—"
+                : "—";
+              const isToggling = togglingId === emp.membershipId;
 
-                return (
-                  <tr
-                    key={emp.membershipId}
-                    className="border-b border-border last:border-0 hover:bg-muted/40"
-                  >
-                    {/* Employee */}
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-3">
-                        {photo ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={photo}
-                            alt={emp.name || "Employee"}
-                            className="h-9 w-9 shrink-0 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                            {initial}
-                          </div>
-                        )}
-                        <div className="min-w-0">
-                          <div className="truncate font-medium text-foreground">
-                            {emp.name || "—"}
-                          </div>
-                          <div className="truncate text-xs text-muted-foreground">
-                            {emp.email || "—"}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
+              return (
+                <div
+                  key={emp.membershipId}
+                  className="rounded-xl border border-border bg-card p-4 shadow-card"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <EmployeeIdentity emp={emp} photo={photo} size="lg" />
+                    <StatusPill
+                      status={statusPill(emp.status)}
+                      label={prettyLabel(emp.status) || "Unknown"}
+                    />
+                  </div>
 
-                    {/* Designation */}
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {emp.profile?.designation || "—"}
-                    </td>
-
-                    {/* Role */}
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${roleBadgeClass(
-                          emp.role
-                        )}`}
-                      >
-                        {prettyLabel(emp.role) || "—"}
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {emp.role && (
+                      <Badge variant={roleVariant(emp.role)} size="sm">
+                        {prettyLabel(emp.role)}
+                      </Badge>
+                    )}
+                    {emp.profile?.designation && (
+                      <span className="truncate text-sm text-muted-foreground">
+                        {emp.profile.designation}
                       </span>
-                    </td>
+                    )}
+                  </div>
 
-                    {/* Department */}
-                    <td className="px-4 py-3 text-muted-foreground">
+                  <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-border pt-4">
+                    <CardFact label="Department">
                       {emp.departmentName || "—"}
-                    </td>
+                    </CardFact>
+                    <CardFact label="Team">{emp.teamName || "—"}</CardFact>
+                    <CardFact label="Reports to">{reportsToName}</CardFact>
+                  </dl>
 
-                    {/* Team */}
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {emp.teamName || "—"}
-                    </td>
-
-                    {/* Reports to */}
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {reportsToName}
-                    </td>
-
-                    {/* Status */}
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadgeClass(
-                          emp.status
-                        )}`}
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelected(emp)}
+                      aria-label={`Edit ${emp.name || "employee"}`}
+                    >
+                      <Pencil className="h-4 w-4" aria-hidden="true" />
+                      Edit
+                    </Button>
+                    {canManage && (
+                      <Button
+                        variant={
+                          emp.status === "active" ? "destructive" : "outline"
+                        }
+                        size="sm"
+                        onClick={() => handleToggleStatus(emp)}
+                        disabled={isToggling}
+                        aria-label={`${
+                          emp.status === "active" ? "Deactivate" : "Activate"
+                        } ${emp.name || "employee"}`}
                       >
-                        {prettyLabel(emp.status) || "—"}
-                      </span>
-                    </td>
-
-                    {/* Actions */}
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setSelected(emp)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
-                          title="Edit employee"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                          Edit
-                        </button>
-                        {canManage && (
-                          <button
-                            type="button"
-                            onClick={() => handleToggleStatus(emp)}
-                            disabled={isToggling}
-                            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${
-                              emp.status === "active"
-                                ? "border-destructive/30 text-destructive hover:bg-destructive/10"
-                                : "border-success/30 text-success hover:bg-success/10"
-                            }`}
-                            title={
-                              emp.status === "active"
-                                ? "Deactivate"
-                                : "Activate"
-                            }
-                          >
-                            <Power className="h-3.5 w-3.5" />
-                            {isToggling
-                              ? "…"
-                              : emp.status === "active"
-                              ? "Deactivate"
-                              : "Activate"}
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {visible.length === 0 && (
-          <div className="flex flex-col items-center justify-center gap-3 px-4 py-16 text-center">
-            <Users
-              className="h-12 w-12 text-muted-foreground/40"
-              strokeWidth={1}
-            />
-            <p className="text-sm text-muted-foreground">
-              {employees.length === 0
-                ? "No employees found in this organization yet."
-                : "No employees match your filters."}
-            </p>
-          </div>
-        )}
+                        <Power className="h-4 w-4" aria-hidden="true" />
+                        {isToggling
+                          ? "Saving…"
+                          : emp.status === "active"
+                          ? "Deactivate"
+                          : "Activate"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
       </div>
 
       {/* Editor modal */}

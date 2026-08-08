@@ -13,6 +13,7 @@ import {
   FONT_FAMILY,
 } from "@/components/charts/chartTheme";
 import { GanttChartSquare } from "lucide-react";
+import { ViewEmpty, ViewPanel, ViewToolbar } from "@/components/admin/views/viewKit";
 
 /* -------------------------------------------------------------------------- */
 /*  Helpers                                                                    */
@@ -75,11 +76,14 @@ export default function TimelineView({ tasks, onOpenTask }) {
 
     return {
       textStyle: { fontFamily: FONT_FAMILY },
-      grid: { ...baseGrid, left: 8, right: 24, top: 16, bottom: 24, containLabel: true },
+      // Roomier bottom than baseGrid so the date axis never clips, and
+      // containLabel keeps the truncated task names inside the canvas.
+      grid: { ...baseGrid, left: 8, right: 24, top: 16, bottom: 28, containLabel: true },
       tooltip: {
         ...baseTooltip,
         trigger: "axis",
         axisPointer: { type: "shadow" },
+        confine: true,
         formatter: (params) => {
           const p = Array.isArray(params) ? params[params.length - 1] : params;
           const row = p && ordered[p.dataIndex];
@@ -97,13 +101,15 @@ export default function TimelineView({ tasks, onOpenTask }) {
       },
       xAxis: {
         type: "time",
-        axisLabel: { ...axisLabel, formatter: (value) => shortDate(value) },
+        // hideOverlap is what stops the date ticks colliding into an unreadable
+        // smear once a project spans more than a couple of months.
+        axisLabel: { ...axisLabel, hideOverlap: true, formatter: (value) => shortDate(value) },
         splitLine: { ...splitLine, show: true },
       },
       yAxis: {
         type: "category",
         data: titles,
-        axisLabel: { ...axisLabel, width: 160, overflow: "truncate" },
+        axisLabel: { ...axisLabel, width: 150, overflow: "truncate" },
         axisTick: { show: false },
       },
       series: [
@@ -146,40 +152,58 @@ export default function TimelineView({ tasks, onOpenTask }) {
     [ordered, onOpenTask]
   );
 
-  const chartHeight = Math.max(280, ordered.length * 36);
+  // Height follows the row count so two tasks do not float in 600px of nothing
+  // and forty are not crushed into an unreadable band.
+  const chartHeight = Math.min(900, Math.max(260, ordered.length * 34 + 60));
+
+  const hiddenNote =
+    hiddenCount > 0
+      ? `${hiddenCount} task${hiddenCount === 1 ? "" : "s"} hidden (no start/end dates)`
+      : null;
+
+  const toolbar = (
+    <ViewToolbar
+      icon={GanttChartSquare}
+      title="Timeline"
+      description={
+        ordered.length
+          ? `${ordered.length} scheduled task${ordered.length === 1 ? "" : "s"}`
+          : undefined
+      }
+    >
+      {hiddenNote ? <span className="text-xs text-muted-foreground">{hiddenNote}</span> : null}
+    </ViewToolbar>
+  );
+
+  if (!ordered.length) {
+    return (
+      <div className="space-y-4">
+        {toolbar}
+        <ViewEmpty
+          icon={GanttChartSquare}
+          title="Nothing to plot yet"
+          description={
+            hiddenCount > 0
+              ? `${hiddenCount} matching task${
+                  hiddenCount === 1 ? " has" : "s have"
+                } no start and end date, so there is nothing to place on a timeline. Add dates to see them here.`
+              : "Tasks need a start and an end date before they can appear on the timeline."
+          }
+        />
+      </div>
+    );
+  }
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5 shadow-card">
-      <div className="mb-4 flex items-center gap-1.5 text-foreground">
-        <GanttChartSquare className="h-4 w-4 text-muted-foreground" />
-        <h3 className="text-sm font-semibold">Timeline</h3>
-      </div>
-
-      {ordered.length > 0 ? (
-        <>
-          <div className="overflow-x-auto">
-            <div className="min-w-[720px]">
-              <EChart option={option} height={chartHeight} onEvents={onEvents} />
-            </div>
+    <div className="space-y-4">
+      {toolbar}
+      <ViewPanel>
+        <div className="overflow-x-auto overscroll-x-contain">
+          <div className="min-w-[640px]">
+            <EChart option={option} height={chartHeight} onEvents={onEvents} />
           </div>
-          {hiddenCount > 0 && (
-            <p className="mt-3 text-xs text-muted-foreground">
-              {hiddenCount} task{hiddenCount === 1 ? "" : "s"} hidden (no dates)
-            </p>
-          )}
-        </>
-      ) : (
-        <div className="rounded-lg border-2 border-dashed border-border py-12 text-center">
-          <p className="text-sm text-muted-foreground">
-            No tasks with start and end dates to plot.
-          </p>
-          {hiddenCount > 0 && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              {hiddenCount} task{hiddenCount === 1 ? "" : "s"} hidden (no dates)
-            </p>
-          )}
         </div>
-      )}
+      </ViewPanel>
     </div>
   );
 }

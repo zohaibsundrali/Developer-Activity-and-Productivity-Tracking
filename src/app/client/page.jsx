@@ -23,6 +23,20 @@ import ClientInvoices from "@/components/client/ClientInvoices";
 import ClientSupport from "@/components/client/ClientSupport";
 import ClientAccount from "@/components/client/ClientAccount";
 
+// The one boot screen this route uses, defined once instead of twice. It is
+// shown while the session is being read — before there is any content shape to
+// stand in for — so it stays a labelled indicator rather than a skeleton.
+function PortalBoot() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="flex flex-col items-center gap-3" role="status" aria-live="polite">
+        <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-primary/30 border-t-primary motion-reduce:animate-none" />
+        <p className="text-sm font-medium text-muted-foreground">Loading your portal…</p>
+      </div>
+    </div>
+  );
+}
+
 // Authentication check — mirrors the developer dashboard, scoped to `clientUser`.
 const checkAuth = () => {
   if (typeof window === "undefined") return false;
@@ -89,14 +103,7 @@ const withAuth = (WrappedComponent) => {
     }, [router]);
 
     if (loading) {
-      return (
-        <div className="flex min-h-screen items-center justify-center bg-background">
-          <div className="flex flex-col items-center gap-3">
-            <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-primary/30 border-t-primary" />
-            <div className="text-sm font-medium text-muted-foreground">Loading…</div>
-          </div>
-        </div>
-      );
+      return <PortalBoot />;
     }
 
     if (!isAuthenticated) {
@@ -215,14 +222,7 @@ function ClientDashboardContent() {
   };
 
   if (!user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-primary/30 border-t-primary" />
-          <div className="text-sm font-medium text-muted-foreground">Loading…</div>
-        </div>
-      </div>
-    );
+    return <PortalBoot />;
   }
 
   return (

@@ -2,13 +2,15 @@
 
 import { useMemo, useState } from "react";
 import { STATUS_META, normalizeStatus } from "@/utils/pmData";
+import { Button } from "@/components/ui";
 import { ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
+import { ViewEmpty, ViewPanel, ViewToolbar } from "@/components/admin/views/viewKit";
 
 /* -------------------------------------------------------------------------- */
 /*  Constants / helpers                                                        */
 /* -------------------------------------------------------------------------- */
 
-// Subtle status tone → chip classes (mirrors KanbanView's TONE_STYLES).
+// Status tone -> chip classes. Same tone vocabulary as every other view.
 const TONE_STYLES = {
   muted: "bg-muted text-muted-foreground",
   info: "bg-info/15 text-info",
@@ -17,7 +19,15 @@ const TONE_STYLES = {
   destructive: "bg-destructive/15 text-destructive",
 };
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAYS = [
+  { short: "S", full: "Sun" },
+  { short: "M", full: "Mon" },
+  { short: "T", full: "Tue" },
+  { short: "W", full: "Wed" },
+  { short: "T", full: "Thu" },
+  { short: "F", full: "Fri" },
+  { short: "S", full: "Sat" },
+];
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -75,6 +85,11 @@ export default function CalendarView({ tasks, onOpenTask }) {
     return map;
   }, [tasks]);
 
+  const placedCount = useMemo(
+    () => Object.values(tasksByDay).reduce((acc, list) => acc + list.length, 0),
+    [tasksByDay]
+  );
+
   // Build the full weeks (leading/trailing days included) for the current month.
   const weeks = useMemo(() => {
     const first = new Date(cursor.y, cursor.m, 1);
@@ -108,120 +123,133 @@ export default function CalendarView({ tasks, onOpenTask }) {
     setCursor({ y: d.getFullYear(), m: d.getMonth() });
   };
 
-  return (
-    <div className="rounded-xl border border-border bg-card p-4 shadow-card overflow-x-auto">
-      {/* Header */}
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-foreground">
-          <CalendarDays className="h-4 w-4 text-muted-foreground" />
-          <h3 className="text-sm font-semibold tabular-nums">
-            {MONTHS[cursor.m]} {cursor.y}
-          </h3>
-        </div>
+  const toolbar = (
+    <ViewToolbar
+      icon={CalendarDays}
+      title={`${MONTHS[cursor.m]} ${cursor.y}`}
+      description={`${placedCount} dated task${placedCount === 1 ? "" : "s"}`}
+    >
+      <Button variant="outline" size="icon-sm" onClick={goPrev} aria-label="Previous month">
+        <ChevronLeft aria-hidden="true" />
+      </Button>
+      <Button variant="outline" size="sm" onClick={goToday}>
+        Today
+      </Button>
+      <Button variant="outline" size="icon-sm" onClick={goNext} aria-label="Next month">
+        <ChevronRight aria-hidden="true" />
+      </Button>
+    </ViewToolbar>
+  );
 
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={goPrev}
-            aria-label="Previous month"
-            className="rounded-lg border border-border bg-card p-1.5 text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={goToday}
-            className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted/50 transition-colors"
-          >
-            Today
-          </button>
-          <button
-            type="button"
-            onClick={goNext}
-            aria-label="Next month"
-            className="rounded-lg border border-border bg-card p-1.5 text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
-        </div>
+  if (!tasks || tasks.length === 0) {
+    return (
+      <div className="space-y-4">
+        {toolbar}
+        <ViewEmpty icon={CalendarDays} />
       </div>
+    );
+  }
 
-      {/* Grid */}
-      <div className="min-w-[720px]">
+  return (
+    <div className="space-y-4">
+      {toolbar}
+
+      <ViewPanel className="p-2 sm:p-4">
         {/* Weekday header */}
         <div className="grid grid-cols-7">
-          {WEEKDAYS.map((wd) => (
+          {WEEKDAYS.map((wd, i) => (
             <div
-              key={wd}
-              className="px-1.5 py-1 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+              key={i}
+              className="px-1 py-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
             >
-              {wd}
+              <span className="sm:hidden" aria-hidden="true">{wd.short}</span>
+              <span className="hidden sm:inline">{wd.full}</span>
+              <span className="sr-only">{wd.full}</span>
             </div>
           ))}
         </div>
 
         {/* Weeks */}
-        {weeks.map((row, ri) => (
-          <div key={ri} className="grid grid-cols-7">
-            {row.map((cell) => {
-              const key = dayKey(cell.y, cell.m, cell.d);
-              const dayTasks = tasksByDay[key] || [];
-              const isToday =
-                cell.y === today.y && cell.m === today.m && cell.d === today.d;
+        <div className="overflow-hidden rounded-lg border border-border">
+          {weeks.map((row, ri) => (
+            <div key={ri} className="grid grid-cols-7">
+              {row.map((cell) => {
+                const key = dayKey(cell.y, cell.m, cell.d);
+                const dayTasks = tasksByDay[key] || [];
+                const isToday =
+                  cell.y === today.y && cell.m === today.m && cell.d === today.d;
 
-              return (
-                <div
-                  key={key}
-                  className="min-h-[96px] border border-border p-1.5 align-top"
-                >
-                  <div className="mb-1 flex justify-end">
-                    <span
-                      className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] tabular-nums ${
-                        isToday
-                          ? "bg-primary/10 font-semibold text-primary"
-                          : cell.inMonth
-                          ? "text-foreground"
-                          : "text-muted-foreground/50"
-                      }`}
-                    >
-                      {cell.d}
-                    </span>
+                return (
+                  <div
+                    key={key}
+                    className={`min-h-[72px] border-b border-r border-border p-1 last:border-r-0 sm:min-h-[112px] sm:p-1.5 ${
+                      cell.inMonth ? "" : "bg-muted/20"
+                    }`}
+                  >
+                    <div className="mb-1 flex items-center justify-between gap-1">
+                      {/* Mobile: a single count stands in for the chips, which are
+                          unreadable in a 50px-wide cell. */}
+                      {dayTasks.length > 0 ? (
+                        <span className="rounded-full bg-primary/10 px-1.5 text-[10px] font-semibold tabular-nums text-primary sm:hidden">
+                          {dayTasks.length}
+                        </span>
+                      ) : (
+                        <span className="sm:hidden" />
+                      )}
+                      <span
+                        className={`ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] tabular-nums ${
+                          isToday
+                            ? "bg-primary font-semibold text-primary-foreground"
+                            : cell.inMonth
+                            ? "text-foreground"
+                            : "text-muted-foreground/60"
+                        }`}
+                      >
+                        {cell.d}
+                      </span>
+                    </div>
+
+                    <div className="hidden space-y-1 sm:block">
+                      {dayTasks.slice(0, 3).map((task) => {
+                        const meta =
+                          STATUS_META[normalizeStatus(task.status)] || { tone: "muted" };
+                        return (
+                          <button
+                            type="button"
+                            key={task.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenTask && onOpenTask(task);
+                            }}
+                            title={task.task_title || "Untitled task"}
+                            className={`block w-full truncate rounded px-1.5 py-0.5 text-left text-[10px] font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                              TONE_STYLES[meta.tone] || TONE_STYLES.muted
+                            }`}
+                          >
+                            {task.task_title || "Untitled task"}
+                          </button>
+                        );
+                      })}
+
+                      {dayTasks.length > 3 && (
+                        <div className="px-1.5 text-[10px] text-muted-foreground">
+                          +{dayTasks.length - 3} more
+                        </div>
+                      )}
+                    </div>
                   </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
 
-                  <div className="space-y-1">
-                    {dayTasks.slice(0, 3).map((task) => {
-                      const meta =
-                        STATUS_META[normalizeStatus(task.status)] || { tone: "muted" };
-                      return (
-                        <button
-                          type="button"
-                          key={task.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onOpenTask && onOpenTask(task);
-                          }}
-                          title={task.task_title || "Untitled task"}
-                          className={`block w-full truncate rounded px-1.5 py-0.5 text-left text-[10px] font-medium ${
-                            TONE_STYLES[meta.tone] || TONE_STYLES.muted
-                          }`}
-                        >
-                          {task.task_title || "Untitled task"}
-                        </button>
-                      );
-                    })}
-
-                    {dayTasks.length > 3 && (
-                      <div className="px-1.5 text-[10px] text-muted-foreground">
-                        +{dayTasks.length - 3} more
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ))}
-      </div>
+        {placedCount === 0 ? (
+          <p className="mt-3 rounded-lg border border-dashed border-border py-6 text-center text-xs text-muted-foreground">
+            None of the matching tasks have a due date, so nothing is placed on this calendar.
+          </p>
+        ) : null}
+      </ViewPanel>
     </div>
   );
 }

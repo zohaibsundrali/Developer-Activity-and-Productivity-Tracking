@@ -11,19 +11,14 @@ import {
   formatDuration,
 } from "@/utils/pmData";
 import { showError } from "@/utils/alerts";
+import { Badge, Button, Skeleton } from "@/components/ui";
 import { Play, Square, Timer, Plus, Loader2 } from "lucide-react";
 
 // ---- shared tokens (match TaskDetailDrawer / TaskExtras, compact drawer) ---
 const FIELD_CLASS =
-  "rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30";
+  "rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm text-foreground transition-colors duration-150 placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 const SECTION_HEADING_CLASS =
   "text-xs font-semibold uppercase tracking-wide text-muted-foreground";
-const PRIMARY_BTN_CLASS =
-  "inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-60";
-const SECONDARY_BTN_CLASS =
-  "inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs hover:border-primary disabled:opacity-60";
-const DESTRUCTIVE_BTN_CLASS =
-  "inline-flex items-center gap-1.5 rounded-lg border border-destructive/40 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-60";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -52,6 +47,10 @@ export default function TaskTimer({ task, projectId, members = [], onChanged }) 
   const effectiveProjectId = projectId || task?.project_id || null;
 
   const [logs, setLogs] = useState([]);
+  // Purely presentational: without it the recent-entries list shows its empty
+  // state ("No time logged yet") for the whole of the first fetch, which reads
+  // as an answer rather than as "still loading".
+  const [loadingLogs, setLoadingLogs] = useState(true);
   const [active, setActive] = useState(null); // this user's running log, any task
   const [busy, setBusy] = useState(false); // a mutation is in flight
   const [elapsed, setElapsed] = useState(0); // live seconds, this task only
@@ -84,7 +83,11 @@ export default function TaskTimer({ task, projectId, members = [], onChanged }) 
     setShowAdd(false);
     setMinutes("");
     setNote("");
-    if (!taskId) return undefined;
+    setLoadingLogs(true);
+    if (!taskId) {
+      setLoadingLogs(false);
+      return undefined;
+    }
     (async () => {
       try {
         const [rows, running] = await Promise.all([loadTimeLogs({ taskId }), getActiveTimer()]);
@@ -93,6 +96,8 @@ export default function TaskTimer({ task, projectId, members = [], onChanged }) 
         setActive(running || null);
       } catch (error) {
         if (alive) fail(error);
+      } finally {
+        if (alive) setLoadingLogs(false);
       }
     })();
     return () => {
@@ -220,51 +225,33 @@ export default function TaskTimer({ task, projectId, members = [], onChanged }) 
       <div className="flex flex-wrap items-center gap-2">
         {isRunningThisTask ? (
           <>
-            <span
-              className="rounded-full bg-primary/10 px-2.5 py-1 text-sm font-semibold tabular-nums text-primary"
-              aria-live="polite"
-            >
+            <Badge size="md" className="tabular-nums" aria-live="polite">
               {formatDuration(elapsed)}
-            </span>
-            <button
-              type="button"
-              onClick={handleStop}
-              disabled={busy}
-              className={DESTRUCTIVE_BTN_CLASS}
-            >
+            </Badge>
+            <Button variant="destructive" size="sm" onClick={handleStop} disabled={busy}>
               {busy ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="animate-spin" aria-hidden="true" />
               ) : (
-                <Square className="h-3.5 w-3.5" />
+                <Square aria-hidden="true" />
               )}
               Stop
-            </button>
+            </Button>
           </>
         ) : (
-          <button
-            type="button"
-            onClick={handleStart}
-            disabled={busy || !taskId}
-            className={PRIMARY_BTN_CLASS}
-          >
+          <Button size="sm" onClick={handleStart} disabled={busy || !taskId}>
             {busy ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <Loader2 className="animate-spin" aria-hidden="true" />
             ) : (
-              <Play className="h-3.5 w-3.5" />
+              <Play aria-hidden="true" />
             )}
             Start timer
-          </button>
+          </Button>
         )}
 
         {!showAdd ? (
-          <button
-            type="button"
-            onClick={() => setShowAdd(true)}
-            disabled={busy}
-            className={SECONDARY_BTN_CLASS}
-          >
-            <Plus className="h-3.5 w-3.5" /> Add time
-          </button>
+          <Button variant="outline" size="sm" onClick={() => setShowAdd(true)} disabled={busy}>
+            <Plus aria-hidden="true" /> Add time
+          </Button>
         ) : null}
       </div>
 
@@ -336,21 +323,21 @@ export default function TaskTimer({ task, projectId, members = [], onChanged }) 
               }
             }}
           />
-          <button
-            type="button"
-            onClick={handleAddManual}
-            disabled={busy}
-            className={`${PRIMARY_BTN_CLASS} shrink-0`}
-          >
-            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+          <Button size="sm" onClick={handleAddManual} disabled={busy}>
+            {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
             Add
-          </button>
+          </Button>
         </div>
       ) : null}
 
       {/* 4. RECENT ENTRIES ------------------------------------------------ */}
       <div className="mt-3">
-        {recent.length === 0 ? (
+        {loadingLogs ? (
+          <div className="space-y-2" role="status" aria-label="Loading time entries">
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-2/3" />
+          </div>
+        ) : recent.length === 0 ? (
           <p className="text-xs text-muted-foreground">No time logged yet.</p>
         ) : (
           <ul className="space-y-1">
@@ -362,9 +349,9 @@ export default function TaskTimer({ task, projectId, members = [], onChanged }) 
                 <span className="flex min-w-0 items-center gap-1.5">
                   <span className="truncate text-foreground">{nameFor(log.developer_id)}</span>
                   {log.source === "manual" ? (
-                    <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                    <Badge variant="secondary" size="sm">
                       manual
-                    </span>
+                    </Badge>
                   ) : null}
                 </span>
                 <span className="flex shrink-0 items-center gap-2">

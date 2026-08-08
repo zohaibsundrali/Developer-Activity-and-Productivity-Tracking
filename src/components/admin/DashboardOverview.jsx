@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Users, FolderKanban, Bell, RefreshCw, Mail, BadgeCheck, User } from "lucide-react";
 import StatCard from "@/components/shell/StatCard";
+import { PageHeader, Section, Card, CardContent, Button, ErrorState } from "@/components/ui";
 import { getOrgId } from "@/utils/orgContext";
 import { setVisibleInterval } from "@/hooks/useVisibleInterval";
 
@@ -13,6 +14,12 @@ export default function DashboardOverview({ user, onRefresh, supabase }) {
   });
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
+  // Presentation state only. `hasLoaded` separates "no data yet" from "the
+  // counts really are zero" so the tiles can show a skeleton instead of a
+  // confident row of zeroes, and `error` surfaces the failure the catch block
+  // below was already swallowing.
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [error, setError] = useState(null);
 
   // Fetch real-time data from database
   const fetchRealTimeData = async () => {
@@ -20,6 +27,7 @@ export default function DashboardOverview({ user, onRefresh, supabase }) {
 
     try {
       setLoading(true);
+      setError(null);
 
       const currentAdmin = JSON.parse(sessionStorage.getItem("adminUser")) || user;
       const adminId = currentAdmin?.id;
@@ -99,9 +107,11 @@ export default function DashboardOverview({ user, onRefresh, supabase }) {
 
       setLastUpdated(new Date());
     } catch (error) {
-      // Silently handle error
+      // Was silently swallowed — still not rethrown, just shown.
+      setError(error?.message || "Could not load your workspace statistics.");
     } finally {
       setLoading(false);
+      setHasLoaded(true);
     }
   };
 
@@ -131,75 +141,99 @@ export default function DashboardOverview({ user, onRefresh, supabase }) {
     });
   };
 
+  // First paint has no counts yet — a row of zeroes reads as real data, so the
+  // tiles wait on their own skeletons instead.
+  const showSkeleton = !hasLoaded;
+
   return (
     <div className="space-y-6">
-      {/* Header row */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight text-foreground">Dashboard Overview</h2>
-          <p className="text-sm text-muted-foreground">
-            {lastUpdated ? `Last updated ${formatTime(lastUpdated)}` : "Your workspace at a glance"}
-          </p>
-        </div>
-        <button
-          onClick={fetchRealTimeData}
-          disabled={loading}
-          className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground shadow-card transition-colors hover:bg-muted disabled:opacity-50"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          {loading ? "Refreshing…" : "Refresh Stats"}
-        </button>
-      </div>
+      <PageHeader
+        title="Dashboard Overview"
+        description={
+          lastUpdated
+            ? `Your workspace at a glance · last updated ${formatTime(lastUpdated)}`
+            : "Your workspace at a glance"
+        }
+        actions={
+          <Button variant="outline" onClick={fetchRealTimeData} disabled={loading}>
+            <RefreshCw
+              className={`h-4 w-4 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`}
+              aria-hidden="true"
+            />
+            {loading ? "Refreshing…" : "Refresh stats"}
+          </Button>
+        }
+      />
 
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard
-          title="My Developers"
-          value={realTimeStats.myDevelopers}
-          icon={Users}
-          tone="primary"
-          badge="Assigned to you"
-          hint={
-            <>
-              <span className="text-muted-foreground">Active</span>
-              <span className="font-semibold text-success">{realTimeStats.activeDevelopers}</span>
-            </>
-          }
+      {error && !loading ? (
+        <ErrorState
+          title="Couldn't load your statistics"
+          description={error}
+          onRetry={fetchRealTimeData}
         />
-        <StatCard
-          title="My Projects"
-          value={realTimeStats.myProjects}
-          icon={FolderKanban}
-          tone="info"
-          badge="Your projects"
-        />
-        <StatCard
-          title="Pending Notifications"
-          value={realTimeStats.pendingNotifications}
-          icon={Bell}
-          tone={realTimeStats.pendingNotifications > 0 ? "destructive" : "warning"}
-          badge={realTimeStats.pendingNotifications > 0 ? `${realTimeStats.pendingNotifications} new` : undefined}
-          badgeTone="destructive"
-          hint={
-            <>
-              <span className="text-muted-foreground">Require action</span>
-              <span className={`font-semibold ${realTimeStats.pendingNotifications > 0 ? "text-destructive" : "text-success"}`}>
-                {realTimeStats.pendingNotifications > 0 ? "Yes" : "No"}
-              </span>
-            </>
-          }
-        />
-      </div>
+      ) : (
+        /* Statistics Cards */
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <StatCard
+            title="My Developers"
+            value={realTimeStats.myDevelopers}
+            icon={Users}
+            tone="primary"
+            badge="Assigned to you"
+            loading={showSkeleton}
+            hint={
+              <>
+                <span className="text-muted-foreground">Active</span>
+                <span className="font-semibold tabular-nums text-success">
+                  {realTimeStats.activeDevelopers}
+                </span>
+              </>
+            }
+          />
+          <StatCard
+            title="My Projects"
+            value={realTimeStats.myProjects}
+            icon={FolderKanban}
+            tone="info"
+            badge="Your projects"
+            loading={showSkeleton}
+          />
+          <StatCard
+            title="Pending Notifications"
+            value={realTimeStats.pendingNotifications}
+            icon={Bell}
+            tone={realTimeStats.pendingNotifications > 0 ? "destructive" : "warning"}
+            badge={realTimeStats.pendingNotifications > 0 ? `${realTimeStats.pendingNotifications} new` : undefined}
+            badgeTone="destructive"
+            loading={showSkeleton}
+            hint={
+              <>
+                <span className="text-muted-foreground">Require action</span>
+                <span
+                  className={`font-semibold ${
+                    realTimeStats.pendingNotifications > 0 ? "text-destructive" : "text-success"
+                  }`}
+                >
+                  {realTimeStats.pendingNotifications > 0 ? "Yes" : "No"}
+                </span>
+              </>
+            }
+          />
+        </div>
+      )}
 
       {/* Profile Information */}
-      <div className="rounded-xl border border-border bg-card p-6 shadow-card">
-        <h3 className="mb-4 text-base font-semibold text-foreground">Profile Information</h3>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <ProfileField icon={User} label="Full Name" value={user?.full_name || user?.name || "Not specified"} />
-          <ProfileField icon={Mail} label="Email" value={user?.email || "Not specified"} />
-          <ProfileField icon={BadgeCheck} label="Role" value={(user?.role || "Admin")} capitalize />
-        </div>
-      </div>
+      <Section title="Profile information" description="How your account appears to your team">
+        <Card>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <ProfileField icon={User} label="Full Name" value={user?.full_name || user?.name || "Not specified"} />
+              <ProfileField icon={Mail} label="Email" value={user?.email || "Not specified"} />
+              <ProfileField icon={BadgeCheck} label="Role" value={(user?.role || "Admin")} capitalize />
+            </div>
+          </CardContent>
+        </Card>
+      </Section>
     </div>
   );
 }
@@ -208,7 +242,7 @@ function ProfileField({ icon: Icon, label, value, capitalize }) {
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 p-3">
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-        {Icon && <Icon className="h-[18px] w-[18px]" />}
+        {Icon && <Icon className="h-[18px] w-[18px]" aria-hidden="true" />}
       </div>
       <div className="min-w-0">
         <p className="text-xs text-muted-foreground">{label}</p>

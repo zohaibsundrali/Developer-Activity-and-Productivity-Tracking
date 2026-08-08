@@ -15,6 +15,21 @@ import { loadEmployees } from "@/utils/employeesData";
 import { loadLabels, BOARD_COLUMNS, DRAGGABLE_COLUMNS, PRIORITIES, TASK_TYPES } from "@/utils/pmData";
 import { showError, showSuccess } from "@/utils/alerts";
 import {
+  PageHeader,
+  Section,
+  Card,
+  CardContent,
+  Badge,
+  StatusPill,
+  EmptyState,
+  ErrorState,
+  Skeleton,
+  SkeletonList,
+  Field,
+  Input,
+  Button,
+} from "@/components/ui";
+import {
   Plus,
   RefreshCw,
   Pencil,
@@ -25,17 +40,12 @@ import {
   Save,
 } from "lucide-react";
 
-/* ---- shared token classes (design system) -------------------------------- */
-const INPUT_CLASS =
-  "rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30";
-const PRIMARY_BTN =
-  "inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60";
-const SECONDARY_BTN =
-  "rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:border-primary";
-const ICON_BTN =
-  "rounded-lg border border-border bg-background p-2 text-muted-foreground hover:border-primary";
-const PANEL = "rounded-xl border border-border bg-card p-5 shadow-card";
-const BADGE = "rounded-full px-2 py-0.5 text-[10px] font-semibold";
+/* ---- shared token classes -------------------------------------------------
+ * Only for native <select> / <input type="checkbox">, which have no primitive
+ * in the UI kit. Every button, card, badge and input uses the kit.
+ * ------------------------------------------------------------------------ */
+const SELECT_CLASS =
+  "h-8 rounded-lg border border-input bg-background px-2.5 text-sm text-foreground transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 /* ---- label helpers ------------------------------------------------------- */
 const titleCase = (value) =>
@@ -249,6 +259,9 @@ export default function AutomationRules() {
   const [employees, setEmployees] = useState([]);
   const [labels, setLabels] = useState([]);
   const [loading, setLoading] = useState(false);
+  // Presentation-only: mirrors the error already caught in reload() so the list
+  // can offer a retry instead of looking like "there are no rules".
+  const [loadError, setLoadError] = useState(null);
 
   const [draft, setDraft] = useState(null); // null = editor closed
   const [saving, setSaving] = useState(false);
@@ -285,6 +298,7 @@ export default function AutomationRules() {
   /* ---- rules + supporting data for the chosen scope ---- */
   const reload = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const id = orgId || getOrgId();
       const scoped = projectId || null;
@@ -308,6 +322,7 @@ export default function AutomationRules() {
     } catch (err) {
       showError("Failed to load automation rules", err?.message || String(err));
       setRules([]);
+      setLoadError(err?.message || String(err));
     } finally {
       setLoading(false);
     }
@@ -448,7 +463,7 @@ export default function AutomationRules() {
           <select
             value={a.userId || ""}
             onChange={(e) => patchAction(index, { userId: e.target.value || "" })}
-            className={INPUT_CLASS}
+            className={SELECT_CLASS}
             aria-label="Assign to"
           >
             <option value="">Select person…</option>
@@ -464,7 +479,7 @@ export default function AutomationRules() {
           <select
             value={a.status || ""}
             onChange={(e) => patchAction(index, { status: e.target.value })}
-            className={INPUT_CLASS}
+            className={SELECT_CLASS}
             aria-label="Set status to"
           >
             <option value="">Select status…</option>
@@ -481,7 +496,7 @@ export default function AutomationRules() {
           <select
             value={a.priority || ""}
             onChange={(e) => patchAction(index, { priority: e.target.value })}
-            className={INPUT_CLASS}
+            className={SELECT_CLASS}
             aria-label="Set priority to"
           >
             <option value="">Select priority…</option>
@@ -497,7 +512,7 @@ export default function AutomationRules() {
           <select
             value={a.label || ""}
             onChange={(e) => patchAction(index, { label: e.target.value })}
-            className={INPUT_CLASS}
+            className={SELECT_CLASS}
             aria-label="Add label"
           >
             <option value="">Select label…</option>
@@ -521,7 +536,7 @@ export default function AutomationRules() {
                   ...(e.target.value === "assignee" ? { userId: "" } : {}),
                 })
               }
-              className={INPUT_CLASS}
+              className={SELECT_CLASS}
               aria-label="Send to"
             >
               <option value="assignee">Assignee</option>
@@ -532,7 +547,7 @@ export default function AutomationRules() {
               <select
                 value={a.userId || ""}
                 onChange={(e) => patchAction(index, { userId: e.target.value || "" })}
-                className={INPUT_CLASS}
+                className={SELECT_CLASS}
                 aria-label="Recipient"
               >
                 <option value="">Select person…</option>
@@ -544,20 +559,20 @@ export default function AutomationRules() {
               </select>
             )}
 
-            <input
+            <Input
               value={(isEmail ? a.subject : a.title) || ""}
               onChange={(e) =>
                 patchAction(index, isEmail ? { subject: e.target.value } : { title: e.target.value })
               }
               placeholder={isEmail ? "Subject (optional)" : "Title (optional)"}
-              className={`${INPUT_CLASS} min-w-[10rem] flex-1`}
+              className="min-w-[10rem] flex-1"
               aria-label={isEmail ? "Email subject" : "Notification title"}
             />
-            <input
+            <Input
               value={a.message || ""}
               onChange={(e) => patchAction(index, { message: e.target.value })}
               placeholder="Message (optional)"
-              className={`${INPUT_CLASS} min-w-[12rem] flex-1`}
+              className="min-w-[12rem] flex-1"
               aria-label="Message"
             />
           </>
@@ -574,361 +589,396 @@ export default function AutomationRules() {
 
   /* ---- render ---- */
   return (
-    <div className="space-y-4">
-      {/* 1) Toolbar */}
-      <div className="rounded-xl border border-border bg-card p-3 shadow-card">
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={projectId}
-            onChange={(e) => {
-              setProjectId(e.target.value);
-              setDraft(null);
-            }}
-            className={INPUT_CLASS}
-            disabled={loadingProjects}
-            aria-label="Select automation scope"
-          >
-            <option value="">All projects (org-wide)</option>
-            {(projects || []).map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name || "Untitled project"}
-              </option>
-            ))}
-          </select>
-
-          <span className="text-xs text-muted-foreground">
-            <span className="tabular-nums">{rules.length}</span>{" "}
-            {rules.length === 1 ? "rule" : "rules"}
-          </span>
-
-          <div className="ml-auto flex items-center gap-1.5">
-            <button
-              type="button"
+    <div className="space-y-6">
+      <PageHeader
+        title="Automation rules"
+        description="Run actions automatically when a task is created, moved, or assigned."
+        actions={
+          <>
+            <Button variant="outline" onClick={reload} disabled={loading} title="Refresh">
+              <RefreshCw aria-hidden="true" className="h-4 w-4" />
+              Refresh
+            </Button>
+            {/* Exactly one primary button on screen: while the editor is open
+                its Save button is the primary action instead. */}
+            <Button
+              variant={draft ? "outline" : "default"}
               onClick={() => setDraft(emptyDraft())}
-              className={PRIMARY_BTN}
               disabled={loading}
             >
-              <Plus className="h-4 w-4" /> New rule
-            </button>
-            <button
-              type="button"
-              onClick={reload}
-              disabled={loading}
-              title="Refresh"
-              className={`${SECONDARY_BTN} inline-flex items-center gap-1.5 disabled:opacity-60`}
-            >
-              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Refresh
-            </button>
+              <Plus aria-hidden="true" className="h-4 w-4" />
+              New rule
+            </Button>
+          </>
+        }
+      />
+
+      {/* 1) Scope picker */}
+      <Card className="sm:py-5">
+        <CardContent className="sm:px-5">
+          <div className="flex flex-wrap items-center gap-3">
+            <Field label="Scope" htmlFor="automation-scope" className="min-w-[16rem]">
+              {loadingProjects ? (
+                <Skeleton className="h-8 w-full rounded-lg" />
+              ) : (
+                <select
+                  id="automation-scope"
+                  value={projectId}
+                  onChange={(e) => {
+                    setProjectId(e.target.value);
+                    setDraft(null);
+                  }}
+                  className={`${SELECT_CLASS} w-full`}
+                  disabled={loadingProjects}
+                  aria-label="Select automation scope"
+                >
+                  <option value="">All projects (org-wide)</option>
+                  {(projects || []).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name || "Untitled project"}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </Field>
+
+            <Badge variant="secondary" size="sm">
+              <span className="tabular-nums">{rules.length}</span>{" "}
+              {rules.length === 1 ? "rule" : "rules"}
+            </Badge>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* 3) Editor (inline panel, not a modal) */}
       {draft && (
-        <div className={PANEL}>
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">
-              <Zap className="h-4 w-4 text-primary" />
-              {draft.id ? "Edit rule" : "New rule"}
-            </h3>
-            <span className="text-xs text-muted-foreground">Scope: {scopeLabel}</span>
-          </div>
-
-          {/* Name */}
-          <div className="mt-4">
-            <label className="mb-1 block text-xs font-medium text-muted-foreground" htmlFor="rule-name">
-              Rule name
-            </label>
-            <input
-              id="rule-name"
-              value={draft.name}
-              onChange={(e) => patchDraft({ name: e.target.value })}
-              placeholder="e.g. Auto-assign bugs to QA"
-              className={`${INPUT_CLASS} w-full max-w-md`}
-            />
-          </div>
-
-          {/* When */}
-          <div className="mt-5 rounded-lg border border-border bg-background p-3">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              When
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={draft.trigger?.event || ""}
-                onChange={(e) => changeEvent(e.target.value)}
-                className={INPUT_CLASS}
-                aria-label="Trigger event"
-              >
-                <option value="">Select trigger…</option>
-                {(TRIGGER_EVENTS || []).map((ev) => (
-                  <option key={ev.id} value={ev.id}>
-                    {ev.label}
-                  </option>
-                ))}
-              </select>
-
-              {draft.trigger?.event === "status_changed" && (
-                <>
-                  <span className="text-sm text-muted-foreground">from</span>
-                  <select
-                    value={draft.trigger?.from || ""}
-                    onChange={(e) => setTriggerKey("from", e.target.value)}
-                    className={INPUT_CLASS}
-                    aria-label="From status"
-                  >
-                    <option value="">Any status</option>
-                    {(BOARD_COLUMNS || []).map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="text-sm text-muted-foreground">to</span>
-                  <select
-                    value={draft.trigger?.to || ""}
-                    onChange={(e) => setTriggerKey("to", e.target.value)}
-                    className={INPUT_CLASS}
-                    aria-label="To status"
-                  >
-                    <option value="">Any status</option>
-                    {(BOARD_COLUMNS || []).map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                </>
-              )}
-
-              {draft.trigger?.event === "priority_changed" && (
-                <>
-                  <span className="text-sm text-muted-foreground">to</span>
-                  <select
-                    value={draft.trigger?.toPriority || ""}
-                    onChange={(e) => setTriggerKey("toPriority", e.target.value)}
-                    className={INPUT_CLASS}
-                    aria-label="To priority"
-                  >
-                    <option value="">Any priority</option>
-                    {(PRIORITIES || []).map((p) => (
-                      <option key={p} value={p}>
-                        {titleCase(p)}
-                      </option>
-                    ))}
-                  </select>
-                </>
-              )}
+        <Card className="animate-fade-in sm:py-5">
+          <CardContent className="sm:px-5">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">
+                <Zap aria-hidden="true" className="h-4 w-4 text-primary" />
+                {draft.id ? "Edit rule" : "New rule"}
+              </h3>
+              <span className="text-xs text-muted-foreground">Scope: {scopeLabel}</span>
             </div>
 
-            {/* optional narrowing filters — shown for every event */}
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="text-sm text-muted-foreground">Only when type is</span>
-              <select
-                value={draft.trigger?.taskType || ""}
-                onChange={(e) => setTriggerKey("taskType", e.target.value)}
-                className={INPUT_CLASS}
-                aria-label="Only when type is"
-              >
-                <option value="">Any</option>
-                {(TASK_TYPES || []).map((t) => (
-                  <option key={t} value={t}>
-                    {titleCase(t)}
-                  </option>
-                ))}
-              </select>
-
-              <span className="text-sm text-muted-foreground">Only when priority is</span>
-              <select
-                value={draft.trigger?.priority || ""}
-                onChange={(e) => setTriggerKey("priority", e.target.value)}
-                className={INPUT_CLASS}
-                aria-label="Only when priority is"
-              >
-                <option value="">Any</option>
-                {(PRIORITIES || []).map((p) => (
-                  <option key={p} value={p}>
-                    {titleCase(p)}
-                  </option>
-                ))}
-              </select>
+            {/* Name */}
+            <div className="mt-4">
+              <Field label="Rule name" htmlFor="rule-name">
+                <Input
+                  id="rule-name"
+                  value={draft.name}
+                  onChange={(e) => patchDraft({ name: e.target.value })}
+                  placeholder="e.g. Auto-assign bugs to QA"
+                  className="w-full max-w-md"
+                />
+              </Field>
             </div>
-          </div>
 
-          {/* Then */}
-          <div className="mt-3 rounded-lg border border-border bg-background p-3">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Then
-            </p>
-
-            <div className="space-y-2">
-              {(Array.isArray(draft.actions) ? draft.actions : []).map((action, index) => (
-                <div
-                  key={`action-${index}`}
-                  className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-2"
+            {/* When */}
+            <div className="mt-5 rounded-lg border border-border bg-background p-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                When
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={draft.trigger?.event || ""}
+                  onChange={(e) => changeEvent(e.target.value)}
+                  className={SELECT_CLASS}
+                  aria-label="Trigger event"
                 >
-                  <select
-                    value={action?.type || "notify"}
-                    onChange={(e) => changeActionType(index, e.target.value)}
-                    className={INPUT_CLASS}
-                    aria-label="Action type"
-                  >
-                    {(ACTION_TYPES || []).map((at) => (
-                      <option key={at.id} value={at.id}>
-                        {at.label}
-                      </option>
-                    ))}
-                  </select>
+                  <option value="">Select trigger…</option>
+                  {(TRIGGER_EVENTS || []).map((ev) => (
+                    <option key={ev.id} value={ev.id}>
+                      {ev.label}
+                    </option>
+                  ))}
+                </select>
 
-                  {renderActionFields(action, index)}
+                {draft.trigger?.event === "status_changed" && (
+                  <>
+                    <span className="text-sm text-muted-foreground">from</span>
+                    <select
+                      value={draft.trigger?.from || ""}
+                      onChange={(e) => setTriggerKey("from", e.target.value)}
+                      className={SELECT_CLASS}
+                      aria-label="From status"
+                    >
+                      <option value="">Any status</option>
+                      {(BOARD_COLUMNS || []).map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-sm text-muted-foreground">to</span>
+                    <select
+                      value={draft.trigger?.to || ""}
+                      onChange={(e) => setTriggerKey("to", e.target.value)}
+                      className={SELECT_CLASS}
+                      aria-label="To status"
+                    >
+                      <option value="">Any status</option>
+                      {(BOARD_COLUMNS || []).map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                )}
 
-                  <button
-                    type="button"
-                    onClick={() => removeAction(index)}
-                    title="Remove action"
-                    aria-label="Remove action"
-                    className={`ml-auto ${ICON_BTN} hover:border-destructive hover:text-destructive`}
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
+                {draft.trigger?.event === "priority_changed" && (
+                  <>
+                    <span className="text-sm text-muted-foreground">to</span>
+                    <select
+                      value={draft.trigger?.toPriority || ""}
+                      onChange={(e) => setTriggerKey("toPriority", e.target.value)}
+                      className={SELECT_CLASS}
+                      aria-label="To priority"
+                    >
+                      <option value="">Any priority</option>
+                      {(PRIORITIES || []).map((p) => (
+                        <option key={p} value={p}>
+                          {titleCase(p)}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                )}
+              </div>
 
-              {!(Array.isArray(draft.actions) && draft.actions.length) && (
-                <p className="rounded-lg border border-dashed border-border py-6 text-center text-xs text-muted-foreground">
-                  No actions yet — add at least one so the rule does something.
-                </p>
-              )}
+              {/* optional narrowing filters — shown for every event */}
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="text-sm text-muted-foreground">Only when type is</span>
+                <select
+                  value={draft.trigger?.taskType || ""}
+                  onChange={(e) => setTriggerKey("taskType", e.target.value)}
+                  className={SELECT_CLASS}
+                  aria-label="Only when type is"
+                >
+                  <option value="">Any</option>
+                  {(TASK_TYPES || []).map((t) => (
+                    <option key={t} value={t}>
+                      {titleCase(t)}
+                    </option>
+                  ))}
+                </select>
+
+                <span className="text-sm text-muted-foreground">Only when priority is</span>
+                <select
+                  value={draft.trigger?.priority || ""}
+                  onChange={(e) => setTriggerKey("priority", e.target.value)}
+                  className={SELECT_CLASS}
+                  aria-label="Only when priority is"
+                >
+                  <option value="">Any</option>
+                  {(PRIORITIES || []).map((p) => (
+                    <option key={p} value={p}>
+                      {titleCase(p)}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            <button type="button" onClick={addAction} className={`mt-2 ${SECONDARY_BTN} inline-flex items-center gap-1.5`}>
-              <Plus className="h-4 w-4" /> Add action
-            </button>
-          </div>
+            {/* Then */}
+            <div className="mt-3 rounded-lg border border-border bg-background p-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Then
+              </p>
 
-          {/* Enabled + save/cancel */}
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={draft.enabled !== false}
-                onChange={(e) => patchDraft({ enabled: e.target.checked })}
-                className="h-4 w-4 rounded border-input accent-primary"
-              />
-              Rule is enabled
-            </label>
+              <div className="space-y-2">
+                {(Array.isArray(draft.actions) ? draft.actions : []).map((action, index) => (
+                  <div
+                    key={`action-${index}`}
+                    className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-2"
+                  >
+                    <select
+                      value={action?.type || "notify"}
+                      onChange={(e) => changeActionType(index, e.target.value)}
+                      className={SELECT_CLASS}
+                      aria-label="Action type"
+                    >
+                      {(ACTION_TYPES || []).map((at) => (
+                        <option key={at.id} value={at.id}>
+                          {at.label}
+                        </option>
+                      ))}
+                    </select>
 
-            <div className="ml-auto flex items-center gap-2">
-              <button type="button" onClick={() => setDraft(null)} className={SECONDARY_BTN} disabled={saving}>
-                Cancel
-              </button>
-              <button type="button" onClick={handleSave} className={PRIMARY_BTN} disabled={saving}>
-                <Save className="h-4 w-4" /> {saving ? "Saving…" : "Save rule"}
-              </button>
+                    {renderActionFields(action, index)}
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => removeAction(index)}
+                      title="Remove action"
+                      aria-label="Remove action"
+                      className="ml-auto text-muted-foreground hover:text-destructive"
+                    >
+                      <X aria-hidden="true" className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+
+                {!(Array.isArray(draft.actions) && draft.actions.length) && (
+                  <p className="rounded-lg border border-dashed border-border py-6 text-center text-xs text-muted-foreground">
+                    No actions yet — add at least one so the rule does something.
+                  </p>
+                )}
+              </div>
+
+              <Button type="button" variant="outline" onClick={addAction} className="mt-2">
+                <Plus aria-hidden="true" className="h-4 w-4" />
+                Add action
+              </Button>
             </div>
-          </div>
-        </div>
+
+            {/* Enabled + save/cancel */}
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={draft.enabled !== false}
+                  onChange={(e) => patchDraft({ enabled: e.target.checked })}
+                  className="h-4 w-4 rounded border-input accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                />
+                Rule is enabled
+              </label>
+
+              <div className="ml-auto flex items-center gap-2">
+                <Button type="button" variant="outline" onClick={() => setDraft(null)} disabled={saving}>
+                  Cancel
+                </Button>
+                <Button type="button" onClick={handleSave} disabled={saving}>
+                  <Save aria-hidden="true" className="h-4 w-4" />
+                  {saving ? "Saving…" : "Save rule"}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* 2) Rule list */}
-      {loading && !rules.length ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-primary/30 border-t-primary" />
-        </div>
-      ) : !rules.length ? (
-        <div className="rounded-xl border border-dashed border-border bg-muted/20 p-8 text-center">
-          <Zap className="mx-auto h-8 w-8 text-muted-foreground" />
-          <p className="mt-3 text-sm text-muted-foreground">
-            No automation rules yet — create one to auto-assign work, move statuses, or send reminders.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {rules.map((rule) => {
-            const enabled = rule?.enabled !== false;
-            const busy = busyId === rule?.id;
-            const created = formatDate(rule?.created_at);
-            return (
-              <div key={rule.id} className="rounded-xl border border-border bg-card p-4 shadow-card">
-                {/* Row 1 */}
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={enabled}
-                    aria-label={enabled ? "Disable rule" : "Enable rule"}
-                    onClick={() => handleToggle(rule)}
-                    disabled={busy}
-                    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${
-                      enabled ? "bg-primary" : "bg-muted"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-background shadow transition-transform ${
-                        enabled ? "translate-x-[1.125rem]" : "translate-x-0.5"
-                      }`}
-                    />
-                  </button>
+      <Section
+        title="Rules"
+        description={`Applied to ${scopeLabel}.`}
+      >
+        {loading && !rules.length ? (
+          <SkeletonList rows={3} />
+        ) : loadError ? (
+          <ErrorState
+            title="Couldn't load automation rules"
+            description={loadError}
+            onRetry={reload}
+          />
+        ) : !rules.length ? (
+          <EmptyState
+            icon={Zap}
+            title="No automation rules yet"
+            description="Create one to auto-assign work, move statuses, or send reminders."
+            action={
+              <Button variant="outline" onClick={() => setDraft(emptyDraft())} disabled={loading}>
+                <Plus aria-hidden="true" className="h-4 w-4" />
+                New rule
+              </Button>
+            }
+          />
+        ) : (
+          <div className="space-y-3">
+            {rules.map((rule) => {
+              const enabled = rule?.enabled !== false;
+              const busy = busyId === rule?.id;
+              const created = formatDate(rule?.created_at);
+              return (
+                <Card key={rule.id} className="sm:py-5">
+                  <CardContent className="sm:px-5">
+                    {/* Row 1 */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={enabled}
+                        aria-label={enabled ? "Disable rule" : "Enable rule"}
+                        onClick={() => handleToggle(rule)}
+                        disabled={busy}
+                        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-60 ${
+                          enabled ? "bg-primary" : "bg-muted"
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 rounded-full bg-background shadow ${
+                            enabled ? "translate-x-[1.125rem]" : "translate-x-0.5"
+                          }`}
+                        />
+                      </button>
 
-                  <p className="font-semibold text-foreground">{rule.name || "Untitled rule"}</p>
+                      <p className="font-semibold text-foreground">{rule.name || "Untitled rule"}</p>
 
-                  <span
-                    className={`${BADGE} ${
-                      enabled ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {enabled ? "Enabled" : "Disabled"}
-                  </span>
+                      <StatusPill
+                        size="sm"
+                        status={enabled ? "active" : "inactive"}
+                        label={enabled ? "Enabled" : "Disabled"}
+                      />
 
-                  {!rule.project_id && (
-                    <span className={`${BADGE} bg-muted text-muted-foreground`}>Org-wide</span>
-                  )}
+                      {!rule.project_id && (
+                        <Badge variant="outline" size="sm">Org-wide</Badge>
+                      )}
 
-                  {created && (
-                    <span className="text-xs tabular-nums text-muted-foreground">{created}</span>
-                  )}
+                      {created && (
+                        <span className="text-xs tabular-nums text-muted-foreground">{created}</span>
+                      )}
 
-                  <div className="ml-auto flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setDraft(draftFromRule(rule))}
-                      title="Edit rule"
-                      aria-label="Edit rule"
-                      className={ICON_BTN}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(rule)}
-                      disabled={busy}
-                      title="Delete rule"
-                      aria-label="Delete rule"
-                      className={`${ICON_BTN} hover:border-destructive hover:text-destructive disabled:opacity-60`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
+                      <div className="ml-auto flex items-center gap-1.5">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => setDraft(draftFromRule(rule))}
+                          title="Edit rule"
+                          aria-label="Edit rule"
+                          className="text-muted-foreground"
+                        >
+                          <Pencil aria-hidden="true" className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => handleDelete(rule)}
+                          disabled={busy}
+                          title="Delete rule"
+                          aria-label="Delete rule"
+                          className="text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2 aria-hidden="true" className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
 
-                {/* Row 2 — human-readable summary */}
-                <p className="mt-2 flex items-start gap-1.5 text-sm text-muted-foreground">
-                  <ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  <span>
-                    {summarySegments(rule, employees).map((s, i) => (
-                      <span key={`seg-${rule.id}-${i}`} className={s.s ? "text-foreground" : undefined}>
-                        {s.t}
+                    {/* Row 2 — human-readable summary */}
+                    <p className="mt-2 flex items-start gap-1.5 text-sm text-muted-foreground">
+                      <ArrowRight aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span>
+                        {summarySegments(rule, employees).map((s, i) => (
+                          <span key={`seg-${rule.id}-${i}`} className={s.s ? "text-foreground" : undefined}>
+                            {s.t}
+                          </span>
+                        ))}
                       </span>
-                    ))}
-                  </span>
-                </p>
+                    </p>
 
-                <p className="sr-only">Trigger: {eventLabel(rule?.trigger?.event)}</p>
-              </div>
-            );
-          })}
-        </div>
-      )}
+                    <p className="sr-only">Trigger: {eventLabel(rule?.trigger?.event)}</p>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </Section>
 
       {/* 4) Footnote */}
       <p className="text-xs text-muted-foreground">

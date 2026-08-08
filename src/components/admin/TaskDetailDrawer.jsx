@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
-  X,
   Check,
   Paperclip,
   MessageSquare,
@@ -38,6 +37,22 @@ import { hasRole } from "@/utils/permissions";
 import { showError, showSuccess } from "@/utils/alerts";
 import TaskExtras from "@/components/admin/TaskExtras";
 import TaskTimer from "@/components/admin/TaskTimer";
+import {
+  Badge,
+  Button,
+  Drawer,
+  Field,
+  Input,
+  Skeleton,
+  SkeletonList,
+} from "@/components/ui";
+import {
+  Avatar,
+  PriorityBadge,
+  SELECT_CLASS,
+  TaskStatusPill,
+  taskRef,
+} from "@/components/admin/views/viewKit";
 
 // ---- constants & small helpers --------------------------------------
 const DEPENDENCY_TYPES = ["blocks", "blocked_by", "relates_to"];
@@ -49,53 +64,34 @@ const pretty = (s) =>
     .map((w) => (w && w[0] ? w[0].toUpperCase() + w.slice(1) : w))
     .join(" ");
 
-const priorityChipClass = (p) => {
-  switch (String(p || "").toLowerCase()) {
-    case "urgent":
-      return "bg-destructive/10 text-destructive";
-    case "high":
-      return "bg-warning/10 text-warning";
-    case "medium":
-      return "bg-info/10 text-info";
-    case "low":
-    default:
-      return "bg-muted text-muted-foreground";
-  }
-};
-
 // What the client has said about this task, kept strictly apart from `status`:
 // this is their verdict on the work, not a position in the team's pipeline, and
 // nothing here ever writes to `status`.
 const CLIENT_APPROVAL_META = {
   pending: {
     label: "Awaiting client",
-    chip: "bg-info/10 text-info",
+    variant: "info",
     icon: Clock,
   },
   approved: {
     label: "Client approved",
-    chip: "bg-success/10 text-success",
+    variant: "success",
     icon: CheckCircle2,
   },
   changes_requested: {
     label: "Client requested changes",
-    chip: "bg-warning/10 text-warning",
+    variant: "warning",
     icon: AlertTriangle,
   },
   rejected: {
     label: "Client rejected",
-    chip: "bg-destructive/10 text-destructive",
+    variant: "destructive",
     icon: XCircle,
   },
 };
 
-const INPUT_CLASS =
-  "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30";
-const LABEL_CLASS = "mb-1 block text-xs font-medium text-foreground";
-const HEADING_CLASS = "text-sm font-semibold text-foreground";
-const CARD_CLASS = "rounded-xl border border-border bg-card p-4";
-const PRIMARY_BTN_CLASS =
-  "inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60";
+const TEXTAREA_CLASS =
+  "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors duration-150 placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 const fmtDate = (v) => {
   if (!v) return "";
@@ -119,6 +115,30 @@ const toDateInput = (v) => {
     return String(v).slice(0, 10);
   }
 };
+
+/**
+ * A block inside the drawer. Flat rules rather than nested cards: in a 512px
+ * panel a stack of eleven bordered boxes reads as noise, while one heading
+ * scale plus a hairline reads as an outline you can skim.
+ */
+function Block({ title, icon: Icon, count, children, className = "" }) {
+  return (
+    <section className={`border-t border-border pt-5 first:border-0 first:pt-0 ${className}`}>
+      {title ? (
+        <h3 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {Icon ? <Icon className="h-3.5 w-3.5" aria-hidden="true" /> : null}
+          {title}
+          {count != null ? (
+            <Badge variant="secondary" size="sm" className="tabular-nums">
+              {count}
+            </Badge>
+          ) : null}
+        </h3>
+      ) : null}
+      {children}
+    </section>
+  );
+}
 
 export default function TaskDetailDrawer({
   task,
@@ -630,93 +650,43 @@ export default function TaskDetailDrawer({
     ...allowedTransitions(currentStatus).filter((s) => s !== currentStatus),
   ];
 
-  return (
-    <>
-      <div
-        className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-      <div
-        className="fixed inset-y-0 right-0 z-50 w-full max-w-xl overflow-y-auto border-l border-border bg-background p-5 shadow-elevated"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Task detail"
-      >
-        {/* 1. Header --------------------------------------------------- */}
-        <div className={`${CARD_CLASS} mb-4`}>
-          <div className="flex items-start gap-3">
-            <input
-              className={`${INPUT_CLASS} text-base font-semibold`}
-              defaultValue={form?.task_title || ""}
-              key={`title-${taskId}`}
-              placeholder="Task title"
-              onBlur={(e) => {
-                const v = e.target.value.trim();
-                if (v && v !== (form?.task_title || "")) {
-                  saveField("task_title", v);
-                }
-              }}
-            />
-            <button
-              type="button"
-              onClick={onClose}
-              className="shrink-0 rounded-lg border border-border p-2 text-muted-foreground hover:bg-muted"
-              aria-label="Close"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+  const ref = taskRef(task);
+  const assigneeLabel = form?.developer_id
+    ? memberById.get(String(form.developer_id))?.name || null
+    : null;
 
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            <div>
-              <label className={LABEL_CLASS}>Status</label>
-              <select
-                className={INPUT_CLASS}
-                value={currentStatus}
-                disabled={statusChoices.length < 2}
-                onChange={(e) => handleStatusChange(e.target.value)}
-              >
-                {statusChoices.map((s) => (
-                  <option key={s} value={s}>
-                    {pretty(s)}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                Completed and Rejected are decided in Task Reviews.
-              </p>
-            </div>
-            <div>
-              <label className={LABEL_CLASS}>Priority</label>
-              <div className="flex items-center gap-2">
-                <select
-                  className={INPUT_CLASS}
-                  value={currentPriority}
-                  onChange={(e) => saveField("priority", e.target.value)}
-                >
-                  {(PRIORITIES || []).map((p) => (
-                    <option key={p} value={p}>
-                      {pretty(p)}
-                    </option>
-                  ))}
-                </select>
-                <span
-                  className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${priorityChipClass(
-                    currentPriority
-                  )}`}
-                >
-                  {pretty(currentPriority)}
-                </span>
-              </div>
-            </div>
-          </div>
-          {savingField ? (
-            <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" /> Saving…
-            </div>
+  return (
+    <Drawer
+      open
+      onClose={onClose}
+      side="right"
+      size="lg"
+      title={form?.task_title || "Untitled task"}
+      description={ref ? `Task ${ref}` : undefined}
+    >
+      <div className="space-y-5">
+        {/* 1. Identity strip — what this task IS, at a glance ----------- */}
+        <div className="flex flex-wrap items-center gap-2">
+          <TaskStatusPill status={currentStatus} />
+          <PriorityBadge priority={currentPriority} size="md" />
+          {form?.task_type ? (
+            <Badge variant="outline" className="capitalize">
+              {String(form.task_type).replace(/_/g, " ")}
+            </Badge>
           ) : null}
+          <span className="ml-auto flex items-center gap-2">
+            <Avatar name={assigneeLabel} />
+            <span className="text-xs text-muted-foreground">
+              {assigneeLabel || "Unassigned"}
+            </span>
+          </span>
         </div>
+
+        {savingField ? (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground" aria-live="polite">
+            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" /> Saving…
+          </p>
+        ) : null}
 
         {/* 1a. Client decision ----------------------------------------- */}
         {/* Sits directly under the header, above everything the team edits: the
@@ -726,22 +696,20 @@ export default function TaskDetailDrawer({
             editable - the client owns this answer, the team owns `status`. */}
         {clientApproval ? (
           <div
-            className={`${CARD_CLASS} mb-4 ${
-              clientWantsChanges ? "border-warning/40" : ""
+            className={`rounded-xl border p-4 ${
+              clientWantsChanges ? "border-warning/40 bg-warning/5" : "border-border bg-muted/30"
             }`}
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className={`${HEADING_CLASS} flex items-center gap-2`}>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Client decision
               </h3>
-              <span
-                className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium ${clientApproval.chip}`}
-              >
+              <Badge variant={clientApproval.variant}>
                 {ClientApprovalIcon ? (
-                  <ClientApprovalIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                  <ClientApprovalIcon aria-hidden="true" />
                 ) : null}
                 {clientApproval.label}
-              </span>
+              </Badge>
             </div>
 
             {clientWantsChanges && clientApprovalNote ? (
@@ -774,39 +742,96 @@ export default function TaskDetailDrawer({
 
             <p className="mt-2 text-xs text-muted-foreground">
               This is the client&apos;s answer on the work, not a stage of the
-              team&apos;s workflow. The Status above is still yours to set.
+              team&apos;s workflow. The Status below is still yours to set.
             </p>
           </div>
         ) : null}
 
-        {/* 2. Meta grid ----------------------------------------------- */}
-        <div className={`${CARD_CLASS} mb-4`}>
-          <h3 className={`${HEADING_CLASS} mb-3`}>Details</h3>
-          <div className="grid grid-cols-2 gap-3">
+        {/* 2. Details — one scannable two-column grid ------------------- */}
+        <Block title="Details">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
             <div className="col-span-2">
-              <label className={LABEL_CLASS}>Assignee</label>
+              <Field label="Title" htmlFor={`task-title-${taskId}`}>
+                <Input
+                  id={`task-title-${taskId}`}
+                  key={`title-${taskId}`}
+                  className="font-medium"
+                  defaultValue={form?.task_title || ""}
+                  placeholder="Task title"
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    if (v && v !== (form?.task_title || "")) {
+                      saveField("task_title", v);
+                    }
+                  }}
+                />
+              </Field>
+            </div>
+
+            <Field
+              label="Status"
+              htmlFor={`task-status-${taskId}`}
+              hint="Done and Rejected are decided in Task Reviews."
+              className="col-span-2 sm:col-span-1"
+            >
               <select
-                className={INPUT_CLASS}
-                value={form?.developer_id ?? ""}
-                onChange={(e) =>
-                  handleAssign(e.target.value || null)
-                }
+                id={`task-status-${taskId}`}
+                className={`${SELECT_CLASS} w-full`}
+                value={currentStatus}
+                disabled={statusChoices.length < 2}
+                onChange={(e) => handleStatusChange(e.target.value)}
               >
-                <option value="">Unassigned</option>
-                {assignableMembers.map((m) => (
-                  <option key={String(m.userId)} value={m.userId}>
-                    {m.name}
-                    {m.role ? ` (${pretty(m.role)})` : ""}
+                {statusChoices.map((s) => (
+                  <option key={s} value={s}>
+                    {pretty(s)}
                   </option>
                 ))}
               </select>
+            </Field>
+
+            <Field
+              label="Priority"
+              htmlFor={`task-priority-${taskId}`}
+              className="col-span-2 sm:col-span-1"
+            >
+              <select
+                id={`task-priority-${taskId}`}
+                className={`${SELECT_CLASS} w-full`}
+                value={currentPriority}
+                onChange={(e) => saveField("priority", e.target.value)}
+              >
+                {(PRIORITIES || []).map((p) => (
+                  <option key={p} value={p}>
+                    {pretty(p)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <div className="col-span-2">
+              <Field label="Assignee" htmlFor={`task-assignee-${taskId}`}>
+                <select
+                  id={`task-assignee-${taskId}`}
+                  className={`${SELECT_CLASS} w-full`}
+                  value={form?.developer_id ?? ""}
+                  onChange={(e) => handleAssign(e.target.value || null)}
+                >
+                  <option value="">Unassigned</option>
+                  {assignableMembers.map((m) => (
+                    <option key={String(m.userId)} value={m.userId}>
+                      {m.name}
+                      {m.role ? ` (${pretty(m.role)})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </Field>
             </div>
 
-            <div>
-              <label className={LABEL_CLASS}>Story points</label>
-              <input
+            <Field label="Story points" htmlFor={`task-points-${taskId}`}>
+              <Input
+                id={`task-points-${taskId}`}
                 type="number"
-                className={INPUT_CLASS}
+                className="tabular-nums"
                 value={form?.story_points ?? ""}
                 onChange={(e) => onLocalChange("story_points", e.target.value)}
                 onBlur={(e) =>
@@ -816,16 +841,24 @@ export default function TaskDetailDrawer({
                   )
                 }
               />
-            </div>
-            <div>
-              <label className={LABEL_CLASS}>Estimated hours</label>
-              <input
+            </Field>
+
+            <Field label="Due date" htmlFor={`task-due-${taskId}`}>
+              <Input
+                id={`task-due-${taskId}`}
+                type="date"
+                value={toDateInput(form?.due_date)}
+                onChange={(e) => saveField("due_date", e.target.value || null)}
+              />
+            </Field>
+
+            <Field label="Estimated hours" htmlFor={`task-est-${taskId}`}>
+              <Input
+                id={`task-est-${taskId}`}
                 type="number"
-                className={INPUT_CLASS}
+                className="tabular-nums"
                 value={form?.estimated_hours ?? ""}
-                onChange={(e) =>
-                  onLocalChange("estimated_hours", e.target.value)
-                }
+                onChange={(e) => onLocalChange("estimated_hours", e.target.value)}
                 onBlur={(e) =>
                   saveField(
                     "estimated_hours",
@@ -833,12 +866,13 @@ export default function TaskDetailDrawer({
                   )
                 }
               />
-            </div>
-            <div>
-              <label className={LABEL_CLASS}>Actual hours</label>
-              <input
+            </Field>
+
+            <Field label="Actual hours" htmlFor={`task-actual-${taskId}`}>
+              <Input
+                id={`task-actual-${taskId}`}
                 type="number"
-                className={INPUT_CLASS}
+                className="tabular-nums"
                 value={form?.actual_hours ?? ""}
                 onChange={(e) => onLocalChange("actual_hours", e.target.value)}
                 onBlur={(e) =>
@@ -848,23 +882,12 @@ export default function TaskDetailDrawer({
                   )
                 }
               />
-            </div>
-            <div>
-              <label className={LABEL_CLASS}>Due date</label>
-              <input
-                type="date"
-                className={INPUT_CLASS}
-                value={toDateInput(form?.due_date)}
-                onChange={(e) =>
-                  saveField("due_date", e.target.value || null)
-                }
-              />
-            </div>
+            </Field>
 
-            <div>
-              <label className={LABEL_CLASS}>Sprint</label>
+            <Field label="Sprint" htmlFor={`task-sprint-${taskId}`}>
               <select
-                className={INPUT_CLASS}
+                id={`task-sprint-${taskId}`}
+                className={`${SELECT_CLASS} w-full`}
                 value={form?.sprint_id ?? ""}
                 onChange={(e) => saveField("sprint_id", e.target.value || null)}
               >
@@ -875,11 +898,12 @@ export default function TaskDetailDrawer({
                   </option>
                 ))}
               </select>
-            </div>
-            <div>
-              <label className={LABEL_CLASS}>Epic</label>
+            </Field>
+
+            <Field label="Epic" htmlFor={`task-epic-${taskId}`}>
               <select
-                className={INPUT_CLASS}
+                id={`task-epic-${taskId}`}
+                className={`${SELECT_CLASS} w-full`}
                 value={form?.epic_id ?? ""}
                 onChange={(e) => saveField("epic_id", e.target.value || null)}
               >
@@ -890,52 +914,35 @@ export default function TaskDetailDrawer({
                   </option>
                 ))}
               </select>
-            </div>
+            </Field>
           </div>
-        </div>
+        </Block>
 
         {/* 2a. Client visibility --------------------------------------- */}
         {canSetClientVisibility ? (
-          <div className={`${CARD_CLASS} mb-4`}>
-            <h3 className={`${HEADING_CLASS} mb-3 flex items-center gap-2`}>
-              {clientVisible ? (
-                <Eye className="h-4 w-4 text-primary" />
-              ) : (
-                <EyeOff className="h-4 w-4 text-primary" />
-              )}
-              Client visibility
-            </h3>
-
+          <Block title="Client visibility" icon={clientVisible ? Eye : EyeOff}>
             {clientVisibilityKnown ? (
               <>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <label className="flex items-center gap-2 text-sm text-foreground">
                     <input
                       type="checkbox"
-                      className="h-4 w-4 rounded border-input accent-primary"
+                      className="h-4 w-4 rounded border-input accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                       checked={clientVisible}
                       disabled={savingClientVisible}
-                      onChange={(e) =>
-                        saveField("client_visible", e.target.checked)
-                      }
+                      onChange={(e) => saveField("client_visible", e.target.checked)}
                     />
                     Visible to client
                   </label>
                   {/* The state is spelled out next to the box as well, because a
                       lone unchecked box reads as "nothing here" rather than as a
                       deliberate "this one is ours". */}
-                  <span
-                    className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium ${
-                      clientVisible
-                        ? "bg-success/10 text-success"
-                        : "bg-muted text-muted-foreground"
-                    }`}
-                  >
+                  <Badge variant={clientVisible ? "success" : "secondary"}>
                     {savingClientVisible ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <Loader2 className="animate-spin" aria-hidden="true" />
                     ) : null}
                     {clientVisible ? "In the client portal" : "Internal only"}
-                  </span>
+                  </Badge>
                 </div>
 
                 <p className="mt-2 text-xs text-muted-foreground">
@@ -955,87 +962,78 @@ export default function TaskDetailDrawer({
                 the client can read it. Run migration 032 and reopen this task.
               </p>
             )}
-          </div>
+          </Block>
         ) : null}
 
         {/* 3. Description --------------------------------------------- */}
-        <div className={`${CARD_CLASS} mb-4`}>
-          <h3 className={`${HEADING_CLASS} mb-3`}>Description</h3>
+        <Block title="Description">
           <textarea
-            className={`${INPUT_CLASS} min-h-[120px] resize-y`}
+            className={`${TEXTAREA_CLASS} min-h-[120px] resize-y`}
             value={form?.task_description ?? ""}
+            aria-label="Task description"
             placeholder="Add a description…"
             onChange={(e) => onLocalChange("task_description", e.target.value)}
           />
           <div className="mt-2 flex justify-end">
-            <button
-              type="button"
-              className={PRIMARY_BTN_CLASS}
+            <Button
+              size="lg"
               disabled={savingField === "task_description"}
-              onClick={() =>
-                saveField("task_description", form?.task_description ?? "")
-              }
+              onClick={() => saveField("task_description", form?.task_description ?? "")}
             >
               {savingField === "task_description" ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="animate-spin" aria-hidden="true" />
               ) : (
-                <Save className="h-4 w-4" />
+                <Save aria-hidden="true" />
               )}
               Save
-            </button>
+            </Button>
           </div>
-        </div>
+        </Block>
 
         {/* 3a. Time tracking ------------------------------------------ */}
-        <div className={`${CARD_CLASS} mb-4`}>
+        <Block>
           <TaskTimer
             task={task}
             projectId={task?.project_id}
             members={members}
             onChanged={onChanged}
           />
-        </div>
+        </Block>
 
         {/* 3b. Advanced fields (type, labels, recurring, custom fields, history) */}
-        <div className={`${CARD_CLASS} mb-4`}>
+        <Block>
           <TaskExtras
             task={task}
             projectId={task?.project_id}
             members={members}
             onChanged={onChanged}
           />
-        </div>
+        </Block>
 
         {/* 4. Subtasks ------------------------------------------------ */}
-        <div className={`${CARD_CLASS} mb-4`}>
-          <h3 className={`${HEADING_CLASS} mb-3 flex items-center gap-2`}>
-            <ListChecks className="h-4 w-4 text-primary" /> Subtasks
-            <span className="ml-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-              {subtasks.length}
-            </span>
-          </h3>
-          <ul className="space-y-2">
+        <Block title="Subtasks" icon={ListChecks} count={subtasks.length}>
+          <ul className="space-y-1.5">
             {subtasks.map((st) => (
               <li
                 key={String(st.id)}
-                className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm"
+                className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm"
               >
                 <span className="truncate text-foreground">
                   {st.task_title || "Untitled"}
                 </span>
-                <span className="ml-2 shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                  {pretty(st.status)}
-                </span>
+                <TaskStatusPill status={st.status} />
               </li>
             ))}
             {subtasks.length === 0 ? (
-              <li className="text-xs text-muted-foreground">No subtasks yet.</li>
+              <li className="rounded-lg border border-dashed border-border px-3 py-3 text-xs text-muted-foreground">
+                No subtasks yet.
+              </li>
             ) : null}
           </ul>
           <div className="mt-3 flex items-center gap-2">
-            <input
-              className={INPUT_CLASS}
+            <Input
               placeholder="Add subtask…"
+              aria-label="New subtask title"
               value={subtaskTitle}
               onChange={(e) => setSubtaskTitle(e.target.value)}
               onKeyDown={(e) => {
@@ -1045,53 +1043,74 @@ export default function TaskDetailDrawer({
                 }
               }}
             />
-            <button
-              type="button"
-              className={PRIMARY_BTN_CLASS}
-              onClick={handleAddSubtask}
-              disabled={!subtaskTitle.trim()}
-            >
-              <Plus className="h-4 w-4" /> Add
-            </button>
+            <Button size="default" onClick={handleAddSubtask} disabled={!subtaskTitle.trim()}>
+              <Plus aria-hidden="true" /> Add
+            </Button>
           </div>
-        </div>
+        </Block>
 
         {/* 5. Checklist ----------------------------------------------- */}
-        <div className={`${CARD_CLASS} mb-4`}>
-          <h3 className={`${HEADING_CLASS} mb-3 flex items-center gap-2`}>
-            <Check className="h-4 w-4 text-primary" /> Checklist
-            <span className="ml-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-              {checklistDone}/{checklistItems.length}
-            </span>
-          </h3>
-          <ul className="space-y-2">
-            {checklistItems.map((item) => (
-              <li key={String(item.id)} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-input accent-primary"
-                  checked={!!item.done}
-                  onChange={() => handleToggleChecklist(item)}
-                />
-                <span
-                  className={
-                    item.done
-                      ? "text-muted-foreground line-through"
-                      : "text-foreground"
-                  }
-                >
-                  {item.text || ""}
-                </span>
-              </li>
-            ))}
-            {checklistItems.length === 0 ? (
-              <li className="text-xs text-muted-foreground">No items yet.</li>
-            ) : null}
-          </ul>
+        <Block
+          title="Checklist"
+          icon={Check}
+          count={`${checklistDone}/${checklistItems.length}`}
+        >
+          {checklistItems.length > 0 ? (
+            <div
+              className="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-muted"
+              role="progressbar"
+              aria-valuenow={checklistDone}
+              aria-valuemin={0}
+              aria-valuemax={checklistItems.length}
+              aria-label="Checklist progress"
+            >
+              <div
+                className="h-full rounded-full bg-primary transition-[width] duration-150"
+                style={{
+                  width: `${Math.round((checklistDone / checklistItems.length) * 100)}%`,
+                }}
+              />
+            </div>
+          ) : null}
+
+          {loadingDetail && checklistItems.length === 0 ? (
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-4 w-1/2" />
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {checklistItems.map((item) => (
+                <li key={String(item.id)} className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 rounded border-input accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    checked={!!item.done}
+                    onChange={() => handleToggleChecklist(item)}
+                  />
+                  <span
+                    className={
+                      item.done
+                        ? "text-muted-foreground line-through"
+                        : "text-foreground"
+                    }
+                  >
+                    {item.text || ""}
+                  </span>
+                </li>
+              ))}
+              {checklistItems.length === 0 ? (
+                <li className="rounded-lg border border-dashed border-border px-3 py-3 text-xs text-muted-foreground">
+                  No items yet.
+                </li>
+              ) : null}
+            </ul>
+          )}
+
           <div className="mt-3 flex items-center gap-2">
-            <input
-              className={INPUT_CLASS}
+            <Input
               placeholder="Add checklist item…"
+              aria-label="New checklist item"
               value={checklistText}
               onChange={(e) => setChecklistText(e.target.value)}
               onKeyDown={(e) => {
@@ -1101,45 +1120,47 @@ export default function TaskDetailDrawer({
                 }
               }}
             />
-            <button
-              type="button"
-              className={PRIMARY_BTN_CLASS}
-              onClick={handleAddChecklist}
-              disabled={!checklistText.trim()}
-            >
-              <Plus className="h-4 w-4" /> Add
-            </button>
+            <Button size="default" onClick={handleAddChecklist} disabled={!checklistText.trim()}>
+              <Plus aria-hidden="true" /> Add
+            </Button>
           </div>
-        </div>
+        </Block>
 
         {/* 6. Dependencies -------------------------------------------- */}
-        <div className={`${CARD_CLASS} mb-4`}>
-          <h3 className={`${HEADING_CLASS} mb-3 flex items-center gap-2`}>
-            <GitBranch className="h-4 w-4 text-primary" /> Dependencies
-          </h3>
-          <ul className="space-y-2">
-            {(detail.dependencies || []).map((dep) => (
-              <li
-                key={String(dep.id ?? dep.depends_on_task_id)}
-                className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm"
-              >
-                <span className="truncate text-foreground">
-                  {titleForTask(dep.depends_on_task_id)}
-                </span>
-                <span className="ml-2 shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                  {pretty(dep.type)}
-                </span>
-              </li>
-            ))}
-            {(detail.dependencies || []).length === 0 ? (
-              <li className="text-xs text-muted-foreground">
-                No dependencies.
-              </li>
-            ) : null}
-          </ul>
+        <Block
+          title="Dependencies"
+          icon={GitBranch}
+          count={(detail.dependencies || []).length}
+        >
+          {loadingDetail && (detail.dependencies || []).length === 0 ? (
+            <Skeleton className="h-10 w-full rounded-lg" />
+          ) : (
+            <ul className="space-y-1.5">
+              {(detail.dependencies || []).map((dep) => (
+                <li
+                  key={String(dep.id ?? dep.depends_on_task_id)}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm"
+                >
+                  <span className="truncate text-foreground">
+                    {titleForTask(dep.depends_on_task_id)}
+                  </span>
+                  <Badge variant="default" size="sm">
+                    {pretty(dep.type)}
+                  </Badge>
+                </li>
+              ))}
+              {(detail.dependencies || []).length === 0 ? (
+                <li className="rounded-lg border border-dashed border-border px-3 py-3 text-xs text-muted-foreground">
+                  No dependencies.
+                </li>
+              ) : null}
+            </ul>
+          )}
+
           <div className="mt-3 grid grid-cols-2 gap-2">
             <select
-              className={INPUT_CLASS}
+              className={`${SELECT_CLASS} w-full`}
+              aria-label="Dependency task"
               value={depTaskId}
               onChange={(e) => setDepTaskId(e.target.value)}
             >
@@ -1151,7 +1172,8 @@ export default function TaskDetailDrawer({
               ))}
             </select>
             <select
-              className={INPUT_CLASS}
+              className={`${SELECT_CLASS} w-full`}
+              aria-label="Dependency type"
               value={depType}
               onChange={(e) => setDepType(e.target.value)}
             >
@@ -1163,58 +1185,42 @@ export default function TaskDetailDrawer({
             </select>
           </div>
           <div className="mt-2 flex justify-end">
-            <button
-              type="button"
-              className={PRIMARY_BTN_CLASS}
-              onClick={handleAddDependency}
-              disabled={!depTaskId}
-            >
-              <Plus className="h-4 w-4" /> Add dependency
-            </button>
+            <Button size="lg" onClick={handleAddDependency} disabled={!depTaskId}>
+              <Plus aria-hidden="true" /> Add dependency
+            </Button>
           </div>
-        </div>
+        </Block>
 
         {/* 7. Watchers / Reviewers ------------------------------------ */}
-        <div className={`${CARD_CLASS} mb-4`}>
-          <h3 className={`${HEADING_CLASS} mb-3 flex items-center gap-2`}>
-            <Eye className="h-4 w-4 text-primary" /> Watchers &amp; Reviewers
-          </h3>
-          <div className="flex flex-wrap gap-2">
+        <Block title="Watchers & reviewers" icon={Eye}>
+          <div className="flex flex-wrap gap-1.5">
             {(detail.watchers || []).map((w) => (
-              <span
-                key={`${w.user_id}-${w.role || "watcher"}`}
-                className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-xs font-medium text-primary"
-              >
+              <Badge key={`${w.user_id}-${w.role || "watcher"}`} variant="default">
                 {nameForUser(w.user_id)}
                 <span className="text-primary/70">· {pretty(w.role || "watcher")}</span>
-              </span>
+              </Badge>
             ))}
             {(detail.watchers || []).length === 0 ? (
-              <span className="text-xs text-muted-foreground">
-                No watchers yet.
-              </span>
+              <span className="text-xs text-muted-foreground">No watchers yet.</span>
             ) : null}
           </div>
 
-          <div className="mt-3 flex items-center gap-2">
-            <button
-              type="button"
-              className={
-                isWatching
-                  ? "inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
-                  : PRIMARY_BTN_CLASS
-              }
+          <div className="mt-3">
+            <Button
+              variant={isWatching ? "outline" : "default"}
+              size="lg"
               onClick={handleToggleWatch}
             >
-              <Eye className="h-4 w-4" />
+              <Eye aria-hidden="true" />
               {isWatching ? "Unwatch" : "Watch"}
-            </button>
+            </Button>
           </div>
 
           {reviewerMembers.length > 0 ? (
             <div className="mt-3 flex items-center gap-2">
               <select
-                className={INPUT_CLASS}
+                className={`${SELECT_CLASS} w-full`}
+                aria-label="Add reviewer"
                 value={reviewerId}
                 onChange={(e) => setReviewerId(e.target.value)}
               >
@@ -1225,104 +1231,99 @@ export default function TaskDetailDrawer({
                   </option>
                 ))}
               </select>
-              <button
-                type="button"
-                className={PRIMARY_BTN_CLASS}
-                onClick={handleAddReviewer}
-                disabled={!reviewerId}
-              >
-                <Plus className="h-4 w-4" /> Add
-              </button>
+              <Button size="default" onClick={handleAddReviewer} disabled={!reviewerId}>
+                <Plus aria-hidden="true" /> Add
+              </Button>
             </div>
           ) : null}
-        </div>
+        </Block>
 
         {/* 8. Attachments --------------------------------------------- */}
-        <div className={`${CARD_CLASS} mb-4`}>
-          <h3 className={`${HEADING_CLASS} mb-3 flex items-center gap-2`}>
-            <Paperclip className="h-4 w-4 text-primary" /> Attachments
-          </h3>
-          <ul className="space-y-2">
-            {(detail.attachments || []).map((a) => (
-              <li
-                key={String(a.id ?? a.file_path)}
-                className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"
-              >
-                <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="truncate text-foreground">
-                  {a.file_name || "File"}
-                </span>
-              </li>
-            ))}
-            {(detail.attachments || []).length === 0 ? (
-              <li className="text-xs text-muted-foreground">
-                No attachments.
-              </li>
-            ) : null}
-          </ul>
+        <Block
+          title="Attachments"
+          icon={Paperclip}
+          count={(detail.attachments || []).length}
+        >
+          {loadingDetail && (detail.attachments || []).length === 0 ? (
+            <Skeleton className="h-10 w-full rounded-lg" />
+          ) : (
+            <ul className="space-y-1.5">
+              {(detail.attachments || []).map((a) => (
+                <li
+                  key={String(a.id ?? a.file_path)}
+                  className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"
+                >
+                  <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <span className="truncate text-foreground">{a.file_name || "File"}</span>
+                </li>
+              ))}
+              {(detail.attachments || []).length === 0 ? (
+                <li className="rounded-lg border border-dashed border-border px-3 py-3 text-xs text-muted-foreground">
+                  No attachments.
+                </li>
+              ) : null}
+            </ul>
+          )}
           <div className="mt-3">
-            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-muted">
+            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm font-medium text-foreground transition-colors duration-150 hover:bg-muted focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
               {uploading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
               ) : (
-                <Paperclip className="h-4 w-4" />
+                <Paperclip className="h-4 w-4" aria-hidden="true" />
               )}
               {uploading ? "Uploading…" : "Upload file"}
               <input
                 type="file"
-                className="hidden"
+                className="sr-only"
                 onChange={handleUpload}
                 disabled={uploading}
               />
             </label>
           </div>
-        </div>
+        </Block>
 
         {/* 9. Comments ------------------------------------------------ */}
-        <div className={CARD_CLASS}>
-          <h3 className={`${HEADING_CLASS} mb-3 flex items-center gap-2`}>
-            <MessageSquare className="h-4 w-4 text-primary" /> Comments
-            <span className="ml-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-              {(detail.comments || []).length}
-            </span>
-          </h3>
-
-          <ul className="space-y-3">
-            {loadingDetail ? (
-              <li className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Loader2 className="h-3 w-3 animate-spin" /> Loading…
-              </li>
-            ) : null}
-            {(detail.comments || []).map((c) => (
-              <li
-                key={String(c.id ?? `${c.author_id}-${c.created_at}`)}
-                className="rounded-lg border border-border px-3 py-2"
-              >
-                <div className="mb-1 flex items-center justify-between">
-                  <span className="text-sm font-medium text-foreground">
-                    {commentAuthorName(c)}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {fmtDate(c.created_at)}
-                  </span>
-                </div>
-                <p className="whitespace-pre-wrap text-sm text-foreground">
-                  {c.body || ""}
-                </p>
-              </li>
-            ))}
-            {!loadingDetail && (detail.comments || []).length === 0 ? (
-              <li className="text-xs text-muted-foreground">
-                No comments yet.
-              </li>
-            ) : null}
-          </ul>
+        <Block
+          title="Comments"
+          icon={MessageSquare}
+          count={(detail.comments || []).length}
+        >
+          {loadingDetail ? (
+            <SkeletonList rows={2} />
+          ) : (
+            <ul className="space-y-4">
+              {(detail.comments || []).map((c) => (
+                <li key={String(c.id ?? `${c.author_id}-${c.created_at}`)} className="flex gap-3">
+                  <Avatar name={commentAuthorName(c)} size="md" className="mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="text-sm font-medium text-foreground">
+                        {commentAuthorName(c)}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {fmtDate(c.created_at)}
+                      </span>
+                    </div>
+                    <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                      {c.body || ""}
+                    </p>
+                  </div>
+                </li>
+              ))}
+              {(detail.comments || []).length === 0 ? (
+                <li className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">
+                  No comments yet. Use @ to pull someone in.
+                </li>
+              ) : null}
+            </ul>
+          )}
 
           {/* composer with @mention dropdown */}
-          <div className="relative mt-3">
+          <div className="relative mt-4">
             <textarea
               ref={commentRef}
-              className={`${INPUT_CLASS} min-h-[80px] resize-y`}
+              className={`${TEXTAREA_CLASS} min-h-[80px] resize-y`}
+              aria-label="Write a comment"
               placeholder="Write a comment… use @ to mention"
               value={commentBody}
               onChange={onCommentInput}
@@ -1331,19 +1332,18 @@ export default function TaskDetailDrawer({
               }}
             />
             {mentionOpen && mentionMatches.length > 0 ? (
-              <div className="absolute left-0 right-0 z-10 mt-1 max-h-48 overflow-y-auto rounded-lg border border-border bg-card shadow-elevated">
+              <div className="absolute left-0 right-0 z-10 mt-1 max-h-48 overflow-y-auto rounded-lg border border-border bg-popover shadow-popover">
                 {mentionMatches.map((m) => (
                   <button
                     key={String(m.userId)}
                     type="button"
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-muted"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-popover-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     onClick={() => insertMention(m)}
                   >
+                    <Avatar name={m.name} />
                     <span className="font-medium">{m.name}</span>
                     {m.email ? (
-                      <span className="text-xs text-muted-foreground">
-                        {m.email}
-                      </span>
+                      <span className="truncate text-xs text-muted-foreground">{m.email}</span>
                     ) : null}
                   </button>
                 ))}
@@ -1351,22 +1351,21 @@ export default function TaskDetailDrawer({
             ) : null}
           </div>
           <div className="mt-2 flex justify-end">
-            <button
-              type="button"
-              className={PRIMARY_BTN_CLASS}
+            <Button
+              size="lg"
               onClick={handleSubmitComment}
               disabled={submittingComment || !commentBody.trim()}
             >
               {submittingComment ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="animate-spin" aria-hidden="true" />
               ) : (
-                <MessageSquare className="h-4 w-4" />
+                <MessageSquare aria-hidden="true" />
               )}
               Comment
-            </button>
+            </Button>
           </div>
-        </div>
+        </Block>
       </div>
-    </>
+    </Drawer>
   );
 }

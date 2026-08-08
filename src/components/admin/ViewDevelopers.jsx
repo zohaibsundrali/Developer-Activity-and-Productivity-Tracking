@@ -2,6 +2,18 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import Swal from "sweetalert2";
 import { RefreshCw, Users } from "lucide-react";
+import {
+  PageHeader,
+  Section,
+  Card,
+  CardContent,
+  StatusPill,
+  EmptyState,
+  ErrorState,
+  SkeletonTable,
+  Skeleton,
+  Button,
+} from "@/components/ui";
 import StatCard from "@/components/shell/StatCard";
 import { showError, showInfo, showPre, showSuccess, showWarning } from "@/utils/alerts";
 import { getOrgId } from "@/utils/orgContext";
@@ -12,6 +24,9 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
   const [currentAdmin, setCurrentAdmin] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
+  // Presentation-only: mirrors the error already caught in fetchAdminDevelopers
+  // so the table can render an ErrorState with retry instead of "no developers".
+  const [loadError, setLoadError] = useState(null);
 
   // Track which specific developer is currently being deleted (by their UUID).
   // Using a specific ID instead of a boolean prevents shared-state race conditions
@@ -69,7 +84,8 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
   const fetchAdminDevelopers = useCallback(async () => {
     try {
       setLoading(true);
-      
+      setLoadError(null);
+
       // Get current admin from localStorage
       const adminData = JSON.parse(sessionStorage.getItem("adminUser"));
       setCurrentAdmin(adminData);
@@ -109,6 +125,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
     } catch (error) {
       showError("Load failed", `Error loading developers: ${error.message}`);
       setDevelopers([]);
+      setLoadError(error?.message || String(error));
     } finally {
       setLoading(false);
     }
@@ -462,14 +479,32 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
   };
 
 
+  const pageHeader = (
+    <PageHeader
+      title="View Developers"
+      description="Developers you added to this organization, with the projects currently assigned to each."
+      actions={
+        <Button variant="outline" onClick={fetchAdminDevelopers} disabled={loading}>
+          <RefreshCw aria-hidden="true" className="h-4 w-4" />
+          Refresh
+        </Button>
+      }
+    />
+  );
+
   // Loading state
   if (loading) {
     return (
-      <div className="rounded-xl border border-border bg-card p-6 shadow-card">
-        <div className="text-center py-8">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          <p className="mt-2 text-muted-foreground">Loading developers...</p>
+      <div className="space-y-6">
+        {pageHeader}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Skeleton className="h-[7.5rem] w-full rounded-xl" />
         </div>
+        <Card className="sm:py-5">
+          <CardContent className="sm:px-5">
+            <SkeletonTable rows={5} cols={5} />
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -477,152 +512,140 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
   // Show warning if admin is not logged in
   if (!currentAdmin) {
     return (
-      <div className="rounded-xl border border-border bg-card p-6 shadow-card">
-        <div className="text-center py-8">
-          <Users className="w-16 h-16 text-muted-foreground/40 mx-auto mb-4" strokeWidth={1} />
-          <p className="text-muted-foreground">Please log in as an admin to view developers.</p>
-        </div>
+      <div className="space-y-6">
+        {pageHeader}
+        <EmptyState
+          icon={Users}
+          title="Admin sign-in required"
+          description="Please log in as an admin to view developers."
+        />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 rounded-xl border border-border bg-card p-6 shadow-card">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight text-foreground">View Developers</h2>
-          {/* <p className="text-sm text-gray-500">
-            Showing developers added by: {currentAdmin.name || currentAdmin.email}
-          </p> */}
-        </div>
-
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={fetchAdminDevelopers}
-            className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
-            disabled={loading}
-          >
-            <RefreshCw className="w-4 h-4" />
-            Refresh
-          </button>
-        </div>
-      </div>
+    <div className="space-y-6">
+      {pageHeader}
 
       {/* Stats Section */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <StatCard title="Total Developers" value={developers.length} icon={Users} tone="info" />
-
-        {/* <div className="bg-green-50 p-4 rounded-lg border border-green-100">
-          <div className="flex items-center">
-            <div className="bg-green-100 p-3 rounded-full mr-4">
-              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Active</p>
-              <p className="text-2xl font-bold">{activeDevelopers.length}</p>
-            </div>
-          </div>
-        </div> */}
-        
-        {/* <div className="bg-red-50 p-4 rounded-lg border border-red-100">
-          <div className="flex items-center">
-            <div className="bg-red-100 p-3 rounded-full mr-4">
-              <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Inactive</p>
-              <p className="text-2xl font-bold">{inactiveDevelopers.length}</p>
-            </div>
-          </div>
-        </div> */}
       </div>
 
       {/* Developers Table */}
-      <div className="overflow-x-auto rounded-xl border border-border">
-        <table className="w-full min-w-[820px] divide-y divide-border">
-          <thead className="bg-muted">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Name
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Email
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Projects
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Added On
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-card divide-y divide-border">
-            {developers.map(developer => (
-              <tr key={developer.id} className="hover:bg-muted/50">
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm font-medium text-foreground">
-                    {developer.name}
-                  </div>
-                  {developer.added_by_name && (
-                    <div className="text-xs text-muted-foreground">
-                      Added by: {developer.added_by_name}
-                    </div>
-                  )}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                  {developer.email}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                  <span className="font-medium text-foreground">{developer.assigned_projects_count ?? developer.projects_count ?? 0}</span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                  {formatDate(developer.created_at)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-3">
-                  <button
-                    onClick={() => handleViewDeveloper(developer.id)}
-                    className="text-info hover:text-info px-2 py-1 hover:bg-info/10 rounded"
-                    title="View Details"
-                  >
-                    View
-                  </button>
-                  <button
-                    onClick={() => handleEditDeveloper(developer.id)}
-                    className="text-success hover:text-success px-2 py-1 hover:bg-success/10 rounded"
-                    title="Edit Developer"
-                    disabled={isEditing}
-                  >
-                    {isEditing ? 'Editing...' : 'Edit'}
-                  </button>
-                  <button
-                    onClick={() => handleDeleteDeveloper(developer.id)}
-                    className="text-destructive hover:text-destructive px-2 py-1 hover:bg-destructive/10 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Delete Developer"
-                    disabled={deletingId !== null}
-                  >
-                    {deletingId === developer.id ? 'Deleting…' : 'Delete'}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {developers.length === 0 && !loading && (
-        <div className="text-center py-8">
-          <Users className="w-16 h-16 text-muted-foreground/40 mx-auto mb-4" strokeWidth={1} />
-          <p className="text-muted-foreground text-lg mb-2">No developers added by you yet</p>
-
-        </div>
-      )}
+      <Section
+        title="Developers"
+        description="Only the developers you added are listed here."
+      >
+        {loadError ? (
+          <ErrorState
+            title="Couldn't load developers"
+            description={loadError}
+            onRetry={fetchAdminDevelopers}
+          />
+        ) : developers.length === 0 && !loading ? (
+          <EmptyState
+            icon={Users}
+            title="No developers added by you yet"
+            description="Developers you add from the Add Developer screen will show up here."
+          />
+        ) : (
+          <Card className="sm:py-5">
+            <CardContent className="sm:px-5">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[820px] divide-y divide-border">
+                  <thead>
+                    <tr className="h-10">
+                      <th className="px-4 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Name
+                      </th>
+                      <th className="px-4 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Email
+                      </th>
+                      <th className="px-4 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Projects
+                      </th>
+                      <th className="px-4 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Added On
+                      </th>
+                      <th className="px-4 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {developers.map(developer => (
+                      <tr
+                        key={developer.id}
+                        className="h-12 transition-colors duration-150 hover:bg-muted/40"
+                      >
+                        <td className="px-4 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-foreground">
+                              {developer.name}
+                            </span>
+                            {developer.status && (
+                              <StatusPill
+                                size="sm"
+                                status={developer.status === 'active' ? 'active' : 'inactive'}
+                                label={developer.status === 'active' ? 'Active' : 'Inactive'}
+                              />
+                            )}
+                          </div>
+                          {developer.added_by_name && (
+                            <div className="text-xs text-muted-foreground">
+                              Added by: {developer.added_by_name}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 whitespace-nowrap text-sm text-muted-foreground">
+                          {developer.email}
+                        </td>
+                        <td className="px-4 whitespace-nowrap text-sm text-muted-foreground">
+                          <span className="font-medium tabular-nums text-foreground">{developer.assigned_projects_count ?? developer.projects_count ?? 0}</span>
+                        </td>
+                        <td className="px-4 whitespace-nowrap text-sm text-muted-foreground">
+                          {formatDate(developer.created_at)}
+                        </td>
+                        <td className="px-4 whitespace-nowrap text-sm font-medium">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleViewDeveloper(developer.id)}
+                              title="View Details"
+                            >
+                              View
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEditDeveloper(developer.id)}
+                              title="Edit Developer"
+                              disabled={isEditing}
+                            >
+                              {isEditing ? 'Editing...' : 'Edit'}
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleDeleteDeveloper(developer.id)}
+                              title="Delete Developer"
+                              disabled={deletingId !== null}
+                            >
+                              {deletingId === developer.id ? 'Deleting…' : 'Delete'}
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </Section>
     </div>
   );
 }

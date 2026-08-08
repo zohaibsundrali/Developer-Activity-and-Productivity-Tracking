@@ -13,10 +13,10 @@ import {
 
 export default function EmployeeMonitoringSection() {
   const monitoringItems = [
-    { icon: Camera, label: 'Screenshots', color: '#0c8f6e' },
-    { icon: BarChart3, label: 'App Logs', color: '#0c8f6e' },
-    { icon: Star, label: 'Activity Score', color: '#0c8f6e' },
-    { icon: Globe, label: 'Browser Tracking', color: '#0c8f6e' }
+    { icon: Camera, label: 'Screenshots' },
+    { icon: BarChart3, label: 'App Logs' },
+    { icon: Star, label: 'Activity Score' },
+    { icon: Globe, label: 'Browser Tracking' }
   ];
 
   const features = [
@@ -36,27 +36,29 @@ export default function EmployeeMonitoringSection() {
   ];
 
   return (
-    <div className="bg-card rounded-2xl shadow-card border border-border overflow-hidden">
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
       {/* Header */}
-      <div className="bg-muted/50 px-8 py-6 border-b border-border">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-primary rounded-xl">
-            <Activity className="w-6 h-6 text-primary-foreground" />
-          </div>
+      <div className="border-b border-border bg-muted/50 px-5 py-5 sm:px-8 sm:py-6">
+        <div className="flex items-center gap-4">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <Activity className="h-5 w-5" aria-hidden="true" />
+          </span>
           <div>
-            <h3 className="text-2xl font-bold text-foreground">Complete Activity Tracking</h3>
-            <p className="text-muted-foreground text-sm font-light">
-              Real-time monitoring & analytics for your development team
+            <h3 className="text-lg font-semibold tracking-tight text-foreground">
+              Complete activity tracking
+            </h3>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Real-time monitoring &amp; analytics for your development team
             </p>
           </div>
         </div>
       </div>
 
-      <div className="p-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+      <div className="p-5 sm:p-8">
+        <div className="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:gap-12">
           {/* Left Column */}
           <div>
-            <p className="text-muted-foreground mb-8 font-light leading-relaxed">
+            <p className="mb-8 leading-relaxed text-muted-foreground">
               Monitor everything from screenshots and application usage to visited URLs
               and activity scores. Get comprehensive reports with detailed insights.
             </p>
@@ -67,18 +69,14 @@ export default function EmployeeMonitoringSection() {
                 const IconComponent = item.icon;
                 return (
                   <div
-  key={index}
-  className="p-4 rounded-xl border border-primary/20 bg-primary/5 text-primary text-center transition-all hover:scale-[1.02] hover:shadow-card"
->
-  <div className="flex justify-center mb-2">
-    <IconComponent
-      className="w-8 h-8 text-primary"
-      strokeWidth={1.5}
-    />
-  </div>
-
-  <p className="text-sm font-semibold">{item.label}</p>
-</div>
+                    key={index}
+                    className="rounded-xl border border-border bg-muted/40 p-4 text-center transition-colors duration-150 hover:bg-muted"
+                  >
+                    <span className="mx-auto mb-2 flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <IconComponent className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+                    </span>
+                    <p className="text-sm font-medium text-foreground">{item.label}</p>
+                  </div>
                 );
               })}
             </div>
@@ -88,10 +86,10 @@ export default function EmployeeMonitoringSection() {
               {stats.map((stat, index) => {
                 const IconComponent = stat.icon;
                 return (
-                  <div key={index} className="shadow-card rounded-xl p-4 text-center border border-border bg-card">
-                    <IconComponent className="w-5 h-5 text-primary mx-auto mb-1" />
-                    <div className="text-lg font-bold text-foreground">{stat.value}</div>
-                    <div className="text-xs text-muted-foreground">{stat.label}</div>
+                  <div key={index} className="rounded-xl border border-border bg-card p-4 text-center shadow-card">
+                    <IconComponent className="mx-auto mb-1.5 h-4 w-4 text-primary" aria-hidden="true" />
+                    <div className="text-lg font-semibold tracking-tight text-foreground">{stat.value}</div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">{stat.label}</div>
                   </div>
                 );
               })}
@@ -100,35 +98,36 @@ export default function EmployeeMonitoringSection() {
 
           {/* Right Column */}
           <div>
-            <div className="flex items-center gap-2 mb-6">
-              
-              <h4 className="text-xl font-bold text-foreground">Key Monitoring Features</h4>
-            </div>
+            <h4 className="mb-5 text-base font-semibold tracking-tight text-foreground">
+              Key monitoring features
+            </h4>
 
-            <div className="space-y-3">
+            <ul className="space-y-1">
               {features.map((feature, index) => (
-                <div
+                <li
                   key={index}
-                  className="flex items-start p-3 rounded-lg hover:bg-muted transition-colors group"
+                  className="flex items-start gap-3 rounded-lg p-2.5 transition-colors duration-150 hover:bg-muted"
                 >
-                  <div className="flex-shrink-0 mt-0.5">
-                    <CheckCircle className="w-5 h-5 text-primary group-hover:scale-110 transition-transform" />
-                  </div>
-                  <span className="text-foreground ml-3 text-sm leading-relaxed">{feature}</span>
-                </div>
+                  <CheckCircle
+                    className="mt-0.5 h-4 w-4 shrink-0 text-primary"
+                    aria-hidden="true"
+                  />
+                  <span className="text-sm leading-relaxed text-foreground">{feature}</span>
+                </li>
               ))}
-            </div>
+            </ul>
 
             {/* Feature Highlight */}
-            <div className="mt-8 bg-primary/5 rounded-xl p-5 border border-primary/20">
+            <div className="mt-8 rounded-xl border border-border bg-muted/40 p-5">
               <div className="flex items-start gap-3">
-                <div className="p-2 bg-primary rounded-lg">
-                  <Zap className="w-5 h-5 text-primary-foreground" />
-                </div>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                  <Zap className="h-4 w-4" aria-hidden="true" />
+                </span>
                 <div>
-                  <h5 className="font-bold text-foreground text-sm">AI-Powered Insights</h5>
-                  <p className="text-muted-foreground text-xs mt-1">
-                    Get intelligent recommendations to improve team productivity and identify bottlenecks
+                  <h5 className="text-sm font-medium text-foreground">AI-powered insights</h5>
+                  <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                    Intelligent recommendations to improve team productivity and identify
+                    bottlenecks.
                   </p>
                 </div>
               </div>

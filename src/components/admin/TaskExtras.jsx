@@ -14,11 +14,12 @@ import {
   TASK_TYPES,
 } from "@/utils/pmData";
 import { showError } from "@/utils/alerts";
+import { Badge, Button } from "@/components/ui";
 import { Tag, Repeat, SlidersHorizontal, History, Plus } from "lucide-react";
 
 // ---- shared tokens (match TaskDetailDrawer, compact drawer variant) -------
 const FIELD_CLASS =
-  "rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30";
+  "rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm text-foreground transition-colors duration-150 placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 const SECTION_HEADING_CLASS =
   "text-xs font-semibold uppercase tracking-wide text-muted-foreground";
 const RECURRENCE_FREQS = ["daily", "weekly", "monthly"];
@@ -362,10 +363,11 @@ export default function TaskExtras({ task, projectId, members, onChanged }) {
                 key={String(label.id)}
                 type="button"
                 onClick={() => toggleLabel(label)}
-                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                aria-pressed={applied}
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
                   applied
                     ? "border-primary bg-primary/10 text-primary"
-                    : "border-border bg-background text-muted-foreground"
+                    : "border-border bg-background text-muted-foreground hover:text-foreground"
                 }`}
               >
                 <span
@@ -401,21 +403,22 @@ export default function TaskExtras({ task, projectId, members, onChanged }) {
                 type="button"
                 aria-label={`Color ${c}`}
                 onClick={() => setNewLabelColor(c)}
-                className={`h-5 w-5 rounded-full border ${
+                aria-pressed={newLabelColor === c}
+                className={`h-5 w-5 rounded-full border-2 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
                   newLabelColor === c ? "border-foreground" : "border-border"
                 }`}
                 style={{ backgroundColor: c }}
               />
             ))}
           </div>
-          <button
-            type="button"
-            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-primary px-2 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-60"
+          <Button
+            size="icon-sm"
+            aria-label="Create label"
             onClick={handleCreateLabel}
             disabled={!newLabelName.trim()}
           >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
+            <Plus aria-hidden="true" />
+          </Button>
         </div>
       </div>
 

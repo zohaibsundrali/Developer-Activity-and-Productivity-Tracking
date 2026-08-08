@@ -13,7 +13,6 @@ import {
   Info,
   Mail,
   RefreshCw,
-  Server,
   ShieldAlert,
   Timer,
   XCircle,
@@ -21,6 +20,17 @@ import {
 } from "lucide-react";
 import StatCard from "@/components/shell/StatCard";
 import { authFetch } from "@/utils/authFetch";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  ErrorState,
+  Section,
+  Skeleton,
+  StatusPill,
+  Toolbar,
+} from "@/components/ui";
+import { cn } from "@/lib/utils";
 
 /**
  * Admin → System Health.
@@ -34,34 +44,57 @@ import { authFetch } from "@/utils/authFetch";
 
 // ── Vocabulary ──────────────────────────────────────────────────────────────
 
+/**
+ * The four statuses the API reports, mapped onto the kit's StatusPill.
+ *
+ * StatusPill carries a distinct glyph SHAPE per status and always prints the
+ * label, so none of this depends on colour: `ok` is a filled tick, `degraded` a
+ * triangle, `down` a filled cross, `unknown` a hollow outlined question mark.
+ *
+ * `unknown` is the one that has to be got right. It does not mean "broken" — it
+ * means the server has no evidence either way, usually because the subsystem
+ * has not run yet on a young organization. So it is deliberately the ONLY
+ * status drawn as an outline rather than a tint, it never inherits destructive
+ * anything, its tile is dashed the way an unfilled placeholder is dashed, and
+ * it is worded as an absence. A cron job that has never run and a cron job that
+ * failed are different facts, and this screen is the place that must not
+ * conflate them.
+ */
 const STATUS_META = {
   ok: {
     label: "Operational",
-    tone: "text-success",
-    badge: "bg-success/10 text-success",
-    ring: "border-success/30",
-    icon: CheckCircle2,
+    pill: "success",
+    ring: "border-border",
+    tone: "success",
+    headline: "All systems operational",
+    blurb: "Every subsystem the server watches has reported in and looks healthy.",
   },
   degraded: {
     label: "Degraded",
-    tone: "text-warning",
-    badge: "bg-warning/10 text-warning",
+    pill: "warning",
     ring: "border-warning/30",
-    icon: AlertTriangle,
+    tone: "warning",
+    headline: "Running degraded",
+    blurb: "At least one subsystem is reporting problems. Details are on the tiles below.",
   },
   down: {
     label: "Down",
-    tone: "text-destructive",
-    badge: "bg-destructive/10 text-destructive",
+    pill: "error",
     ring: "border-destructive/30",
-    icon: XCircle,
+    tone: "destructive",
+    headline: "A subsystem is down",
+    blurb: "The server has evidence of failure. Details are on the tiles below.",
   },
   unknown: {
-    label: "Unknown",
-    tone: "text-muted-foreground",
-    badge: "bg-muted text-muted-foreground",
-    ring: "border-border",
-    icon: HelpCircle,
+    label: "Not reported",
+    pill: "unknown",
+    // Dashed, not red: nothing has been written here yet, the way an unfilled
+    // field is dashed rather than errored.
+    ring: "border-dashed border-border",
+    tone: "info",
+    headline: "Nothing reported yet",
+    blurb:
+      "No subsystem has recorded anything for this organization. That is an absence of evidence, not a failure — tiles fill in as jobs, webhooks and sign-ins run.",
   },
 };
 
@@ -69,21 +102,61 @@ function statusMeta(status) {
   return STATUS_META[status] || STATUS_META.unknown;
 }
 
+/**
+ * Severity, as a four-step scale rather than four unrelated colours.
+ *
+ * `rank` drives a small four-segment meter on every row, so "critical vs
+ * warning" is legible as a QUANTITY (how many segments are lit) before any
+ * colour is read at all — and the row still ranks correctly in greyscale.
+ */
 const SEVERITY_META = {
-  critical: { label: "Critical", badge: "bg-destructive/15 text-destructive", dot: "bg-destructive", icon: ShieldAlert },
-  error: { label: "Error", badge: "bg-destructive/10 text-destructive", dot: "bg-destructive", icon: XCircle },
-  warning: { label: "Warning", badge: "bg-warning/10 text-warning", dot: "bg-warning", icon: AlertTriangle },
-  info: { label: "Info", badge: "bg-info/10 text-info", dot: "bg-info", icon: Info },
+  critical: { label: "Critical", variant: "destructive", rank: 4, icon: ShieldAlert },
+  error: { label: "Error", variant: "destructive", rank: 3, icon: XCircle },
+  warning: { label: "Warning", variant: "warning", rank: 2, icon: AlertTriangle },
+  info: { label: "Info", variant: "info", rank: 1, icon: Info },
+};
+
+const SEVERITY_FILL = {
+  4: "bg-destructive",
+  3: "bg-destructive",
+  2: "bg-warning",
+  1: "bg-info",
+  0: "bg-muted-foreground",
 };
 
 function severityMeta(severity) {
   return (
     SEVERITY_META[severity] || {
       label: severity || "Unknown",
-      badge: "bg-muted text-muted-foreground",
-      dot: "bg-muted-foreground",
-      icon: Info,
+      variant: "secondary",
+      rank: 0,
+      icon: HelpCircle,
     }
+  );
+}
+
+/** Four segments, `rank` of them lit. The scale is the point, not the hue. */
+function SeverityMeter({ rank, label }) {
+  return (
+    <span
+      className="inline-flex shrink-0 items-end gap-0.5"
+      role="img"
+      aria-label={`Severity ${label}, ${rank} of 4`}
+    >
+      {[1, 2, 3, 4].map((step) => (
+        <span
+          key={step}
+          className={cn(
+            "w-1 rounded-sm",
+            step === 1 && "h-1.5",
+            step === 2 && "h-2",
+            step === 3 && "h-2.5",
+            step === 4 && "h-3",
+            step <= rank ? SEVERITY_FILL[rank] || "bg-muted-foreground" : "bg-border"
+          )}
+        />
+      ))}
+    </span>
   );
 }
 
@@ -133,10 +206,7 @@ function absoluteTime(value) {
 }
 
 const selectClasses =
-  "rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30";
-
-const ghostButton =
-  "inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-50";
+  "h-8 rounded-lg border border-border bg-card px-2.5 text-sm font-medium text-foreground transition-colors duration-150 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50";
 
 // ── Component ───────────────────────────────────────────────────────────────
 
@@ -218,14 +288,70 @@ export default function SystemHealth() {
 
   const counts = data?.counts || { errorsLast24h: 0, warningsLast24h: 0 };
   const filtersActive = sourceFilter !== "all" || severityFilter !== "all";
+  const clearFilters = () => {
+    setSourceFilter("all");
+    setSeverityFilter("all");
+  };
 
   // ── Loading ───────────────────────────────────────────────────────────────
+  // Shaped like the screen it precedes: banner, three counters, five tiles and
+  // an event list. Nothing here renders null while the fetch is out.
   if (loading) {
     return (
-      <div className="rounded-xl border border-border bg-card p-10 shadow-card">
-        <div className="flex flex-col items-center justify-center gap-3 py-8">
-          <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-primary/30 border-t-primary" />
-          <p className="text-sm text-muted-foreground">Checking system health…</p>
+      <div className="space-y-6" role="status" aria-busy="true">
+        <span className="sr-only">Checking system health…</span>
+
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-2">
+            <Skeleton className="h-6 w-40" />
+            <Skeleton className="h-4 w-80" />
+          </div>
+          <Skeleton className="h-8 w-24" />
+        </div>
+
+        <Skeleton className="h-24 w-full rounded-xl" />
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-32 w-full rounded-xl" />
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {CHECK_META.map((meta) => (
+            <div key={meta.key} className="space-y-3 rounded-xl border border-border bg-card p-5 shadow-card">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <Skeleton className="h-10 w-10 shrink-0 rounded-xl" />
+                  <div className="space-y-2">
+                    <Skeleton className="h-3.5 w-24" />
+                    <Skeleton className="h-3 w-32" />
+                  </div>
+                </div>
+                <Skeleton className="h-6 w-24 rounded-full" />
+              </div>
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-40" />
+            </div>
+          ))}
+        </div>
+
+        <div className="rounded-xl border border-border bg-card shadow-card">
+          <div className="border-b border-border px-5 py-4">
+            <Skeleton className="h-4 w-40" />
+          </div>
+          <ul className="divide-y divide-border">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <li key={i} className="flex gap-3 px-5 py-4">
+                <Skeleton className="h-3 w-4 shrink-0" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <Skeleton className="h-4 w-56" />
+                  <Skeleton className="h-3 w-3/4" />
+                </div>
+                <Skeleton className="h-3 w-12 shrink-0" />
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
     );
@@ -234,16 +360,7 @@ export default function SystemHealth() {
   // ── Error ─────────────────────────────────────────────────────────────────
   if (error) {
     return (
-      <div className="space-y-4">
-        <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <p>{error}</p>
-        </div>
-        <button type="button" onClick={() => load()} className={ghostButton}>
-          <RefreshCw className="h-4 w-4" />
-          Try again
-        </button>
-      </div>
+      <ErrorState title="Couldn't load system health" description={error} onRetry={() => load()} />
     );
   }
 
@@ -254,30 +371,43 @@ export default function SystemHealth() {
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-foreground">System Health</h2>
+          <h2 className="text-xl font-semibold tracking-tight text-foreground">System Health</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             What the server itself recorded — scheduled jobs, automations, email, billing and auth.
             {data?.checkedAt ? ` Checked ${relativeTime(data.checkedAt)}.` : ""}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => load({ silent: true })}
-          disabled={refreshing}
-          className={ghostButton}
-        >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+        <Button variant="outline" size="sm" onClick={() => load({ silent: true })} disabled={refreshing}>
+          <RefreshCw
+            className={cn(refreshing && "animate-spin motion-reduce:animate-none")}
+            aria-hidden="true"
+          />
           Refresh
-        </button>
+        </Button>
+      </div>
+
+      {/* Overall verdict, in words. The pill carries the shape; the sentence
+          carries the meaning — neither one is doing it with colour. */}
+      <div
+        className={cn(
+          "flex flex-wrap items-start gap-4 rounded-xl border bg-card p-5 shadow-card",
+          overallMeta.ring
+        )}
+      >
+        <StatusPill status={overallMeta.pill} label={overallMeta.label} />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-foreground">{overallMeta.headline}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{overallMeta.blurb}</p>
+        </div>
       </div>
 
       {/* Headline numbers */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard
-          title="Overall status"
-          value={overallMeta.label}
-          icon={Server}
-          tone={overall === "ok" ? "success" : overall === "degraded" ? "warning" : overall === "down" ? "destructive" : "info"}
+          title="Subsystems reporting"
+          value={`${checkTiles.filter((c) => c.status !== "unknown").length} of ${checkTiles.length}`}
+          icon={Activity}
+          tone={overallMeta.tone}
         />
         <StatCard
           title="Errors (last 24h)"
@@ -296,41 +426,56 @@ export default function SystemHealth() {
       </div>
 
       {/* Status tiles */}
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <Section
+        title="Subsystems"
+        description="Each tile shows the last thing the server recorded for that subsystem."
+        contentClassName="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
+      >
         {checkTiles.map((tile) => {
           const meta = statusMeta(tile.status);
-          const StatusIcon = meta.icon;
           const TileIcon = tile.icon;
           const last = relativeTime(tile.lastRunAt);
+          const isUnknown = tile.status === "unknown" || !STATUS_META[tile.status];
           return (
             <div
               key={tile.key}
-              className={`flex flex-col rounded-xl border bg-card p-5 shadow-card transition-shadow hover:shadow-elevated ${meta.ring}`}
+              className={cn(
+                "flex flex-col rounded-xl border bg-card p-5 shadow-card transition-shadow duration-150 hover:shadow-elevated motion-reduce:transition-none",
+                meta.ring
+              )}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
-                    <TileIcon className="h-5 w-5" />
-                  </div>
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+                    <TileIcon className="h-5 w-5" aria-hidden="true" />
+                  </span>
                   <div className="min-w-0">
-                    <h3 className="truncate text-sm font-bold tracking-tight text-foreground">{tile.label}</h3>
+                    <h3 className="truncate text-sm font-semibold tracking-tight text-foreground">
+                      {tile.label}
+                    </h3>
                     <p className="truncate text-xs text-muted-foreground">{tile.blurb}</p>
                   </div>
                 </div>
-                <span
-                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${meta.badge}`}
-                >
-                  <StatusIcon className="h-3.5 w-3.5" />
-                  {meta.label}
-                </span>
+                <StatusPill status={meta.pill} label={meta.label} className="shrink-0" />
               </div>
 
               <p className="mt-4 flex-1 text-sm leading-relaxed text-muted-foreground">{tile.detail}</p>
 
+              {/* Said in words on the tile itself, because "no data" is the one
+                  state a glance is most likely to misread as "bad". */}
+              {isUnknown && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  No signal either way — this is not a failure.
+                </p>
+              )}
+
               <p className="mt-4 border-t border-border pt-3 text-xs text-muted-foreground">
                 {last ? (
                   <>
-                    Last activity <span className="font-semibold text-foreground" title={absoluteTime(tile.lastRunAt)}>{last}</span>
+                    Last activity{" "}
+                    <span className="font-semibold text-foreground" title={absoluteTime(tile.lastRunAt)}>
+                      {last}
+                    </span>
                   </>
                 ) : (
                   "No activity recorded yet"
@@ -339,103 +484,98 @@ export default function SystemHealth() {
             </div>
           );
         })}
-      </section>
+      </Section>
 
       {/* Event feed */}
       <section className="rounded-xl border border-border bg-card shadow-card">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
+        <div className="space-y-3 border-b border-border px-5 py-4">
           <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <Activity className="h-4 w-4 text-primary" />
+            <Activity className="h-4 w-4 text-primary" aria-hidden="true" />
             Recent events
-            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+            <Badge variant="secondary" size="sm">
               {filteredEvents.length}
               {filtersActive ? ` of ${events.length}` : ""}
-            </span>
+            </Badge>
           </h3>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="sr-only" htmlFor="health-source">
-              Filter by source
-            </label>
-            <select
-              id="health-source"
-              value={sourceFilter}
-              onChange={(e) => setSourceFilter(e.target.value)}
-              disabled={sourceOptions.length === 0}
-              className={selectClasses}
-            >
-              <option value="all">All sources</option>
-              {sourceOptions.map((s) => (
-                <option key={s} value={s}>
-                  {SOURCE_LABELS[s] || s}
-                </option>
-              ))}
-            </select>
+          <Toolbar
+            aria-label="Event filters"
+            filters={
+              <>
+                <label className="sr-only" htmlFor="health-source">
+                  Filter by source
+                </label>
+                <select
+                  id="health-source"
+                  value={sourceFilter}
+                  onChange={(e) => setSourceFilter(e.target.value)}
+                  disabled={sourceOptions.length === 0}
+                  className={selectClasses}
+                >
+                  <option value="all">All sources</option>
+                  {sourceOptions.map((s) => (
+                    <option key={s} value={s}>
+                      {SOURCE_LABELS[s] || s}
+                    </option>
+                  ))}
+                </select>
 
-            <label className="sr-only" htmlFor="health-severity">
-              Filter by severity
-            </label>
-            <select
-              id="health-severity"
-              value={severityFilter}
-              onChange={(e) => setSeverityFilter(e.target.value)}
-              disabled={severityOptions.length === 0}
-              className={selectClasses}
-            >
-              <option value="all">All severities</option>
-              {severityOptions.map((s) => (
-                <option key={s} value={s}>
-                  {severityMeta(s).label}
-                </option>
-              ))}
-            </select>
+                <label className="sr-only" htmlFor="health-severity">
+                  Filter by severity
+                </label>
+                <select
+                  id="health-severity"
+                  value={severityFilter}
+                  onChange={(e) => setSeverityFilter(e.target.value)}
+                  disabled={severityOptions.length === 0}
+                  className={selectClasses}
+                >
+                  <option value="all">All severities</option>
+                  {severityOptions.map((s) => (
+                    <option key={s} value={s}>
+                      {severityMeta(s).label}
+                    </option>
+                  ))}
+                </select>
 
-            {filtersActive && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSourceFilter("all");
-                  setSeverityFilter("all");
-                }}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <Ban className="h-3.5 w-3.5" />
-                Clear
-              </button>
-            )}
-          </div>
+              </>
+            }
+            actions={
+              filtersActive ? (
+                <Button variant="ghost" size="sm" onClick={clearFilters}>
+                  <Ban aria-hidden="true" />
+                  Clear filters
+                </Button>
+              ) : null
+            }
+          />
         </div>
 
         {/* Empty — nothing has ever been recorded. This is the good outcome, so
             it is worded as reassurance rather than as a missing-data error. */}
         {events.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success/10 text-success">
-              <CheckCircle2 className="h-6 w-6" />
-            </div>
-            <p className="text-sm font-semibold text-foreground">No events recorded</p>
-            <p className="max-w-md text-sm text-muted-foreground">
-              Nothing on the server has reported a failure for this organization. Events appear here
-              when a scheduled job, automation, webhook or sign-in attempt goes wrong.
-            </p>
+          <div className="p-5">
+            <EmptyState
+              icon={CheckCircle2}
+              className="border-0 bg-transparent"
+              title="No events recorded"
+              description="Nothing on the server has reported a failure for this organization. Events appear here when a scheduled job, automation, webhook or sign-in attempt goes wrong."
+            />
           </div>
         ) : filteredEvents.length === 0 ? (
           /* Empty — but only because of the filters. Different problem, different copy. */
-          <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
-              <Bell className="h-6 w-6" />
-            </div>
-            <p className="text-sm font-semibold text-foreground">No events match these filters</p>
-            <button
-              type="button"
-              onClick={() => {
-                setSourceFilter("all");
-                setSeverityFilter("all");
-              }}
-              className="text-sm font-semibold text-primary hover:underline"
-            >
-              Clear filters
-            </button>
+          <div className="p-5">
+            <EmptyState
+              icon={Bell}
+              className="border-0 bg-transparent"
+              title="No events match these filters"
+              description="Every event is still here — the two filters above are just hiding them."
+              action={
+                <Button variant="outline" size="sm" onClick={clearFilters}>
+                  Clear filters
+                </Button>
+              }
+            />
           </div>
         ) : (
           <ul className="divide-y divide-border">
@@ -456,26 +596,24 @@ function EventRow({ event }) {
   const contextEntries = Object.entries(context).filter(([, v]) => v !== null && v !== "");
 
   return (
-    <li className="flex gap-3 px-5 py-4 transition-colors hover:bg-muted/40">
-      <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${meta.dot}`} aria-hidden="true" />
+    <li className="flex gap-3 px-5 py-4 transition-colors duration-150 hover:bg-muted/40 motion-reduce:transition-none">
+      <span className="mt-1 shrink-0">
+        <SeverityMeter rank={meta.rank} label={meta.label} />
+      </span>
 
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${meta.badge}`}
-          >
-            <SeverityIcon className="h-3 w-3" />
+          <Badge variant={meta.variant} size="sm">
+            <SeverityIcon aria-hidden="true" />
             {meta.label}
-          </span>
-          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+          </Badge>
+          <Badge variant="secondary" size="sm">
             {SOURCE_LABELS[event.source] || event.source}
-          </span>
+          </Badge>
           <code className="truncate font-mono text-xs text-muted-foreground">{event.event_type}</code>
         </div>
 
-        {event.message && (
-          <p className="mt-1.5 break-words text-sm text-foreground">{event.message}</p>
-        )}
+        {event.message && <p className="mt-1.5 break-words text-sm text-foreground">{event.message}</p>}
 
         {contextEntries.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1.5">

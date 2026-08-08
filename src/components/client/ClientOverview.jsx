@@ -12,13 +12,19 @@ import {
 } from "lucide-react";
 import { authFetch } from "@/utils/authFetch";
 import StatCard from "@/components/shell/StatCard";
+import { Button, Section } from "@/components/ui";
 import {
-  Spinner,
+  ClientPage,
+  Panel,
   EmptyState,
   ErrorState,
   StatusBadge,
   HealthBadge,
   ProgressBar,
+  CardsSkeleton,
+  TilesSkeleton,
+  RowsSkeleton,
+  surface,
   healthMeta,
   kindMeta,
   formatDate,
@@ -203,22 +209,32 @@ export default function ClientOverview({ user, onViewProject, onSectionChange })
   const greetingName = user?.name || user?.full_name || "there";
   const orgName = user?.organization_name;
 
-  if (loading) return <Spinner label="Loading your dashboard…" />;
-  if (error) return <ErrorState message={error} onRetry={loadProjects} />;
+  // The greeting IS the page heading, so the dashboard opens with one thing to
+  // read instead of a welcome card sitting above a second title.
+  const title = `Welcome back, ${greetingName}`;
+  const description = orgName
+    ? `Here's the latest across your projects with ${orgName}.`
+    : "Here's the latest across your projects.";
+
+  if (loading) {
+    return (
+      <ClientPage title={title} description={description} width="wide">
+        <TilesSkeleton />
+        <CardsSkeleton count={3} />
+      </ClientPage>
+    );
+  }
+
+  if (error) {
+    return (
+      <ClientPage title={title} description={description} width="wide">
+        <ErrorState message={error} onRetry={loadProjects} />
+      </ClientPage>
+    );
+  }
 
   return (
-    <div className="space-y-8">
-      <div className="rounded-xl border border-border bg-card p-5 shadow-card sm:p-6">
-        <h2 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-          Welcome back, {greetingName}
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {orgName
-            ? `Here's the latest across your projects with ${orgName}.`
-            : "Here's the latest across your projects."}
-        </p>
-      </div>
-
+    <ClientPage title={title} description={description} width="wide">
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard title="Active Projects" value={openProjects.length} icon={FolderKanban} tone="primary" />
         <StatCard title="Open Tasks" value={totals.openTasks} icon={ListTodo} tone="info" />
@@ -236,21 +252,18 @@ export default function ClientOverview({ user, onViewProject, onSectionChange })
         />
       </div>
 
-      {/* Active projects */}
-      <section>
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h3 className="text-lg font-bold tracking-tight text-foreground">Active Projects</h3>
-          {projects.length > 0 && (
-            <button
-              onClick={() => onSectionChange?.("projects")}
-              className="inline-flex shrink-0 items-center text-sm font-medium text-primary hover:underline"
-            >
+      <Section
+        title="Active projects"
+        className="space-y-5"
+        actions={
+          projects.length > 0 && (
+            <Button variant="ghost" size="lg" onClick={() => onSectionChange?.("projects")}>
               View all
-              <ArrowRight className="ml-1 h-4 w-4" />
-            </button>
-          )}
-        </div>
-
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          )
+        }
+      >
         {activeProjects.length === 0 ? (
           <EmptyState
             icon={FolderKanban}
@@ -258,32 +271,34 @@ export default function ClientOverview({ user, onViewProject, onSectionChange })
             message="Once your agency links a project to your account, it will appear here."
           />
         ) : (
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
             {activeProjects.slice(0, MAX_PROJECT_CARDS).map((project) => {
               const meta = healthMeta(project.health);
               return (
                 <button
                   key={project.id}
                   onClick={() => onViewProject?.(project.id)}
-                  className="group rounded-xl border border-border bg-card p-5 text-left shadow-card transition-all duration-300 hover:-translate-y-1 hover:shadow-elevated"
+                  className={`${surface} space-y-5 p-6 text-left transition-colors duration-150 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2`}
                 >
-                  <div className="mb-3 flex items-start justify-between gap-3">
-                    <h4 className="line-clamp-2 text-base font-bold text-foreground">{project.name}</h4>
+                  <div className="flex items-start justify-between gap-3">
+                    <h3 className="line-clamp-2 text-lg font-semibold leading-snug text-foreground">
+                      {project.name}
+                    </h3>
                     <StatusBadge status={project.status} />
                   </div>
 
                   <ProgressBar value={project.progress} tone={meta?.barTone} />
 
-                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <HealthBadge health={project.health} />
                     {project.deadline && (
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-sm text-muted-foreground">
                         {deadlineLabel(project.deadline) || formatDate(project.deadline)}
                       </span>
                     )}
                   </div>
 
-                  <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
+                  <div className="flex flex-wrap gap-x-5 gap-y-1 border-t border-border pt-4 text-sm text-muted-foreground">
                     <span>
                       <span className="font-semibold text-foreground">{Number(project.open_tasks) || 0}</span> open tasks
                     </span>
@@ -296,31 +311,31 @@ export default function ClientOverview({ user, onViewProject, onSectionChange })
             })}
           </div>
         )}
-      </section>
+      </Section>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Upcoming deadlines */}
-        <section className="rounded-xl border border-border bg-card p-5 shadow-card">
-          <h3 className="mb-4 flex items-center gap-2 text-base font-bold tracking-tight text-foreground">
-            <CalendarClock className="h-5 w-5 text-primary" />
-            Upcoming Deadlines
-          </h3>
+        <Panel className="space-y-5">
+          <h2 className="flex items-center gap-2.5 text-lg font-semibold tracking-tight text-foreground">
+            <CalendarClock className="h-5 w-5 text-primary" aria-hidden="true" />
+            Upcoming deadlines
+          </h2>
 
           {upcomingDeadlines.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">
+            <p className="py-8 text-center text-[15px] text-muted-foreground">
               No deadlines scheduled on your active projects.
             </p>
           ) : (
-            <ul className="space-y-2">
+            <ul className="space-y-3">
               {upcomingDeadlines.map(({ project }) => (
                 <li key={project.id}>
                   <button
                     onClick={() => onViewProject?.(project.id)}
-                    className="flex w-full items-center justify-between gap-3 rounded-lg border border-border bg-background p-3 text-left transition-colors hover:bg-muted"
+                    className="flex w-full items-center justify-between gap-4 rounded-lg border border-border bg-background p-4 text-left transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-foreground">{project.name}</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">{formatDate(project.deadline)}</p>
+                      <p className="truncate text-[15px] font-medium text-foreground">{project.name}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">{formatDate(project.deadline)}</p>
                     </div>
                     <HealthBadge health={project.health} />
                   </button>
@@ -328,45 +343,39 @@ export default function ClientOverview({ user, onViewProject, onSectionChange })
               ))}
             </ul>
           )}
-        </section>
+        </Panel>
 
         {/* Pending approvals */}
-        <section className="rounded-xl border border-border bg-card p-5 shadow-card">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <h3 className="flex items-center gap-2 text-base font-bold tracking-tight text-foreground">
-              <CheckSquare className="h-5 w-5 text-primary" />
-              Pending Approvals
-            </h3>
-            <button
-              onClick={() => onSectionChange?.("approvals")}
-              className="inline-flex shrink-0 items-center text-sm font-medium text-primary hover:underline"
-            >
+        <Panel className="space-y-5">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="flex items-center gap-2.5 text-lg font-semibold tracking-tight text-foreground">
+              <CheckSquare className="h-5 w-5 text-primary" aria-hidden="true" />
+              Pending approvals
+            </h2>
+            <Button variant="ghost" size="lg" onClick={() => onSectionChange?.("approvals")}>
               Review
-              <ArrowRight className="ml-1 h-4 w-4" />
-            </button>
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Button>
           </div>
 
           {approvalsLoading ? (
-            <Spinner label="Loading approvals…" className="py-8" />
+            <RowsSkeleton count={2} />
           ) : approvalsError ? (
             <ErrorState message={approvalsError} onRetry={loadApprovals} />
           ) : pendingApprovals.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">
+            <p className="py-8 text-center text-[15px] text-muted-foreground">
               Nothing is waiting on your sign-off right now.
             </p>
           ) : (
-            <ul className="space-y-2">
+            <ul className="space-y-3">
               {pendingApprovals.map((approval) => (
-                <li
-                  key={approval.id}
-                  className="rounded-lg border border-border bg-background p-3"
-                >
-                  <div className="flex items-start justify-between gap-3">
+                <li key={approval.id} className="rounded-lg border border-border bg-background p-4">
+                  <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-foreground">{approval.title}</p>
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">{approval.project_name}</p>
+                      <p className="truncate text-[15px] font-medium text-foreground">{approval.title}</p>
+                      <p className="mt-1 truncate text-sm text-muted-foreground">{approval.project_name}</p>
                     </div>
-                    <span className="shrink-0 text-xs text-muted-foreground">
+                    <span className="shrink-0 text-sm text-muted-foreground">
                       {formatRelativeTime(approval.created_at)}
                     </span>
                   </div>
@@ -374,45 +383,45 @@ export default function ClientOverview({ user, onViewProject, onSectionChange })
               ))}
             </ul>
           )}
-        </section>
+        </Panel>
       </div>
 
       {/* Recent activity */}
-      <section className="rounded-xl border border-border bg-card p-5 shadow-card">
-        <h3 className="mb-4 flex items-center gap-2 text-base font-bold tracking-tight text-foreground">
-          <Activity className="h-5 w-5 text-primary" />
-          Recent Activity
-        </h3>
+      <Panel className="space-y-5">
+        <h2 className="flex items-center gap-2.5 text-lg font-semibold tracking-tight text-foreground">
+          <Activity className="h-5 w-5 text-primary" aria-hidden="true" />
+          Recent activity
+        </h2>
 
         {activityLoading ? (
-          <Spinner label="Loading recent activity…" className="py-8" />
+          <RowsSkeleton count={3} />
         ) : activityError ? (
           <ErrorState message={activityError} onRetry={loadActivity} />
         ) : recentActivity.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">
+          <p className="py-8 text-center text-[15px] text-muted-foreground">
             Nothing has happened on your projects yet.
           </p>
         ) : (
-          <ul className="space-y-3">
+          <ul className="space-y-5">
             {recentActivity.map(({ event, projectId }) => {
               const meta = kindMeta(event.kind);
               const Icon = meta.icon;
               return (
-                <li key={event.id} className="flex items-start gap-3">
-                  <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${meta.tone}`}>
-                    <Icon className="h-4 w-4" />
+                <li key={event.id} className="flex items-start gap-4">
+                  <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${meta.tone}`}>
+                    <Icon className="h-4 w-4" aria-hidden="true" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
-                      <p className="min-w-0 text-sm font-semibold text-foreground">{event.title}</p>
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+                      <p className="min-w-0 text-[15px] font-medium text-foreground">{event.title}</p>
                       <span
-                        className="whitespace-nowrap text-xs text-muted-foreground"
+                        className="whitespace-nowrap text-sm text-muted-foreground"
                         title={formatDateTime(event.created_at)}
                       >
                         {formatRelativeTime(event.created_at)}
                       </span>
                     </div>
-                    <p className="mt-0.5 flex flex-wrap gap-x-2 text-xs text-muted-foreground">
+                    <p className="mt-1.5 flex flex-wrap gap-x-2 text-sm text-muted-foreground">
                       <span className="font-medium text-primary">{projectNames.get(projectId)}</span>
                       {event.actor_name && <span>· {event.actor_name}</span>}
                     </p>
@@ -422,7 +431,7 @@ export default function ClientOverview({ user, onViewProject, onSectionChange })
             })}
           </ul>
         )}
-      </section>
-    </div>
+      </Panel>
+    </ClientPage>
   );
 }

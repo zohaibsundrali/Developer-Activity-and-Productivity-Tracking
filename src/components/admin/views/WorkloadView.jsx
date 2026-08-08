@@ -4,8 +4,17 @@ import { useMemo } from "react";
 import { STATUS_META, normalizeStatus } from "@/utils/pmData";
 import EChart from "@/components/charts/EChart";
 import StatCard from "@/components/shell/StatCard";
-import { SEMANTIC, baseGrid, baseTooltip, axisLabel, splitLine, FONT_FAMILY } from "@/components/charts/chartTheme";
+import { Badge, DataTable } from "@/components/ui";
+import {
+  SEMANTIC,
+  baseGrid,
+  baseTooltip,
+  axisLabel,
+  splitLine,
+  FONT_FAMILY,
+} from "@/components/charts/chartTheme";
 import { ListChecks, Users, UserX, Target } from "lucide-react";
+import { Avatar, ViewEmpty, ViewPanel, ViewToolbar } from "@/components/admin/views/viewKit";
 
 // Canonical status columns (order matters for the stacked series + table).
 const STATUS_COLUMNS = ["pending", "in_progress", "awaiting_approval", "completed", "rejected"];
@@ -100,15 +109,19 @@ export default function WorkloadView({ tasks, employees }) {
 
     return {
       textStyle: { fontFamily: FONT_FAMILY },
-      tooltip: { ...baseTooltip, trigger: "axis", axisPointer: { type: "shadow" } },
+      tooltip: { ...baseTooltip, trigger: "axis", axisPointer: { type: "shadow" }, confine: true },
       legend: {
         top: 0,
-        textStyle: { fontFamily: FONT_FAMILY, color: "#64748b", fontSize: 11 },
+        // Five series wrap onto a second line on a narrow card and then sit on
+        // top of the first bars; a scrolling legend keeps it to one row.
+        type: "scroll",
+        textStyle: { fontFamily: FONT_FAMILY, color: axisLabel.color, fontSize: 11 },
         icon: "roundRect",
         itemWidth: 10,
         itemHeight: 10,
       },
-      grid: baseGrid,
+      // Extra top gap so the legend never overlaps the plot area.
+      grid: { ...baseGrid, top: 40 },
       xAxis: {
         type: "value",
         minInterval: 1,
@@ -119,85 +132,96 @@ export default function WorkloadView({ tasks, employees }) {
         type: "category",
         inverse: true,
         data: categories,
-        axisLabel,
+        // Long names would otherwise push the plot area off the right edge.
+        axisLabel: { ...axisLabel, width: 120, overflow: "truncate" },
       },
       series,
     };
   }, [rows]);
 
+  const toolbar = (
+    <ViewToolbar
+      icon={Users}
+      title="Workload"
+      description={`${rows.length} bucket${rows.length === 1 ? "" : "s"}`}
+    />
+  );
+
   if (!tasks || tasks.length === 0) {
     return (
-      <div className="rounded-xl border border-border bg-card p-5 shadow-card">
-        <p className="rounded-lg border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
-          No tasks to chart
-        </p>
+      <div className="space-y-4">
+        {toolbar}
+        <ViewEmpty
+          icon={Users}
+          title="No workload to chart"
+          description="No tasks match the current filters, so there is nothing to spread across the team yet."
+        />
       </div>
     );
   }
 
-  const chartHeight = Math.max(280, rows.length * 44);
+  const chartHeight = Math.min(720, Math.max(260, rows.length * 44 + 60));
+
+  const tableColumns = [
+    {
+      key: "name",
+      header: "Assignee",
+      render: (r) => (
+        <div className="flex min-w-0 items-center gap-2">
+          <Avatar name={r.key === UNASSIGNED_KEY ? "" : r.name} />
+          <span className="truncate font-medium text-foreground">{r.name}</span>
+          {busiestTotal > 0 && r.total === busiestTotal ? (
+            <Badge variant="warning" size="sm">
+              Busiest
+            </Badge>
+          ) : null}
+        </div>
+      ),
+    },
+    ...STATUS_COLUMNS.map((col) => ({
+      key: col,
+      header: STATUS_META[col].label,
+      align: "right",
+      render: (r) => <span className="tabular-nums text-muted-foreground">{r.counts[col]}</span>,
+    })),
+    {
+      key: "total",
+      header: "Total",
+      align: "right",
+      render: (r) => <span className="font-semibold tabular-nums text-foreground">{r.total}</span>,
+    },
+    {
+      key: "points",
+      header: "Points",
+      align: "right",
+      render: (r) => (
+        <Badge variant="secondary" size="sm" className="tabular-nums">
+          {r.points}
+        </Badge>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-4">
+      {toolbar}
+
       {/* Stat cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Total Tasks" value={totals.tasks} icon={ListChecks} tone="primary" />
-        <StatCard title="Assigned People" value={totals.people} icon={Users} tone="info" />
+        <StatCard title="Total tasks" value={totals.tasks} icon={ListChecks} tone="primary" />
+        <StatCard title="Assigned people" value={totals.people} icon={Users} tone="info" />
         <StatCard title="Unassigned" value={totals.unassigned} icon={UserX} tone="warning" />
-        <StatCard title="Total Points" value={totals.points} icon={Target} tone="violet" />
+        <StatCard title="Total points" value={totals.points} icon={Target} tone="success" />
       </div>
 
       {/* Chart */}
-      <div className="rounded-xl border border-border bg-card p-5 shadow-card">
+      <ViewPanel>
         <h3 className="mb-3 text-sm font-semibold text-foreground">Workload by assignee</h3>
         <EChart option={chartOption} height={chartHeight} />
-      </div>
+      </ViewPanel>
 
-      {/* Compact table */}
-      <div className="rounded-xl border border-border bg-card shadow-card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="bg-card text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                <th className="px-3 py-2 text-left">Assignee</th>
-                <th className="px-3 py-2 text-right">To Do</th>
-                <th className="px-3 py-2 text-right">In Progress</th>
-                <th className="px-3 py-2 text-right">In Review</th>
-                <th className="px-3 py-2 text-right">Done</th>
-                <th className="px-3 py-2 text-right">Rejected</th>
-                <th className="px-3 py-2 text-right">Total</th>
-                <th className="px-3 py-2 text-right">Points</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const busiest = busiestTotal > 0 && r.total === busiestTotal;
-                return (
-                  <tr
-                    key={r.key}
-                    className={`border-t border-border ${busiest ? "bg-primary/5" : "hover:bg-muted/40"}`}
-                  >
-                    <td className="px-3 py-2 font-medium text-foreground">{r.name}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.counts.pending}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.counts.in_progress}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
-                      {r.counts.awaiting_approval}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.counts.completed}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.counts.rejected}</td>
-                    <td className="px-3 py-2 text-right font-semibold tabular-nums text-foreground">{r.total}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      <span className="inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                        {r.points}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {/* Breakdown */}
+      <DataTable columns={tableColumns} rows={rows} keyField="key" />
     </div>
   );
 }

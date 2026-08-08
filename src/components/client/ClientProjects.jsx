@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { FolderKanban, Calendar, Clock, ArrowRight } from "lucide-react";
+import { FolderKanban, Calendar, Clock } from "lucide-react";
 import { authFetch } from "@/utils/authFetch";
 import {
-  Spinner,
+  ClientPage,
   EmptyState,
   ErrorState,
   StatusBadge,
   ProgressBar,
-  SectionHeader,
+  CardsSkeleton,
+  surface,
   formatDate,
   deadlineLabel,
 } from "./ClientShared";
@@ -41,21 +42,33 @@ export default function ClientProjects({ onViewProject }) {
     load();
   }, [load]);
 
-  if (loading) return <Spinner label="Loading your projects…" />;
-  if (error) return <ErrorState message={error} onRetry={load} />;
+  if (loading) {
+    return (
+      <ClientPage title="My Projects" description="Track the status and progress of your projects" width="wide">
+        <CardsSkeleton count={3} />
+      </ClientPage>
+    );
+  }
+
+  if (error) {
+    return (
+      <ClientPage title="My Projects" description="Track the status and progress of your projects" width="wide">
+        <ErrorState message={error} onRetry={load} />
+      </ClientPage>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <SectionHeader
-        title="My Projects"
-        subtitle="Track the status and progress of your projects"
-        right={
-          <div className="text-sm text-muted-foreground">
-            <span className="font-semibold text-foreground">{projects.length}</span> total
-          </div>
-        }
-      />
-
+    <ClientPage
+      title="My Projects"
+      description="Track the status and progress of your projects"
+      width="wide"
+      actions={
+        <span className="text-base text-muted-foreground">
+          <span className="font-semibold text-foreground">{projects.length}</span> total
+        </span>
+      }
+    >
       {projects.length === 0 ? (
         <EmptyState
           icon={FolderKanban}
@@ -67,57 +80,51 @@ export default function ClientProjects({ onViewProject }) {
           {projects.map((project) => {
             const dl = deadlineLabel(project.deadline);
             return (
+              // The card is the only control on itself — no separate "View"
+              // affordance competing with the thing it sits inside.
               <button
                 key={project.id}
                 onClick={() => onViewProject?.(project.id)}
-                className="group text-left border border-border rounded-xl overflow-hidden bg-card transition-all duration-300 hover:-translate-y-1 hover:shadow-lg"
+                className={`${surface} space-y-5 p-6 text-left transition-colors duration-150 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2`}
               >
-                <div className="p-5 border-b border-border">
-                  <div className="flex justify-between items-start gap-3 mb-3">
-                    <h3 className="text-lg font-bold text-foreground line-clamp-1">
-                      {project.name || "Untitled Project"}
-                    </h3>
-                    <StatusBadge status={project.status} />
-                  </div>
-
-                  {project.description && (
-                    <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
-                      {project.description}
-                    </p>
-                  )}
-
-                  <ProgressBar value={project.progress} />
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="line-clamp-2 text-lg font-semibold leading-snug text-foreground">
+                    {project.name || "Untitled Project"}
+                  </h3>
+                  <StatusBadge status={project.status} />
                 </div>
 
-                <div className="p-5 flex items-center justify-between">
-                  <div className="space-y-1">
-                    {project.deadline ? (
-                      <>
-                        <div className="flex items-center text-sm text-foreground">
-                          <Calendar className="w-4 h-4 mr-1.5 text-primary" />
-                          <span className="font-medium">{formatDate(project.deadline)}</span>
-                        </div>
-                        {dl && (
-                          <span className="inline-flex items-center text-xs text-muted-foreground">
-                            <Clock className="w-3.5 h-3.5 mr-1" />
-                            {dl}
-                          </span>
-                        )}
-                      </>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">No deadline set</span>
-                    )}
-                  </div>
-                  <span className="inline-flex items-center text-sm font-medium text-primary transition-transform group-hover:translate-x-0.5">
-                    View
-                    <ArrowRight className="w-4 h-4 ml-1" />
-                  </span>
+                {project.description && (
+                  <p className="line-clamp-2 text-[15px] leading-relaxed text-muted-foreground">
+                    {project.description}
+                  </p>
+                )}
+
+                <ProgressBar value={project.progress} />
+
+                <div className="border-t border-border pt-4">
+                  {project.deadline ? (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2 text-[15px] text-foreground">
+                        <Calendar className="h-4 w-4 text-primary" aria-hidden="true" />
+                        <span className="font-medium">{formatDate(project.deadline)}</span>
+                      </div>
+                      {dl && (
+                        <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+                          <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+                          {dl}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">No deadline set</span>
+                  )}
                 </div>
               </button>
             );
           })}
         </div>
       )}
-    </div>
+    </ClientPage>
   );
 }

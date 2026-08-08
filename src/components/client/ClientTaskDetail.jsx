@@ -25,12 +25,17 @@ import {
 } from "lucide-react";
 import { authFetch } from "@/utils/authFetch";
 import { showError } from "@/utils/alerts";
+import { Button } from "@/components/ui";
 import {
-  Spinner,
+  ClientPage,
+  Panel,
   EmptyState,
   ErrorState,
   StatusBadge,
   LoadMoreButton,
+  ConversationSkeleton,
+  DetailSkeleton,
+  surface,
   kindMeta,
   formatDate,
   formatDateTime,
@@ -101,21 +106,14 @@ export default function ClientTaskDetail({ taskId, onBack }) {
     [task]
   );
 
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        <BackButton onBack={onBack} />
-        <Spinner label="Loading task…" />
-      </div>
-    );
-  }
+  if (loading) return <DetailSkeleton />;
 
   if (error || !task) {
     return (
-      <div className="space-y-4">
+      <ClientPage width="wide">
         <BackButton onBack={onBack} />
         <ErrorState message={error || "This task could not be loaded."} onRetry={load} />
-      </div>
+      </ClientPage>
     );
   }
 
@@ -123,20 +121,22 @@ export default function ClientTaskDetail({ taskId, onBack }) {
   const approvalStatus = String(task.client_approval_status || "").toLowerCase().trim();
 
   return (
-    <div className="space-y-6">
+    <ClientPage width="wide">
       <BackButton onBack={onBack} />
 
-      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
-        <div className="bg-primary p-5 text-primary-foreground sm:p-8">
+      <div className={`${surface} overflow-hidden`}>
+        <div className="border-b border-border bg-muted/50 p-6 sm:p-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <h1 className="min-w-0 break-words text-xl font-bold sm:text-2xl">{task.title}</h1>
-            <div className="flex flex-wrap items-center gap-2">
-              <StatusBadge status={task.status} className="bg-white/20 text-white" />
+            <h2 className="min-w-0 break-words text-2xl font-semibold leading-tight tracking-tight text-foreground sm:text-3xl">
+              {task.title}
+            </h2>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <StatusBadge status={task.status} />
             </div>
           </div>
         </div>
 
-        <div className="space-y-6 p-4 sm:p-6">
+        <div className="space-y-8 p-6 sm:p-8">
           {approvalStatus && (
             <ApprovalPanel status={task.client_approval_status} note={task.client_approval_note} />
           )}
@@ -149,7 +149,7 @@ export default function ClientTaskDetail({ taskId, onBack }) {
               value={
                 task.priority ? (
                   <span
-                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                    className={`inline-flex rounded-full px-2.5 py-1 text-sm font-semibold ${
                       PRIORITY_TONES[priorityKey] || "bg-muted text-muted-foreground"
                     }`}
                   >
@@ -163,7 +163,7 @@ export default function ClientTaskDetail({ taskId, onBack }) {
           </div>
 
           {labels.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-2">
               {labels.map((label) => (
                 <span
                   key={label}
@@ -175,10 +175,10 @@ export default function ClientTaskDetail({ taskId, onBack }) {
             </div>
           )}
 
-          <section>
-            <h2 className="mb-3 text-base font-bold text-foreground">Description</h2>
+          <section className="space-y-4">
+            <h3 className="text-lg font-semibold tracking-tight text-foreground">Description</h3>
             {task.description ? (
-              <div className="space-y-3 rounded-xl border border-border bg-muted/50 p-5 text-foreground sm:p-6">
+              <div className="space-y-4 rounded-xl border border-border bg-muted/50 p-6 text-[15px] text-foreground">
                 {String(task.description)
                   .split("\n")
                   .map((paragraph, index) => (
@@ -188,49 +188,46 @@ export default function ClientTaskDetail({ taskId, onBack }) {
                   ))}
               </div>
             ) : (
-              <p className="rounded-xl border border-border bg-muted/50 p-5 text-muted-foreground sm:p-6">
+              <p className="rounded-xl border border-border bg-muted/50 p-6 text-[15px] text-muted-foreground">
                 No description provided for this task.
               </p>
             )}
           </section>
 
-          <section>
-            <h2 className="mb-3 text-base font-bold text-foreground">Files</h2>
+          <section className="space-y-4">
+            <h3 className="text-lg font-semibold tracking-tight text-foreground">Files</h3>
             <Attachments attachments={attachments} />
           </section>
 
-          <section>
-            <h2 className="mb-3 text-base font-bold text-foreground">History</h2>
+          <section className="space-y-4">
+            <h3 className="text-lg font-semibold tracking-tight text-foreground">History</h3>
             <Activity activity={activity} />
           </section>
 
-          <section>
-            <h2 className="mb-3 text-base font-bold text-foreground">Conversation</h2>
+          <section className="space-y-4">
+            <h3 className="text-lg font-semibold tracking-tight text-foreground">Conversation</h3>
             <TaskComments taskId={taskId} />
           </section>
         </div>
       </div>
-    </div>
+    </ClientPage>
   );
 }
 
 function BackButton({ onBack }) {
   return (
-    <button
-      onClick={onBack}
-      className="inline-flex items-center rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-card transition-all hover:bg-muted"
-    >
-      <ArrowLeft className="mr-2 h-4 w-4" />
+    <Button variant="outline" size="lg" onClick={onBack}>
+      <ArrowLeft className="h-4 w-4" aria-hidden="true" />
       Back to Tasks
-    </button>
+    </Button>
   );
 }
 
 function InfoTile({ label, value }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-      <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
-      <div className="mt-1 break-words text-sm font-semibold text-foreground">{value}</div>
+    <div className={`${surface} p-5`}>
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <div className="mt-2 break-words text-lg font-semibold text-foreground">{value}</div>
     </div>
   );
 }
@@ -242,16 +239,16 @@ function ApprovalPanel({ status, note }) {
   const changesRequested = String(status || "").toLowerCase().trim() === "changes_requested";
   return (
     <div
-      className={`rounded-xl border p-4 ${
+      className={`rounded-xl border p-5 sm:p-6 ${
         changesRequested ? "border-warning/30 bg-warning/10" : "border-border bg-muted/50"
       }`}
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-semibold text-foreground">Your approval</span>
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-[15px] font-semibold text-foreground">Your decision</span>
         <StatusBadge status={status} />
       </div>
       {changesRequested && note && (
-        <p className="mt-2 whitespace-pre-line break-words text-sm text-foreground">{note}</p>
+        <p className="mt-3 whitespace-pre-line break-words text-[15px] leading-relaxed text-foreground">{note}</p>
       )}
     </div>
   );
@@ -269,21 +266,21 @@ function Attachments({ attachments }) {
   }
 
   return (
-    <ul className="space-y-3">
+    <ul className="space-y-4">
       {attachments.map((file) => {
         const size = formatFileSize(file.file_size);
         return (
           <li
             key={file.id}
-            className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-card sm:flex-row sm:items-center sm:justify-between"
+            className={`${surface} flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between`}
           >
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <FileText className="h-5 w-5" />
+            <div className="flex min-w-0 items-center gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <FileText className="h-5 w-5" aria-hidden="true" />
               </div>
               <div className="min-w-0">
-                <p className="truncate font-semibold text-foreground">{file.file_name}</p>
-                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <p className="truncate text-[15px] font-semibold text-foreground">{file.file_name}</p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                   {file.file_type && <span>{file.file_type}</span>}
                   {size && <span>{size}</span>}
                 </div>
@@ -291,15 +288,12 @@ function Attachments({ attachments }) {
             </div>
 
             {file.url ? (
-              <a
-                href={file.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex shrink-0 items-center justify-center rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-              >
-                <Download className="mr-1.5 h-4 w-4" />
-                Download
-              </a>
+              <Button asChild size="lg" className="shrink-0">
+                <a href={file.url} target="_blank" rel="noopener noreferrer">
+                  <Download className="h-4 w-4" aria-hidden="true" />
+                  Download
+                </a>
+              </Button>
             ) : (
               // The link is signed per response and expires; a file left on
               // screen long enough can legitimately have a name and no link.
@@ -326,32 +320,34 @@ function Activity({ activity }) {
   }
 
   return (
-    <ol className="relative space-y-4 border-l border-border pl-5 sm:pl-6">
+    <ol className="relative space-y-5 border-l border-border pl-6 sm:pl-7">
       {activity.map((event) => {
         const meta = kindMeta(event.kind);
         const Icon = meta.icon;
         return (
           <li key={event.id} className="relative">
             <span
-              className={`absolute -left-[30px] top-3 flex h-6 w-6 items-center justify-center rounded-full border-2 border-card sm:-left-[34px] ${meta.tone}`}
+              className={`absolute -left-[36px] top-5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-card sm:-left-[40px] ${meta.tone}`}
             >
-              <Icon className="h-3 w-3" />
+              <Icon className="h-3 w-3" aria-hidden="true" />
             </span>
-            <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                <p className="min-w-0 break-words font-semibold text-foreground">{event.title}</p>
+            <Panel className="space-y-2">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+                <p className="min-w-0 break-words text-lg font-semibold leading-snug text-foreground">
+                  {event.title}
+                </p>
                 <span
-                  className="whitespace-nowrap text-xs text-muted-foreground"
+                  className="whitespace-nowrap text-sm text-muted-foreground"
                   title={formatDateTime(event.created_at)}
                 >
                   {formatRelativeTime(event.created_at)}
                 </span>
               </div>
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                <span className={`rounded-full px-2 py-0.5 font-medium ${meta.tone}`}>{meta.label}</span>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pt-1 text-sm text-muted-foreground">
+                <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${meta.tone}`}>{meta.label}</span>
                 {event.actor_name && <span>{event.actor_name}</span>}
               </div>
-            </div>
+            </Panel>
           </li>
         );
       })}
@@ -472,32 +468,40 @@ function TaskComments({ taskId }) {
   };
 
   return (
-    <div className="space-y-5">
-      <form onSubmit={handleSubmit} className="rounded-xl border border-border bg-card p-4 shadow-card">
+    <div className="space-y-6">
+      <Panel as="form" onSubmit={handleSubmit} className="space-y-4">
+        <label htmlFor={`client-task-comment-${taskId}`} className="sr-only">
+          Ask a question about this task
+        </label>
         <textarea
+          id={`client-task-comment-${taskId}`}
           value={body}
           onChange={(e) => setBody(e.target.value)}
           placeholder="Ask a question about this task…"
           rows={3}
-          className="w-full resize-y rounded-lg border border-input bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+          className="w-full resize-y rounded-lg border border-input bg-background px-3.5 py-3 text-[15px] leading-relaxed text-foreground transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         />
 
-        {composeError && <p className="mt-3 text-sm text-destructive">{composeError}</p>}
+        {composeError && (
+          <p className="text-sm text-destructive" role="alert">
+            {composeError}
+          </p>
+        )}
 
-        <div className="mt-3 flex justify-end">
-          <button
-            type="submit"
-            disabled={sending || !body.trim()}
-            className="inline-flex items-center justify-center rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-          >
-            {sending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}
+        <div className="flex justify-end">
+          <Button type="submit" size="lg" disabled={sending || !body.trim()}>
+            {sending ? (
+              <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            ) : (
+              <Send className="h-4 w-4" aria-hidden="true" />
+            )}
             {sending ? "Sending…" : "Send"}
-          </button>
+          </Button>
         </div>
-      </form>
+      </Panel>
 
       {loading ? (
-        <Spinner label="Loading conversation…" />
+        <ConversationSkeleton count={2} />
       ) : error ? (
         <ErrorState message={error} onRetry={load} />
       ) : comments.length === 0 ? (
@@ -507,7 +511,7 @@ function TaskComments({ taskId }) {
           message="Ask a question or share feedback — your team will see it against this task."
         />
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-5">
           {comments.map((comment) => (
             <CommentRow key={comment.id} comment={comment} />
           ))}
@@ -523,19 +527,20 @@ function TaskComments({ taskId }) {
   );
 }
 
+// Same reading order as the project conversation: who, then when, then what.
 function CommentRow({ comment }) {
   const fromClient = comment.author_type === "client";
   const initial = String(comment.author_name || "?").trim().charAt(0).toUpperCase() || "?";
 
   return (
     <article
-      className={`rounded-xl border p-4 shadow-card ${
+      className={`rounded-xl border p-5 shadow-card sm:p-6 ${
         fromClient ? "border-primary/30 bg-primary/5" : "border-border bg-card"
       }`}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-4">
         <span
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
             fromClient ? "bg-primary text-primary-foreground" : "bg-info/10 text-info"
           }`}
           aria-hidden="true"
@@ -544,26 +549,24 @@ function CommentRow({ comment }) {
         </span>
 
         <div className="min-w-0 flex-1">
-          <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-semibold text-foreground">{comment.author_name}</span>
-              <span
-                className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                  fromClient ? "bg-primary/10 text-primary" : "bg-info/10 text-info"
-                }`}
-              >
-                {fromClient ? "Client" : "Team"}
-              </span>
-            </div>
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+            <span className="text-[15px] font-semibold text-foreground">{comment.author_name}</span>
             <span
-              className="whitespace-nowrap text-xs text-muted-foreground"
-              title={formatDateTime(comment.created_at)}
+              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                fromClient ? "bg-primary/10 text-primary" : "bg-info/10 text-info"
+              }`}
             >
-              {formatRelativeTime(comment.created_at)}
+              {fromClient ? "Client" : "Team"}
             </span>
           </div>
 
-          <p className="mt-2 whitespace-pre-line break-words text-sm text-foreground">{comment.body}</p>
+          <p className="mt-1 text-sm text-muted-foreground" title={formatDateTime(comment.created_at)}>
+            {formatRelativeTime(comment.created_at)}
+          </p>
+
+          <p className="mt-4 whitespace-pre-line break-words text-[15px] leading-relaxed text-foreground">
+            {comment.body}
+          </p>
         </div>
       </div>
     </article>

@@ -28,6 +28,7 @@ import {
   roundedBar,
 } from "@/components/charts/chartTheme";
 import { showError } from "@/utils/alerts";
+import { EmptyState, Skeleton, Tabs } from "@/components/ui";
 import {
   RefreshCw,
   Download,
@@ -236,6 +237,8 @@ export default function ReportsDashboard() {
     () => (bundle ? dailyTrend(bundle) : { days: [], completed: [], loggedHours: [], trackedHours: [] }),
     [bundle]
   );
+  // "No data" is a state a chart must say out loud — an axis with nothing on
+  // it is not an empty state.
   const dist = useMemo(
     () =>
       bundle
@@ -256,6 +259,12 @@ export default function ReportsDashboard() {
   }, [trend]);
 
   const totalTimedHours = useMemo(() => sum(timeRows.map((r) => r.hours)), [timeRows]);
+
+  const hasTrend =
+    (trend?.days?.length || 0) > 0 &&
+    (sum(trend?.completed) > 0 || sum(trend?.loggedHours) > 0 || sum(trend?.trackedHours) > 0);
+  const hasStatus =
+    (dist?.pending || 0) + (dist?.in_progress || 0) + (dist?.awaiting_approval || 0) + (dist?.completed || 0) > 0;
 
   /* ---- paged slices (the totals above stay over the full row set) ---- */
   const timePageCount = Math.max(1, Math.ceil(timeRows.length / ROWS_PER_PAGE));
@@ -290,17 +299,30 @@ export default function ReportsDashboard() {
         itemHeight: 10,
         textStyle: { color: SEMANTIC.muted, fontSize: 11, fontFamily: FONT_FAMILY },
       },
-      grid: baseGrid,
+      grid: { ...baseGrid, top: 40, bottom: 30 },
       xAxis: {
         type: "category",
+        name: "Date",
+        nameLocation: "middle",
+        nameGap: 30,
+        nameTextStyle: axisLabel,
         data: days,
         boundaryGap: true,
-        axisLabel: { ...axisLabel, formatter: (v) => formatDayShort(v) },
+        // A 30- or 90-day range printed every "Mar 4" on top of the next one.
+        // hideOverlap thins the ticks instead of stacking them.
+        axisLabel: {
+          ...axisLabel,
+          hideOverlap: true,
+          interval: "auto",
+          formatter: (v) => formatDayShort(v),
+        },
       },
       yAxis: [
         {
           type: "value",
           name: "Tasks",
+          nameLocation: "middle",
+          nameGap: 34,
           nameTextStyle: axisLabel,
           axisLabel,
           splitLine,
@@ -309,6 +331,8 @@ export default function ReportsDashboard() {
         {
           type: "value",
           name: "Hours",
+          nameLocation: "middle",
+          nameGap: 38,
           nameTextStyle: axisLabel,
           axisLabel,
           splitLine: { show: false },
@@ -365,7 +389,10 @@ export default function ReportsDashboard() {
           radius: ["52%", "76%"],
           center: ["50%", "58%"],
           avoidLabelOverlap: true,
-          itemStyle: { borderColor: "#ffffff", borderWidth: 2 },
+          minAngle: 3,
+          // padAngle separates the slices without painting a literal white
+          // ring, which broke the moment the card was not white.
+          padAngle: 2,
           label: { show: false },
           data: [
             { name: "To Do", value: dist?.pending || 0, itemStyle: { color: SEMANTIC.muted } },
@@ -398,12 +425,23 @@ export default function ReportsDashboard() {
         itemHeight: 10,
         textStyle: { color: SEMANTIC.muted, fontSize: 11, fontFamily: FONT_FAMILY },
       },
-      grid: baseGrid,
-      xAxis: { type: "value", axisLabel, splitLine, minInterval: 1 },
+      grid: { ...baseGrid, top: 34, bottom: 30 },
+      xAxis: {
+        type: "value",
+        name: "Tasks",
+        nameLocation: "middle",
+        nameGap: 28,
+        nameTextStyle: axisLabel,
+        axisLabel,
+        splitLine,
+        minInterval: 1,
+      },
       yAxis: {
         type: "category",
         data: top.map((r) => r.project),
-        axisLabel: { ...axisLabel, width: 130, overflow: "truncate" },
+        // Project names are free text: truncate at a fixed width and let
+        // hideOverlap drop any that still collide in a short panel.
+        axisLabel: { ...axisLabel, width: 130, overflow: "truncate", hideOverlap: true },
       },
       series: [
         {
@@ -438,13 +476,34 @@ export default function ReportsDashboard() {
         itemHeight: 10,
         textStyle: { color: SEMANTIC.muted, fontSize: 11, fontFamily: FONT_FAMILY },
       },
-      grid: baseGrid,
+      // Rotated names need the extra bottom gutter, otherwise the panel clips
+      // them rather than echarts simply crowding them.
+      grid: { ...baseGrid, top: 34, bottom: top.length > 6 ? 62 : 34 },
       xAxis: {
         type: "category",
         data: top.map((r) => r.name || "Unknown"),
-        axisLabel: { ...axisLabel, interval: 0, rotate: top.length > 6 ? 30 : 0 },
+        // Twelve full names never fit side by side. One tick per person,
+        // rotated and truncated at a fixed width, with hideOverlap as the
+        // final guard on a narrow viewport.
+        axisLabel: {
+          ...axisLabel,
+          interval: 0,
+          rotate: top.length > 6 ? 35 : 0,
+          width: 76,
+          overflow: "truncate",
+          hideOverlap: true,
+        },
       },
-      yAxis: { type: "value", name: "Tasks", nameTextStyle: axisLabel, axisLabel, splitLine, minInterval: 1 },
+      yAxis: {
+        type: "value",
+        name: "Tasks",
+        nameLocation: "middle",
+        nameGap: 34,
+        nameTextStyle: axisLabel,
+        axisLabel,
+        splitLine,
+        minInterval: 1,
+      },
       series: [
         {
           name: "Completed tasks",
@@ -594,31 +653,22 @@ export default function ReportsDashboard() {
       </div>
 
       {/* ---------- Tab bar ---------- */}
-      <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border bg-background p-1">
-        {TABS.map((t) => {
-          const Icon = t.icon;
-          const active = tab === t.id;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              aria-pressed={active}
-              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors ${
-                active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              <span>{t.label}</span>
-            </button>
-          );
-        })}
-      </div>
+      <Tabs tabs={TABS} active={tab} onChange={setTab} aria-label="Report section" />
 
       {/* ---------- Tab content ---------- */}
       {loading && !bundle ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-primary/30 border-t-primary" />
+        // Skeleton shaped like the overview: a wide chart beside a narrow one.
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3" aria-busy="true">
+          <div className={`${PANEL_CLASS} xl:col-span-2 space-y-3`}>
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-3 w-64" />
+            <Skeleton className="h-[300px] w-full rounded-lg" />
+          </div>
+          <div className={`${PANEL_CLASS} space-y-3`}>
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-3 w-48" />
+            <Skeleton className="h-[300px] w-full rounded-lg" />
+          </div>
         </div>
       ) : (
         <>
@@ -630,7 +680,16 @@ export default function ReportsDashboard() {
                   Completed tasks against logged and tracked hours, per day.
                 </p>
                 <div className="mt-3">
-                  <EChart option={trendOption} height={300} />
+                  {hasTrend ? (
+                    <EChart option={trendOption} height={300} />
+                  ) : (
+                    <EmptyState
+                      className="h-[300px] justify-center"
+                      icon={CalendarClock}
+                      title="Nothing happened in this range"
+                      description="Widen the date range, or wait for tasks to be completed and time to be logged."
+                    />
+                  )}
                 </div>
               </div>
 
@@ -638,7 +697,16 @@ export default function ReportsDashboard() {
                 <h3 className="text-sm font-semibold text-foreground">Task status</h3>
                 <p className="mt-0.5 text-xs text-muted-foreground">Across every task in the organization.</p>
                 <div className="mt-3">
-                  <EChart option={statusOption} height={300} />
+                  {hasStatus ? (
+                    <EChart option={statusOption} height={300} />
+                  ) : (
+                    <EmptyState
+                      className="h-[300px] justify-center"
+                      icon={ListChecks}
+                      title="No tasks yet"
+                      description="The status split fills in as soon as tasks exist."
+                    />
+                  )}
                 </div>
               </div>
             </div>
@@ -652,7 +720,16 @@ export default function ReportsDashboard() {
                   Ten largest projects, split into done and remaining tasks.
                 </p>
                 <div className="mt-3">
-                  <EChart option={projectChartOption} height={300} />
+                  {projectRows.length > 0 ? (
+                    <EChart option={projectChartOption} height={300} />
+                  ) : (
+                    <EmptyState
+                      className="h-[300px] justify-center"
+                      icon={FolderKanban}
+                      title="No projects to rank"
+                      description="Create a project and assign tasks to see the workload split."
+                    />
+                  )}
                 </div>
               </div>
 
@@ -733,7 +810,16 @@ export default function ReportsDashboard() {
               <div className={PANEL_CLASS}>
                 <h3 className="text-sm font-semibold text-foreground">Completed tasks per person</h3>
                 <div className="mt-3">
-                  <EChart option={teamChartOption} height={300} />
+                  {teamRows.length > 0 ? (
+                    <EChart option={teamChartOption} height={300} />
+                  ) : (
+                    <EmptyState
+                      className="h-[300px] justify-center"
+                      icon={Users}
+                      title="No team members to report on"
+                      description="Add people to the organization and assign them tasks."
+                    />
+                  )}
                 </div>
               </div>
 

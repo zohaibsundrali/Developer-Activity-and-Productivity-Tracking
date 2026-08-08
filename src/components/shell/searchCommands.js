@@ -137,6 +137,76 @@ export function searchTypeMeta(type) {
   );
 }
 
+/* ------------------------------------------------------------------ *
+ * Match highlighting.
+ *
+ * Pure, and here rather than in the palette, because "which characters
+ * matched" is list-building rather than rendering — and because a regex
+ * built from user input is exactly the kind of thing that wants to be
+ * testable on its own.
+ * ------------------------------------------------------------------ */
+
+const REGEX_SPECIALS = /[.*+?^${}()|[\]\\]/g;
+
+function escapeRegex(value) {
+  return String(value).replace(REGEX_SPECIALS, "\\$&");
+}
+
+/**
+ * Split `text` into matched / unmatched runs against the search term.
+ *
+ * Every whitespace-separated token is highlighted independently, so
+ * "auth bug" marks both words in "Auth bug on login" rather than nothing:
+ * the server matches loosely, and a highlight that is stricter than the
+ * match makes correct results look like mistakes.
+ *
+ * Returns `[{ text, match }]`, always covering the whole string exactly
+ * once, so the caller can render it without re-deriving offsets.
+ */
+export function highlightSegments(text, term) {
+  const source = typeof text === "string" ? text : text === 0 ? "0" : String(text || "");
+  if (!source) return [];
+
+  const tokens = String(term || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    // Longest first: "project" must win over "pro" where both would match,
+    // otherwise the shorter run splits the longer one in half.
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRegex);
+
+  if (tokens.length === 0) return [{ text: source, match: false }];
+
+  const pattern = new RegExp(`(${tokens.join("|")})`, "gi");
+  const segments = [];
+  let cursor = 0;
+
+  for (const found of source.matchAll(pattern)) {
+    const start = found.index ?? 0;
+    if (start > cursor) segments.push({ text: source.slice(cursor, start), match: false });
+    segments.push({ text: found[0], match: true });
+    cursor = start + found[0].length;
+  }
+
+  if (cursor < source.length) segments.push({ text: source.slice(cursor), match: false });
+  return segments.length > 0 ? segments : [{ text: source, match: false }];
+}
+
+/**
+ * What to try when a search comes back with nothing, or before one starts.
+ *
+ * An empty state that only says "no results" tells someone what they already
+ * knew; these say what this particular box is good at.
+ */
+export const SEARCH_SUGGESTIONS = [
+  "a project name",
+  "a task title or key",
+  "a teammate's name",
+  "a client",
+  "a sprint or epic",
+];
+
 /** Case-insensitive substring match over the command labels. */
 export function filterNavCommands(commands, term) {
   const needle = term.trim().toLowerCase();
