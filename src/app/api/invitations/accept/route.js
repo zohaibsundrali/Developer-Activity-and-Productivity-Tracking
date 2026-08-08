@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { checkSeatLimitForRole, checkFeatureAccess } from "@/utils/entitlements";
 
 // Server-side invite acceptance (service_role): validates the token, creates the
 // user + membership + Supabase Auth account, and marks the invite accepted.
@@ -31,6 +32,22 @@ export async function POST(request) {
     if (invite.status === "revoked") return NextResponse.json({ error: "This invitation was revoked." }, { status: 410 });
     if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
       return NextResponse.json({ error: "This invitation has expired." }, { status: 410 });
+    }
+
+    // 1b) the seat is consumed HERE, so this is where the plan has to be
+    // checked. The create-invitation check cannot hold a seat: a 3-seat
+    // organization can issue ten invitations that each see the same one free
+    // seat, and accepting them all lands twelve members on a plan sold for
+    // three. Re-checking at the moment the row is written is what makes the
+    // ceiling real.
+    const seatLimit =
+      invite.role === "client"
+        ? await checkFeatureAccess(admin, invite.organization_id, "client_portal", "The client portal")
+        : await checkSeatLimitForRole(admin, invite.organization_id, invite.role);
+    if (seatLimit) {
+      // The invitation stays pending: the seat may free up, or the plan may be
+      // upgraded, and the invitee can then use the same link.
+      return NextResponse.json(seatLimit, { status: seatLimit.status });
     }
 
     const email = invite.email;

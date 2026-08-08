@@ -63,7 +63,9 @@ export async function POST(request) {
       .eq("organization_id", auth.orgId);
 
     return NextResponse.json({
-      ok: true,
+      // Same success flag the rest of the billing API uses; the page reads it to
+      // tell a saved change from a failed one.
+      success: true,
       cancelAtPeriodEnd: Boolean(updated.cancel_at_period_end),
     });
   } catch (err) {

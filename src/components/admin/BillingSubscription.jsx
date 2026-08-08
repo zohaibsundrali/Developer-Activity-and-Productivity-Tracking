@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   CreditCard,
   RefreshCw,
@@ -79,6 +80,16 @@ function formatMoney(amountCents, currency) {
   }
 }
 
+// An invoice records what was billed and, separately, what has been collected.
+// A still-open invoice has collected nothing, so reading the paid column for it
+// would report every outstanding bill as zero.
+function invoiceAmountCents(inv) {
+  const paid = inv?.amount_paid_cents;
+  const due = inv?.amount_due_cents;
+  if (inv?.status === "paid" && paid !== null && paid !== undefined) return paid;
+  return due ?? paid ?? 0;
+}
+
 function intervalSuffix(interval) {
   const key = String(interval || "month");
   return INTERVAL_SUFFIX[key] || `/${key}`;
@@ -121,11 +132,28 @@ const inputlessButton =
   "inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-50";
 
 export default function BillingSubscription() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   // Which write action is in flight — one at a time, so a single id is enough.
   const [busy, setBusy] = useState(null);
+  // How the last billing round trip ended. Stripe Checkout comes back with
+  // ?checkout=success|cancelled; an in-place plan change never leaves the app
+  // and comes back with ?plan=changed instead.
+  const [checkoutOutcome, setCheckoutOutcome] = useState(null);
+
+  // The outcome is captured once and then cleared from the URL: it describes a
+  // single round trip, and leaving it in place would re-announce a months-old
+  // purchase every time the section is bookmarked or refreshed.
+  useEffect(() => {
+    const outcome =
+      searchParams?.get("plan") === "changed" ? "changed" : searchParams?.get("checkout");
+    if (!outcome) return;
+    setCheckoutOutcome(outcome);
+    router.replace("/admin/dashboard?section=billing", { scroll: false });
+  }, [searchParams, router]);
 
   const load = useCallback(async () => {
     try {
@@ -313,6 +341,39 @@ export default function BillingSubscription() {
         </div>
       </div>
 
+      {/* Return from Stripe Checkout. The subscription itself is written by the
+          webhook, which can land after this page does, so success is worded as
+          "on its way" rather than promising the plan below is already updated. */}
+      {checkoutOutcome === "success" && (
+        <div className="flex items-start gap-3 rounded-xl border border-success/30 bg-success/5 p-4 text-sm text-foreground">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+          <p>
+            <span className="font-semibold">Checkout complete.</span> Stripe is confirming the
+            payment with us now — if the plan below still shows the old one, give it a moment and
+            hit Refresh.
+          </p>
+        </div>
+      )}
+      {checkoutOutcome === "changed" && (
+        <div className="flex items-start gap-3 rounded-xl border border-success/30 bg-success/5 p-4 text-sm text-foreground">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+          <p>
+            <span className="font-semibold">Plan updated.</span> Your existing subscription was moved
+            to the new plan and only the difference is charged. The change is confirmed by Stripe in
+            the background — hit Refresh if the plan below hasn&rsquo;t caught up.
+          </p>
+        </div>
+      )}
+      {checkoutOutcome === "cancelled" && (
+        <div className="flex items-start gap-3 rounded-xl border border-border bg-muted/40 p-4 text-sm text-foreground">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <p>
+            <span className="font-semibold">Checkout cancelled.</span> Nothing was charged and your
+            plan is unchanged.
+          </p>
+        </div>
+      )}
+
       {/* Test-mode banner — a badge alone is too easy to miss before someone
           types a card number into a checkout that will never charge them. */}
       {testMode && (
@@ -459,7 +520,10 @@ export default function BillingSubscription() {
                 <button
                   type="button"
                   onClick={() => setCancellation(false)}
-                  disabled={busy === "cancel" || !subscription?.stripe_customer_id}
+                  // There is nothing to cancel until Stripe holds a customer for
+                  // this org. The API reports that as a boolean; the customer id
+                  // itself never crosses to the browser.
+                  disabled={busy === "cancel" || !subscription?.hasStripeCustomer}
                   className="inline-flex items-center gap-2 rounded-lg border border-destructive/30 px-4 py-2 text-sm font-semibold text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
                 >
                   {busy === "cancel" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
@@ -648,17 +712,21 @@ export default function BillingSubscription() {
               </thead>
               <tbody>
                 {invoices.map((inv, i) => {
-                  const link = inv.hosted_invoice_url || inv.invoice_pdf || null;
+                  const link = inv.hosted_invoice_url || inv.invoice_pdf_url || null;
                   return (
-                    <tr key={inv.id || i} className="border-b border-border last:border-0 hover:bg-muted/40">
+                    <tr
+                      key={inv.stripe_invoice_id || i}
+                      className="border-b border-border last:border-0 hover:bg-muted/40"
+                    >
                       <td className="px-5 py-3 text-foreground">
-                        {formatDate(inv.created_at || inv.created || inv.period_start) || "—"}
+                        {/* Issue date is the one a customer recognises from the
+                            invoice itself; the row's own timestamps are only a
+                            fallback for rows a webhook wrote before Stripe
+                            finalised them. */}
+                        {formatDate(inv.issued_at || inv.created_at || inv.period_start) || "—"}
                       </td>
                       <td className="px-4 py-3 tabular-nums text-foreground">
-                        {formatMoney(
-                          inv.amount_paid ?? inv.amount_due ?? inv.amount_cents ?? inv.total,
-                          inv.currency
-                        )}
+                        {formatMoney(invoiceAmountCents(inv), inv.currency)}
                       </td>
                       <td className="px-4 py-3">
                         <span
@@ -706,6 +774,17 @@ function PlanCard({ plan, current, currentAmount, disabled, busy, onSelect }) {
   const featureRows = Object.entries(features);
   // Direction is judged on price because plan codes carry no ordering.
   const isUpgrade = (Number(plan?.amount_cents) || 0) >= (Number(currentAmount) || 0);
+  // The API reports whether a plan can actually reach Checkout. Without this a
+  // freshly installed deployment — where no plan has a Stripe price yet — offers
+  // four live buttons that all come back 400.
+  const notPurchasable = plan?.checkoutReady === false;
+  const blockedReason = disabled
+    ? "Billing isn't connected yet"
+    : notPurchasable
+    ? Number(plan?.amount_cents) === 0
+      ? "The Free plan isn't bought — cancel your current plan to return to it"
+      : "This plan has no Stripe price configured yet"
+    : null;
 
   return (
     <div
@@ -768,20 +847,27 @@ function PlanCard({ plan, current, currentAmount, disabled, busy, onSelect }) {
             Your plan
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={onSelect}
-            disabled={disabled || busy}
-            title={disabled ? "Billing isn't connected yet" : undefined}
-            className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${
-              isUpgrade
-                ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                : "border border-border bg-card text-foreground hover:bg-muted"
-            }`}
-          >
-            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-            {isUpgrade ? "Upgrade" : "Downgrade"}
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={onSelect}
+              disabled={disabled || busy || notPurchasable}
+              title={blockedReason || undefined}
+              className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${
+                isUpgrade
+                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                  : "border border-border bg-card text-foreground hover:bg-muted"
+              }`}
+            >
+              {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isUpgrade ? "Upgrade" : "Downgrade"}
+            </button>
+            {/* A greyed-out button with no explanation reads as a broken page;
+                the unconnected-Stripe case already has its own banner above. */}
+            {!disabled && notPurchasable && (
+              <p className="mt-2 text-xs text-muted-foreground">{blockedReason}</p>
+            )}
+          </>
         )}
       </div>
     </div>

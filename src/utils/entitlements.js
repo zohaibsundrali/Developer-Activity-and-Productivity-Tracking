@@ -65,6 +65,40 @@ export const RESOURCES = {
   },
 };
 
+/**
+ * Which meters a seat actually lands on, keyed by the role being granted.
+ *
+ * The mapping has to follow where the acceptance path puts the row, not what
+ * the role is called. `employees` counts non-client memberships; `developers`
+ * counts rows in the `developers` table. So:
+ *   - owner / admin / hr  → admin_users + a non-client membership → employees
+ *   - manager / team_lead / developer / employee → developers + a non-client
+ *     membership → BOTH meters, which is why a developer has to clear both
+ *   - client → a `clients` row and a client-typed membership, which neither
+ *     meter counts; a client seat is gated by the client_portal feature, not
+ *     by a seat count.
+ * Charging a role to a meter that never counts it means the meter is never
+ * enforced against the thing it exists to limit.
+ */
+const SEAT_RESOURCES_BY_ROLE = {
+  owner: ["employees"],
+  admin: ["employees"],
+  hr: ["employees"],
+  manager: ["employees", "developers"],
+  team_lead: ["employees", "developers"],
+  developer: ["employees", "developers"],
+  employee: ["employees", "developers"],
+  client: [],
+};
+
+/** The meters a seat for `role` consumes, in the order they should be checked. */
+export function seatResourcesForRole(role) {
+  const key = String(role || "").toLowerCase();
+  // An unrecognised role still occupies a non-client membership, so it is
+  // charged to employees rather than waved through unmetered.
+  return SEAT_RESOURCES_BY_ROLE[key] || ["employees"];
+}
+
 export const FREE_PLAN_CODE = "free";
 
 // Mirrors the free plan seeded in 027. Used only when the plans table cannot be
@@ -154,6 +188,31 @@ export function hasFeature(entitlement, feature) {
 }
 
 /**
+ * The enforcement counterpart of `hasFeature`: returns null when the caller's
+ * plan grants the feature, or a { error, status } object the route returns
+ * verbatim. A feature flag the UI strikes through but no route consults is not
+ * a plan boundary, it is a decoration.
+ *
+ * A flag absent from the plan's `features` jsonb reads as NOT granted, which is
+ * the fail-closed direction: a plan earns a feature by naming it.
+ */
+export async function checkFeatureAccess(svc, orgId, feature, label, now = new Date()) {
+  const entitlement = await resolveEntitlement(svc, orgId, now);
+  if (hasFeature(entitlement, feature)) return null;
+
+  const name = label || feature;
+  return {
+    status: 402, // same code as a seat limit: "your plan stops here"
+    error: `${name} is not included in your plan`,
+    detail: `Your ${entitlement.plan?.name || entitlement.planCode} plan does not include ${name}. Upgrade to enable it.`,
+    feature,
+    planCode: entitlement.planCode,
+    featureLocked: true,
+    upgradeRequired: true,
+  };
+}
+
+/**
  * Current usage for every countable resource, run as one batch.
  * Returns { employees: { used, limit, unlimited, remaining, exceeded }, ... }.
  */
@@ -193,8 +252,13 @@ export async function getUsage(svc, orgId, limits) {
  *
  * Deliberately counts at call time rather than trusting a cached snapshot:
  * a stale count is how a limit gets exceeded.
+ *
+ * `options.alreadyCounted` is for callers that run AFTER the row they are
+ * asking about already exists. Without it the live count includes the new row,
+ * so the last seat a plan actually allows reads as one over and gets refused —
+ * a 3-seat plan would stop at 2.
  */
-export async function checkResourceLimit(svc, orgId, resourceKey, now = new Date()) {
+export async function checkResourceLimit(svc, orgId, resourceKey, now = new Date(), options = {}) {
   const resource = RESOURCES[resourceKey];
   if (!resource) return null; // unknown resource is not enforced
 
@@ -202,10 +266,12 @@ export async function checkResourceLimit(svc, orgId, resourceKey, now = new Date
   const limit = entitlement.limits?.[resourceKey];
   if (limit === undefined || limit === null || limit === -1) return null;
 
+  const alreadyCounted = Number(options?.alreadyCounted) > 0 ? Number(options.alreadyCounted) : 0;
+
   let used = 0;
   try {
     const { count } = await resource.count(svc, orgId);
-    used = count ?? 0;
+    used = Math.max(0, (count ?? 0) - alreadyCounted);
   } catch {
     return null; // never block on a counting failure
   }
@@ -223,4 +289,20 @@ export async function checkResourceLimit(svc, orgId, resourceKey, now = new Date
     planCode: entitlement.planCode,
     upgradeRequired: true,
   };
+}
+
+/**
+ * Seat enforcement for a role being granted. Checks every meter the seat
+ * actually lands on and returns the first that refuses, so a role that counts
+ * against both `employees` and `developers` cannot slip past by satisfying one.
+ *
+ * Pass `options.alreadyCounted` when the profile/membership row for this seat
+ * has already been written — see checkResourceLimit.
+ */
+export async function checkSeatLimitForRole(svc, orgId, role, now = new Date(), options = {}) {
+  for (const resourceKey of seatResourcesForRole(role)) {
+    const blocked = await checkResourceLimit(svc, orgId, resourceKey, now, options);
+    if (blocked) return blocked;
+  }
+  return null;
 }

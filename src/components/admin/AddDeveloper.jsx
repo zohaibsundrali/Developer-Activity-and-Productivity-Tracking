@@ -359,26 +359,46 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
       }
 
       // Create a membership for the new developer so they get org context at
-      // login (best-effort; never block the main flow).
-      try {
-        const orgId = getOrgId();
-        const createdDeveloper = Array.isArray(insertedData) ? insertedData[0] : insertedData;
-        if (orgId && createdDeveloper?.id) {
-          await supabase
-            .from('memberships')
-            .insert([{
-              organization_id: orgId,
-              user_id: createdDeveloper.id,
-              user_type: 'developer',
-              email: createdDeveloper.email,
-              role: 'developer',
-              status: 'active',
-            }]);
-          // Provision a Supabase Auth account (with org claim) so this developer
-          // can authenticate via Supabase Auth and be covered by RLS.
-          // authFetch attaches the admin's Bearer token; the route derives the
-          // organization from that token (it no longer accepts one from the body).
-          await authFetch("/api/auth/provision", {
+      // login, then mint the auth account.
+      const orgId = getOrgId();
+      const createdDeveloper = Array.isArray(insertedData) ? insertedData[0] : insertedData;
+      if (orgId && createdDeveloper?.id) {
+        // Undo the profile + membership rows written above. Without this a
+        // refused provision leaves a developer who shows up in every staff
+        // list, holds a seat, and has no auth account to log in with — worse
+        // than the add having plainly failed.
+        const rollbackDeveloper = async () => {
+          try {
+            await supabase.from('memberships').delete().eq('user_id', createdDeveloper.id);
+          } catch { /* the developer row below is the one that matters */ }
+          try {
+            await supabase.from('developers').delete().eq('id', createdDeveloper.id);
+          } catch { /* nothing further we can do from the browser */ }
+        };
+
+        await supabase
+          .from('memberships')
+          .insert([{
+            organization_id: orgId,
+            user_id: createdDeveloper.id,
+            user_type: 'developer',
+            email: createdDeveloper.email,
+            role: 'developer',
+            status: 'active',
+          }]);
+
+        // Provision a Supabase Auth account (with org claim) so this developer
+        // can authenticate via Supabase Auth and be covered by RLS.
+        // authFetch attaches the admin's Bearer token; the route derives the
+        // organization from that token (it no longer accepts one from the body).
+        //
+        // authFetch RESOLVES on a 4xx rather than throwing, so the response has
+        // to be inspected. Treating this call as best-effort is what let a plan
+        // limit (402) be reported to the admin as success.
+        let provisionRes = null;
+        let provisionErr = null;
+        try {
+          provisionRes = await authFetch("/api/auth/provision", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -389,8 +409,32 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
               appUserId: createdDeveloper.id,
             }),
           });
+        } catch (err) {
+          provisionErr = err;
         }
-      } catch { /* non-fatal */ }
+
+        if (provisionErr || !provisionRes?.ok) {
+          const payload = provisionRes ? await provisionRes.json().catch(() => null) : null;
+          await rollbackDeveloper();
+          await fetchAdminDevelopers();
+
+          if (provisionRes?.status === 402) {
+            showWarning(
+              payload?.error || "Plan limit reached",
+              payload?.detail ||
+                "Your plan has no seat left for another developer. Upgrade the plan to add more."
+            );
+          } else {
+            showError(
+              "Save failed",
+              payload?.error ||
+                provisionErr?.message ||
+                "The developer account could not be created, so nothing was saved."
+            );
+          }
+          return;
+        }
+      }
 
       // Add notification
       try {

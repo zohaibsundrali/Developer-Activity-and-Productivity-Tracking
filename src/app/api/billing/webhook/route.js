@@ -30,6 +30,16 @@ const HANDLED_EVENTS = new Set([
   "invoice.finalized",
 ]);
 
+// Statuses a subscription does not come back from. Reaching one means the paid
+// relationship is over, so the plan has to fall back to free — entitlement
+// limits are keyed on plan_code alone, independently of status.
+const TERMINAL_STATUSES = new Set([
+  "canceled",
+  "expired",
+  "incomplete_expired",
+  "unpaid",
+]);
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(request) {
@@ -54,7 +64,7 @@ export async function POST(request) {
 
   // ── Idempotency ───────────────────────────────────────
   // The insert happens before any work. billing_events.stripe_event_id is
-  // UNIQUE, so a redelivery loses the race and is turned away here rather than
+  // UNIQUE, so a redelivery loses the race and is recognised here rather than
   // double-applying a plan change. Stripe redelivers by design, not only on
   // failure.
   const { error: insertError } = await svc.from("billing_events").insert({
@@ -63,15 +73,46 @@ export async function POST(request) {
     payload: event,
   });
 
-  if (insertError) {
-    if (insertError.code === "23505") {
-      // Already seen. An event that previously failed keeps its
-      // processing_error in the ledger for a human to replay deliberately;
-      // silently retrying it here is how a duplicate charge gets applied.
-      return NextResponse.json({ received: true, duplicate: true });
-    }
+  if (insertError && insertError.code !== "23505") {
     console.error("[billing/webhook] Failed to record event:", insertError.message);
     return NextResponse.json({ error: "Failed to record event" }, { status: 500 });
+  }
+
+  if (insertError) {
+    // Seen before — but the ledger row proves only that the event ARRIVED, not
+    // that it was applied. Recording happens before the work, so an attempt
+    // that threw leaves the row behind with processed_at still NULL and answers
+    // 500 precisely so Stripe retries. Treating every known id as a finished
+    // duplicate would make that retry a no-op: the payment succeeded at Stripe,
+    // the organization never left the free plan, and nothing surfaces it.
+    // processed_at is therefore the completion marker, and only a row that
+    // carries one short-circuits.
+    const { data: seen, error: lookupError } = await svc
+      .from("billing_events")
+      .select("processed_at")
+      .eq("stripe_event_id", event.id)
+      .limit(1);
+
+    if (lookupError) {
+      // Unknown completion state. 500 asks for another delivery rather than
+      // guessing, because guessing "done" drops the event permanently.
+      console.error("[billing/webhook] Failed to read event ledger:", lookupError.message);
+      return NextResponse.json({ error: "Failed to record event" }, { status: 500 });
+    }
+
+    if (seen?.[0]?.processed_at) {
+      // The cheap path a genuine redelivery takes: one indexed lookup, no
+      // Stripe calls and no writes.
+      return NextResponse.json({ received: true, duplicate: true });
+    }
+
+    // Recorded but never completed, so this delivery is the retry that has to
+    // finish it. Every handler below writes through an upsert keyed on the
+    // organization or the Stripe id, so replaying a partially applied event
+    // converges instead of double-charging.
+    console.warn(
+      `[billing/webhook] Reprocessing unfinished event ${event.id} (${event.type})`
+    );
   }
 
   if (!HANDLED_EVENTS.has(event.type)) {
@@ -108,14 +149,23 @@ export async function POST(request) {
 async function processEvent(svc, event, organizationId) {
   const object = event.data?.object || {};
 
+  // When Stripe generated the event, not when it reached us. Retries and
+  // out-of-order deliveries both change arrival time; event.created is the only
+  // value that orders two events against each other.
+  const eventAt = toIso(event.created) || new Date().toISOString();
+
   switch (event.type) {
     case "checkout.session.completed":
-      return handleCheckoutCompleted(svc, organizationId, object);
+      return handleCheckoutCompleted(svc, organizationId, object, eventAt);
 
     case "customer.subscription.created":
     case "customer.subscription.updated":
+      return applySubscription(svc, organizationId, object, eventAt);
+
     case "customer.subscription.deleted":
-      return applySubscription(svc, organizationId, object);
+      // The subscription no longer exists at Stripe, whatever status the
+      // payload carries.
+      return applySubscription(svc, organizationId, object, eventAt, { deleted: true });
 
     case "invoice.payment_failed":
       return handlePaymentFailed(svc, organizationId, object);
@@ -174,7 +224,7 @@ async function resolveOrganizationId(svc, event) {
 
 // ── Handlers ────────────────────────────────────────────
 
-async function handleCheckoutCompleted(svc, organizationId, session) {
+async function handleCheckoutCompleted(svc, organizationId, session, eventAt) {
   const customerId = idOf(session.customer);
   const subscriptionId = idOf(session.subscription);
 
@@ -199,10 +249,18 @@ async function handleCheckoutCompleted(svc, organizationId, session) {
   const stripe = stripeClient();
   if (!stripe) return;
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-  await applySubscription(svc, organizationId, subscription, session.metadata?.plan_code || null);
+  await applySubscription(svc, organizationId, subscription, eventAt, {
+    fallbackPlanCode: session.metadata?.plan_code || null,
+  });
 }
 
-async function applySubscription(svc, organizationId, subscription, fallbackPlanCode = null) {
+async function applySubscription(
+  svc,
+  organizationId,
+  subscription,
+  eventAt,
+  { fallbackPlanCode = null, deleted = false } = {}
+) {
   const item = subscription.items?.data?.[0] || null;
   const priceId = item?.price?.id || idOf(subscription.plan?.id) || null;
 
@@ -214,9 +272,30 @@ async function applySubscription(svc, organizationId, subscription, fallbackPlan
     fallbackPlanCode ||
     null;
 
+  // A deleted subscription is gone regardless of the status on the payload, and
+  // an unmapped status must not read as live either.
+  const status = deleted ? "canceled" : normalizeStatus(subscription.status);
+  const terminal = deleted || TERMINAL_STATUSES.has(status);
+
+  const existing = await readSubscription(svc, organizationId);
+
+  // Stripe guarantees delivery, never delivery ORDER. A `customer.subscription
+  // .updated` carrying `active` can land after the `deleted` that ended the
+  // subscription, and applying it blindly would revive the row — status back to
+  // active, ended_at and canceled_at nulled — leaving the organization on paid
+  // limits forever with nothing at Stripe to bill or cancel. So an event older
+  // than the newest one already applied is dropped.
+  if (isStaleEvent(existing, eventAt, terminal)) {
+    console.warn(
+      `[billing/webhook] Ignoring out-of-order subscription event for org ${organizationId}`
+    );
+    return;
+  }
+
   const row = {
     organization_id: organizationId,
-    status: normalizeStatus(subscription.status),
+    status,
+    last_event_at: eventAt,
     stripe_subscription_id: subscription.id,
     stripe_price_id: priceId,
     current_period_start: toIso(subscription.current_period_start ?? item?.current_period_start),
@@ -231,9 +310,31 @@ async function applySubscription(svc, organizationId, subscription, fallbackPlan
 
   const customerId = idOf(subscription.customer);
   if (customerId) row.stripe_customer_id = customerId;
-  // Left out when unknown so an unrecognised price cannot demote a paying
-  // organization to the column default.
-  if (planCode) row.plan_code = planCode;
+
+  if (terminal) {
+    // Entitlement limits are read from plan_code alone — the 028 trigger joins
+    // billing_plans on it without consulting status — so a cancelled Business
+    // organization would keep its 150-project ceiling for good. Nothing else in
+    // the webhook ever writes plan_code back down: a cancellation carries no
+    // price change, so only this reset ends the paid limits.
+    row.plan_code = "free";
+  } else if (planCode) {
+    // Left out when unknown so an unrecognised price cannot demote a paying
+    // organization to the column default.
+    row.plan_code = planCode;
+  }
+
+  if (status === "past_due") {
+    // A past_due row with no deadline is entitled forever: the expiry check is
+    // skipped when grace_period_ends_at is null, so dunning that never resolves
+    // reads as an open-ended paid subscription. Any existing deadline is kept
+    // rather than refreshed, otherwise each dunning event would roll the window
+    // forward and the grace period would never close.
+    row.grace_period_ends_at = existing?.grace_period_ends_at || graceEndFromNow();
+  } else if (status === "active" || status === "trialing") {
+    // Dunning is over, so the deadline that belonged to it is cleared.
+    row.grace_period_ends_at = null;
+  }
 
   const { error } = await svc
     .from("organization_subscriptions")
@@ -242,20 +343,29 @@ async function applySubscription(svc, organizationId, subscription, fallbackPlan
 }
 
 async function handlePaymentFailed(svc, organizationId, invoice) {
-  const graceEnd = new Date(Date.now() + gracePeriodDays() * 24 * 60 * 60 * 1000).toISOString();
+  const existing = await readSubscription(svc, organizationId);
+
+  const patch = {
+    organization_id: organizationId,
+    last_payment_status: "failed",
+    updated_at: new Date().toISOString(),
+  };
 
   // past_due keeps the organization working until the grace window closes —
   // locking a customer out on the first failed retry loses more than it saves.
-  const { error } = await svc.from("organization_subscriptions").upsert(
-    {
-      organization_id: organizationId,
-      status: "past_due",
-      grace_period_ends_at: graceEnd,
-      last_payment_status: "failed",
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "organization_id" }
-  );
+  // A subscription that already ended is left alone: past_due is an ENTITLED
+  // status, so moving a cancelled organization into it would hand it another
+  // grace period of paid product.
+  if (!TERMINAL_STATUSES.has(existing?.status)) {
+    patch.status = "past_due";
+    // Reusing the deadline already in flight keeps the window fixed from the
+    // first failure instead of extending it on every retry Stripe makes.
+    patch.grace_period_ends_at = existing?.grace_period_ends_at || graceEndFromNow();
+  }
+
+  const { error } = await svc
+    .from("organization_subscriptions")
+    .upsert(patch, { onConflict: "organization_id" });
   if (error) throw new Error(`past_due update failed: ${error.message}`);
 
   await upsertInvoice(svc, organizationId, invoice);
@@ -265,18 +375,27 @@ async function handlePaymentSucceeded(svc, organizationId, invoice) {
   const paidAt =
     toIso(invoice.status_transitions?.paid_at) || new Date().toISOString();
 
-  // Clearing the grace period is what actually reinstates a dunning customer,
-  // so it happens here rather than waiting for the next subscription event.
-  const { error } = await svc.from("organization_subscriptions").upsert(
-    {
-      organization_id: organizationId,
-      grace_period_ends_at: null,
-      last_payment_status: "paid",
-      last_payment_at: paidAt,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "organization_id" }
-  );
+  const existing = await readSubscription(svc, organizationId);
+
+  const patch = {
+    organization_id: organizationId,
+    grace_period_ends_at: null,
+    last_payment_status: "paid",
+    last_payment_at: paidAt,
+    updated_at: new Date().toISOString(),
+  };
+
+  // Reinstating a dunning customer means leaving past_due, not just dropping
+  // the deadline. Clearing grace_period_ends_at on its own produces the one
+  // combination that never expires — past_due with no end — so a paid proration
+  // would hand out unlimited free product instead of restoring the account.
+  // Only past_due is rewritten: a payment on a cancelled subscription must not
+  // resurrect it, and active or trialing rows are already correct.
+  if (existing?.status === "past_due") patch.status = "active";
+
+  const { error } = await svc
+    .from("organization_subscriptions")
+    .upsert(patch, { onConflict: "organization_id" });
   if (error) throw new Error(`payment update failed: ${error.message}`);
 
   await upsertInvoice(svc, organizationId, invoice);
@@ -311,6 +430,42 @@ async function upsertInvoice(svc, organizationId, invoice) {
 }
 
 // ── Helpers ─────────────────────────────────────────────
+
+async function readSubscription(svc, organizationId) {
+  const { data, error } = await svc
+    .from("organization_subscriptions")
+    .select("status, grace_period_ends_at, last_event_at")
+    .eq("organization_id", organizationId)
+    .limit(1);
+  // Reads that fail must not be read as "no row": that would look like a fresh
+  // organization and let a stale event through the ordering guard below.
+  if (error) throw new Error(`subscription read failed: ${error.message}`);
+  return data?.[0] || null;
+}
+
+/**
+ * True when this event predates the one already applied to the row.
+ *
+ * event.created has one-second resolution, so a cancellation and an update can
+ * legitimately share a timestamp; a tie is therefore resolved in favour of the
+ * terminal state rather than by arrival order, because reviving a cancelled
+ * subscription is the expensive mistake and re-cancelling an active one is not.
+ */
+function isStaleEvent(existing, eventAt, incomingIsTerminal) {
+  const appliedAt = existing?.last_event_at ? Date.parse(existing.last_event_at) : NaN;
+  const incomingAt = Date.parse(eventAt);
+  // Rows written before the column existed carry no watermark, and an
+  // unparseable timestamp gives nothing to compare, so both apply normally.
+  if (!Number.isFinite(appliedAt) || !Number.isFinite(incomingAt)) return false;
+
+  if (incomingAt < appliedAt) return true;
+  if (incomingAt > appliedAt) return false;
+  return TERMINAL_STATUSES.has(existing?.status) && !incomingIsTerminal;
+}
+
+function graceEndFromNow() {
+  return new Date(Date.now() + gracePeriodDays() * 24 * 60 * 60 * 1000).toISOString();
+}
 
 async function planCodeForPrice(svc, priceId) {
   if (!priceId) return null;

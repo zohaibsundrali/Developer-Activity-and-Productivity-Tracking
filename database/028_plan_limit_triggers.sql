@@ -39,8 +39,25 @@
 --  Returns the numeric limit for a resource on an organization's plan, or -1
 --  for unlimited. Falls back to the free plan when an organization has no
 --  subscription row, which is how every tenant predating billing is treated.
+--
+--  A key that is absent from a plan's `limits` jsonb, or present but not an
+--  integer, ALSO falls back to the free plan. It previously resolved to -1,
+--  and -1 means unlimited: forgetting to add a key to one plan removed that
+--  plan's ceiling entirely, which is the opposite of what a limits column is
+--  for. The parse is guarded rather than cast, because a raw ::integer on a
+--  non-numeric value raises invalid_text_representation inside a BEFORE INSERT
+--  trigger — that does not merely mis-set a limit, it aborts every project and
+--  task insert for the organization with a bare Postgres cast error.
 
-create or replace function public.plan_limit_for(org uuid, resource text) returns integer language plpgsql stable security definer set search_path = public as 'declare lim integer; begin select coalesce(nullif(p.limits->>resource, ''''), ''-1'')::integer into lim from public.organization_subscriptions s join public.billing_plans p on p.code = s.plan_code where s.organization_id = org; if lim is null then select coalesce(nullif(p.limits->>resource, ''''), ''-1'')::integer into lim from public.billing_plans p where p.code = ''free''; end if; return coalesce(lim, -1); end';
+--  If the free plan is missing the key too there is no value left to fall back
+--  to, so the result stays -1. That last resort is deliberate: a trigger that
+--  guessed a number there would halt work over a seeding gap.
+--
+--  Parses a limits value, or returns NULL for anything that is not an integer.
+--  NULL is the signal to fall back; it never propagates as a limit.
+create or replace function public.plan_limit_int(val text) returns integer language sql immutable as 'select case when $1 ~ ''^\s*-?[0-9]+\s*$'' then btrim($1)::integer else null end';
+
+create or replace function public.plan_limit_for(org uuid, resource text) returns integer language plpgsql stable security definer set search_path = public as 'declare lim integer; begin select public.plan_limit_int(p.limits->>resource) into lim from public.organization_subscriptions s join public.billing_plans p on p.code = s.plan_code where s.organization_id = org; if lim is null then select public.plan_limit_int(p.limits->>resource) into lim from public.billing_plans p where p.code = ''free''; end if; return coalesce(lim, -1); end';
 
 create or replace function public.enforce_project_limit() returns trigger language plpgsql security definer set search_path = public as 'declare lim integer; used integer; begin if NEW.organization_id is null then return NEW; end if; lim := public.plan_limit_for(NEW.organization_id, ''projects''); if lim < 0 then return NEW; end if; select count(*) into used from public.projects where organization_id = NEW.organization_id; if used >= lim then raise exception ''PLAN_LIMIT_REACHED: projects (% of %). Upgrade the plan to add more.'', used, lim using errcode = ''P0001''; end if; return NEW; end';
 

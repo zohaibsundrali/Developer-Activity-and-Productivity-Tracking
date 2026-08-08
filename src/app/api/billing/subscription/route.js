@@ -61,7 +61,17 @@ export async function GET(request) {
 
     const sub = entitlement.subscription;
 
+    // The plan in force comes back from resolveEntitlement as a whole catalogue
+    // row, Stripe identifiers included. Those are as unsafe to publish here as
+    // they are in the `plans` list above, so they are dropped at the boundary
+    // rather than upstream, where other callers rely on the full row.
+    const { stripe_price_id: _priceId, stripe_product_id: _productId, ...planPublic } =
+      entitlement.plan || {};
+
     return NextResponse.json({
+      // The page treats a response without this flag as a failure, so every
+      // successful payload has to carry it.
+      success: true,
       // Stripe customer / subscription identifiers stay on the server. The page
       // only needs to know whether the links exist, to decide which buttons to
       // render.
@@ -85,7 +95,7 @@ export async function GET(request) {
         : null,
       // The plan in force right now, which is the free plan whenever the
       // subscription has lapsed — not whatever plan_code still says.
-      plan: entitlement.plan,
+      plan: entitlement.plan ? planPublic : null,
       planCode: entitlement.planCode,
       entitled: entitlement.entitled,
       limits: entitlement.limits,

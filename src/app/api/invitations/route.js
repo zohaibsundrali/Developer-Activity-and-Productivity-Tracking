@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
 import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
-import { checkResourceLimit } from '@/utils/entitlements';
+import { checkSeatLimitForRole, checkFeatureAccess } from '@/utils/entitlements';
 
 // Roles allowed to send invitations.
 const INVITER_ROLES = ['owner', 'admin', 'hr', 'manager'];
@@ -81,15 +81,31 @@ export async function POST(request) {
     const organizationId = auth.orgId;
     const supabase = serviceClient();
 
+    // A client invitation hands out a client-portal login, so it is gated by
+    // the plan feature rather than by a seat meter — no seat count counts a
+    // client row.
+    if (role === 'client') {
+      const featureBlock = await checkFeatureAccess(
+        supabase,
+        organizationId,
+        'client_portal',
+        'The client portal'
+      );
+      if (featureBlock) {
+        return NextResponse.json(
+          { success: false, ...featureBlock },
+          { status: featureBlock.status }
+        );
+      }
+    }
+
     // An invitation is a seat. Checking here rather than at accept time means
-    // the org is told before a colleague receives an email they cannot use.
-    // Counted server-side against the plan, because a limit the browser
-    // evaluates is a suggestion.
-    const seatLimit = await checkResourceLimit(
-      supabase,
-      organizationId,
-      role === 'client' ? 'developers' : 'employees'
-    );
+    // the org is told before a colleague receives an email they cannot use;
+    // the accept path checks again, because this check does not consume
+    // anything and ten pending invitations would each see the same free seat.
+    // The role decides which meters apply — charging a role to a meter that
+    // never counts it leaves that meter unenforced.
+    const seatLimit = await checkSeatLimitForRole(supabase, organizationId, role);
     if (seatLimit) {
       return NextResponse.json({ success: false, ...seatLimit }, { status: seatLimit.status });
     }
