@@ -1,7 +1,12 @@
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
-import { notify, dailyDedupeKey } from "@/utils/notifications";
+import { notify, windowedDedupeKey } from "@/utils/notifications";
+
+// How close together two identical status changes have to be to count as one
+// event rather than two. Covers the mechanical repeats — an automation replay,
+// two drags racing the same read of the row — and nothing a person does.
+const STATUS_REPLAY_WINDOW_MS = 2 * 60 * 1000;
 
 /**
  * Data access for the Enterprise Project Management module.
@@ -283,10 +288,18 @@ export async function changeTaskStatus(taskId, nextStatus, options = {}) {
         message: `"${prev.task_title || "A task"}" moved from ${statusLabel(from)} to ${statusLabel(nextStatus)}.`,
         taskId,
         projectId: prev.project_id || null,
-        // Keyed by the destination column, so a genuine later move still
-        // announces itself while the same move replayed by an automation or a
-        // double-fired drag does not.
-        dedupeKey: dailyDedupeKey(`status_${nextStatus}`, taskId, prev.developer_id),
+        // Keyed by the whole transition and a short window, because the same
+        // destination is reached legitimately more than once a day: sent back
+        // for changes and resubmitted walks in_progress -> awaiting_approval
+        // twice, and the second submission is exactly the one the reviewer is
+        // waiting on. Keying on the destination and the calendar day announced
+        // the first and silently swallowed every one after it.
+        dedupeKey: windowedDedupeKey(
+          `status:${from}>${nextStatus}`,
+          taskId,
+          prev.developer_id,
+          STATUS_REPLAY_WINDOW_MS
+        ),
       });
     }
   } catch {
@@ -500,7 +513,40 @@ async function loadOrgMembers(orgId) {
  * two members is ambiguous and is dropped rather than guessed at: a mention
  * that reaches the wrong person is worse than one that reaches nobody.
  */
-function resolveMentions(body, members) {
+/**
+ * Is `@phrase` a whole mention in `text`, rather than the start of a longer one?
+ *
+ * Plain containment is not enough in either direction. "@alina costa" contains
+ * "@ali", so a member called Ali was notified about every mention of Alina —
+ * and since a mention outranks a watch, it also replaced the ordinary comment
+ * notification Ali was owed. The name has to end where the mention ends.
+ */
+export function mentionsPhrase(text, phrase) {
+  const needle = `@${String(phrase || "").toLowerCase()}`;
+  if (!phrase) return false;
+  const haystack = String(text || "").toLowerCase();
+
+  for (let from = 0; ; from += 1) {
+    const at = haystack.indexOf(needle, from);
+    if (at === -1) return false;
+    from = at;
+
+    // The `@` has to open the mention, matching the token scanner below, so
+    // that the local part of "sara@acme.com" is not read as naming Acme.
+    const before = at === 0 ? "" : haystack[at - 1];
+    if (/[\w@]/.test(before)) continue;
+
+    const after = haystack.slice(at + needle.length);
+    // A name may not run straight into more name.
+    if (/^[\w@-]/.test(after)) continue;
+    // A full stop ends the mention only when it also ends the sentence, so
+    // "@ali." is Ali and "@ali.hassan" is somebody else entirely.
+    if (/^\.\S/.test(after)) continue;
+    return true;
+  }
+}
+
+export function resolveMentions(body, members) {
   const text = String(body || "").toLowerCase();
   const hits = new Set();
   if (!text.includes("@") || !members.length) return hits;
@@ -509,10 +555,17 @@ function resolveMentions(body, members) {
   for (const m of members) {
     const name = (m.name || "").trim().toLowerCase();
     const handle = (m.email || "").split("@")[0].toLowerCase();
-    if (name && text.includes(`@${name}`)) hits.add(String(m.userId));
-    for (const key of [name.split(/\s+/)[0], handle]) {
+    if (name && mentionsPhrase(text, name)) hits.add(String(m.userId));
+    // A member whose first name is also their email handle — Sara Okonkwo at
+    // sara@… , which is the ordinary case — claims ONE short form, not two.
+    // Counting it twice made every such member ambiguous with themselves and
+    // dropped as unresolvable, so "@sara" reached nobody.
+    for (const key of new Set([name.split(/\s+/)[0], handle])) {
       if (!key) continue;
-      byShortForm.set(key, byShortForm.has(key) ? null : m);
+      const held = byShortForm.get(key);
+      if (held === undefined) byShortForm.set(key, m);
+      // Ambiguous only against a DIFFERENT member; once ambiguous, it stays so.
+      else if (held && String(held.userId) !== String(m.userId)) byShortForm.set(key, null);
     }
   }
 
@@ -588,7 +641,15 @@ async function notifyComment(taskId, comment, body, mentions) {
   const followers = new Map();
   if (task.developer_id) followers.set(String(task.developer_id), "developer");
   for (const w of watchers || []) {
-    if (w?.user_id) followers.set(String(w.user_id), commentAudience(w.user_type));
+    if (!w?.user_id) continue;
+    // A client watcher is skipped, not downgraded. `commentAudience` maps any
+    // non-admin to "developer", which would address the row developer_id=<a
+    // client> — and the read policy ends `not auth_is_client()`, so that row is
+    // unreadable by the only person it is for and by everyone else too. It
+    // would sit in the table forever, counted by nobody's badge. Clients follow
+    // work through the client portal, which is not this table.
+    if (w.user_type === "client") continue;
+    followers.set(String(w.user_id), commentAudience(w.user_type));
   }
 
   for (const [id, audience] of followers) {

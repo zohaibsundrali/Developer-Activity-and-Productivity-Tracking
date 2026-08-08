@@ -54,20 +54,29 @@ export function notificationHref(n, { audience = "admin" } = {}) {
   if (!n) return null;
   const adminBase = "/admin/dashboard";
 
+  // `/developer/project-details` identifies a project by `id` and nothing else,
+  // so every developer link has to carry that one param — any other spelling
+  // renders the page's empty shell with no project and no tasks.
+  const developerProject = (projectId) => `/developer/project-details?id=${projectId}`;
+
   if (n.task_id) {
-    // The board opens the drawer for a task id; the developer surface shows it
-    // inside the project it belongs to.
-    return audience === "admin"
-      ? `${adminBase}?section=board&task=${n.task_id}`
-      : `/developer/project-details?task=${n.task_id}`;
+    // The admin board is one screen for the whole org, so `section=board` is
+    // the destination on its own and the link lands correctly without `task`.
+    // Nothing reads `task` yet — the board's drawer is driven by local state —
+    // so it identifies the subject rather than opening it.
+    //
+    // The developer surface has no task route at all: a task is reached
+    // through its project, so a task notification is only linkable when the
+    // row says which project that is. A link to the project-less page renders
+    // an empty shell, which is worse than no link.
+    if (audience === "admin") return `${adminBase}?section=board&task=${n.task_id}`;
+    return n.project_id ? developerProject(n.project_id) : null;
   }
   if (n.submission_id) {
     return audience === "admin" ? `${adminBase}?section=task-reviews` : null;
   }
   if (n.project_id) {
-    return audience === "admin"
-      ? `/admin/project-details/${n.project_id}`
-      : `/developer/project-details?project=${n.project_id}`;
+    return audience === "admin" ? `/admin/project-details/${n.project_id}` : developerProject(n.project_id);
   }
   if (n.entity_type === "sprint") return audience === "admin" ? `${adminBase}?section=sprints` : null;
   if (n.entity_type === "employee") return audience === "admin" ? `${adminBase}?section=employees` : null;
@@ -75,16 +84,50 @@ export function notificationHref(n, { audience = "admin" } = {}) {
   return null;
 }
 
-/** The filter that selects "notifications addressed to me". */
-function recipientFilter(query, { userId, email, audience }) {
+/**
+ * A value safe to drop into a PostgREST `or=` list.
+ *
+ * That list is parsed on commas and parentheses, all three of which are legal
+ * in an email address: `"a,b"@x.com` would be read as the end of one clause and
+ * the start of another, and the whole query comes back 400. Double-quoting the
+ * value keeps it a single token, with backslash and quote escaped inside.
+ */
+function pgrstLiteral(value) {
+  return `"${String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * The filter that selects "notifications addressed to me".
+ *
+ * The admin address is matched with `eq`, never `ilike`. Under LIKE an
+ * underscore matches any single character, so an address is a pattern rather
+ * than a value: `john_doe@acme.com` also selects `john.doe@acme.com`, and a
+ * `%…%` containment matches `sara@acme.com` inside `sara@acme.com.au`. Either
+ * one hands an admin another admin's notifications — to read, and (through the
+ * same filter in `markAllRead`) to mark read.
+ *
+ * `eq` is case-sensitive where `ilike` was not, so the lower-cased form is
+ * offered alongside the address as typed; addresses are stored lower-cased in
+ * practice and this keeps a session that carries mixed case matching them.
+ */
+export function recipientClauses({ userId, email, audience = "admin" } = {}) {
   const clauses = [];
   if (audience === "admin") {
-    if (userId) clauses.push(`admin_id.eq.${userId}`);
-    if (email) clauses.push(`admin_email.ilike.%${email}%`);
+    if (userId) clauses.push(`admin_id.eq.${pgrstLiteral(userId)}`);
+    if (email) {
+      clauses.push(`admin_email.eq.${pgrstLiteral(email)}`);
+      const lower = String(email).toLowerCase();
+      if (lower !== String(email)) clauses.push(`admin_email.eq.${pgrstLiteral(lower)}`);
+    }
   } else {
-    if (userId) clauses.push(`developer_id.eq.${userId}`);
-    if (userId) clauses.push(`assigned_developer_id.eq.${userId}`);
+    if (userId) clauses.push(`developer_id.eq.${pgrstLiteral(userId)}`);
+    if (userId) clauses.push(`assigned_developer_id.eq.${pgrstLiteral(userId)}`);
   }
+  return clauses;
+}
+
+function recipientFilter(query, { userId, email, audience }) {
+  const clauses = recipientClauses({ userId, email, audience });
   // No identity means no notifications — never fall through to "everything".
   if (!clauses.length) return query.eq("id", "00000000-0000-0000-0000-000000000000");
   return query.or(clauses.join(","));
@@ -129,8 +172,12 @@ export async function fetchNotifications({
 /**
  * The true unread count, independent of what is loaded.
  * `head: true` returns the number and no rows at all.
+ *
+ * `category` narrows the count to one group, which is what a caller that is
+ * also showing a narrowed list has to ask for; omit it for the whole inbox.
+ * There is no `unreadOnly` parameter because unread IS the predicate here.
  */
-export async function getUnreadCount({ userId, email, audience = "admin" } = {}) {
+export async function getUnreadCount({ userId, email, audience = "admin", category = null } = {}) {
   const orgId = getOrgId();
   let query = supabase
     .from("notifications")
@@ -138,6 +185,7 @@ export async function getUnreadCount({ userId, email, audience = "admin" } = {})
     .eq("read", false);
 
   if (orgId) query = query.eq("organization_id", orgId);
+  if (category) query = query.eq("category", category);
   query = recipientFilter(query, { userId, email, audience });
 
   const { count, error } = await query;
@@ -160,8 +208,14 @@ export async function markRead(id) {
  * Mark every unread notification read — by predicate, not by the ids currently
  * on screen. Marking only the loaded page left everything past it unread while
  * telling the user it was all handled.
+ *
+ * `category` scopes it to the group the caller is showing. "Mark all as read"
+ * means the list under it, so filtered to Mentions with three rows visible it
+ * has to clear three — clearing the other two hundred across every category is
+ * an unasked-for, unrecoverable bulk action fired from a one-word button.
+ * Unread is already the predicate, so `unreadOnly` needs no separate clause.
  */
-export async function markAllRead({ userId, email, audience = "admin" } = {}) {
+export async function markAllRead({ userId, email, audience = "admin", category = null } = {}) {
   const orgId = getOrgId();
   let query = supabase
     .from("notifications")
@@ -169,6 +223,7 @@ export async function markAllRead({ userId, email, audience = "admin" } = {}) {
     .eq("read", false);
 
   if (orgId) query = query.eq("organization_id", orgId);
+  if (category) query = query.eq("category", category);
   query = recipientFilter(query, { userId, email, audience });
 
   const { error } = await query;
@@ -240,8 +295,13 @@ export async function notify({
 
   const { error } = await supabase.from("notifications").insert(row);
   if (error) {
-    // 23505 = the dedupe key already exists, i.e. this event was already sent.
-    if (error.code === "23505") return { error: null, duplicate: true };
+    // 23505 is only *this* module's expected outcome when a dedupe key was
+    // offered: the partial unique index that reports it is defined `where
+    // dedupe_key is not null`, so without a key it provably cannot be the
+    // index that fired. Any other unique violation — a primary key clash, a
+    // constraint added later — is a real failure, and swallowing it reports a
+    // notification as sent that does not exist.
+    if (error.code === "23505" && dedupeKey != null) return { error: null, duplicate: true };
     return { error };
   }
   return { error: null };
@@ -250,8 +310,30 @@ export async function notify({
 /**
  * A stable dedupe key. Includes the day so a recurring daily event (a due
  * reminder) sends once per day rather than once ever.
+ *
+ * Only for events that are *meant* to happen at most once a day. Anything a
+ * user can legitimately repeat sooner needs `windowedDedupeKey` — see there.
  */
 export function dailyDedupeKey(kind, entityId, recipientId) {
   const day = new Date().toISOString().slice(0, 10);
   return `${kind}:${entityId}:${recipientId}:${day}`;
+}
+
+/**
+ * A dedupe key that suppresses repeats only inside a short window.
+ *
+ * The duplicates worth suppressing are mechanical and near-instant: an
+ * automation replaying an event, two clicks racing the same read. Genuine
+ * repeats are separated by however long a person takes, so a window measured
+ * in minutes tells the two apart. A day cannot: it silences everything after
+ * the first occurrence, and a user who legitimately repeats an action is told
+ * nothing and has no way to know they were not told.
+ *
+ * Rounding to a bucket means two events either side of a boundary both send.
+ * That is the safe direction to be wrong in — a rare duplicate is visible and
+ * dismissible, a dropped notification is neither.
+ */
+export function windowedDedupeKey(kind, entityId, recipientId, windowMs) {
+  const bucket = Math.floor(Date.now() / windowMs);
+  return `${kind}:${entityId}:${recipientId}:w${bucket}`;
 }
