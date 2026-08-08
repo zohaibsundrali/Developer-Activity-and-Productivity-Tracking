@@ -119,17 +119,9 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
   const [loading, setLoading] = useState(true);
   const [developers, setDevelopers] =  useState([]);
   const [projects, setProjects] = useState([]);
-  const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
   const router = useRouter();
   const searchParams = useSearchParams();
   const activeSection = searchParams?.get("section") || "overview";
-
-  // Pagination state for notifications
-  const [notificationPage, setNotificationPage] = useState(0);
-  const [hasMoreNotifications, setHasMoreNotifications] = useState(false);
-  const [isLoadingMoreNotifications, setIsLoadingMoreNotifications] = useState(false);
-  const NOTIFICATIONS_PER_PAGE = 10;
 
   useEffect(() => {
     const authUser = checkAdminAuth();
@@ -141,54 +133,6 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
     setUser(authUser);
     fetchDashboardData();
 
-    // Set up real-time subscription for notifications
-    const notificationsSubscription = supabase
-      .channel('notifications-changes')
-      .on('postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `admin_id=eq.${authUser.id}`
-        },
-        (payload) => {
-          // Add new notification to beginning of array
-          setNotifications(prev => [payload.new, ...prev]);
-
-          // Increase unread count if new notification is unread
-          if (!payload.new.read) {
-            setUnreadCount(prev => prev + 1);
-          }
-        }
-      )
-      .on('postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'notifications',
-          filter: `admin_id=eq.${authUser.id}`
-        },
-        (payload) => {
-          // Update notification if marked as read from another tab/device
-          setNotifications(prev =>
-            prev.map(notif =>
-              notif.id === payload.new.id ? payload.new : notif
-            )
-          );
-
-          // Recalculate unread count from current notifications
-          setNotifications(currentNotifs => {
-            const updated = currentNotifs.map(notif =>
-              notif.id === payload.new.id ? payload.new : notif
-            );
-            const newUnreadCount = updated.filter(n => !n.read).length;
-            setUnreadCount(newUnreadCount);
-            return updated;
-          });
-        }
-      )
-      .subscribe();
-
     // Set up interval to check session every minute
     const sessionCheckInterval = setInterval(() => {
       const currentUser = checkAdminAuth();
@@ -198,7 +142,6 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
     }, 60000); // Check every minute
 
     return () => {
-      supabase.removeChannel(notificationsSubscription);
       clearInterval(sessionCheckInterval);
     };
   }, [router]);
@@ -235,154 +178,10 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
       const { data: projectsData } = await projectsQuery;
       setProjects(projectsData || []);
 
-      // Fetch notifications
-      await fetchNotifications();
-
     } catch (error) {
       // Silently handle error
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchNotifications = async (page = 0, append = false) => {
-    try {
-      const currentAdmin = checkAdminAuth();
-
-      if (!currentAdmin) {
-        handleLogout();
-        return;
-      }
-
-      const startRange = page * NOTIFICATIONS_PER_PAGE;
-      const endRange = startRange + NOTIFICATIONS_PER_PAGE - 1;
-
-      // Fetch notifications for current admin only with pagination
-      const { data: notificationsData, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .or(`admin_id.eq.${currentAdmin.id},admin_email.ilike.%${currentAdmin.email}%`)
-        .order('created_at', { ascending: false })
-        .range(startRange, endRange + 1); // Fetch one extra to check if more exist
-
-      if (error) throw error;
-
-      // Check if there are more notifications
-      const hasMore = notificationsData && notificationsData.length > NOTIFICATIONS_PER_PAGE;
-
-      // Remove the extra item if it exists
-      const actualNotifications = hasMore
-        ? notificationsData.slice(0, NOTIFICATIONS_PER_PAGE)
-        : notificationsData;
-
-      setHasMoreNotifications(hasMore);
-
-      if (append) {
-        // Append to existing notifications (for Load More)
-        setNotifications(prev => {
-          const updated = [...prev, ...(actualNotifications || [])];
-          // Calculate unread count from the updated list
-          const unread = updated.filter(notif => !notif.read).length || 0;
-          setUnreadCount(unread);
-          return updated;
-        });
-      } else {
-        // Replace notifications (for initial load)
-        setNotifications(actualNotifications || []);
-        // Calculate unread count from fresh data
-        const unread = actualNotifications?.filter(notif => !notif.read).length || 0;
-        setUnreadCount(unread);
-      }
-
-    } catch (error) {
-      // Silently handle error
-      console.error('Error fetching notifications:', error);
-    }
-  };
-
-  // Load more notifications
-  const handleLoadMoreNotifications = async () => {
-    if (!user || isLoadingMoreNotifications || !hasMoreNotifications) return;
-
-    setIsLoadingMoreNotifications(true);
-
-    const nextPage = notificationPage + 1;
-    setNotificationPage(nextPage);
-
-    await fetchNotifications(nextPage, true);
-
-    setIsLoadingMoreNotifications(false);
-  };
-
-  const handleMarkAsRead = async (notificationId) => {
-    try {
-      // Verify user is authenticated
-      const currentUser = checkAdminAuth();
-      if (!currentUser) {
-        handleLogout();
-        return;
-      }
-      
-      const { error } = await supabase
-        .from('notifications')
-        .update({ 
-          read: true, 
-          read_at: new Date().toISOString() 
-        })
-        .eq('id', notificationId);
-
-      if (error) throw error;
-
-      // Optimistically update local state
-      setNotifications(prev => 
-        prev.map(notif => 
-          notif.id === notificationId 
-            ? { ...notif, read: true }
-            : notif
-        )
-      );
-
-      // Update unread count
-      setUnreadCount(prev => Math.max(0, prev - 1));
-    } catch (error) {
-      // Silently handle error
-    }
-  };
-
-  const handleMarkAllAsRead = async () => {
-    try {
-      const currentUser = checkAdminAuth();
-      if (!currentUser) {
-        handleLogout();
-        return;
-      }
-
-      // Get unread notifications for current admin
-      const unreadNotifications = notifications.filter(notif => !notif.read);
-
-      if (unreadNotifications.length === 0) return;
-
-      // Optimistic update - reset count immediately for better UX
-      setUnreadCount(0);
-      setNotifications(prev =>
-        prev.map(notif => ({ ...notif, read: true }))
-      );
-
-      // Then update database
-      const { error } = await supabase
-        .from('notifications')
-        .update({ read: true })
-        .in('id', unreadNotifications.map(notif => notif.id));
-
-      if (error) {
-        // Revert optimistic update on error
-        console.error('Error marking all as read:', error);
-        const unread = notifications.filter(notif => !notif.read).length;
-        setUnreadCount(unread);
-      }
-
-    } catch (error) {
-      console.error('Error marking all as read:', error);
     }
   };
 
@@ -403,10 +202,8 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
       user,
       developers,
       projects,
-      notifications,
       onRefresh: fetchDashboardData,
       supabase,
-      onMarkAsRead: handleMarkAsRead,
       onLogout: handleLogout
     };
 
@@ -493,17 +290,7 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
       onLogout={handleLogout}
       title={sectionTitle(activeSection, "admin")}
       subtitle={user?.full_name ? `Signed in as ${user.full_name}` : undefined}
-      notificationSlot={
-        <NotificationDropdown
-          user={user}
-          notifications={notifications || []}
-          unreadCount={unreadCount}
-          onMarkAllAsRead={handleMarkAllAsRead}
-          onLoadMore={handleLoadMoreNotifications}
-          hasMore={hasMoreNotifications}
-          isLoadingMore={isLoadingMoreNotifications}
-        />
-      }
+      notificationSlot={<NotificationDropdown user={user} />}
     >
       {renderContent()}
     </AppShell>
