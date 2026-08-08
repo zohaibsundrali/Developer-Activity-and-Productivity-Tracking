@@ -1232,6 +1232,11 @@ export async function cloneProject(sourceProjectId, newName, { copyTasks = true 
         organization_id: orgId,
         project_id: proj.id,
         status: "pending",
+        // A clone copies the SHAPE of the work, not who was told about it.
+        // Carrying client_visible across would put visible tasks into a project
+        // whose client links have not been set up yet — invisible today, and
+        // exposed the moment anyone attaches a client to it.
+        client_visible: false,
         start_date: t.start_date || today,
         end_date: t.end_date || today,
         created_at: new Date().toISOString(),
