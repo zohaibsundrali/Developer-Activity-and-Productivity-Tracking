@@ -1,13 +1,114 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
+
+/**
+ * The session context the data layer reads its identity from. Mutable so a test
+ * can take the session away; never a parameter to the functions under test,
+ * which is itself one of the things asserted below.
+ */
+const ctx = { organizationId: "org-1", userId: "u-1", userType: "developer" };
+
+vi.mock("@/utils/orgContext", () => ({
+  getOrgId: () => ctx.organizationId,
+  getOrgContext: () => (ctx.userId ? { ...ctx } : null),
+  isMembershipActive: () => true,
+  scopeToOrg: (query) => query,
+  loadOrgContext: async () => ({}),
+}));
+
+/**
+ * A Supabase stand-in that records the query instead of sending it.
+ *
+ * What these tests are about is the shape of the request — which predicates a
+ * read carries, which columns a write fills in, which unique index an upsert
+ * names — so the response is fixed and the query is the assertion. Every
+ * builder method returns the builder, and awaiting it resolves `db.response`.
+ */
+const db = { queries: [], response: { data: [], error: null, count: 0 } };
+
+vi.mock("@/utils/supabaseClient", () => {
+  const makeBuilder = (table) => {
+    const record = { table, op: "select", columns: null, payload: null, options: null, filters: [] };
+    db.queries.push(record);
+
+    const builder = {
+      select(columns, options) {
+        record.columns = columns;
+        record.selectOptions = options || null;
+        return builder;
+      },
+      insert(payload) {
+        record.op = "insert";
+        record.payload = payload;
+        return builder;
+      },
+      update(payload) {
+        record.op = "update";
+        record.payload = payload;
+        return builder;
+      },
+      upsert(payload, options) {
+        record.op = "upsert";
+        record.payload = payload;
+        record.options = options || null;
+        return builder;
+      },
+      eq(column, value) {
+        record.filters.push(["eq", column, value]);
+        return builder;
+      },
+      is(column, value) {
+        record.filters.push(["is", column, value]);
+        return builder;
+      },
+      or(expression) {
+        record.filters.push(["or", expression]);
+        return builder;
+      },
+      order(column, options) {
+        record.filters.push(["order", column, options]);
+        return builder;
+      },
+      range(from, to) {
+        record.filters.push(["range", from, to]);
+        return builder;
+      },
+      then(onFulfilled, onRejected) {
+        return Promise.resolve(db.response).then(onFulfilled, onRejected);
+      },
+    };
+    return builder;
+  };
+
+  return { supabase: { from: (table) => makeBuilder(table) } };
+});
 
 import {
   notificationHref,
   recipientClauses,
   dailyDedupeKey,
   windowedDedupeKey,
+  dismissNotification,
+  fetchNotifications,
+  getUnreadCount,
+  markAllRead,
+  fetchNotificationPreferences,
+  setNotificationPreference,
+  CATEGORY_KEYS,
 } from "@/utils/notifications";
 import { mentionsPhrase, resolveMentions } from "@/utils/pmData";
 import { mergeRows, upsertRow } from "@/hooks/useNotifications";
+
+const lastQuery = () => db.queries[db.queries.length - 1];
+const hasFilter = (record, op, column, value) =>
+  record.filters.some(([o, c, v]) => o === op && c === column && v === value);
+
+beforeEach(() => {
+  db.queries = [];
+  db.response = { data: [], error: null, count: 0 };
+  ctx.organizationId = "org-1";
+  ctx.userId = "u-1";
+  ctx.userType = "developer";
+});
 
 /**
  * The notification centre's pure logic.
@@ -400,5 +501,227 @@ describe("upsertRow", () => {
   it("grows a short list up to the ceiling", () => {
     const short = Array.from({ length: 10 }, (_, i) => row(`r${i}`));
     expect(upsertRow(short, row("new"), { ...opts, isInsert: true })).toHaveLength(11);
+  });
+
+  // A dismissal reaches the panel as an ordinary UPDATE. Folded in place it
+  // would restyle a row that no longer exists as far as every query is
+  // concerned, and offer to dismiss it again.
+  it("takes a row off the list when it is dismissed elsewhere", () => {
+    const existing = [row("a"), row("b"), row("c")];
+    const next = upsertRow(existing, { id: "b", dismissed_at: "2026-08-08T09:00:00Z" }, { ...opts, isInsert: false });
+    expect(next.map((r) => r.id)).toEqual(["a", "c"]);
+  });
+
+  it("ignores a dismissal for a row that is not loaded", () => {
+    const existing = [row("a")];
+    expect(upsertRow(existing, { id: "z", dismissed_at: "2026-08-08T09:00:00Z" }, { ...opts, isInsert: true })).toBe(
+      existing
+    );
+  });
+
+  it("never lets a dismissed row arrive as a new one", () => {
+    const existing = [row("a")];
+    const next = upsertRow(existing, row("z", { dismissed_at: "2026-08-08T09:00:00Z" }), { ...opts, isInsert: true });
+    expect(next.map((r) => r.id)).toEqual(["a"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Dismissal — the row leaves the list, not the table
+// ---------------------------------------------------------------------------
+
+describe("dismissNotification", () => {
+  it("refuses a call with no id rather than writing to every row", async () => {
+    const { error } = await dismissNotification(null);
+    expect(error).toBeInstanceOf(Error);
+    // An UPDATE with no `eq` is an UPDATE of the whole table.
+    expect(db.queries).toHaveLength(0);
+  });
+
+  // Deleting the row takes the record of what was sent with it, and "I never
+  // got that" is the question the log exists to answer.
+  it("stamps dismissed_at instead of deleting the notification", async () => {
+    await dismissNotification("n1");
+    const query = lastQuery();
+    expect(query.table).toBe("notifications");
+    expect(query.op).toBe("update");
+    expect(Object.keys(query.payload)).toEqual(["dismissed_at"]);
+    expect(query.payload.dismissed_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(hasFilter(query, "eq", "id", "n1")).toBe(true);
+  });
+
+  it("leaves an already-dismissed row's timestamp where it is", async () => {
+    await dismissNotification("n1");
+    // A second click, or a retry after a slow response, must not restate when
+    // the notification left the list.
+    expect(hasFilter(lastQuery(), "is", "dismissed_at", null)).toBe(true);
+  });
+
+  it("reports a failed dismissal rather than swallowing it", async () => {
+    db.response = { data: null, error: new Error("nope") };
+    const { error } = await dismissNotification("n1");
+    expect(error).toBeInstanceOf(Error);
+  });
+});
+
+describe("dismissed rows are excluded everywhere they are counted or listed", () => {
+  it("keeps them out of the list", async () => {
+    await fetchNotifications({ userId: "u-1", audience: "developer" });
+    expect(hasFilter(lastQuery(), "is", "dismissed_at", null)).toBe(true);
+  });
+
+  // The badge and the list have to agree: a number counting a row the list
+  // cannot show is a number the user has no way to clear.
+  it("keeps them out of the unread count", async () => {
+    await getUnreadCount({ userId: "u-1", audience: "developer" });
+    const query = lastQuery();
+    expect(query.selectOptions).toEqual({ count: "exact", head: true });
+    expect(hasFilter(query, "eq", "read", false)).toBe(true);
+    expect(hasFilter(query, "is", "dismissed_at", null)).toBe(true);
+  });
+
+  it("keeps them out of what 'mark all as read' writes to", async () => {
+    await markAllRead({ userId: "u-1", audience: "developer" });
+    expect(hasFilter(lastQuery(), "is", "dismissed_at", null)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Preferences — an absent row means enabled
+// ---------------------------------------------------------------------------
+
+describe("fetchNotificationPreferences", () => {
+  it("treats a user with no saved rows as wanting everything", async () => {
+    db.response = { data: [], error: null };
+    const { preferences, error } = await fetchNotificationPreferences();
+    expect(error).toBeNull();
+    expect(Object.keys(preferences).sort()).toEqual([...CATEGORY_KEYS].sort());
+    expect(Object.values(preferences).every((value) => value === true)).toBe(true);
+  });
+
+  it("reports only the categories that were switched off", async () => {
+    db.response = {
+      data: [
+        { category: "comment", enabled: false },
+        { category: "mention", enabled: true },
+      ],
+      error: null,
+    };
+    const { preferences } = await fetchNotificationPreferences();
+    expect(preferences.comment).toBe(false);
+    expect(preferences.mention).toBe(true);
+    expect(preferences.deadline).toBe(true);
+  });
+
+  it("reads only this user's rows, in this organization", async () => {
+    await fetchNotificationPreferences();
+    const query = lastQuery();
+    expect(query.table).toBe("notification_preferences");
+    expect(hasFilter(query, "eq", "user_id", "u-1")).toBe(true);
+    expect(hasFilter(query, "eq", "organization_id", "org-1")).toBe(true);
+  });
+
+  // A row for a category this build no longer offers would become a switch with
+  // no label and no explanation.
+  it("ignores a stored category the app no longer has", async () => {
+    db.response = { data: [{ category: "carrier_pigeon", enabled: false }], error: null };
+    const { preferences } = await fetchNotificationPreferences();
+    expect("carrier_pigeon" in preferences).toBe(false);
+  });
+
+  // A panel that cannot read the table must still render its switches; it says
+  // so alongside them rather than showing nothing.
+  it("still returns a usable set of defaults when the read fails", async () => {
+    db.response = { data: null, error: new Error("offline") };
+    const { preferences, error } = await fetchNotificationPreferences();
+    expect(error).toBeInstanceOf(Error);
+    expect(preferences.mention).toBe(true);
+  });
+
+  it("does not query at all without a session", async () => {
+    ctx.userId = null;
+    const { preferences, error } = await fetchNotificationPreferences();
+    expect(error).toBeInstanceOf(Error);
+    expect(db.queries).toHaveLength(0);
+    expect(preferences.mention).toBe(true);
+  });
+});
+
+describe("setNotificationPreference", () => {
+  it("mutes a category by writing enabled=false for the signed-in user", async () => {
+    await setNotificationPreference("comment", false);
+    const query = lastQuery();
+    expect(query.table).toBe("notification_preferences");
+    expect(query.op).toBe("upsert");
+    expect(query.payload).toMatchObject({
+      organization_id: "org-1",
+      user_id: "u-1",
+      user_type: "developer",
+      category: "comment",
+      enabled: false,
+    });
+  });
+
+  // The trigger tests `not enabled`, so an enabled row and an absent row behave
+  // the same — keeping the row records that the choice was made and reversed.
+  it("unmutes by flipping the row rather than deleting it", async () => {
+    await setNotificationPreference("comment", true);
+    const query = lastQuery();
+    expect(query.op).toBe("upsert");
+    expect(query.payload.enabled).toBe(true);
+  });
+
+  // `uq_notification_prefs_user_category` is on exactly these two columns.
+  // Naming any other set matches no unique index, and the second time a user
+  // touched a switch it would fail instead of updating.
+  it("names the unique index that actually exists", async () => {
+    await setNotificationPreference("mention", false);
+    expect(lastQuery().options).toEqual({ onConflict: "user_id,category" });
+  });
+
+  // Muting is per-person. A caller that could name the user is a way to stop
+  // someone else hearing about something.
+  it("takes its identity from the session and not from the caller", async () => {
+    await setNotificationPreference("mention", false, {
+      userId: "someone-else",
+      organizationId: "another-org",
+    });
+    expect(lastQuery().payload).toMatchObject({ user_id: "u-1", organization_id: "org-1" });
+  });
+
+  it("carries the user type the session says, for either audience", async () => {
+    ctx.userType = "admin";
+    await setNotificationPreference("review", false);
+    expect(lastQuery().payload.user_type).toBe("admin");
+  });
+
+  it("refuses a category that is not one of ours", async () => {
+    const { error } = await setNotificationPreference("carrier_pigeon", false);
+    expect(error).toBeInstanceOf(Error);
+    expect(db.queries).toHaveLength(0);
+  });
+
+  it("refuses an empty category rather than writing a row nothing matches", async () => {
+    for (const category of [null, undefined, ""]) {
+      const { error } = await setNotificationPreference(category, false);
+      expect(error).toBeInstanceOf(Error);
+    }
+    expect(db.queries).toHaveLength(0);
+  });
+
+  it("writes nothing when there is no session to attribute it to", async () => {
+    ctx.userId = null;
+    const { error } = await setNotificationPreference("mention", false);
+    expect(error).toBeInstanceOf(Error);
+    expect(db.queries).toHaveLength(0);
+  });
+
+  it("writes nothing when the session carries no organization", async () => {
+    // The RLS policy checks organization_id AND user_id; a row with a null org
+    // is refused by the database, so it is refused here with a reason instead.
+    ctx.organizationId = null;
+    const { error } = await setNotificationPreference("mention", false);
+    expect(error).toBeInstanceOf(Error);
+    expect(db.queries).toHaveLength(0);
   });
 });

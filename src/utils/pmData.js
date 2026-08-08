@@ -8,6 +8,11 @@ import { notify, windowedDedupeKey } from "@/utils/notifications";
 // two drags racing the same read of the row — and nothing a person does.
 const STATUS_REPLAY_WINDOW_MS = 2 * 60 * 1000;
 
+// The same idea for assignment. A task legitimately changes hands more than
+// once a day — cover for someone off sick, then hand it back — so a per-day key
+// would announce the first move and silence the one that actually matters.
+const ASSIGN_REPLAY_WINDOW_MS = 2 * 60 * 1000;
+
 /**
  * Data access for the Enterprise Project Management module.
  *
@@ -375,7 +380,87 @@ export async function moveTask(taskId, { status, position }, logCtx = null) {
 // person picked up work only by noticing it on a board. It is also why the
 // "assigned" automation trigger never fired - the drawer wrote the column
 // directly and never came through here.
+/**
+ * A hand-over is two pieces of news and neither of them is "you have been
+ * assigned a task".
+ *
+ * The new owner needs to know the work is already underway and whose desk it
+ * came off; the previous owner needs to know it is no longer theirs, and that
+ * one has no other way of reaching them — a task simply vanishes from their
+ * board with nothing to say it was deliberate.
+ *
+ * Both names come from one directory read rather than one per recipient.
+ */
+async function notifyReassignment(task, previousId, nextId) {
+  const { data: people } = await supabase
+    .from("developers")
+    .select("id, name, email")
+    .in("id", [previousId, nextId]);
+
+  const nameById = new Map(
+    (people || []).map((p) => [String(p.id), p.name || (p.email ? p.email.split("@")[0] : "")])
+  );
+  const previousName = nameById.get(String(previousId)) || "a colleague";
+  const nextName = nameById.get(String(nextId)) || "a colleague";
+  const title = task.task_title || "A task";
+
+  // The other person's name is in the message as well as the metadata: a card
+  // that renders the structured form is an improvement, not a prerequisite, and
+  // the notification has to make sense on its own either way.
+  const metadata = {
+    taskTitle: task.task_title || null,
+    previousAssigneeId: previousId,
+    previousAssigneeName: previousName,
+    newAssigneeId: nextId,
+    newAssigneeName: nextName,
+  };
+  // One key per transition, so the two recipients' rows never collide and a
+  // hand-back later in the day is still its own event.
+  const kind = `reassigned:${previousId}>${nextId}`;
+  const common = {
+    audience: "developer",
+    category: "assignment",
+    taskId: task.id,
+    projectId: task.project_id || null,
+    metadata,
+  };
+
+  await Promise.all([
+    notify({
+      ...common,
+      recipientId: nextId,
+      type: "task_reassigned",
+      title: "Task reassigned to you",
+      message: `"${title}" moved to you from ${previousName}.`,
+      dedupeKey: windowedDedupeKey(kind, task.id, nextId, ASSIGN_REPLAY_WINDOW_MS),
+    }),
+    notify({
+      ...common,
+      recipientId: previousId,
+      type: "task_reassigned_away",
+      title: "Task reassigned",
+      message: `"${title}" moved from you to ${nextName}.`,
+      dedupeKey: windowedDedupeKey(kind, task.id, previousId, ASSIGN_REPLAY_WINDOW_MS),
+    }),
+  ]);
+}
+
 export async function assignTask(taskId, developerId, logCtx = null) {
+  // Who held the task before the write. The update overwrites developer_id, so
+  // "moved from X to Y" cannot be reconstructed afterwards — and a read that
+  // fails costs the hand-over notice, never the assignment itself.
+  let previousId = null;
+  try {
+    const { data: before } = await supabase
+      .from("developer_tasks")
+      .select("developer_id")
+      .eq("id", taskId)
+      .single();
+    previousId = before?.developer_id || null;
+  } catch {
+    /* the assignment does not depend on knowing who held it */
+  }
+
   const res = await updateTask(taskId, { developer_id: developerId || null }, logCtx);
   if (res.error || !developerId) return res;
 
@@ -387,16 +472,24 @@ export async function assignTask(taskId, developerId, logCtx = null) {
       .single();
     if (!data) return res;
 
-    await supabase.from("notifications").insert({
-      organization_id: data.organization_id || getOrgId(),
-      developer_id: developerId,
-      task_id: taskId,
-      project_id: data.project_id || null,
-      type: "task_assigned",
-      title: "Task assigned to you",
-      message: `You have been assigned "${data.task_title || "a task"}".`,
-      read: false,
-    });
+    // Re-saving the same assignee is not a hand-over, so it keeps the plain
+    // "assigned to you" notice. A genuine hand-over gets the pair instead of
+    // that one — telling the new owner both that they were assigned it and that
+    // it moved to them is the same fact twice.
+    if (previousId && String(previousId) !== String(developerId)) {
+      await notifyReassignment(data, previousId, developerId);
+    } else {
+      await supabase.from("notifications").insert({
+        organization_id: data.organization_id || getOrgId(),
+        developer_id: developerId,
+        task_id: taskId,
+        project_id: data.project_id || null,
+        type: "task_assigned",
+        title: "Task assigned to you",
+        message: `You have been assigned "${data.task_title || "a task"}".`,
+        read: false,
+      });
+    }
 
     const { runAutomations } = await import("@/utils/automation");
     await runAutomations({ event: "assigned", task: data, projectId: data.project_id });
@@ -1160,6 +1253,98 @@ export async function loadMilestones(projectId) {
     .order("due_date", { ascending: true, nullsFirst: false });
   return data || [];
 }
+/**
+ * A milestone is the project's own deadline, and the people who answer for it
+ * are rarely the person who ticked the box — the developer carrying the project
+ * and the staff who own it should hear it here rather than from the client.
+ *
+ * Two reads, whatever the size of the recipient list: the project row names
+ * everyone, and one membership read says how each of them is addressed.
+ */
+async function notifyMilestoneComplete(milestone) {
+  const projectId = milestone?.project_id;
+  if (!milestone?.id || !projectId) return;
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id, name, assigned_to, created_by, added_by, manager_id")
+    .eq("id", projectId)
+    .single();
+  if (!project) return;
+
+  // A project records its owners as three separate id columns and none of them
+  // says whether the id belongs to an admin or a developer — which decides
+  // whether the row is addressed by admin_id/admin_email or developer_id. The
+  // membership row is the only place that answers it.
+  const staffIds = [
+    ...new Set([project.created_by, project.added_by, project.manager_id].filter(Boolean).map(String)),
+  ];
+  const { data: staff } = staffIds.length
+    ? await supabase
+        .from("memberships")
+        .select("user_id, user_type, email")
+        .eq("organization_id", getOrgId())
+        .in("user_id", staffIds)
+    : { data: [] };
+
+  const title = milestone.title || "A milestone";
+  const projectName = project.name || "the project";
+  const metadata = {
+    milestoneId: milestone.id,
+    milestoneTitle: milestone.title || null,
+    projectId: project.id,
+    projectName: project.name || null,
+    status: "completed",
+  };
+  const common = {
+    category: "project",
+    type: "milestone_completed",
+    title: "Milestone reached",
+    message: `Milestone "${title}" on ${projectName} is complete.`,
+    projectId: project.id,
+    entityType: "milestone",
+    entityId: milestone.id,
+    metadata,
+  };
+  // A milestone completes once, so the key carries no date: re-saving one that
+  // is already complete lands on the row that is already there.
+  const keyFor = (recipientId) => `milestone_completed:${milestone.id}:${recipientId}`;
+
+  const sends = [];
+  const seen = new Set();
+
+  if (project.assigned_to) {
+    seen.add(String(project.assigned_to));
+    sends.push(
+      notify({
+        ...common,
+        audience: "developer",
+        recipientId: project.assigned_to,
+        dedupeKey: keyFor(project.assigned_to),
+      })
+    );
+  }
+
+  for (const m of staff || []) {
+    const id = m?.user_id ? String(m.user_id) : null;
+    // The assigned developer is often also the manager; one person, one row.
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const isAdmin = m.user_type === "admin";
+    sends.push(
+      notify({
+        ...common,
+        audience: isAdmin ? "admin" : "developer",
+        recipientId: m.user_id,
+        recipientEmail: isAdmin ? m.email || null : null,
+        dedupeKey: keyFor(m.user_id),
+      })
+    );
+  }
+
+  await Promise.all(sends);
+}
+
 export async function saveMilestone(projectId, patch) {
   const orgId = getOrgId();
   if (patch.id) {
@@ -1169,6 +1354,23 @@ export async function saveMilestone(projectId, patch) {
       .update({ ...rest, updated_at: new Date().toISOString() })
       .eq("id", id);
     if (!error) await logActivity({ projectId, entityType: "milestone", entityId: id, action: "updated", meta: { title: patch.title } });
+    if (!error && rest.status === "completed") {
+      try {
+        // The patch carries only what the form changed, so the title comes off
+        // the row. There is no comparison against the previous status because
+        // the dedupe key already makes a repeat a no-op, and a read to
+        // establish "it was not complete before" would be a second chance to
+        // fail for no extra guarantee.
+        const { data: row } = await supabase
+          .from("milestones")
+          .select("id, title, project_id")
+          .eq("id", id)
+          .single();
+        await notifyMilestoneComplete(row || { id, title: patch.title, project_id: projectId });
+      } catch {
+        /* the milestone is saved — announcing it must not report a failure */
+      }
+    }
     return { error };
   }
   const { data, error } = await supabase
@@ -1177,6 +1379,15 @@ export async function saveMilestone(projectId, patch) {
     .select()
     .single();
   if (!error && data) await logActivity({ projectId, entityType: "milestone", entityId: data.id, action: "created", meta: { title: data.title } });
+  // A milestone can be created already complete when a project is set up from
+  // work that is finished, and that is still the moment it was reached.
+  if (!error && data?.status === "completed") {
+    try {
+      await notifyMilestoneComplete(data);
+    } catch {
+      /* the milestone is saved — announcing it must not report a failure */
+    }
+  }
   return { milestone: data, error };
 }
 export async function deleteMilestone(id) {

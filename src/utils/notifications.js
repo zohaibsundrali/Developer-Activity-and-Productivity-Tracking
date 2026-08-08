@@ -160,6 +160,11 @@ export async function fetchNotifications({
   if (orgId) query = query.eq("organization_id", orgId);
   if (category) query = query.eq("category", category);
   if (unreadOnly) query = query.eq("read", false);
+  // A dismissed row is one the user has already taken off their list. It is
+  // kept in the table so "I never got that" stays answerable, but it is not
+  // theirs to see again — every reader of this list applies the same predicate,
+  // which is why it lives here and not in each caller.
+  query = query.is("dismissed_at", null);
   query = recipientFilter(query, { userId, email, audience });
 
   const { data, error } = await query;
@@ -186,6 +191,10 @@ export async function getUnreadCount({ userId, email, audience = "admin", catego
 
   if (orgId) query = query.eq("organization_id", orgId);
   if (category) query = query.eq("category", category);
+  // The badge counts what the list can show. Without this a dismissed-but-
+  // unread row leaves a badge pointing at a list that does not contain it —
+  // a number the user cannot clear because they cannot find what it counts.
+  query = query.is("dismissed_at", null);
   query = recipientFilter(query, { userId, email, audience });
 
   const { count, error } = await query;
@@ -224,9 +233,120 @@ export async function markAllRead({ userId, email, audience = "admin", category 
 
   if (orgId) query = query.eq("organization_id", orgId);
   if (category) query = query.eq("category", category);
+  // The same predicate the count uses, so the button clears exactly the set the
+  // number over it describes — and so a row the user dismissed is not silently
+  // written to by a button they pressed about a list it is not in.
+  query = query.is("dismissed_at", null);
   query = recipientFilter(query, { userId, email, audience });
 
   const { error } = await query;
+  return { error };
+}
+
+/**
+ * Take one notification off the list without destroying the record of it.
+ *
+ * A dismissal writes `dismissed_at` rather than deleting the row. What was sent
+ * is the only thing that can answer "I never got that", and a deleted row
+ * answers it with silence — which is indistinguishable from never having sent
+ * it at all.
+ *
+ * `is("dismissed_at", null)` makes a repeat a no-op: a double click, or a retry
+ * after a response that was slow rather than lost, would otherwise move the
+ * timestamp and misreport when the row actually left the list.
+ */
+export async function dismissNotification(id) {
+  if (!id) return { error: new Error("Missing notification id") };
+  const { error } = await supabase
+    .from("notifications")
+    .update({ dismissed_at: new Date().toISOString() })
+    .eq("id", id)
+    .is("dismissed_at", null);
+  return { error };
+}
+
+/**
+ * Which categories this user still wants.
+ *
+ * `notification_preferences` holds ONLY the exceptions: an absent row means
+ * enabled, so a user who has never opened the preferences screen has no rows
+ * and wants everything, and a category added later is on for everyone without a
+ * backfill. That rule is applied once, here, so no caller has to know it —
+ * every key in `CATEGORY_KEYS` comes back with a definite boolean.
+ *
+ * The defaults are returned alongside an error too. A preferences panel that
+ * cannot read the table should still render its switches (in the state a user
+ * with no rows is actually in) rather than collapse into nothing.
+ */
+export async function fetchNotificationPreferences() {
+  const preferences = {};
+  for (const key of CATEGORY_KEYS) preferences[key] = true;
+
+  const ctx = getOrgContext();
+  const userId = ctx?.userId || null;
+  if (!userId) return { preferences, error: new Error("Not signed in") };
+
+  let query = supabase
+    .from("notification_preferences")
+    .select("category, enabled")
+    .eq("user_id", userId);
+
+  const orgId = ctx?.organizationId || null;
+  if (orgId) query = query.eq("organization_id", orgId);
+
+  const { data, error } = await query;
+  if (error) return { preferences, error };
+
+  for (const row of data || []) {
+    // A row for a category this build no longer knows about is left alone: the
+    // map describes the switches the UI can offer, and inventing a key for a
+    // retired category puts an unnamed, unexplainable toggle on the screen.
+    if (!row?.category || !(row.category in preferences)) continue;
+    preferences[row.category] = row.enabled !== false;
+  }
+  return { preferences, error: null };
+}
+
+/**
+ * Switch one category on or off for the signed-in user.
+ *
+ * `user_id` and `organization_id` are read from the session context and are not
+ * parameters. Muting is a per-person setting, so a call that could name someone
+ * else is a way to stop another user hearing about something — and the RLS
+ * policy on this table exists precisely to refuse that. Taking them as
+ * arguments would mean the only thing standing between a mistyped id and a
+ * silenced colleague is a policy check that returns an error nobody reads.
+ *
+ * Switching a category back ON writes `enabled = true` rather than deleting the
+ * row. The delivery trigger tests `not enabled`, so an enabled row and an absent
+ * row behave identically, and keeping it preserves the record that the choice
+ * was made and reversed.
+ */
+export async function setNotificationPreference(category, enabled) {
+  if (!category || !CATEGORY_KEYS.includes(category)) {
+    return { error: new Error(`Unknown notification category: ${category}`) };
+  }
+
+  const ctx = getOrgContext();
+  const userId = ctx?.userId || null;
+  const organizationId = ctx?.organizationId || null;
+  if (!userId || !organizationId) return { error: new Error("Not signed in") };
+
+  const { error } = await supabase.from("notification_preferences").upsert(
+    {
+      organization_id: organizationId,
+      user_id: userId,
+      user_type: ctx?.userType || "developer",
+      category,
+      enabled: Boolean(enabled),
+      updated_at: new Date().toISOString(),
+    },
+    // Exactly the columns of `uq_notification_prefs_user_category`. Naming any
+    // other set (organization_id, say) matches no unique index, and PostgREST
+    // answers that with a 42P10 rather than an insert — so the second time a
+    // user touched a switch it would fail instead of updating.
+    { onConflict: "user_id,category" }
+  );
   return { error };
 }
 
@@ -256,6 +376,9 @@ export async function notify({
   entityType = null,
   entityId = null,
   dedupeKey = null,
+  // Structured context a card can render without a second query — a task
+  // title, an old and new value, the other person's name in a hand-over.
+  metadata = null,
 } = {}) {
   if (!message) return { error: new Error("A notification needs a message") };
 
@@ -282,6 +405,7 @@ export async function notify({
     entity_id: entityId,
     actor_id: actorId,
     dedupe_key: dedupeKey,
+    metadata: metadata && typeof metadata === "object" ? metadata : {},
     read: false,
   };
 
