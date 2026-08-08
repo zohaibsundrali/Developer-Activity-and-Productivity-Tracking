@@ -369,15 +369,41 @@ export default function ProjectDetailsPage() {
         };
       });
       
-      // Step 4: Delete existing tasks for this project/developer
-      const { error: deleteError } = await supabase
+      // Step 4: Replace only the tasks that have not been started.
+      //
+      // This used to delete every task for the pair, which took approved work
+      // with it — and developer_tasks cascades, so the matching submissions,
+      // admin reviews and time logs went too. Re-saving a plan therefore erased
+      // the developer's own completed history and the productivity points it
+      // carried. Anything past To Do, or with a submission against it, is left
+      // alone; only untouched rows are swapped for the new plan.
+      const { data: existing } = await supabase
         .from('developer_tasks')
-        .delete()
+        .select('id, status')
         .eq('project_id', project.id)
         .eq('developer_id', developerToUse.id);
-      
-      if (deleteError) {
-        // Continue anyway - might be first submission
+
+      const untouched = (existing || []).filter((t) => (t.status || 'pending') === 'pending');
+      let replaceableIds = untouched.map((t) => t.id);
+
+      if (replaceableIds.length) {
+        const { data: submitted } = await supabase
+          .from('task_submissions')
+          .select('task_id')
+          .in('task_id', replaceableIds);
+        const hasSubmission = new Set((submitted || []).map((r) => r.task_id));
+        replaceableIds = replaceableIds.filter((id) => !hasSubmission.has(id));
+      }
+
+      if (replaceableIds.length) {
+        const { error: deleteError } = await supabase
+          .from('developer_tasks')
+          .delete()
+          .in('id', replaceableIds);
+
+        if (deleteError) {
+          throw new Error(`Failed to replace the previous plan: ${deleteError.message}`);
+        }
       }
       
       // Step 5: Insert new tasks
