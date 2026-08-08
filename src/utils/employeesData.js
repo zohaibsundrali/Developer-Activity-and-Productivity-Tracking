@@ -1,5 +1,7 @@
 import { supabase } from "@/utils/supabaseClient";
 import { uploadOrgFile } from "@/utils/orgFiles";
+import { getOrgId } from "@/utils/orgContext";
+import { notify, dailyDedupeKey } from "@/utils/notifications";
 
 /**
  * Employee data access for the Team & Employee Management module.
@@ -95,12 +97,59 @@ export async function saveEmployee({ orgId, emp, membershipPatch, profilePatch }
   }
 }
 
+// Who is entitled to hear about a membership change. Suspending someone cuts
+// their access (orgContext.isMembershipActive), so the people accountable for
+// the org find out rather than discovering it from a locked-out colleague.
+const ADMIN_ROLES = ["owner", "admin"];
+
+async function notifyEmployeeStatus(emp, status) {
+  const orgId = getOrgId();
+  if (!orgId) return;
+
+  // One query for the whole recipient list — the org can have any number of
+  // owners and admins.
+  const { data: recipients } = await supabase
+    .from("memberships")
+    .select("user_id, user_type, email")
+    .eq("organization_id", orgId)
+    .in("role", ADMIN_ROLES);
+  if (!recipients?.length) return;
+
+  const verb = status === "active" ? "activated" : status === "suspended" ? "suspended" : `set to ${status}`;
+  const who = emp?.name || emp?.email || "A team member";
+  await Promise.all(
+    (recipients || []).map((r) =>
+      notify({
+        audience: r.user_type === "admin" ? "admin" : "developer",
+        recipientId: r.user_id,
+        recipientEmail: r.user_type === "admin" ? r.email || null : null,
+        category: "team",
+        type: "employee_status_changed",
+        title: "Team member updated",
+        message: `${who} was ${verb}.`,
+        entityType: "employee",
+        entityId: emp?.userId || null,
+        // Per day: a member can be suspended and reinstated over time and each
+        // of those is news, but the same click landing twice is not.
+        dedupeKey: dailyDedupeKey(`employee_${status}`, emp?.userId || emp?.membershipId, r.user_id),
+      })
+    )
+  );
+}
+
 // Just change a member's status (activate / deactivate / suspend).
 export async function setEmployeeStatus(emp, status) {
   const { error } = await supabase
     .from("memberships")
     .update({ status, updated_at: new Date().toISOString() })
     .eq("id", emp.membershipId);
+  if (!error) {
+    try {
+      await notifyEmployeeStatus(emp, status);
+    } catch {
+      /* the status is saved — failing to announce it must not report a failure */
+    }
+  }
   return { error };
 }
 

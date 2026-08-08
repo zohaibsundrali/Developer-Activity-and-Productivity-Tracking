@@ -1,6 +1,7 @@
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
+import { notify, dailyDedupeKey } from "@/utils/notifications";
 
 /**
  * Data access for the Enterprise Project Management module.
@@ -267,6 +268,30 @@ export async function changeTaskStatus(taskId, nextStatus, options = {}) {
   } catch {
     /* automation is non-critical */
   }
+
+  // Tell the assignee their work moved. Only non-terminal moves reach this
+  // point — `completed` / `rejected` were handed to reviewTask above and the
+  // review route sends its own notification, so there is no second one here.
+  try {
+    if (prev.developer_id) {
+      await notify({
+        audience: "developer",
+        recipientId: prev.developer_id,
+        category: "status",
+        type: "task_status_changed",
+        title: "Task status changed",
+        message: `"${prev.task_title || "A task"}" moved from ${statusLabel(from)} to ${statusLabel(nextStatus)}.`,
+        taskId,
+        projectId: prev.project_id || null,
+        // Keyed by the destination column, so a genuine later move still
+        // announces itself while the same move replayed by an automation or a
+        // double-fired drag does not.
+        dedupeKey: dailyDedupeKey(`status_${nextStatus}`, taskId, prev.developer_id),
+      });
+    }
+  } catch {
+    /* the status is already saved — failing to announce it must not undo that */
+  }
   return { error: null, task: { ...prev, status: nextStatus } };
 }
 
@@ -431,6 +456,163 @@ export async function loadTaskDetail(taskId) {
   };
 }
 
+/**
+ * The org's member directory as { userId, userType, email, name }.
+ *
+ * Names are stitched the same way the employee list stitches them, because a
+ * mention is typed against what the UI displayed. Three queries for the whole
+ * org, never one per name found in the body.
+ */
+async function loadOrgMembers(orgId) {
+  if (!orgId) return [];
+  const [{ data: mem }, { data: devs }, { data: admins }] = await Promise.all([
+    supabase
+      .from("memberships")
+      .select("user_id, user_type, email")
+      .eq("organization_id", orgId)
+      .neq("user_type", "client"),
+    supabase.from("developers").select("id, name, email").eq("organization_id", orgId),
+    supabase.from("admin_users").select("id, full_name, email").eq("organization_id", orgId),
+  ]);
+
+  const devById = new Map((devs || []).map((d) => [String(d.id), d]));
+  const adminById = new Map((admins || []).map((a) => [String(a.id), a]));
+  return (mem || []).map((m) => {
+    const person = m.user_type === "admin" ? adminById.get(String(m.user_id)) : devById.get(String(m.user_id));
+    const email = person?.email || m.email || "";
+    return {
+      userId: m.user_id,
+      userType: m.user_type,
+      email,
+      name: person?.full_name || person?.name || (email ? email.split("@")[0] : ""),
+    };
+  });
+}
+
+/**
+ * Which members a comment body names.
+ *
+ * Two passes, because there are two ways a mention gets into the text. The
+ * picker inserts a member's display name verbatim — "@Sara Okonkwo", space and
+ * all — which no token scan would ever recover, so full names are matched
+ * against the whole body. Hand-typed mentions are single tokens, so those are
+ * scanned and looked up by first name or email handle. A short form claimed by
+ * two members is ambiguous and is dropped rather than guessed at: a mention
+ * that reaches the wrong person is worse than one that reaches nobody.
+ */
+function resolveMentions(body, members) {
+  const text = String(body || "").toLowerCase();
+  const hits = new Set();
+  if (!text.includes("@") || !members.length) return hits;
+
+  const byShortForm = new Map();
+  for (const m of members) {
+    const name = (m.name || "").trim().toLowerCase();
+    const handle = (m.email || "").split("@")[0].toLowerCase();
+    if (name && text.includes(`@${name}`)) hits.add(String(m.userId));
+    for (const key of [name.split(/\s+/)[0], handle]) {
+      if (!key) continue;
+      byShortForm.set(key, byShortForm.has(key) ? null : m);
+    }
+  }
+
+  const token = /(?:^|[^\w@])@([a-z0-9][a-z0-9._-]{0,63})/g;
+  let match;
+  while ((match = token.exec(text)) !== null) {
+    // Trailing punctuation belongs to the sentence, not to the name.
+    const hit = byShortForm.get(match[1].replace(/[._-]+$/, ""));
+    if (hit) hits.add(String(hit.userId));
+  }
+  return hits;
+}
+
+const commentAudience = (userType) => (userType === "admin" ? "admin" : "developer");
+
+/**
+ * Tell the people attached to a task that it has a new comment.
+ *
+ * Mention beats watch. Someone who is both named in the body and watching the
+ * task gets exactly one notification — the mention — because that is the one
+ * that is actually asking them for something, and two rows about a single
+ * comment read as two comments.
+ */
+async function notifyComment(taskId, comment, body, mentions) {
+  const commentId = comment?.id;
+  if (!commentId) return;
+  const requested = mentions || [];
+  const mayMention = String(body || "").includes("@") || requested.length > 0;
+
+  // Every recipient set is one query. The directory is only paid for when the
+  // body could name somebody.
+  const [{ data: task }, { data: watchers }, members] = await Promise.all([
+    supabase
+      .from("developer_tasks")
+      .select("id, task_title, project_id, developer_id")
+      .eq("id", taskId)
+      .single(),
+    supabase.from("task_watchers").select("user_id, user_type").eq("task_id", taskId),
+    mayMention ? loadOrgMembers(getOrgId()) : Promise.resolve([]),
+  ]);
+  if (!task) return;
+
+  const memberById = new Map(members.map((m) => [String(m.userId), m]));
+  const mentioned = resolveMentions(body, members);
+  // The composer also reports the ids it inserted, which covers a display name
+  // the directory spells differently from what was typed.
+  for (const id of requested) if (memberById.has(String(id))) mentioned.add(String(id));
+
+  const title = task.task_title || "a task";
+  const excerpt = String(body || "").replace(/\s+/g, " ").trim().slice(0, 140);
+  const sends = [];
+
+  for (const id of mentioned) {
+    const m = memberById.get(id);
+    sends.push(
+      notify({
+        audience: commentAudience(m?.userType),
+        recipientId: id,
+        recipientEmail: m?.userType === "admin" ? m.email || null : null,
+        category: "mention",
+        type: "comment_mention",
+        title: "You were mentioned",
+        message: `You were mentioned in a comment on "${title}": ${excerpt}`,
+        taskId,
+        projectId: task.project_id || null,
+        dedupeKey: `mention:${commentId}:${id}`,
+      })
+    );
+  }
+
+  // The assignee is a watcher in all but name, so they go into the same map and
+  // are collapsed with the real watchers before anything is sent.
+  const followers = new Map();
+  if (task.developer_id) followers.set(String(task.developer_id), "developer");
+  for (const w of watchers || []) {
+    if (w?.user_id) followers.set(String(w.user_id), commentAudience(w.user_type));
+  }
+
+  for (const [id, audience] of followers) {
+    if (mentioned.has(id)) continue; // already told, and told more pointedly
+    const m = memberById.get(id);
+    sends.push(
+      notify({
+        audience,
+        recipientId: id,
+        recipientEmail: audience === "admin" ? m?.email || null : null,
+        category: "comment",
+        type: "task_comment",
+        title: "New comment",
+        message: `New comment on "${title}": ${excerpt}`,
+        taskId,
+        projectId: task.project_id || null,
+        dedupeKey: `comment:${commentId}:${id}`,
+      })
+    );
+  }
+
+  await Promise.all(sends);
+}
+
 export async function addComment(taskId, body, mentions = []) {
   const orgId = getOrgId();
   const ctx = getOrgContext();
@@ -447,6 +629,14 @@ export async function addComment(taskId, body, mentions = []) {
     })
     .select()
     .single();
+
+  if (!error && data) {
+    try {
+      await notifyComment(taskId, data, body, mentions);
+    } catch {
+      /* a comment must still post when there is nobody to tell, or telling fails */
+    }
+  }
   return { comment: data, error };
 }
 
@@ -526,9 +716,53 @@ export async function setStoryPoints(taskId, points) {
   return updateTask(taskId, { story_points: Number.isNaN(n) ? null : n });
 }
 
+// Everyone carrying work in a sprint hears when it opens or closes — those are
+// the two moments that change what they are expected to be doing today. The
+// assignees come out of one query over the sprint's tasks and are collapsed in
+// memory, so a fifty-task sprint is still two reads.
+async function notifySprintStatus(sprintId, status) {
+  const [{ data: sprint }, { data: tasks }] = await Promise.all([
+    supabase.from("sprints").select("id, name, project_id").eq("id", sprintId).single(),
+    supabase.from("developer_tasks").select("developer_id").eq("sprint_id", sprintId),
+  ]);
+
+  const recipients = new Set((tasks || []).map((t) => t.developer_id).filter(Boolean).map(String));
+  if (!recipients.size) return;
+
+  const started = status === "active";
+  const name = sprint?.name || "A sprint";
+  await Promise.all(
+    [...recipients].map((id) =>
+      notify({
+        audience: "developer",
+        recipientId: id,
+        category: "sprint",
+        type: started ? "sprint_started" : "sprint_completed",
+        title: started ? "Sprint started" : "Sprint completed",
+        message: started
+          ? `Sprint "${name}" has started — your tasks in it are now in flight.`
+          : `Sprint "${name}" has been completed.`,
+        projectId: sprint?.project_id || null,
+        entityType: "sprint",
+        entityId: sprintId,
+        // A sprint starts once and ends once, so the key needs no date: a
+        // replayed transition lands on the row that is already there.
+        dedupeKey: `sprint_${status}:${sprintId}:${id}`,
+      })
+    )
+  );
+}
+
 // Move a sprint through planned → active → completed.
 export async function setSprintStatus(sprintId, status) {
   const { error } = await supabase.from("sprints").update({ status }).eq("id", sprintId);
+  if (!error && (status === "active" || status === "completed")) {
+    try {
+      await notifySprintStatus(sprintId, status);
+    } catch {
+      /* the sprint has already moved — announcing it is best effort */
+    }
+  }
   return { error };
 }
 
