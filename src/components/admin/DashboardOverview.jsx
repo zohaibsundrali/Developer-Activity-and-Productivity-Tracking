@@ -4,7 +4,7 @@ import StatCard from "@/components/shell/StatCard";
 import { getOrgId } from "@/utils/orgContext";
 import { setVisibleInterval } from "@/hooks/useVisibleInterval";
 
-export default function DashboardOverview({ user, developers, projects, notifications, onRefresh, supabase }) {
+export default function DashboardOverview({ user, onRefresh, supabase }) {
   const [realTimeStats, setRealTimeStats] = useState({
     myDevelopers: 0,
     myProjects: 0,
@@ -13,65 +13,6 @@ export default function DashboardOverview({ user, developers, projects, notifica
   });
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
-
-  useEffect(() => {
-    if (user && developers && projects && notifications) {
-      calculateRealTimeStats();
-    }
-  }, [user, developers, projects, notifications]);
-
-  const calculateRealTimeStats = () => {
-    try {
-      // Get current admin from localStorage (more reliable)
-      const currentAdmin = JSON.parse(sessionStorage.getItem("adminUser")) || user;
-      const adminId = currentAdmin?.id;
-      const adminEmail = currentAdmin?.email;
-
-      if (!adminId && !adminEmail) return;
-
-      // 1. Count developers added by this admin
-      const myDevelopers = developers.filter(dev => {
-        const addedByIdMatch = adminId && dev.added_by === adminId;
-        const addedByEmailMatch = adminEmail && dev.added_by_admin && dev.added_by_admin.toLowerCase() === adminEmail.toLowerCase();
-        return addedByIdMatch || addedByEmailMatch;
-      }).length;
-
-      // 2. Count projects created/assigned by this admin
-      //    Based on projects table schema: created_by, added_by, added_by_admin
-      const myProjects = projects.filter(project => {
-        const createdByMatch = adminId && project.created_by === adminId;
-        const addedByIdMatch = adminId && project.added_by === adminId;
-        const addedByEmailMatch = adminEmail && project.added_by_admin && project.added_by_admin.toLowerCase() === adminEmail.toLowerCase();
-        return createdByMatch || addedByIdMatch || addedByEmailMatch;
-      }).length;
-
-      // 3. Count active developers added by this admin
-      const activeDevelopers = developers.filter(dev => {
-        const addedByIdMatch = adminId && dev.added_by === adminId;
-        const addedByEmailMatch = adminEmail && dev.added_by_admin && dev.added_by_admin.toLowerCase() === adminEmail.toLowerCase();
-        const isMyDeveloper = addedByIdMatch || addedByEmailMatch;
-        return isMyDeveloper && dev.status === 'active';
-      }).length;
-
-      // 4. Count unread notifications for this admin
-      const pendingNotifications = notifications.filter(notif => {
-        return !notif.read &&
-          (notif.admin_id === adminId ||
-            notif.admin_email === adminEmail);
-      }).length;
-
-      setRealTimeStats({
-        myDevelopers,
-        myProjects,
-        activeDevelopers,
-        pendingNotifications
-      });
-
-      setLastUpdated(new Date());
-    } catch (error) {
-      // Silently handle error
-    }
-  };
 
   // Fetch real-time data from database
   const fetchRealTimeData = async () => {
@@ -164,8 +105,15 @@ export default function DashboardOverview({ user, developers, projects, notifica
     }
   };
 
-  // Auto-refresh every 30 seconds
+  // First read, then auto-refresh every 30 seconds
   useEffect(() => {
+    if (supabase && user) {
+      // The count queries are the only source of these tiles, so they have to
+      // run once here — the interval alone would leave every tile on zero for
+      // the first 30 seconds.
+      fetchRealTimeData();
+    }
+
     // Paused while the tab is hidden: this fired three org-wide count
     // queries every 30 seconds whether or not anyone was looking.
     return setVisibleInterval(() => {

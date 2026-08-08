@@ -109,16 +109,8 @@ function DeveloperDashboardContent() {
   
   const [user, setUser] = useState(null);
   const [assignedProjects, setAssignedProjects] = useState([]);
-  const [notifications, setNotifications] = useState([]);
   const [activeSection, setActiveSection] = useState("overview");
-  const [unreadCount, setUnreadCount] = useState(0);
   const audioRef = useRef(null);
-
-  // Pagination state
-  const [notificationPage, setNotificationPage] = useState(0);
-  const [hasMoreNotifications, setHasMoreNotifications] = useState(false);
-  const [isLoadingMoreNotifications, setIsLoadingMoreNotifications] = useState(false);
-  const NOTIFICATIONS_PER_PAGE = 10;
 
   // Notification sound setup
   useEffect(() => {
@@ -163,7 +155,10 @@ function DeveloperDashboardContent() {
     }
   };
 
-  // Setup realtime notifications subscription
+  // Alerting only. The bell's own list, badge and mark-read paths live in the
+  // shared notification centre, which runs its own per-user subscription; what
+  // does not exist anywhere else is the audible ping and the OS-level notice on
+  // a new assignment, and those are the only reason this channel is still here.
   const setupRealtimeNotifications = (developerId) => {
     const channel = supabase
       .channel(`notifications-${developerId}`)
@@ -176,12 +171,6 @@ function DeveloperDashboardContent() {
           filter: `assigned_developer_id=eq.${developerId}`
         },
         (payload) => {
-          // Add new notification to the beginning of array
-          setNotifications(prev => [payload.new, ...prev]);
-
-          // Increase unread count
-          setUnreadCount(prev => prev + 1);
-
           // Play sound
           playNotificationSound();
 
@@ -189,33 +178,6 @@ function DeveloperDashboardContent() {
           if (payload.new.type === 'project_assigned' || payload.new.message.includes('project')) {
             showBrowserNotification(payload.new);
           }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'notifications',
-          filter: `assigned_developer_id=eq.${developerId}`
-        },
-        (payload) => {
-          // Update notification if marked as read from another tab/device
-          setNotifications(prev =>
-            prev.map(notif =>
-              notif.id === payload.new.id ? payload.new : notif
-            )
-          );
-
-          // Recalculate unread count from current notifications
-          setNotifications(currentNotifs => {
-            const updated = currentNotifs.map(notif =>
-              notif.id === payload.new.id ? payload.new : notif
-            );
-            const newUnreadCount = updated.filter(n => !n.read).length;
-            setUnreadCount(newUnreadCount);
-            return updated;
-          });
         }
       )
       .subscribe();
@@ -298,127 +260,8 @@ function DeveloperDashboardContent() {
       if (projectsError) throw projectsError;
       setAssignedProjects(projectsData || []);
 
-      // Fetch notifications
-      await fetchNotifications(developerData);
-
     } catch (error) {
       // Silently handle error
-    }
-  };
-
-  const fetchNotifications = async (developerData, page = 0, append = false) => {
-    try {
-      const startRange = page * NOTIFICATIONS_PER_PAGE;
-      const endRange = startRange + NOTIFICATIONS_PER_PAGE - 1;
-
-      const { data: notificationsData, error: notificationsError } = await supabase
-        .from('notifications')
-        .select('*')
-        .or(`assigned_developer_id.eq.${developerData.id},developer_id.eq.${developerData.id}`)
-        .order('created_at', { ascending: false })
-        .range(startRange, endRange + 1); // Fetch one extra to check if more exist
-
-      if (notificationsError) throw notificationsError;
-
-      // Check if there are more notifications
-      const hasMore = notificationsData && notificationsData.length > NOTIFICATIONS_PER_PAGE;
-
-      // Remove the extra item if it exists
-      const actualNotifications = hasMore
-        ? notificationsData.slice(0, NOTIFICATIONS_PER_PAGE)
-        : notificationsData;
-
-      setHasMoreNotifications(hasMore);
-
-      if (append) {
-        // Append to existing notifications (for Load More)
-        setNotifications(prev => {
-          const updated = [...prev, ...(actualNotifications || [])];
-          // Calculate unread count from the updated list
-          const unread = updated.filter(notif => !notif.read).length || 0;
-          setUnreadCount(unread);
-          return updated;
-        });
-      } else {
-        // Replace notifications (for initial load)
-        setNotifications(actualNotifications || []);
-        // Calculate unread count from fresh data
-        const unread = actualNotifications?.filter(notif => !notif.read).length || 0;
-        setUnreadCount(unread);
-      }
-
-    } catch (error) {
-      // Silently handle error
-      console.error('Error fetching notifications:', error);
-    }
-  };
-
-  // Load more notifications
-  const handleLoadMoreNotifications = async () => {
-    if (!user || isLoadingMoreNotifications || !hasMoreNotifications) return;
-
-    setIsLoadingMoreNotifications(true);
-
-    const nextPage = notificationPage + 1;
-    setNotificationPage(nextPage);
-
-    await fetchNotifications(user, nextPage, true);
-
-    setIsLoadingMoreNotifications(false);
-  };
-
-  const handleMarkAsRead = async (notificationId) => {
-    try {
-      const { error } = await supabase
-        .from('notifications')
-        .update({ read: true })
-        .eq('id', notificationId);
-
-      if (error) throw error;
-
-      setNotifications(prev => 
-        prev.map(notif => 
-          notif.id === notificationId 
-            ? { ...notif, read: true }
-            : notif
-        )
-      );
-
-      setUnreadCount(prev => Math.max(0, prev - 1));
-
-    } catch (error) {
-      // Silently handle error
-    }
-  };
-
-  const handleMarkAllAsRead = async () => {
-    try {
-      const unreadNotifications = notifications.filter(notif => !notif.read);
-
-      if (unreadNotifications.length === 0) return;
-
-      // Optimistic update - reset count immediately for better UX
-      setUnreadCount(0);
-      setNotifications(prev =>
-        prev.map(notif => ({ ...notif, read: true }))
-      );
-
-      // Then update database
-      const { error } = await supabase
-        .from('notifications')
-        .update({ read: true })
-        .in('id', unreadNotifications.map(notif => notif.id));
-
-      if (error) {
-        // Revert optimistic update on error
-        console.error('Error marking all as read:', error);
-        const unread = notifications.filter(notif => !notif.read).length;
-        setUnreadCount(unread);
-      }
-
-    } catch (error) {
-      // Silently handle error
-      console.error('Error marking all as read:', error);
     }
   };
 
@@ -440,10 +283,6 @@ function DeveloperDashboardContent() {
     const contentProps = {
       user,
       assignedProjects,
-      notifications,
-      unreadCount,
-      onMarkAsRead: handleMarkAsRead,
-      onMarkAllAsRead: handleMarkAllAsRead,
       onSectionChange: handleSectionChange,
       onViewProjectDetails: handleViewProjectDetails, // Add this prop
       supabase,
@@ -498,17 +337,7 @@ function DeveloperDashboardContent() {
       onLogout={handleLogout}
       title={sectionTitle(activeSection, effectiveRole)}
       subtitle={user?.name ? `Welcome back, ${user.name}` : undefined}
-      notificationSlot={
-        <NotificationDropdown
-          user={user}
-          notifications={notifications || []}
-          unreadCount={unreadCount}
-          onMarkAllAsRead={handleMarkAllAsRead}
-          onLoadMore={handleLoadMoreNotifications}
-          hasMore={hasMoreNotifications}
-          isLoadingMore={isLoadingMoreNotifications}
-        />
-      }
+      notificationSlot={<NotificationDropdown user={user} />}
     >
       {renderContent()}
     </AppShell>
