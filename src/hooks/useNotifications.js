@@ -26,7 +26,19 @@ const DEFAULT_PAGE_SIZE = 15;
 // A dashboard is left open all day, and every realtime insert prepends a row.
 // Without a ceiling the array is a slow leak, so old rows fall off the bottom;
 // they are still reachable by reopening the panel, which refetches page 0.
+//
+// This bounds what arrives on its own. It deliberately does not bound explicit
+// paging: capping the array while the server kept reporting more, and `page`
+// kept advancing, meant "load more" past this many rows spun and changed
+// nothing at all — a button that is enabled, acts pressed, and does nothing.
+// Rows a user asked for one page at a time are theirs to accumulate.
 const MAX_ROWS = 200;
+
+// A bulk update emits one WAL event per row, so "mark all as read" over 200
+// unread rows arrives as 200 realtime events. One count query each is 200
+// concurrent requests answering the same question, and only the last answer
+// matters. Bursts collapse into at most one query per window.
+const COUNT_COALESCE_MS = 400;
 
 // Realtime can drop a message (tab suspended, socket reconnect) and the badge
 // is the one thing that must not silently drift, so it is re-read on a slow
@@ -45,10 +57,12 @@ function isForRecipient(row, { userId, email, audience }) {
 
   if (audience === "admin") {
     if (userId && row.admin_id && String(row.admin_id) === String(userId)) return true;
-    // The list query matches admin_email with `ilike %email%`, so containment
-    // rather than equality is what makes the two agree.
+    // Equality, case-insensitively, because that is what the list query asks
+    // for. Containment used to be the answer here and it accepted another
+    // admin's rows into this panel: `sara@acme.com` is contained in
+    // `sara@acme.com.au`, so a live insert for one landed in the other's list.
     if (email && row.admin_email) {
-      return String(row.admin_email).toLowerCase().includes(String(email).toLowerCase());
+      return String(row.admin_email).toLowerCase() === String(email).toLowerCase();
     }
     return false;
   }
@@ -60,8 +74,13 @@ function isForRecipient(row, { userId, email, audience }) {
   );
 }
 
-/** Append a page without letting a row that arrived live show up twice. */
-function mergeRows(existing, incoming) {
+/**
+ * Append a page without letting a row that arrived live show up twice.
+ *
+ * Uncapped: these are rows the user paged to explicitly, and dropping them off
+ * the end is what made "load more" stop having any visible effect.
+ */
+export function mergeRows(existing, incoming) {
   const seen = new Set(existing.map((row) => row.id));
   const merged = existing.slice();
   for (const row of incoming) {
@@ -69,11 +88,11 @@ function mergeRows(existing, incoming) {
     seen.add(row.id);
     merged.push(row);
   }
-  return merged.slice(0, MAX_ROWS);
+  return merged;
 }
 
 /** Fold a realtime row into the list: update in place, or prepend if new. */
-function upsertRow(existing, row, { category, unreadOnly }) {
+export function upsertRow(existing, row, { category, unreadOnly, isInsert = true }) {
   const index = existing.findIndex((item) => item.id === row.id);
   if (index !== -1) {
     const next = existing.slice();
@@ -84,12 +103,20 @@ function upsertRow(existing, row, { category, unreadOnly }) {
     return next;
   }
 
+  // An UPDATE to a row that is not loaded is not news, and putting it on top
+  // says the opposite. "Mark all as read" updates every unread row and each
+  // arrives as its own event, which prepended hundreds of already-read rows in
+  // WAL order to a list whose whole contract is newest-first.
+  if (!isInsert) return existing;
+
   // A brand new row only belongs on screen if it passes what is being filtered
   // for, otherwise the panel contradicts its own chips.
   if (category && row.category !== category) return existing;
   if (unreadOnly && row.read) return existing;
 
-  return [row, ...existing].slice(0, MAX_ROWS);
+  // The ceiling travels with the list rather than truncating it, so a live
+  // insert cannot undo pages the user asked for.
+  return [row, ...existing].slice(0, Math.max(MAX_ROWS, existing.length));
 }
 
 export default function useNotifications({
@@ -126,11 +153,44 @@ export default function useNotifications({
 
   const refreshCount = useCallback(async () => {
     if (!hasIdentity) return;
+    // Deliberately unscoped by category: this is the bell's badge, the count of
+    // everything waiting. Narrowing it to the open chip would make picking a
+    // filter appear to clear notifications that are still there.
     const { count, error: countError } = await getUnreadCount({ userId, email, audience });
     // A failed count keeps the last known number rather than flashing zero,
     // which reads as "all caught up" and is the one lie a badge must not tell.
     if (!countError) setUnreadCount(count);
   }, [hasIdentity, userId, email, audience]);
+
+  // Fires once immediately, then at most once per window for as long as events
+  // keep arriving — a burst costs two queries instead of one per row, and the
+  // trailing one guarantees the badge still settles on the final answer.
+  const countTimerRef = useRef(null);
+  const countAgainRef = useRef(false);
+  const refreshCountSoon = useCallback(() => {
+    if (countTimerRef.current) {
+      countAgainRef.current = true;
+      return;
+    }
+    const openWindow = () => {
+      countTimerRef.current = setTimeout(() => {
+        countTimerRef.current = null;
+        if (!countAgainRef.current) return;
+        countAgainRef.current = false;
+        openWindow();
+        refreshCount();
+      }, COUNT_COALESCE_MS);
+    };
+    openWindow();
+    refreshCount();
+  }, [refreshCount]);
+
+  useEffect(
+    () => () => {
+      if (countTimerRef.current) clearTimeout(countTimerRef.current);
+    },
+    []
+  );
 
   const loadPage = useCallback(
     async (targetPage, { append = false } = {}) => {
@@ -176,7 +236,7 @@ export default function useNotifications({
       }
 
       setError(null);
-      setRows((prev) => (append ? mergeRows(prev, fetched) : fetched.slice(0, MAX_ROWS)));
+      setRows((prev) => (append ? mergeRows(prev, fetched) : fetched));
       setHasMore(more);
       setPage(targetPage);
     },
@@ -227,11 +287,12 @@ export default function useNotifications({
         upsertRow(prev, row, {
           category: categoryRef.current,
           unreadOnly: unreadOnlyRef.current,
+          isInsert: payload?.eventType === "INSERT",
         })
       );
       // The badge is never inferred from the event — an INSERT the filter
       // rejected still changes the true unread total.
-      refreshCount();
+      refreshCountSoon();
     };
 
     // One topic per audience+user. Two surfaces sharing a client and a topic
@@ -255,7 +316,7 @@ export default function useNotifications({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [hasIdentity, userId, email, audience, refreshCount]);
+  }, [hasIdentity, userId, email, audience, refreshCountSoon]);
 
   const markOneRead = useCallback(
     async (id) => {
@@ -279,10 +340,19 @@ export default function useNotifications({
   );
 
   const markEveryRead = useCallback(async () => {
-    setRows((prev) => prev.map((row) => (row.read ? row : { ...row, read: true, read_at: new Date().toISOString() })));
-    setUnreadCount(0);
+    // Scoped to the chip that is open: the button sits above a filtered list
+    // and reads as "all of this". Sending it unscoped meant a user looking at
+    // three mentions cleared every category in one press, with nothing to undo
+    // it and no indication it had happened.
+    const scope = categoryRef.current;
 
-    const { error: markError } = await markAllRead({ userId, email, audience });
+    setRows((prev) => prev.map((row) => (row.read ? row : { ...row, read: true, read_at: new Date().toISOString() })));
+    // Zero is only true when the whole inbox was the target. Under a filter the
+    // badge still counts the other categories, so it is left to the server
+    // rather than guessed at.
+    if (!scope) setUnreadCount(0);
+
+    const { error: markError } = await markAllRead({ userId, email, audience, category: scope });
     if (markError) setError(markError);
 
     // Under "unread only" the list should now be empty; anywhere else the rows

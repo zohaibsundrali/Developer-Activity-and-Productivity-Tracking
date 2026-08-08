@@ -198,7 +198,10 @@ export default function NotificationCenter({ audience = "admin", userId = null, 
                   hover:text-primary/80 disabled:cursor-not-allowed disabled:text-muted-foreground disabled:hover:text-muted-foreground"
               >
                 <CheckCheck className="w-4 h-4" />
-                <span>Mark all as read</span>
+                {/* "All" means the list under the button, which a chip narrows.
+                    Saying "all" over a filtered list promises a bulk action
+                    across every category that this no longer performs. */}
+                <span>{category ? "Mark these read" : "Mark all as read"}</span>
               </button>
             </div>
 
