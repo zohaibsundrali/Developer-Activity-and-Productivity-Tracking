@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
+import { checkResourceLimit } from "@/utils/entitlements";
 
 export const dynamic = "force-dynamic";
 
@@ -80,6 +81,14 @@ export async function POST(request) {
     }
 
     const svc = serviceClient();
+
+    // Provisioning creates a real seat, so it is subject to the same plan limit
+    // as an invitation — otherwise the cheaper path around the invite flow
+    // would quietly hand out unlimited accounts.
+    const seatLimit = await checkResourceLimit(svc, auth.orgId, 'developers');
+    if (seatLimit) {
+      return NextResponse.json(seatLimit, { status: seatLimit.status });
+    }
 
     // ── A supplied app user id must belong to the caller's organization ──
     if (appUserId) {

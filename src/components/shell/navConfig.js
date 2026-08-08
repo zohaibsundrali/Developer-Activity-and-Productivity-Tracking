@@ -21,6 +21,7 @@ import {
   Gauge,
   FileBarChart,
   Zap,
+  CreditCard,
 } from "lucide-react";
 
 // Admin sidebar items — ids MUST match the ?section= switch in the admin dashboard.
@@ -41,6 +42,7 @@ export const ADMIN_NAV = [
   { id: "team-stats", label: "Team Stats", icon: BarChart3 },
   { id: "organization", label: "Organization", icon: Building2 },
   { id: "clients", label: "Clients", icon: Handshake },
+  { id: "billing", label: "Billing", icon: CreditCard },
   // { id: "productivity", label: "Productivity", icon: BarChart3 },
 ];
 
@@ -86,6 +88,7 @@ export const ADMIN_SECTION_ROLES = {
   "team-stats": ["owner", "admin", "hr"],
   organization: ["owner", "admin", "hr"],
   clients: ["owner", "admin"],
+  billing: ["owner", "admin"],
 };
 
 export function canAccessAdminSection(section, role) {
@@ -137,6 +140,7 @@ export const SECTION_TITLES = {
   "team-stats": { admin: "Team Stats" },
   organization: { admin: "Organization" },
   clients: { admin: "Clients" },
+  billing: { admin: "Billing & Subscription" },
   productivity: { admin: "Productivity" },
   projects: { developer: "My Projects", client: "My Projects" },
   account: { developer: "Account", client: "Account" },

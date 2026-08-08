@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
 import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
+import { checkResourceLimit } from '@/utils/entitlements';
 
 // Roles allowed to send invitations.
 const INVITER_ROLES = ['owner', 'admin', 'hr', 'manager'];
@@ -79,6 +80,19 @@ export async function POST(request) {
     // Org is taken from the verified JWT — never from the request body.
     const organizationId = auth.orgId;
     const supabase = serviceClient();
+
+    // An invitation is a seat. Checking here rather than at accept time means
+    // the org is told before a colleague receives an email they cannot use.
+    // Counted server-side against the plan, because a limit the browser
+    // evaluates is a suggestion.
+    const seatLimit = await checkResourceLimit(
+      supabase,
+      organizationId,
+      role === 'client' ? 'developers' : 'employees'
+    );
+    if (seatLimit) {
+      return NextResponse.json({ success: false, ...seatLimit }, { status: seatLimit.status });
+    }
 
     const token = crypto.randomUUID();
     const invitedBy = auth.appUserId || null;
