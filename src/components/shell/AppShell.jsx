@@ -4,6 +4,8 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
+import CommandPalette from "./CommandPalette";
+import GlobalSearchButton from "./GlobalSearchButton";
 
 /**
  * Full dashboard chrome: premium left sidebar + sticky topbar + content area.
@@ -25,6 +27,9 @@ export default function AppShell({
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  // The shell owns the palette's open state because two things reach for it —
+  // the topbar button and the global Cmd+K listener inside CommandPalette.
+  const [searchOpen, setSearchOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-background">
@@ -54,6 +59,7 @@ export default function AppShell({
           user={user}
           role={role}
           notificationSlot={notificationSlot}
+          searchSlot={<GlobalSearchButton onClick={() => setSearchOpen(true)} />}
           onOpenMobile={() => setMobileOpen(true)}
         />
 
@@ -63,6 +69,10 @@ export default function AppShell({
           </div>
         </main>
       </div>
+
+      {/* Always mounted, not gated on `searchOpen` — the component carries the
+          window-level Cmd+K listener, which has to be live while it is shut. */}
+      <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   );
 }

@@ -5,7 +5,9 @@ import { Menu } from "lucide-react";
 /**
  * Sticky top bar for the dashboard shell. The notification bell is passed in
  * as `notificationSlot` so each dashboard keeps using its own
- * NotificationDropdown (with its existing props) unchanged.
+ * NotificationDropdown (with its existing props) unchanged. `searchSlot` works
+ * the same way for the global search control, which AppShell owns because the
+ * palette it opens lives there.
  */
 export default function Topbar({
   title = "Dashboard",
@@ -13,6 +15,7 @@ export default function Topbar({
   user,
   role = "developer",
   notificationSlot,
+  searchSlot,
   onOpenMobile,
 }) {
   const displayName = user?.full_name || user?.name || "";
@@ -38,6 +41,7 @@ export default function Topbar({
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">
+        {searchSlot}
         {notificationSlot}
 
         <div className="hidden items-center gap-3 border-l border-border pl-3 sm:flex">
