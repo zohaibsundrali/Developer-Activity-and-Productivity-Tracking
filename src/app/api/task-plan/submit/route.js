@@ -110,6 +110,10 @@ export async function POST(request) {
         task_plan_rejection_reason: null,
       })
       .eq('id', projectId)
+      // Redundant with the ownership check above, but this update runs on the
+      // service-role client so the org filter is kept here too — a future edit
+      // that moves or drops that check cannot silently open a cross-tenant write.
+      .eq('organization_id', auth.orgId)
       .select('*')
       .single();
 
