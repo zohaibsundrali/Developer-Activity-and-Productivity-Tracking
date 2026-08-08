@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { X, Upload, Save, Loader2, User } from "lucide-react";
 import { uploadEmployeePhoto, saveEmployee } from "@/utils/employeesData";
+import { resolveOrgFileUrl } from "@/utils/orgFiles";
 import { showSuccess, showError } from "@/utils/alerts";
 
 // Human-friendly label: "team_lead" -> "Team Lead".
@@ -145,6 +146,24 @@ export default function EmployeeProfileEditor({
     });
   };
 
+  // photo_url now holds a private storage path, so it cannot be rendered
+  // directly. Sign it for display; legacy rows holding a full URL pass through
+  // unchanged inside resolveOrgFileUrl.
+  const [photoPreview, setPhotoPreview] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (!form.photo_url) {
+      setPhotoPreview(null);
+      return undefined;
+    }
+    resolveOrgFileUrl(form.photo_url).then((url) => {
+      if (!cancelled) setPhotoPreview(url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [form.photo_url]);
+
   const handlePhoto = async (e) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
@@ -207,9 +226,9 @@ export default function EmployeeProfileEditor({
         <div className="mb-6 flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-muted">
-              {form.photo_url ? (
+              {photoPreview ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={form.photo_url} alt={emp?.name || "Employee"} className="h-full w-full object-cover" />
+                <img src={photoPreview} alt={emp?.name || "Employee"} className="h-full w-full object-cover" />
               ) : (
                 <User className="h-6 w-6 text-muted-foreground" />
               )}

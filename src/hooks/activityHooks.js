@@ -7,6 +7,13 @@ import { resolveScreenshotUrls } from "../utils/screenshotFiles";
 // Default polling interval (ms) used as a fallback beside Realtime
 const DEFAULT_POLL_INTERVAL = 10_000;
 
+// The tracking tables grow by a row a minute per developer, so an unbounded
+// `select("*")` on a 10-second poll grows without limit for a long session.
+// Every hook below fetches at most this many rows (override via `limit`) and
+// trims the same ceiling when Realtime pushes new rows in.
+const DEFAULT_ROW_LIMIT = 500;
+const SCREENSHOT_ROW_LIMIT = 100;
+
 // ────────────────────────────────────────────────────────────────
 // useCurrentSession(userEmail)
 // Fetch the latest (usually active) productivity session for user
@@ -112,10 +119,12 @@ export function useKeyboardRealtime({
   developerId,
   developerEmail,
   pollIntervalMs = DEFAULT_POLL_INTERVAL,
+  limit = DEFAULT_ROW_LIMIT,
 } = {}) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
   const channelRef = useRef(null);
 
   const fetchKeyboard = useCallback(async () => {
@@ -127,7 +136,8 @@ export function useKeyboardRealtime({
         .from("keyboard_stats")
         .select("*")
         .eq("session_id", sessionId)
-        .order("minute_timestamp", { ascending: true });
+        .order("minute_timestamp", { ascending: true })
+        .limit(limit);
 
       if (developerId) {
         query = query.eq("developer_id", developerId);
@@ -139,12 +149,13 @@ export function useKeyboardRealtime({
       const { data, error: err } = await query;
       if (err) throw err;
       setRows(data || []);
+      setHasMore((data || []).length >= limit);
     } catch (e) {
       setError(e);
     } finally {
       setLoading(false);
     }
-  }, [sessionId, developerId, developerEmail]);
+  }, [sessionId, developerId, developerEmail, limit]);
 
   // Initial fetch + polling
   useEffect(() => {
@@ -188,9 +199,11 @@ export function useKeyboardRealtime({
                 r.minute_timestamp === payload.new.minute_timestamp ? payload.new : r
               );
             }
-            return [...prev, payload.new].sort((a, b) =>
-              String(a.minute_timestamp).localeCompare(String(b.minute_timestamp))
-            );
+            return [...prev, payload.new]
+              .sort((a, b) =>
+                String(a.minute_timestamp).localeCompare(String(b.minute_timestamp))
+              )
+              .slice(-limit);
           });
         }
       )
@@ -202,7 +215,7 @@ export function useKeyboardRealtime({
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [sessionId, developerId, developerEmail]);
+  }, [sessionId, developerId, developerEmail, limit]);
 
   // Aggregate summary for convenience
   const summary = rows.reduce(
@@ -229,6 +242,7 @@ export function useKeyboardRealtime({
     rows,
     loading,
     error,
+    hasMore,
     totalKeys: summary.totalKeys,
     avgWpm,
     avgActivityPct,
@@ -245,10 +259,12 @@ export function useMouseRealtime({
   developerId,
   developerEmail,
   pollIntervalMs = DEFAULT_POLL_INTERVAL,
+  limit = DEFAULT_ROW_LIMIT,
 } = {}) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
   const channelRef = useRef(null);
 
   const fetchMouse = useCallback(async () => {
@@ -260,7 +276,8 @@ export function useMouseRealtime({
         .from("mouse_activities")
         .select("*")
         .eq("session_id", sessionId)
-        .order("timestamp", { ascending: false });
+        .order("timestamp", { ascending: false })
+        .limit(limit);
 
       if (developerId) query = query.eq("developer_id", developerId);
       if (developerEmail) query = query.eq("developer_email", developerEmail);
@@ -268,12 +285,13 @@ export function useMouseRealtime({
       const { data, error: err } = await query;
       if (err) throw err;
       setRows(data || []);
+      setHasMore((data || []).length >= limit);
     } catch (e) {
       setError(e);
     } finally {
       setLoading(false);
     }
-  }, [sessionId, developerId, developerEmail]);
+  }, [sessionId, developerId, developerEmail, limit]);
 
   useEffect(() => {
     let intervalId;
@@ -305,7 +323,7 @@ export function useMouseRealtime({
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
-          setRows((prev) => [payload.new, ...prev]);
+          setRows((prev) => [payload.new, ...prev].slice(0, limit));
         }
       )
       .subscribe();
@@ -316,7 +334,7 @@ export function useMouseRealtime({
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [sessionId, developerId, developerEmail]);
+  }, [sessionId, developerId, developerEmail, limit]);
 
   // Latest row represents current status; aggregate percentages over session
   const latest = rows[0] || null;
@@ -340,6 +358,7 @@ export function useMouseRealtime({
     rows,
     loading,
     error,
+    hasMore,
     latest,
     totalEvents: summary.totalEvents,
     avgActivePct,
@@ -365,10 +384,12 @@ export function useAppUsageRealtime({
   sessionId,
   userEmail,
   pollIntervalMs = DEFAULT_POLL_INTERVAL,
+  limit = DEFAULT_ROW_LIMIT,
 } = {}) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
   const channelRef = useRef(null);
 
   const fetchApps = useCallback(async () => {
@@ -381,15 +402,17 @@ export function useAppUsageRealtime({
         .select("*")
         .eq("session_id", sessionId)
         .eq("user_email", userEmail)
-        .order("start_time", { ascending: true });
+        .order("start_time", { ascending: true })
+        .limit(limit);
       if (err) throw err;
       setRows(data || []);
+      setHasMore((data || []).length >= limit);
     } catch (e) {
       setError(e);
     } finally {
       setLoading(false);
     }
-  }, [sessionId, userEmail]);
+  }, [sessionId, userEmail, limit]);
 
   useEffect(() => {
     let intervalId;
@@ -421,7 +444,7 @@ export function useAppUsageRealtime({
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
-          setRows((prev) => [...prev, payload.new]);
+          setRows((prev) => [...prev, payload.new].slice(-limit));
         }
       )
       .subscribe();
@@ -432,7 +455,7 @@ export function useAppUsageRealtime({
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [sessionId, userEmail]);
+  }, [sessionId, userEmail, limit]);
 
   // Aggregate app usage
   const appMap = rows.reduce((acc, row) => {
@@ -476,6 +499,7 @@ export function useAppUsageRealtime({
     rows,
     loading,
     error,
+    hasMore,
     topApps,
     browsers,
     topBrowser,
@@ -493,10 +517,12 @@ export function useScreenshotsRealtime({
   developerEmail,
   session,
   pollIntervalMs = DEFAULT_POLL_INTERVAL,
+  limit = SCREENSHOT_ROW_LIMIT,
 } = {}) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
   const channelRef = useRef(null);
 
   const hasIdentity = developerId || developerEmail;
@@ -510,7 +536,7 @@ export function useScreenshotsRealtime({
         .from("screenshots")
         .select("*")
         .order("timestamp", { ascending: false })
-        .limit(100);
+        .limit(limit);
 
       if (developerId) query = query.eq("developer_id", developerId);
       if (developerEmail) query = query.eq("developer_email", developerEmail);
@@ -523,6 +549,7 @@ export function useScreenshotsRealtime({
 
       const { data, error: err } = await query;
       if (err) throw err;
+      setHasMore((data || []).length >= limit);
       // Resolve the display URL. Rows in the private `monitoring` bucket are
       // signed on demand (short-lived); pre-Phase-2 rows fall back to their
       // stored public URL. Either way consumers read shot.public_url.
@@ -532,7 +559,7 @@ export function useScreenshotsRealtime({
     } finally {
       setLoading(false);
     }
-  }, [developerId, developerEmail, session, hasIdentity]);
+  }, [developerId, developerEmail, session, hasIdentity, limit]);
 
   useEffect(() => {
     let intervalId;
@@ -570,7 +597,7 @@ export function useScreenshotsRealtime({
           ...(filter ? { filter } : {}),
         },
         (payload) => {
-          setRows((prev) => [payload.new, ...prev]);
+          setRows((prev) => [payload.new, ...prev].slice(0, limit));
         }
       )
       .subscribe();
@@ -581,7 +608,7 @@ export function useScreenshotsRealtime({
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [developerId, developerEmail, hasIdentity]);
+  }, [developerId, developerEmail, hasIdentity, limit]);
 
   const recentThree = rows.slice(0, 3);
 
@@ -589,6 +616,7 @@ export function useScreenshotsRealtime({
     rows,
     loading,
     error,
+    hasMore,
     recentThree,
     count: rows.length,
     refresh: fetchScreenshots,

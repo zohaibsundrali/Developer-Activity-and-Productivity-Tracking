@@ -1,5 +1,6 @@
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
+import { authFetch } from "@/utils/authFetch";
 
 /**
  * Data access for the Enterprise Project Management module.
@@ -10,12 +11,19 @@ import { getOrgId, getOrgContext } from "@/utils/orgContext";
  */
 
 // The existing task status pipeline doubles as default Kanban columns.
+// `reviewOnly` columns are outcomes of the admin review workflow: they are
+// shown and counted like any other column, but nothing can be moved into them
+// by hand — see changeTaskStatus() below.
 export const BOARD_COLUMNS = [
   { id: "pending", label: "To Do" },
   { id: "in_progress", label: "In Progress" },
   { id: "awaiting_approval", label: "In Review" },
-  { id: "completed", label: "Done" },
+  { id: "completed", label: "Done", reviewOnly: true },
+  { id: "rejected", label: "Rejected", reviewOnly: true },
 ];
+
+// Columns a user may drag a card into / create a task in.
+export const DRAGGABLE_COLUMNS = BOARD_COLUMNS.filter((c) => !c.reviewOnly);
 
 export const PRIORITIES = ["low", "medium", "high", "urgent"];
 
@@ -33,13 +41,16 @@ export const STATUS_META = {
   in_progress: { label: "In Progress", tone: "info" },
   awaiting_approval: { label: "In Review", tone: "warning" },
   completed: { label: "Done", tone: "success" },
+  rejected: { label: "Rejected", tone: "destructive" },
 };
 
 // Map any off-pipeline status onto one of the visible board columns.
+// `rejected` is deliberately NOT aliased: folding it into To Do hid failed work
+// among fresh work, where it could be picked up and closed as if it had never
+// been reviewed.
 const STATUS_ALIAS = {
   reviewed: "awaiting_approval",
   in_review: "awaiting_approval",
-  rejected: "pending",
   todo: "pending",
   open: "pending",
   doing: "in_progress",
@@ -51,6 +62,54 @@ export function normalizeStatus(status) {
   if (status && COLUMN_ID_SET.has(status)) return status;
   if (status && STATUS_ALIAS[status]) return STATUS_ALIAS[status];
   return "pending";
+}
+
+// ---- Status transitions ----------------------------------------------
+// `completed` and `rejected` are the recorded outcome of a review: they carry
+// is_on_time, productivity_points, an admin_reviews row, the productivity_metrics
+// rollup and the developer's notification. A plain update({status}) from a board
+// or a dropdown produces none of that, so those two statuses are owned by the
+// review route and unreachable from any UI write.
+export const REVIEW_ONLY_STATUSES = new Set(["completed", "rejected"]);
+
+// The states a task can be reviewed from — i.e. it has been submitted.
+export const REVIEWABLE_STATUSES = new Set(["awaiting_approval", "reviewed"]);
+
+// Legal hand-driven moves. `completed` has no exits: reopening approved work
+// would leave its productivity record attached to a task that is no longer done.
+export const STATUS_TRANSITIONS = {
+  pending: ["in_progress", "awaiting_approval"],
+  in_progress: ["pending", "awaiting_approval"],
+  awaiting_approval: ["in_progress", "reviewed"],
+  reviewed: ["awaiting_approval", "in_progress"],
+  rejected: ["in_progress"],
+  completed: [],
+};
+
+export function allowedTransitions(from) {
+  return STATUS_TRANSITIONS[from || "pending"] || [];
+}
+
+export function isTransitionAllowed(from, to) {
+  if (!to) return false;
+  if (from === to) return true;
+  return allowedTransitions(from).includes(to);
+}
+
+const statusLabel = (s) => STATUS_META[s]?.label || s;
+
+function transitionError(from, to) {
+  if (REVIEW_ONLY_STATUSES.has(to)) {
+    return new Error(
+      `"${statusLabel(to)}" is decided in review — the assignee submits proof of work and a reviewer approves or rejects it.`
+    );
+  }
+  if (from === "completed") {
+    return new Error(
+      `This task is already ${statusLabel("completed")}. Reopening approved work would strip its productivity record.`
+    );
+  }
+  return new Error(`A task cannot go from "${statusLabel(from)}" to "${statusLabel(to)}".`);
 }
 
 // ---- Tasks -----------------------------------------------------------
@@ -83,6 +142,8 @@ export async function createTask(projectId, patch) {
     created_at: new Date().toISOString(),
     ...patch,
   };
+  // Nothing starts life already approved or rejected — those come from review.
+  if (REVIEW_ONLY_STATUSES.has(row.status)) row.status = "pending";
   const { data, error } = await supabase.from("developer_tasks").insert(row).select().single();
   if (!error && data) {
     // Fire "task created" automations. Best-effort: never blocks task creation.
@@ -120,37 +181,124 @@ export async function updateTask(taskId, patch, logCtx = null) {
   return { error };
 }
 
-// Move a task to a new status column / position (Kanban drag-drop).
-// Fires "status changed" automations after a successful move (best-effort).
-export async function moveTask(taskId, { status, position }, logCtx = null) {
-  // Capture the previous status so automations can match on `from`.
-  let prev = null;
-  try {
-    const { data } = await supabase
-      .from("developer_tasks")
-      .select("id, status, priority, task_type, developer_id, project_id, labels, task_title")
-      .eq("id", taskId)
-      .single();
-    prev = data || null;
-  } catch {
-    prev = null;
+const TASK_SNAPSHOT = "id, status, priority, task_type, developer_id, project_id, labels, task_title";
+
+/**
+ * The single guarded entry point for every task status change driven by a
+ * human: board drag-drop, the detail drawer dropdown, automations.
+ *
+ * - illegal moves are refused with a message the UI can show;
+ * - `completed` / `rejected` are handed to the review workflow instead of being
+ *   written to the column, so submissions, on-time state, productivity points,
+ *   the project rollup and the developer notification all stay in step;
+ * - legal moves fire the same "status changed" automations as before.
+ *
+ * Returns { error } — plus { task } / { reviewed } on success.
+ */
+export async function changeTaskStatus(taskId, nextStatus, options = {}) {
+  const { position, logCtx = null, comments = null, rejectionReason = null } = options;
+  if (!taskId || !nextStatus) return { error: new Error("Missing task or status") };
+
+  const { data: prev, error: readErr } = await supabase
+    .from("developer_tasks")
+    .select(TASK_SNAPSHOT)
+    .eq("id", taskId)
+    .single();
+  if (readErr || !prev) return { error: readErr || new Error("Task not found") };
+
+  const from = prev.status || "pending";
+  if (from === nextStatus) return { error: null, task: prev };
+
+  if (REVIEW_ONLY_STATUSES.has(nextStatus)) {
+    // A task only reaches review once it has been submitted.
+    if (!REVIEWABLE_STATUSES.has(from)) return { error: transitionError(from, nextStatus) };
+    return reviewTask(taskId, nextStatus === "completed" ? "approve" : "reject", {
+      comments,
+      rejectionReason,
+      task: prev,
+    });
   }
 
-  const res = await updateTask(taskId, { status, position }, logCtx);
-  if (!res.error && prev && prev.status !== status) {
-    try {
-      const { runAutomations } = await import("@/utils/automation");
-      await runAutomations({
-        event: "status_changed",
-        task: { ...prev, status },
-        prev,
-        projectId: prev.project_id,
-      });
-    } catch {
-      /* automation is non-critical */
-    }
+  if (!isTransitionAllowed(from, nextStatus)) return { error: transitionError(from, nextStatus) };
+
+  const patch = { status: nextStatus };
+  if (position !== undefined) patch.position = position;
+  const res = await updateTask(taskId, patch, logCtx);
+  if (res.error) return res;
+
+  try {
+    const { runAutomations } = await import("@/utils/automation");
+    await runAutomations({
+      event: "status_changed",
+      task: { ...prev, status: nextStatus },
+      prev,
+      projectId: prev.project_id,
+    });
+  } catch {
+    /* automation is non-critical */
   }
-  return res;
+  return { error: null, task: { ...prev, status: nextStatus } };
+}
+
+/**
+ * Approve or reject through /api/admin-review — the only path that writes a
+ * terminal status. It stamps is_on_time / productivity_points / the completion
+ * date, records the admin_reviews row, recomputes productivity_metrics and the
+ * project progress, and notifies the developer.
+ */
+export async function reviewTask(taskId, action, { comments = null, rejectionReason = null, task = null } = {}) {
+  const ctx = getOrgContext();
+  const { data: pendingSubs } = await supabase
+    .from("task_submissions")
+    .select("id, submitted_at")
+    .eq("task_id", taskId)
+    .eq("review_status", "pending")
+    .order("submitted_at", { ascending: false })
+    .limit(1);
+  const submission = (pendingSubs || [])[0];
+  if (!submission) {
+    return {
+      error: new Error(
+        "There is nothing to review — the assignee has to submit proof of work before this task can be approved or rejected."
+      ),
+    };
+  }
+  if (action === "reject" && !rejectionReason) {
+    return {
+      error: new Error(
+        "A rejection has to carry a reason. Reject it from Task Reviews so the developer is told what to fix."
+      ),
+    };
+  }
+
+  try {
+    const res = await authFetch("/api/admin-review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        submissionId: submission.id,
+        taskId,
+        adminId: ctx?.userId || null,
+        action,
+        comments,
+        rejectionReason,
+      }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok || !payload?.success) {
+      return { error: new Error(payload?.error || `Review failed (${res.status})`) };
+    }
+    const status = payload?.task?.status || (action === "approve" ? "completed" : "rejected");
+    return { error: null, reviewed: true, task: task ? { ...task, status } : null };
+  } catch (err) {
+    return { error: err instanceof Error ? err : new Error(String(err)) };
+  }
+}
+
+// Move a task to a new status column / position (Kanban drag-drop).
+// Kept as the board-facing name; the transition rules live in changeTaskStatus.
+export async function moveTask(taskId, { status, position }, logCtx = null) {
+  return changeTaskStatus(taskId, status, { position, logCtx });
 }
 
 // Assign a task and fire "assigned" automations.

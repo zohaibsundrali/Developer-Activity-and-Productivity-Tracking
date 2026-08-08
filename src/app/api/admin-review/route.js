@@ -5,6 +5,10 @@ import { getAuthedOrg } from '@/utils/serverAuth';
 // Roles allowed to review task submissions (matches permissions.js `review_tasks`).
 const REVIEWER_ROLES = ['owner', 'admin', 'manager'];
 
+// Already-scored outcomes. Reviewing one again would re-award points and
+// overwrite the record of what actually happened.
+const TERMINAL_TASK_STATUSES = ['completed', 'rejected'];
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -40,8 +44,9 @@ export async function POST(request) {
       rejectionReason
     } = body;
 
-    // Validate required fields
-    if (!submissionId || !taskId || !adminId || !action) {
+    // Validate required fields. The reviewer identity comes from the verified
+    // token, so adminId is only a hint from the caller.
+    if (!submissionId || !taskId || !action) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -123,6 +128,30 @@ export async function POST(request) {
       );
     }
 
+    // Workflow integrity: a terminal status is only ever the outcome of an open
+    // review of THIS task. Without these checks the route doubles as a way to
+    // close any task, or to re-award points by replaying an old review.
+    if (submission.task_id !== taskId) {
+      return NextResponse.json(
+        { error: 'Submission does not belong to this task' },
+        { status: 400 }
+      );
+    }
+
+    if (submission.review_status !== 'pending' || submission.is_reviewed) {
+      return NextResponse.json(
+        { error: 'This submission has already been reviewed' },
+        { status: 409 }
+      );
+    }
+
+    if (TERMINAL_TASK_STATUSES.includes(task.status)) {
+      return NextResponse.json(
+        { error: `Task has already been reviewed (current status: ${task.status})` },
+        { status: 409 }
+      );
+    }
+
     // Calculate if task was completed on time
     const endDate = new Date(task.end_date);
     endDate.setHours(23, 59, 59, 999); // End of day
@@ -188,7 +217,7 @@ export async function POST(request) {
       .insert({
         admin_id: auth.appUserId,
         admin_email: auth.email,
-        admin_name: adminName,
+        admin_name: adminName || auth.email,
         task_id: taskId,
         submission_id: submissionId,
         project_id: task.project_id,
@@ -219,7 +248,7 @@ export async function POST(request) {
         task_id: taskId,
         action_type: action === 'approve' ? 'task_approved' : 'task_rejected',
         action_description: `Task "${task.task_title}" ${action === 'approve' ? 'approved' : 'rejected'} by admin`,
-        old_value: 'awaiting_approval',
+        old_value: task.status,
         new_value: newStatus
       });
 

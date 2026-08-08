@@ -27,6 +27,52 @@ const DONE = new Set(["completed", "reviewed"]);
 export const TRACKING_CAVEAT =
   "Desktop tracked hours are per developer per day — the tracker records no task or project link, so they are not attributed to individual tasks.";
 
+/**
+ * PostgREST caps a single response at 1000 rows, so the previous unpaged
+ * `.select()` silently truncated every report on a busy organization. We now
+ * walk explicit ranges, and stop at a hard ceiling so one large tenant cannot
+ * exhaust the browser's memory. `truncated` tells the caller we hit the wall.
+ */
+const PAGE_SIZE = 1000;
+const MAX_PROJECT_ROWS = 5000;
+const MAX_TASK_ROWS = 20000;
+const MAX_TIME_LOG_ROWS = 20000;
+const MAX_SESSION_ROWS = 10000;
+
+// A very long `in.(…)` list becomes a URL longer than the gateway accepts, so
+// identity filters are issued in chunks.
+const IN_CHUNK = 100;
+
+// Status groups mirroring normalizeStatus()/STATUS_ALIAS in pmData.js. They let
+// the donut + KPI counts be answered by four HEAD requests instead of shipping
+// every task row to the browser just to bucket it.
+const IN_PROGRESS_STATUSES = ["in_progress", "doing"];
+const IN_REVIEW_STATUSES = ["awaiting_approval", "reviewed", "in_review"];
+const COMPLETED_STATUSES = ["completed", "done", "approved"];
+
+function chunked(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+/**
+ * Page through `buildQuery()` until it runs dry or `maxRows` is reached.
+ * `buildQuery` must apply a deterministic `.order()`, otherwise pages can
+ * overlap or skip rows.
+ */
+async function fetchPaged(buildQuery, maxRows) {
+  const rows = [];
+  for (let offset = 0; offset < maxRows; offset += PAGE_SIZE) {
+    const size = Math.min(PAGE_SIZE, maxRows - offset);
+    const { data, error } = await buildQuery().range(offset, offset + size - 1);
+    if (error || !data) return { rows, truncated: false, error: error || null };
+    rows.push(...data);
+    if (data.length < size) return { rows, truncated: false, error: null };
+  }
+  return { rows, truncated: true, error: null };
+}
+
 function ymd(d) {
   const dt = d instanceof Date ? d : new Date(d);
   return Number.isNaN(dt.getTime()) ? null : dt.toISOString().slice(0, 10);
@@ -49,7 +95,9 @@ export function defaultRange() {
 /**
  * Load everything the reports need in one pass.
  * range = { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' } (applied to time/session data;
- * tasks and projects are loaded whole so status totals stay meaningful).
+ * tasks and projects are loaded whole so status totals stay meaningful — up to
+ * the row ceilings above, past which the headline status totals come from the
+ * database rather than from the rows we managed to fetch).
  */
 export async function loadReportData(range) {
   const orgId = getOrgId();
@@ -59,35 +107,71 @@ export async function loadReportData(range) {
   const fromIso = from ? new Date(`${from}T00:00:00`).toISOString() : null;
   const toIso = to ? new Date(`${to}T23:59:59`).toISOString() : null;
 
+  const logFrom = fromIso || "1970-01-01T00:00:00Z";
+  const logTo = toIso || new Date().toISOString();
+
   // Projects + tasks + explicit time logs are all org-scoped and RLS-safe.
-  const [projRes, taskRes, logRes, empRes] = await Promise.all([
-    supabase
-      .from("projects")
-      .select("id, name, status, progress, deadline, start_date, end_date, archived, created_at")
-      .eq("organization_id", orgId),
-    supabase
-      .from("developer_tasks")
-      .select(
-        "id, project_id, developer_id, task_title, status, priority, task_type, story_points, due_date, start_date, end_date, actual_completion_date, is_on_time, productivity_points, reviewed_at, created_at, updated_at"
-      )
-      .eq("organization_id", orgId),
-    supabase
-      .from("task_time_logs")
-      .select("id, task_id, project_id, developer_id, started_at, ended_at, seconds, source")
-      .eq("organization_id", orgId)
-      .gte("started_at", fromIso || "1970-01-01T00:00:00Z")
-      .lte("started_at", toIso || new Date().toISOString()),
+  const [projRes, taskRes, logRes, empRes, statusCounts] = await Promise.all([
+    fetchPaged(
+      () =>
+        supabase
+          .from("projects")
+          .select("id, name, status, progress, deadline, start_date, end_date, archived, created_at")
+          .eq("organization_id", orgId)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: true }),
+      MAX_PROJECT_ROWS
+    ),
+    fetchPaged(
+      () =>
+        supabase
+          .from("developer_tasks")
+          .select(
+            "id, project_id, developer_id, task_title, status, priority, task_type, story_points, due_date, start_date, end_date, actual_completion_date, is_on_time, productivity_points, reviewed_at, created_at, updated_at"
+          )
+          .eq("organization_id", orgId)
+          .order("id", { ascending: true }),
+      MAX_TASK_ROWS
+    ),
+    fetchPaged(
+      () =>
+        supabase
+          .from("task_time_logs")
+          .select("id, task_id, project_id, developer_id, started_at, ended_at, seconds, source")
+          .eq("organization_id", orgId)
+          .gte("started_at", logFrom)
+          .lte("started_at", logTo)
+          .order("started_at", { ascending: true })
+          .order("id", { ascending: true }),
+      MAX_TIME_LOG_ROWS
+    ),
     loadEmployees(orgId),
+    loadStatusCounts(orgId),
   ]);
 
-  const projects = projRes.data || [];
-  const tasks = taskRes.data || [];
-  const timeLogs = logRes.data || [];
+  const projects = projRes.rows;
+  const tasks = taskRes.rows;
+  const timeLogs = logRes.rows;
   const employees = empRes?.employees || [];
 
-  const sessions = await loadDesktopSessions(employees, fromIso, toIso);
+  const sessionRes = await loadDesktopSessions(employees, fromIso, toIso);
 
-  return { projects, tasks, timeLogs, employees, sessions, range: { from, to }, orgId };
+  return {
+    projects,
+    tasks,
+    timeLogs,
+    employees,
+    sessions: sessionRes.rows,
+    statusCounts,
+    truncated: {
+      projects: projRes.truncated,
+      tasks: taskRes.truncated,
+      timeLogs: logRes.truncated,
+      sessions: sessionRes.truncated,
+    },
+    range: { from, to },
+    orgId,
+  };
 }
 
 function emptyBundle() {
@@ -97,8 +181,49 @@ function emptyBundle() {
     timeLogs: [],
     employees: [],
     sessions: [],
+    statusCounts: null,
+    truncated: { projects: false, tasks: false, timeLogs: false, sessions: false },
     range: defaultRange(),
     orgId: null,
+  };
+}
+
+/**
+ * Task status totals answered by the database. Four HEAD requests carry no row
+ * payload at all, and — unlike counting a truncated page of tasks — they stay
+ * correct for organizations larger than MAX_TASK_ROWS.
+ * Returns null if the counts are unavailable, so callers can fall back to
+ * bucketing the rows they already hold.
+ */
+async function loadStatusCounts(orgId) {
+  const base = () =>
+    supabase.from("developer_tasks").select("id", { count: "exact", head: true }).eq("organization_id", orgId);
+  // These counts are an optimization, never a hard dependency — a failure here
+  // must not take the whole report down with it.
+  const countOf = async (query) => {
+    try {
+      const { count, error } = await query;
+      return error ? null : count || 0;
+    } catch {
+      return null;
+    }
+  };
+
+  const [total, inProgress, inReview, completed] = await Promise.all([
+    countOf(base()),
+    countOf(base().in("status", IN_PROGRESS_STATUSES)),
+    countOf(base().in("status", IN_REVIEW_STATUSES)),
+    countOf(base().in("status", COMPLETED_STATUSES)),
+  ]);
+  if (total === null || inProgress === null || inReview === null || completed === null) return null;
+
+  return {
+    // Everything else (pending, rejected, todo, open, null…) normalizes to "To Do".
+    pending: Math.max(0, total - inProgress - inReview - completed),
+    in_progress: inProgress,
+    awaiting_approval: inReview,
+    completed,
+    total,
   };
 }
 
@@ -110,38 +235,49 @@ function emptyBundle() {
 async function loadDesktopSessions(employees, fromIso, toIso) {
   const ids = (employees || []).map((e) => e.userId).filter(Boolean);
   const emails = (employees || []).map((e) => e.email).filter(Boolean);
-  if (!ids.length && !emails.length) return [];
+  if (!ids.length && !emails.length) return { rows: [], truncated: false };
 
   const cols = "session_id, developer_id, user_email, start_time, end_time, status, total_duration, productivity_score, created_at";
   const base = () => {
     let q = supabase.from("productivity_sessions").select(cols);
     if (fromIso) q = q.gte("start_time", fromIso);
     if (toIso) q = q.lte("start_time", toIso);
-    return q;
+    return q.order("start_time", { ascending: false });
   };
 
-  const queries = [];
-  if (ids.length) queries.push(base().in("developer_id", ids));
-  if (emails.length) queries.push(base().in("user_email", emails));
+  // Split the budget across the identity chunks so a large team cannot make
+  // one chunk consume the whole allowance.
+  const idChunks = chunked(ids, IN_CHUNK);
+  const emailChunks = chunked(emails, IN_CHUNK);
+  const chunkCount = idChunks.length + emailChunks.length;
+  const perChunk = Math.max(PAGE_SIZE, Math.floor(MAX_SESSION_ROWS / chunkCount));
+
+  const queries = [
+    ...idChunks.map((c) => () => fetchPaged(() => base().in("developer_id", c), perChunk)),
+    ...emailChunks.map((c) => () => fetchPaged(() => base().in("user_email", c), perChunk)),
+  ];
 
   let rows = [];
+  let truncated = false;
   try {
-    const results = await Promise.all(queries);
+    const results = await Promise.all(queries.map((run) => run()));
     results.forEach((r) => {
-      if (!r.error && r.data) rows = rows.concat(r.data);
+      rows = rows.concat(r.rows);
+      truncated = truncated || r.truncated;
     });
   } catch {
-    return [];
+    return { rows: [], truncated: false };
   }
 
   // Dedupe: a session can match on both id and email.
   const seen = new Set();
-  return rows.filter((r) => {
+  const deduped = rows.filter((r) => {
     const key = r.session_id || `${r.developer_id || r.user_email}-${r.start_time}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+  return { rows: deduped, truncated };
 }
 
 /* ------------------------------------------------------------------ */
@@ -331,9 +467,10 @@ export function dailyTrend({ tasks, timeLogs, sessions, range }) {
 
 /** Headline numbers for the reports landing strip. */
 export function summaryKpis(bundle) {
-  const { tasks, timeLogs, sessions, projects } = bundle;
-  const dist = statusDistribution(tasks);
-  const total = (tasks || []).length;
+  const { tasks, timeLogs, sessions, projects, statusCounts } = bundle;
+  // Prefer the database's own totals — they stay right past MAX_TASK_ROWS.
+  const dist = statusCounts || statusDistribution(tasks);
+  const total = statusCounts ? statusCounts.total : (tasks || []).length;
   const done = dist.completed;
   const loggedHours = +(sumSeconds(timeLogs) / 3600).toFixed(1);
   const trackedHours = +(

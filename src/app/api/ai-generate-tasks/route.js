@@ -62,10 +62,12 @@ async function callHFRouter(model, prompt) {
 /**
  * Only files served by our own Supabase Storage may be fetched.
  *
- * SECURITY (audit finding C7): `fileUrl` was passed straight to fetch() with no
- * validation, so a caller could point this at cloud metadata (169.254.169.254)
- * or any internal service and have the response fed into the LLM prompt —
- * server-side request forgery.
+ * An unvalidated `fileUrl` reaches fetch() directly, so a caller could point it
+ * at cloud metadata (169.254.169.254) or any internal service and have the
+ * response fed into the LLM prompt — server-side request forgery. This is the
+ * legacy path: requirement documents uploaded before the move to the private
+ * bucket are still addressed by URL. New uploads send `filePath` instead, which
+ * is signed server-side and never leaves the tenant's own storage prefix.
  */
 function isAllowedFileUrl(rawUrl) {
   let url;
@@ -99,13 +101,23 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const { projectId, fileUrl } = await request.json();
+    const { projectId, filePath, fileUrl } = await request.json();
 
-    if (!projectId || !fileUrl) {
-      return NextResponse.json({ error: 'Missing projectId or fileUrl' }, { status: 400 });
+    if (!projectId || (!filePath && !fileUrl)) {
+      return NextResponse.json({ error: 'Missing projectId or filePath' }, { status: 400 });
     }
 
-    if (!isAllowedFileUrl(fileUrl)) {
+    // A storage path must sit under the caller's own organization folder. This
+    // is checked before signing so a path from another tenant is never minted
+    // into a readable URL.
+    if (filePath && !String(filePath).startsWith(`${auth.orgId}/`)) {
+      return NextResponse.json(
+        { error: 'filePath must reference this organization\'s own storage' },
+        { status: 403 }
+      );
+    }
+
+    if (!filePath && !isAllowedFileUrl(fileUrl)) {
       return NextResponse.json(
         { error: 'fileUrl must reference this project\'s own storage' },
         { status: 400 }
@@ -133,8 +145,20 @@ export async function POST(request) {
     const defaultStartDate =
       project.assigned_date || project.assigned_at || project.created_at || new Date().toISOString().split('T')[0];
 
-    // 2. Download and extract text
-    const fileResponse = await fetch(fileUrl);
+    // 2. Download and extract text. Private-bucket documents are signed here
+    //    with the service role; legacy rows still carry a public URL.
+    let downloadUrl = fileUrl;
+    if (filePath) {
+      const { data: signed, error: signError } = await supabaseAdmin.storage
+        .from('org-files')
+        .createSignedUrl(filePath, 300);
+      if (signError || !signed?.signedUrl) {
+        return NextResponse.json({ error: 'Failed to access file' }, { status: 500 });
+      }
+      downloadUrl = signed.signedUrl;
+    }
+
+    const fileResponse = await fetch(downloadUrl);
     if (!fileResponse.ok) {
       return NextResponse.json({ error: 'Failed to download file' }, { status: 500 });
     }

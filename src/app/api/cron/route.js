@@ -19,6 +19,17 @@ export const dynamic = "force-dynamic";
 
 const DONE = ["completed", "reviewed"];
 
+// A very long `in.(…)` list becomes a URL the gateway rejects, and a very large
+// insert payload risks a statement timeout, so both are issued in batches.
+const ID_CHUNK = 200;
+const INSERT_CHUNK = 500;
+
+function chunk(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
 function ymd(d) {
   const dt = d instanceof Date ? d : new Date(d);
   return Number.isNaN(dt.getTime()) ? null : dt.toISOString().slice(0, 10);
@@ -58,33 +69,45 @@ async function runJobs() {
       .lte("due_date", tomorrow);
     if (error) throw error;
 
-    for (const task of due || []) {
-      const dueOn = task.due_date || task.end_date;
-      if (!dueOn) continue;
+    const candidates = (due || []).filter((t) => t.due_date || t.end_date);
 
-      // Skip if this task was already reminded today.
-      const { data: existing } = await svc
+    // One dedupe lookup for the whole batch instead of one per task — this was
+    // two round trips per due task, which is what made the job scale with the
+    // size of the backlog rather than with the work it actually does.
+    const remindedToday = new Set();
+    for (const ids of chunk(candidates.map((t) => t.id), ID_CHUNK)) {
+      const { data: existing, error: dupErr } = await svc
         .from("notifications")
-        .select("id")
-        .eq("task_id", task.id)
+        .select("task_id")
+        .in("task_id", ids)
         .eq("type", "due_reminder")
-        .gte("created_at", `${today}T00:00:00Z`)
-        .limit(1);
-      if (existing && existing.length) continue;
+        .gte("created_at", `${today}T00:00:00Z`);
+      if (dupErr) throw dupErr;
+      (existing || []).forEach((n) => remindedToday.add(n.task_id));
+    }
 
-      const overdue = ymd(dueOn) < today;
-      const { error: insErr } = await svc.from("notifications").insert({
-        organization_id: task.organization_id,
-        developer_id: task.developer_id,
-        type: "due_reminder",
-        title: overdue ? "Task overdue" : "Task due soon",
-        message: overdue
-          ? `"${task.task_title || "Untitled"}" was due on ${ymd(dueOn)}.`
-          : `"${task.task_title || "Untitled"}" is due on ${ymd(dueOn)}.`,
-        project_id: task.project_id || null,
-        task_id: task.id,
+    const rows = candidates
+      .filter((task) => !remindedToday.has(task.id))
+      .map((task) => {
+        const dueOn = task.due_date || task.end_date;
+        const overdue = ymd(dueOn) < today;
+        return {
+          organization_id: task.organization_id,
+          developer_id: task.developer_id,
+          type: "due_reminder",
+          title: overdue ? "Task overdue" : "Task due soon",
+          message: overdue
+            ? `"${task.task_title || "Untitled"}" was due on ${ymd(dueOn)}.`
+            : `"${task.task_title || "Untitled"}" is due on ${ymd(dueOn)}.`,
+          project_id: task.project_id || null,
+          task_id: task.id,
+        };
       });
-      if (!insErr) summary.remindersSent += 1;
+
+    for (const batch of chunk(rows, INSERT_CHUNK)) {
+      const { error: insErr } = await svc.from("notifications").insert(batch);
+      if (insErr) summary.errors.push({ job: "due_reminders", message: insErr.message });
+      else summary.remindersSent += batch.length;
     }
   } catch (err) {
     summary.errors.push({ job: "due_reminders", message: err?.message || String(err) });
@@ -98,6 +121,9 @@ async function runJobs() {
       .eq("is_recurring", true);
     if (error) throw error;
 
+    // Work out every occurrence first, so the inserts and the activity feed
+    // rows can go out as batches rather than three round trips per template.
+    const spawns = [];
     for (const task of recurring || []) {
       const rec = task.recurrence || {};
       const freq = rec.freq;
@@ -116,37 +142,62 @@ async function runJobs() {
         productivity_points, ...keep
       } = task;
 
-      const { error: insErr } = await svc.from("developer_tasks").insert({
-        ...keep,
-        status: "pending",
-        start_date: next,
-        end_date: next,
-        due_date: next,
-        is_recurring: false, // the spawned occurrence is a one-off
-        recurrence: {},
-        created_at: new Date().toISOString(),
+      spawns.push({
+        task,
+        rec,
+        next,
+        row: {
+          ...keep,
+          status: "pending",
+          start_date: next,
+          end_date: next,
+          due_date: next,
+          is_recurring: false, // the spawned occurrence is a one-off
+          recurrence: {},
+          created_at: new Date().toISOString(),
+        },
       });
-      if (insErr) {
-        summary.errors.push({ job: "recurring", taskId: task.id, message: insErr.message });
+    }
+
+    // A batched insert is atomic, so on failure nothing was spawned and we can
+    // safely retry one-by-one to keep a single bad template from blocking the
+    // rest — the old per-task behaviour.
+    const spawned = [];
+    for (const batch of chunk(spawns, INSERT_CHUNK)) {
+      const { error: insErr } = await svc.from("developer_tasks").insert(batch.map((s) => s.row));
+      if (!insErr) {
+        spawned.push(...batch);
         continue;
       }
+      for (const s of batch) {
+        const { error: oneErr } = await svc.from("developer_tasks").insert(s.row);
+        if (oneErr) summary.errors.push({ job: "recurring", taskId: s.task.id, message: oneErr.message });
+        else spawned.push(s);
+      }
+    }
 
-      // Advance the template's cursor so it can't double-spawn.
+    // Advance each template's cursor so it can't double-spawn. The new value
+    // differs per template, so this one stays a per-task update.
+    for (const s of spawned) {
       await svc
         .from("developer_tasks")
-        .update({ recurrence: { ...rec, last_spawned: next } })
-        .eq("id", task.id);
-
-      await svc.from("pm_activity").insert({
-        organization_id: task.organization_id,
-        project_id: task.project_id,
-        entity_type: "task",
-        entity_id: task.id,
-        action: "recurring_spawned",
-        meta: { next },
-      });
-      summary.recurringSpawned += 1;
+        .update({ recurrence: { ...s.rec, last_spawned: s.next } })
+        .eq("id", s.task.id);
     }
+
+    const activity = spawned.map((s) => ({
+      organization_id: s.task.organization_id,
+      project_id: s.task.project_id,
+      entity_type: "task",
+      entity_id: s.task.id,
+      action: "recurring_spawned",
+      meta: { next: s.next },
+    }));
+    for (const batch of chunk(activity, INSERT_CHUNK)) {
+      await svc.from("pm_activity").insert(batch);
+    }
+
+    summary.recurringSpawned += spawned.length;
   } catch (err) {
     summary.errors.push({ job: "recurring", message: err?.message || String(err) });
   }

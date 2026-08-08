@@ -7,7 +7,8 @@ import {
   loadTasks,
   createTask,
   updateTask,
-  moveTask,
+  changeTaskStatus,
+  normalizeStatus,
   loadSprints,
   loadEpics,
   BOARD_COLUMNS,
@@ -21,26 +22,6 @@ import { Plus, Search, RefreshCw, LayoutGrid, Flag, Loader2 } from "lucide-react
 /* -------------------------------------------------------------------------- */
 /*  Constants / helpers                                                        */
 /* -------------------------------------------------------------------------- */
-
-const COLUMN_IDS = new Set(BOARD_COLUMNS.map((c) => c.id));
-
-// Map any off-pipeline status onto one of the visible columns.
-const STATUS_ALIAS = {
-  reviewed: "awaiting_approval",
-  in_review: "awaiting_approval",
-  rejected: "pending",
-  todo: "pending",
-  open: "pending",
-  doing: "in_progress",
-  done: "completed",
-  approved: "completed",
-};
-
-function normalizeStatus(status) {
-  if (status && COLUMN_IDS.has(status)) return status;
-  if (status && STATUS_ALIAS[status]) return STATUS_ALIAS[status];
-  return "pending"; // bucket unknowns into To Do
-}
 
 const PRIORITY_STYLES = {
   low: "bg-muted text-muted-foreground",
@@ -404,6 +385,15 @@ export default function ProjectBoard() {
       if (!task) return;
       if (normalizeStatus(task.status) === columnId) return; // no move needed
 
+      const target = BOARD_COLUMNS.find((c) => c.id === columnId);
+      if (target?.reviewOnly) {
+        showError(
+          "Not a drop target",
+          `"${target.label}" is decided in Task Reviews, not by moving a card.`
+        );
+        return;
+      }
+
       // Optimistic local update for snappiness.
       setTasks((prev) =>
         (prev || []).map((t) =>
@@ -412,7 +402,7 @@ export default function ProjectBoard() {
       );
 
       try {
-        const { error } = await moveTask(task.id, { status: columnId });
+        const { error } = await changeTaskStatus(task.id, columnId);
         if (error) {
           showError("Move failed", error.message || String(error));
           await reload(); // revert to server truth
@@ -553,6 +543,7 @@ export default function ProjectBoard() {
                 key={col.id}
                 onDragOver={(e) => {
                   e.preventDefault();
+                  if (col.reviewOnly) return; // never signals a valid drop
                   if (dragOverCol !== col.id) setDragOverCol(col.id);
                 }}
                 onDragLeave={() => setDragOverCol((c) => (c === col.id ? null : c))}
@@ -591,7 +582,9 @@ export default function ProjectBoard() {
                   )}
                 </div>
 
-                <AddTask columnId={col.id} onCreate={handleCreate} />
+                {!col.reviewOnly && (
+                  <AddTask columnId={col.id} onCreate={handleCreate} />
+                )}
               </div>
             );
           })}

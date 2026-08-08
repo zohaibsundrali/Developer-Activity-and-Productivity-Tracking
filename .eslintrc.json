@@ -1,4 +1,15 @@
 {
   "root": true,
-  "extends": ["next/core-web-vitals"]
+  "extends": ["next/core-web-vitals"],
+  "ignorePatterns": [".next/", "out/", "build/", "node_modules/", "scripts/", "test_insert.js"],
+  "rules": {
+    "react/no-unescaped-entities": "warn",
+    "react/display-name": "warn"
+  },
+  "overrides": [
+    {
+      "files": ["tests/**/*.js", "vitest.config.mjs"],
+      "env": { "node": true }
+    }
+  ]
 }

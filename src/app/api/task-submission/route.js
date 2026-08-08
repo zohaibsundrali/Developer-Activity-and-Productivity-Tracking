@@ -87,6 +87,16 @@ export async function POST(request) {
       );
     }
 
+    // An approved task is a closed record: is_on_time, productivity_points and
+    // the project rollup were already scored from it. Re-submitting would put it
+    // back in the queue and let a second review score it again.
+    if (task.status === 'completed') {
+      return NextResponse.json(
+        { error: 'This task has already been approved and cannot be submitted again' },
+        { status: 409 }
+      );
+    }
+
     // Check if task already has a pending submission (skip if table doesn't exist)
     try {
       const { data: existingSubmission } = await supabase
@@ -154,12 +164,18 @@ export async function POST(request) {
       // Continue anyway - minimum viable: just update task status
     }
 
-    // Update task status to awaiting_approval
+    // Update task status to awaiting_approval. Rework of a rejected task starts
+    // a fresh review, so the previous verdict is cleared rather than left on the
+    // row where the reviewer would still see it.
     const { error: updateError } = await supabase
       .from('developer_tasks')
       .update({
         status: 'awaiting_approval',
         submitted_at: submittedAt,
+        reviewed_by: null,
+        reviewed_at: null,
+        rejection_reason: null,
+        admin_comments: null,
         updated_at: submittedAt
       })
       .eq('id', taskId);
