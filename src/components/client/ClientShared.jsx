@@ -4,7 +4,18 @@
 // Keeps the teal design system + rounded-card aesthetic consistent across
 // every client component (spinner, empty state, error, status badge, etc.).
 
-import { Loader2, Inbox, AlertTriangle } from "lucide-react";
+import {
+  Loader2,
+  Inbox,
+  AlertTriangle,
+  CheckCircle2,
+  CircleAlert,
+  Megaphone,
+  Flag,
+  CheckSquare,
+  MessageSquare,
+  RefreshCw,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ---------- date helpers ----------
@@ -57,6 +68,95 @@ export function deadlineLabel(dateString) {
   }
 }
 
+// Ordered largest-first so the first unit that fits is the one a person would
+// say out loud ("3 days ago", not "72 hours ago").
+const RELATIVE_UNITS = [
+  ["year", 365 * 24 * 60 * 60 * 1000],
+  ["month", 30 * 24 * 60 * 60 * 1000],
+  ["week", 7 * 24 * 60 * 60 * 1000],
+  ["day", 24 * 60 * 60 * 1000],
+  ["hour", 60 * 60 * 1000],
+  ["minute", 60 * 1000],
+];
+
+export function formatRelativeTime(dateString) {
+  if (!dateString || dateString === "null" || dateString === "undefined") return "";
+  const parsed = Date.parse(String(dateString));
+  if (!Number.isFinite(parsed)) return "";
+
+  const diff = Date.now() - parsed;
+  // Clock skew between the browser and the server can put a just-created row a
+  // few seconds in the future; "in 4 seconds" would read as a bug.
+  if (diff < 60 * 1000) return "just now";
+
+  for (const [unit, ms] of RELATIVE_UNITS) {
+    if (diff >= ms) {
+      const count = Math.floor(diff / ms);
+      return `${count} ${unit}${count === 1 ? "" : "s"} ago`;
+    }
+  }
+  return "just now";
+}
+
+export function formatFileSize(bytes) {
+  const size = Number(bytes);
+  if (!Number.isFinite(size) || size <= 0) return "";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// ---------- project health ----------
+
+// The three values the contract derives server-side. Nothing else is mapped,
+// so an unexpected value renders no badge rather than a misleading green one.
+const HEALTH_META = {
+  on_track: { label: "On track", icon: CheckCircle2, badge: "bg-success/10 text-success", barTone: "success" },
+  at_risk: { label: "At risk", icon: AlertTriangle, badge: "bg-warning/10 text-warning", barTone: "warning" },
+  overdue: { label: "Overdue", icon: CircleAlert, badge: "bg-destructive/10 text-destructive", barTone: "destructive" },
+};
+
+export function healthMeta(health) {
+  return HEALTH_META[String(health || "").toLowerCase().trim()] || null;
+}
+
+export function HealthBadge({ health, className }) {
+  const meta = healthMeta(health);
+  if (!meta) return null;
+  const Icon = meta.icon;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold",
+        meta.badge,
+        className
+      )}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      {meta.label}
+    </span>
+  );
+}
+
+// ---------- activity feed kinds ----------
+
+// One icon and one tone per `kind` in the timeline contract. Shared with the
+// overview's recent-activity list so the same event never changes appearance
+// depending on which screen it lands on.
+const KIND_META = {
+  update: { label: "Update", icon: Megaphone, tone: "bg-info/10 text-info" },
+  milestone: { label: "Milestone", icon: Flag, tone: "bg-success/10 text-success" },
+  approval: { label: "Approval", icon: CheckSquare, tone: "bg-warning/10 text-warning" },
+  comment: { label: "Comment", icon: MessageSquare, tone: "bg-primary/10 text-primary" },
+  task_status: { label: "Task", icon: RefreshCw, tone: "bg-muted text-muted-foreground" },
+};
+
+const UNKNOWN_KIND = { label: "Activity", icon: Inbox, tone: "bg-muted text-muted-foreground" };
+
+export function kindMeta(kind) {
+  return KIND_META[String(kind || "").toLowerCase().trim()] || UNKNOWN_KIND;
+}
+
 // ---------- status badge ----------
 
 const STATUS_STYLES = {
@@ -70,6 +170,9 @@ const STATUS_STYLES = {
   paid: "bg-green-100 text-green-800",
   resolved: "bg-info/10 text-info",
   pending: "bg-yellow-100 text-yellow-800",
+  // Asking for a revision is neither an approval nor a rejection, so it gets
+  // its own tone rather than borrowing the red one.
+  changes_requested: "bg-warning/10 text-warning",
   assigned: "bg-yellow-100 text-yellow-800",
   awaiting: "bg-yellow-100 text-yellow-800",
   open: "bg-yellow-100 text-yellow-800",
@@ -108,19 +211,32 @@ export function StatusBadge({ status, className }) {
 
 // ---------- progress bar ----------
 
-export function ProgressBar({ value = 0, showLabel = true }) {
+const BAR_TONES = {
+  primary: "bg-primary",
+  success: "bg-success",
+  warning: "bg-warning",
+  destructive: "bg-destructive",
+};
+
+export function ProgressBar({ value = 0, showLabel = true, tone = "primary", label = "Progress" }) {
   const pct = Math.max(0, Math.min(100, Number(value) || 0));
   return (
     <div>
       {showLabel && (
         <div className="flex justify-between text-sm mb-1">
-          <span className="text-foreground font-medium">Progress</span>
+          <span className="text-foreground font-medium">{label}</span>
           <span className="font-bold text-primary">{pct}%</span>
         </div>
       )}
-      <div className="w-full bg-muted rounded-full h-2">
+      <div
+        className="w-full bg-muted rounded-full h-2"
+        role="progressbar"
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
         <div
-          className="bg-primary h-2 rounded-full transition-all duration-500"
+          className={cn("h-2 rounded-full transition-all duration-500", BAR_TONES[tone] || BAR_TONES.primary)}
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -170,6 +286,24 @@ export function ErrorState({ message = "Something went wrong.", onRetry }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Keyset paging control. The caller owns the cursor; this only reports intent
+// and reflects the in-flight state so a slow page cannot be requested twice.
+export function LoadMoreButton({ onClick, loading, label = "Load more" }) {
+  return (
+    <div className="flex justify-center pt-2">
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={loading}
+        className="inline-flex items-center rounded-lg border border-border bg-card px-5 py-2.5 text-sm font-medium text-foreground shadow-card transition-colors hover:bg-muted disabled:opacity-60"
+      >
+        {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        {loading ? "Loading…" : label}
+      </button>
     </div>
   );
 }

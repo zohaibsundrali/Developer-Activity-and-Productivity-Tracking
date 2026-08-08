@@ -33,7 +33,10 @@ const TABS = [
 ];
 
 const INVOICE_STATUSES = ["draft", "sent", "paid", "overdue", "void"];
-const APPROVAL_ITEM_TYPES = ["deliverable", "milestone", "invoice", "general"];
+// "task" links an approval to a real developer_task, which is what lets the
+// client's decision be stamped back onto the board the team works from. The
+// other four have no picker and still take a hand-entered reference.
+const APPROVAL_ITEM_TYPES = ["task", "deliverable", "milestone", "invoice", "general"];
 
 // Read the logged-in admin identity (id + display name) for author/sender stamps.
 function readAdmin() {
@@ -847,6 +850,34 @@ function ClientApprovalsTab({ orgId, admin, clients, projects, links, approvals,
   const [itemRef, setItemRef] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Only client-visible tasks are offered. Asking a client to approve work they
+  // cannot open is a dead end, and the approval routes would refuse to show it
+  // to them anyway.
+  const [taskOptions, setTaskOptions] = useState([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    // Clearing the reference here is what stops a task id chosen for one
+    // project being submitted against another after the project is switched.
+    setItemRef("");
+    if (itemType !== "task" || !projectId) { setTaskOptions([]); return undefined; }
+    setTasksLoading(true);
+    supabase
+      .from("developer_tasks")
+      .select("id, task_title, status")
+      .eq("organization_id", orgId)
+      .eq("project_id", projectId)
+      .eq("client_visible", true)
+      .order("task_order", { ascending: true })
+      .limit(500)
+      .then(({ data }) => {
+        if (cancelled) return;
+        setTaskOptions(data || []);
+        setTasksLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [itemType, projectId, orgId]);
+
   const projName = (id) => projects.find((p) => p.id === id)?.name || "—";
 
   // Clients linked to a given project (for a hint of who will see the request).
@@ -859,6 +890,12 @@ function ClientApprovalsTab({ orgId, admin, clients, projects, links, approvals,
     e.preventDefault();
     if (!projectId) { showError("Missing project", "Pick the project this approval is for."); return; }
     if (!title.trim()) return;
+    // A task approval with no task cannot be stamped back onto the board, which
+    // is the only reason to choose this type.
+    if (itemType === "task" && !itemRef) {
+      showError("Pick a task", "A task approval needs the task it is about.");
+      return;
+    }
     setSaving(true);
     try {
       const { error } = await supabase.from("approvals").insert([{
@@ -874,7 +911,7 @@ function ClientApprovalsTab({ orgId, admin, clients, projects, links, approvals,
       if (error) throw error;
       const t = title.trim();
       notifyClients({ kind: "approval", title: t, message: description.trim() || null, projectId });
-      setProjectId(""); setTitle(""); setDescription(""); setItemType("deliverable"); setItemRef("");
+      setProjectId(""); setTitle(""); setDescription(""); setItemType("task"); setItemRef("");
       showSuccess("Approval requested", `"${t}" sent to the client.`);
       reload();
     } catch (err) {
@@ -921,9 +958,27 @@ function ClientApprovalsTab({ orgId, admin, clients, projects, links, approvals,
           className="mb-3 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
           {APPROVAL_ITEM_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
-        <label className="mb-1 block text-xs font-medium text-foreground">Item reference (optional)</label>
-        <input value={itemRef} onChange={(e) => setItemRef(e.target.value)} placeholder="UUID of referenced item"
-          className="mb-3 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30" />
+        {itemType === "task" ? (
+          <>
+            <label className="mb-1 block text-xs font-medium text-foreground">Task</label>
+            <select value={itemRef} onChange={(e) => setItemRef(e.target.value)} disabled={!projectId || tasksLoading}
+              className="mb-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 disabled:opacity-50">
+              <option value="">{!projectId ? "Pick a project first" : tasksLoading ? "Loading tasks…" : "Select a task"}</option>
+              {taskOptions.map((t) => <option key={t.id} value={t.id}>{t.task_title}</option>)}
+            </select>
+            <p className="mb-3 text-xs text-muted-foreground">
+              {projectId && !tasksLoading && taskOptions.length === 0
+                ? "This project has no client-visible tasks yet. Turn on \"Visible to client\" on a task first — a client cannot approve work they cannot open."
+                : "The client's decision is stamped back onto this task, so the team sees it on the board."}
+            </p>
+          </>
+        ) : (
+          <>
+            <label className="mb-1 block text-xs font-medium text-foreground">Item reference (optional)</label>
+            <input value={itemRef} onChange={(e) => setItemRef(e.target.value)} placeholder="UUID of referenced item"
+              className="mb-3 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30" />
+          </>
+        )}
         <button disabled={saving} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
           <Plus className="h-4 w-4" /> {saving ? "Sending…" : "Request approval"}
         </button>

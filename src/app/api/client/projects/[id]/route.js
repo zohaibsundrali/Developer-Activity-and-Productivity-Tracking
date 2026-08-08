@@ -4,70 +4,170 @@ import {
   clientCanAccessProject,
   serviceClient,
 } from "@/utils/serverAuth";
+import { buildProjectSummary } from "@/app/api/client/_lib/shapes";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/client/projects/[id]
-// Full project detail: milestones, tasks, updates and deliverables — all
+// ClientProjectDetail: milestones, tasks, team, updates and deliverables — all
 // scoped to the client's org and limited to a project they are linked to.
+//
+// THE FIX: this route used to return EVERY task on the project, so internal
+// task titles ("chase the client about the overdue invoice") were read by the
+// client verbatim. Tasks, milestones and updates are now filtered on
+// client_visible = true (migration 032), and the team is name + role only —
+// no email, no employee_profiles, nothing from the HR module.
 export async function GET(request, { params }) {
   try {
     const auth = await getAuthedClient(request);
     if (!auth) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
     const projectId = params?.id;
     if (!clientCanAccessProject(auth, projectId)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     }
 
     const svc = serviceClient();
 
     const { data: project, error: projectError } = await svc
       .from("projects")
-      .select("id, name, description, status, progress, deadline, created_at")
+      .select(
+        "id, name, description, status, progress, deadline, start_date, end_date, assigned_to, created_at"
+      )
       .eq("organization_id", auth.orgId)
       .eq("id", projectId)
       .single();
 
     if (projectError || !project) {
       console.error("[client/projects/:id] Project error:", projectError);
-      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: "Project not found" },
+        { status: 404 }
+      );
     }
 
-    const { data: milestones, error: milestonesError } = await svc
+    const { data: milestoneRows, error: milestonesError } = await svc
       .from("milestones")
-      .select("id, title, description, due_date, status, sort_order, created_at")
+      .select("id, title, due_date, status, sort_order, updated_at")
       .eq("organization_id", auth.orgId)
       .eq("project_id", projectId)
+      .eq("client_visible", true)
       .order("sort_order", { ascending: true })
       .order("due_date", { ascending: true });
 
     if (milestonesError) {
       console.error("[client/projects/:id] Milestones error:", milestonesError);
-      return NextResponse.json({ error: "Failed to load project" }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: "Failed to load project" },
+        { status: 500 }
+      );
     }
+
+    // `milestones` has no completed_at column; the row is stamped on update, so
+    // a completed milestone's updated_at is when it was completed.
+    const milestones = (milestoneRows || []).map((m) => ({
+      id: m.id,
+      title: m.title,
+      due_date: m.due_date || null,
+      status: m.status,
+      completed_at: m.status === "completed" ? m.updated_at || null : null,
+    }));
 
     const { data: taskRows, error: tasksError } = await svc
       .from("developer_tasks")
-      .select("id, task_title, status, created_at, end_date")
+      .select(
+        "id, task_title, status, priority, labels, due_date, end_date, developer_id, task_order"
+      )
       .eq("organization_id", auth.orgId)
       .eq("project_id", projectId)
+      .eq("client_visible", true)
       .order("task_order", { ascending: true });
 
     if (tasksError) {
       console.error("[client/projects/:id] Tasks error:", tasksError);
-      return NextResponse.json({ error: "Failed to load project" }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: "Failed to load project" },
+        { status: 500 }
+      );
     }
 
-    // Expose only client-safe task fields; map end_date -> due_date.
+    const visibleTaskIds = (taskRows || []).map((t) => t.id);
+
+    // Attachment counts for the visible tasks only — a count, never a path.
+    let attachmentCounts = new Map();
+    if (visibleTaskIds.length) {
+      const { data: attachmentRows, error: attachmentsError } = await svc
+        .from("task_attachments")
+        .select("id, task_id")
+        .eq("organization_id", auth.orgId)
+        .in("task_id", visibleTaskIds);
+
+      if (attachmentsError) {
+        console.error("[client/projects/:id] Attachments error:", attachmentsError);
+        return NextResponse.json(
+          { success: false, error: "Failed to load project" },
+          { status: 500 }
+        );
+      }
+
+      attachmentCounts = (attachmentRows || []).reduce((acc, a) => {
+        acc.set(a.task_id, (acc.get(a.task_id) || 0) + 1);
+        return acc;
+      }, new Map());
+    }
+
+    // The people the client may be told about: whoever is assigned to a
+    // client-visible task, plus the project lead. Name and role ONLY — the
+    // select never asks for an email, and employee_profiles is not touched.
+    const memberIds = [];
+    for (const t of taskRows || []) {
+      if (t.developer_id && !memberIds.includes(t.developer_id)) memberIds.push(t.developer_id);
+    }
+    if (project.assigned_to && !memberIds.includes(project.assigned_to)) {
+      memberIds.push(project.assigned_to);
+    }
+
+    const people = new Map();
+    if (memberIds.length) {
+      const { data: developerRows, error: developersError } = await svc
+        .from("developers")
+        .select("id, name, designation")
+        .eq("organization_id", auth.orgId)
+        .in("id", memberIds);
+
+      if (developersError) {
+        console.error("[client/projects/:id] Team error:", developersError);
+        return NextResponse.json(
+          { success: false, error: "Failed to load project" },
+          { status: 500 }
+        );
+      }
+
+      for (const d of developerRows || []) people.set(d.id, d);
+    }
+
+    // Order the team the way memberIds was built (task assignees, then lead) so
+    // the list is stable between requests.
+    const team = memberIds
+      .filter((id) => people.has(id))
+      .map((id) => ({
+        id,
+        name: people.get(id).name || null,
+        role: people.get(id).designation || null,
+      }));
+
+    // ClientTask: a name for the assignee, never an email; labels default to [].
     const tasks = (taskRows || []).map((t) => ({
       id: t.id,
-      task_title: t.task_title,
+      title: t.task_title,
       status: t.status,
-      created_at: t.created_at,
-      due_date: t.end_date || null,
+      priority: t.priority || null,
+      due_date: t.due_date || t.end_date || null,
+      assignee_name: people.get(t.developer_id)?.name || null,
+      labels: Array.isArray(t.labels) ? t.labels : [],
+      attachment_count: attachmentCounts.get(t.id) || 0,
     }));
 
     const { data: updates, error: updatesError } = await svc
@@ -75,58 +175,85 @@ export async function GET(request, { params }) {
       .select("id, title, body, author_name, created_at")
       .eq("organization_id", auth.orgId)
       .eq("project_id", projectId)
+      .eq("client_visible", true)
       .order("created_at", { ascending: false });
 
     if (updatesError) {
       console.error("[client/projects/:id] Updates error:", updatesError);
-      return NextResponse.json({ error: "Failed to load project" }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: "Failed to load project" },
+        { status: 500 }
+      );
     }
 
     const { data: subRows, error: subsError } = await svc
       .from("task_submissions")
-      .select("id, file_name, file_type, file_size, submitted_at, review_status, developer_tasks(task_title)")
+      .select("id, file_name, file_type, file_size, submitted_at")
       .eq("organization_id", auth.orgId)
       .eq("project_id", projectId)
       .order("submitted_at", { ascending: false });
 
     if (subsError) {
       console.error("[client/projects/:id] Deliverables error:", subsError);
-      return NextResponse.json({ error: "Failed to load project" }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: "Failed to load project" },
+        { status: 500 }
+      );
     }
 
-    // Only client-safe deliverable fields (no developer_id / internal notes).
+    // Deliverable metadata only. No storage path, no developer id, no internal
+    // review notes, and no task title (the task may well be an internal one).
     const deliverables = (subRows || []).map((s) => ({
       id: s.id,
       file_name: s.file_name,
       file_type: s.file_type,
       file_size: s.file_size,
-      created_at: s.submitted_at,
-      task_title: s.developer_tasks?.task_title || null,
-      review_status: s.review_status,
+      submitted_at: s.submitted_at,
     }));
 
-    const { data: approvals, error: approvalsError } = await svc
+    const { count: pendingApprovals, error: approvalsError } = await svc
       .from("approvals")
-      .select("id, item_type, item_ref, title, description, status, decided_by, decided_at, note, created_at")
+      .select("id", { count: "exact", head: true })
       .eq("organization_id", auth.orgId)
       .eq("project_id", projectId)
-      .order("created_at", { ascending: false });
+      .eq("status", "pending");
 
     if (approvalsError) {
       console.error("[client/projects/:id] Approvals error:", approvalsError);
-      return NextResponse.json({ error: "Failed to load project" }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: "Failed to load project" },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.json({
+    // ClientProjectDetail = ClientProjectSummary + the detail fields. The
+    // summary half is computed by the same helper the list route uses, so the
+    // two views of one project can never disagree.
+    const summary = buildProjectSummary({
       project,
-      milestones: milestones || [],
-      tasks,
-      updates: updates || [],
-      deliverables,
-      approvals: approvals || [],
+      tasks: taskRows || [],
+      pendingApprovals: pendingApprovals || 0,
+    });
+
+    return NextResponse.json({
+      success: true,
+      project: {
+        ...summary,
+        description: project.description || null,
+        start_date: project.start_date || null,
+        end_date: project.end_date || null,
+        milestones,
+        tasks,
+        team,
+        updates: updates || [],
+        deliverables,
+      },
     });
   } catch (err) {
     console.error("[client/projects/:id] Error:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: "Internal server error" },
+      { status: 500 }
+    );
   }
 }

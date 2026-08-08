@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { STATUS_META, normalizeStatus } from "@/utils/pmData";
-import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
+import { ChevronUp, ChevronDown, ChevronsUpDown, Eye, EyeOff } from "lucide-react";
 
 /* -------------------------------------------------------------------------- */
 /*  Token helpers                                                              */
@@ -27,6 +27,24 @@ const PRIORITY_STYLES = {
 // Highest first for descending sort.
 const PRIORITY_RANK = { urgent: 4, high: 3, medium: 2, low: 1 };
 
+// The client's verdict on a task, which is a different axis from `status`: a
+// task can be internally in review and already rejected by the client.
+const CLIENT_APPROVAL_META = {
+  pending: { label: "Awaiting", tone: "info" },
+  approved: { label: "Approved", tone: "success" },
+  changes_requested: { label: "Changes", tone: "warning" },
+  rejected: { label: "Rejected", tone: "destructive" },
+};
+
+// Ordered so that one click into descending pulls the tasks a client is unhappy
+// about to the top of the project, which is the reason a manager sorts here.
+const CLIENT_APPROVAL_RANK = {
+  pending: 1,
+  approved: 2,
+  changes_requested: 3,
+  rejected: 4,
+};
+
 // Pipeline order for sensible status sorting.
 const STATUS_ORDER = Object.keys(STATUS_META).reduce((acc, id, i) => {
   acc[id] = i;
@@ -42,8 +60,14 @@ function formatDue(value) {
 
 const COLUMNS = [
   { key: "title", label: "Title", type: "string" },
+  // Sits next to the title on purpose: the title is the thing the portal
+  // actually publishes, so the marker belongs against the words being exposed.
+  { key: "clientVisible", label: "Client", type: "flag" },
   { key: "type", label: "Type", type: "string" },
   { key: "status", label: "Status", type: "status" },
+  // Next to the team's own status, never merged into it: one column is where
+  // the work has got to, the other is what the client said about it.
+  { key: "clientApproval", label: "Client approval", type: "approval" },
   { key: "priority", label: "Priority", type: "priority" },
   { key: "assignee", label: "Assignee", type: "string" },
   { key: "points", label: "Points", type: "number", align: "right" },
@@ -66,6 +90,45 @@ function StatusBadge({ status }) {
 function PriorityBadge({ priority }) {
   const p = priority || "medium";
   return <span className={`${badgeBase} ${PRIORITY_STYLES[p] || PRIORITY_STYLES.medium}`}>{p}</span>;
+}
+
+// A row carrying no client_visible value at all predates migration 032. Drawing
+// it as "internal" would state something the row does not actually say, so the
+// unknown case gets the same em dash every other empty cell here uses.
+function ClientVisibleFlag({ value }) {
+  if (value !== true && value !== false) {
+    return (
+      <span className="text-muted-foreground" title="No client-visibility setting on this task">
+        —
+      </span>
+    );
+  }
+  const label = value
+    ? "Visible to client — shown in the client portal"
+    : "Internal only — not shown in the client portal";
+  const Icon = value ? Eye : EyeOff;
+  return (
+    <span
+      className={`inline-flex items-center ${value ? "text-success" : "text-muted-foreground"}`}
+      title={label}
+    >
+      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
+// No client decision on a task is the ordinary case - most tasks are never put
+// in front of a client - so it reads as the same em dash every other empty cell
+// here uses, not as a state of its own.
+function ClientApprovalBadge({ status }) {
+  const meta = CLIENT_APPROVAL_META[status];
+  if (!meta) return <span className="text-muted-foreground">—</span>;
+  return (
+    <span className={`${badgeBase} ${STATUS_TONE_CLASS[meta.tone]}`} title={`Client: ${meta.label}`}>
+      {meta.label}
+    </span>
+  );
 }
 
 function TypeBadge({ type }) {
@@ -116,10 +179,19 @@ export default function TableView({ tasks, employees, sprints, epics, onOpenTask
     switch (col.key) {
       case "title":
         return t.task_title || "";
+      case "clientVisible":
+        // Sorting this column is the audit: one click pulls every task the
+        // client can read to the top of the project.
+        if (t.client_visible !== true && t.client_visible !== false) return null;
+        return t.client_visible ? 1 : 0;
       case "type":
         return t.task_type || "";
       case "status":
         return STATUS_ORDER[normalizeStatus(t.status)] ?? 0;
+      case "clientApproval":
+        // Null, so tasks the client has never ruled on fall to the bottom in
+        // both directions rather than crowding out the ones that need a reply.
+        return CLIENT_APPROVAL_RANK[t.client_approval_status] ?? null;
       case "priority":
         return PRIORITY_RANK[t.priority] ?? 0;
       case "assignee":
@@ -207,10 +279,16 @@ export default function TableView({ tasks, employees, sprints, epics, onOpenTask
                     <span className="line-clamp-1">{row.title}</span>
                   </td>
                   <td className="px-3 py-2">
+                    <ClientVisibleFlag value={t.client_visible} />
+                  </td>
+                  <td className="px-3 py-2">
                     <TypeBadge type={row.type} />
                   </td>
                   <td className="px-3 py-2">
                     <StatusBadge status={t.status} />
+                  </td>
+                  <td className="px-3 py-2">
+                    <ClientApprovalBadge status={t.client_approval_status} />
                   </td>
                   <td className="px-3 py-2">
                     <PriorityBadge priority={t.priority} />

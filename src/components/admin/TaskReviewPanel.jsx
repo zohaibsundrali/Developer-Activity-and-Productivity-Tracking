@@ -3,6 +3,8 @@ import { useState, useEffect, useCallback } from "react";
 import { showError, showSuccess, showWarning } from "@/utils/alerts";
 import { getSignedSubmissionUrl } from "@/utils/submissionFiles";
 import { authFetch } from "@/utils/authFetch";
+import { supabase } from "@/utils/supabaseClient";
+import { getOrgId } from "@/utils/orgContext";
 import {
   RefreshCw,
   ClipboardList,
@@ -10,7 +12,51 @@ import {
   Download,
   Check,
   X,
+  AlertTriangle,
+  XCircle,
 } from "lucide-react";
+
+// The two client verdicts that mean the work is disputed. Approved and pending
+// are deliberately absent: a reviewer does not need to be interrupted because a
+// client agreed, and an unanswered request says nothing about the submission.
+const CLIENT_PUSHBACK = {
+  changes_requested: {
+    label: "Client requested changes",
+    box: "border-warning/40 bg-warning/10",
+    text: "text-warning",
+    icon: AlertTriangle,
+  },
+  rejected: {
+    label: "Client rejected this work",
+    box: "border-destructive/40 bg-destructive/10",
+    text: "text-destructive",
+    icon: XCircle,
+  },
+};
+
+// Shown above the developer's own details, because the client's objection is
+// the thing that decides whether this submission can be approved at all.
+function ClientPushbackNotice({ pushback, compact = false }) {
+  if (!pushback) return null;
+  const Icon = pushback.icon;
+  const note = String(pushback.note || "").trim();
+  return (
+    <div className={`rounded-lg border p-3 ${pushback.box} ${compact ? "" : "mb-4"}`}>
+      <div className={`flex items-start gap-2 font-semibold ${pushback.text}`}>
+        <Icon className="w-5 h-5 shrink-0" aria-hidden="true" />
+        <span>{pushback.label}</span>
+      </div>
+      {note ? (
+        <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{note}</p>
+      ) : (
+        <p className="mt-2 text-sm text-muted-foreground">
+          No note was left with the decision. Check with the client before
+          approving this work.
+        </p>
+      )}
+    </div>
+  );
+}
 
 export default function TaskReviewPanel({ currentAdmin }) {
   const [loading, setLoading] = useState(true);
@@ -23,6 +69,10 @@ export default function TaskReviewPanel({ currentAdmin }) {
   const [processing, setProcessing] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [modalAction, setModalAction] = useState(null); // 'approve' or 'reject'
+  // task id -> the client's decision on that task, keyed separately from the
+  // submission because the review queue is fetched by an endpoint that knows
+  // nothing about the client portal.
+  const [clientDecisions, setClientDecisions] = useState({});
 
   const fetchSubmissions = useCallback(async () => {
     try {
@@ -57,6 +107,55 @@ export default function TaskReviewPanel({ currentAdmin }) {
       fetchSubmissions();
     }
   }, [currentAdmin?.id, reviewStatus, fetchSubmissions]);
+
+  // The client's decision lives on the task, and the queue above lists
+  // submissions, so it is read here against the task ids actually on screen.
+  // A reviewer who cannot see that the client has already rejected this work is
+  // one click away from approving it, which is the failure this whole phase
+  // exists to prevent - so it is fetched even though it costs a second round
+  // trip.
+  useEffect(() => {
+    const taskIds = [
+      ...new Set((submissions || []).map((s) => s.task_id).filter(Boolean)),
+    ];
+    if (taskIds.length === 0) {
+      setClientDecisions({});
+      return undefined;
+    }
+
+    let cancelled = false;
+    (async () => {
+      let query = supabase
+        .from("developer_tasks")
+        .select("id, client_approval_status, client_approval_note, client_approval_at")
+        .in("id", taskIds);
+      const orgId = getOrgId();
+      if (orgId) query = query.eq("organization_id", orgId);
+
+      const { data, error } = await query;
+      if (cancelled) return;
+      if (error) {
+        // Before migration 033 these columns do not exist. The review queue is
+        // still usable without them, so this stays quiet rather than blocking
+        // the panel behind a schema the box may not have yet.
+        console.error("Client decision fetch error:", error);
+        return;
+      }
+      const byTask = {};
+      for (const row of data || []) byTask[row.id] = row;
+      setClientDecisions(byTask);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [submissions]);
+
+  const clientPushbackFor = (submission) => {
+    const decision = clientDecisions[submission?.task_id];
+    const meta = CLIENT_PUSHBACK[decision?.client_approval_status];
+    return meta ? { ...meta, note: decision.client_approval_note } : null;
+  };
 
   const handleReview = async (action) => {
     if (!selectedSubmission) return;
@@ -292,6 +391,11 @@ export default function TaskReviewPanel({ currentAdmin }) {
                   </div>
                 </div>
 
+                {/* Client decision on the underlying task, if there is one.
+                    It is never merged into review_status above: that badge is
+                    the team's own pipeline and the client does not move it. */}
+                <ClientPushbackNotice pushback={clientPushbackFor(submission)} />
+
                 {/* Developer Info */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 bg-muted/50 rounded-lg p-4">
                   <div>
@@ -445,6 +549,17 @@ export default function TaskReviewPanel({ currentAdmin }) {
             <div className="p-6 overflow-y-auto">
               {modalAction === "approve" ? (
                 <div>
+                  {/* Last point at which this is still stoppable: signing off
+                      work the client has just pushed back on is the mistake
+                      worth interrupting someone for. */}
+                  {clientPushbackFor(selectedSubmission) ? (
+                    <div className="mb-4">
+                      <ClientPushbackNotice
+                        pushback={clientPushbackFor(selectedSubmission)}
+                        compact
+                      />
+                    </div>
+                  ) : null}
                   <p className="text-muted-foreground mb-4">
                     You are about to approve this task. The developer will
                     receive{" "}
