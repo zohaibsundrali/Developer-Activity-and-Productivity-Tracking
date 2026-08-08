@@ -70,7 +70,6 @@ create index if not exists idx_projects_assigned_dev_updated on public.projects 
 --  probe (which previously ran one query per due task)
 -- ---------------------------------------------------------------------
 create index if not exists idx_notifications_org_read on public.notifications (organization_id, read);
-create index if not exists idx_notifications_task_type_created on public.notifications (task_id, type, created_at desc);
 create index if not exists idx_notifications_developer_created on public.notifications (developer_id, created_at desc);
 create index if not exists idx_notifications_admin_created on public.notifications (admin_id, created_at desc);
 
@@ -91,7 +90,6 @@ create index if not exists idx_productivity_metrics_org_dev on public.productivi
 --  Desktop tracking tables - identity + time, the 10s dashboard poll path
 -- ---------------------------------------------------------------------
 create index if not exists idx_sessions_email_start on public.productivity_sessions (user_email, start_time desc);
-create index if not exists idx_sessions_dev_start on public.productivity_sessions (developer_id, start_time desc);
 create index if not exists idx_sessions_email_created on public.productivity_sessions (user_email, created_at desc);
 create index if not exists idx_sessions_email_session on public.productivity_sessions (user_email, session_id);
 
@@ -121,6 +119,17 @@ create index if not exists idx_invoices_org_created on public.invoices (organiza
 create index if not exists idx_approvals_org_created on public.approvals (organization_id, created_at desc);
 create index if not exists idx_support_threads_org_last_msg on public.support_threads (organization_id, last_message_at desc);
 create index if not exists idx_support_messages_thread_created on public.support_messages (thread_id, created_at);
+
+-- ---------------------------------------------------------------------
+--  NOT INDEXED - the column does not exist in this database
+--   notifications.task_id and productivity_sessions.developer_id were both
+--   confirmed absent by the STEP 0 pre-flight. Indexing them aborts the whole
+--   step, so they are omitted here. Both are referenced by application code
+--   that therefore cannot be working - see the note in RUN_ME_phase2to5.sql.
+--   Add these two once the columns exist:
+--     create index if not exists idx_notifications_task_type_created on public.notifications (task_id, type, created_at desc);
+--     create index if not exists idx_sessions_dev_start on public.productivity_sessions (developer_id, start_time desc);
+-- ---------------------------------------------------------------------
 
 -- =====================================================================
 --  VERIFY - expected: every index above, all with idx_ names
