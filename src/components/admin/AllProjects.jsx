@@ -1,19 +1,62 @@
 "use client";
 import { useState, useEffect } from "react";
-import { RefreshCw, Plus, X, Trash2, AlertTriangle, FileText, BarChart3, Calendar, Eye, Download } from "lucide-react";
+import {
+  RefreshCw,
+  Plus,
+  Trash2,
+  AlertTriangle,
+  FileText,
+  BarChart3,
+  Calendar,
+  Eye,
+  Download,
+  ShieldAlert,
+  Inbox,
+} from "lucide-react";
 import { showError, showInfo, showSuccess, showWarning } from "@/utils/alerts";
 import { getOrgId } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
 import { uploadOrgFile, resolveOrgFileUrl } from "@/utils/orgFiles";
+import {
+  PageHeader,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+  Badge,
+  StatusPill,
+  EmptyState,
+  ErrorState,
+  Skeleton,
+  SkeletonCard,
+  Modal,
+  Field,
+  Button,
+  Input,
+} from "@/components/ui";
 
-const statusPill = (status) => {
+// Presentational only: maps a raw project status onto a StatusPill status key.
+// The pill carries colour + shape + text, so the state survives greyscale.
+const statusPillKey = (status) => {
   const s = String(status || "").toLowerCase();
-  if (["completed","done","approved","active","reviewed"].includes(s)) return "bg-success/10 text-success";
-  if (["in_progress","in progress","awaiting_approval","pending_review"].includes(s)) return "bg-info/10 text-info";
-  if (["pending","assigned","draft","on_hold"].includes(s)) return "bg-warning/10 text-warning";
-  if (["rejected","cancelled","overdue"].includes(s)) return "bg-destructive/10 text-destructive";
-  return "bg-muted text-muted-foreground";
+  if (["completed", "done", "approved", "reviewed"].includes(s)) return "success";
+  if (["active"].includes(s)) return "active";
+  if (["in_progress", "in progress", "awaiting_approval", "pending_review"].includes(s)) return "pending";
+  if (["pending", "assigned", "draft", "on_hold"].includes(s)) return "pending";
+  if (["rejected", "cancelled", "overdue"].includes(s)) return "error";
+  return "unknown";
 };
+
+const statusLabel = (status) =>
+  String(status || "unknown")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+
+// Native controls the kit has no primitive for (select / textarea / file).
+const CONTROL_CLASS =
+  "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 export default function AllProjects({ developers: initialDevelopers, supabase }) {
   const [showAddProject, setShowAddProject] = useState(false);
@@ -21,6 +64,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
   const [uploadingFile, setUploadingFile] = useState(false);
   const [fetchingProjects, setFetchingProjects] = useState(true);
   const [projects, setProjects] = useState([]);
+  const [loadError, setLoadError] = useState("");
   const [currentAdmin, setCurrentAdmin] = useState(null);
   const [adminDevelopers, setAdminDevelopers] = useState([]); // Only developers added by current admin
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -30,6 +74,10 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [metricsError, setMetricsError] = useState("");
   const [metricsData, setMetricsData] = useState(null);
+  // Remembers which project the open metrics modal is for, so the error state's
+  // Retry can call handleViewMetrics with the exact same argument. Never used
+  // to decide what is fetched.
+  const [metricsProject, setMetricsProject] = useState(null);
 
   const [newProject, setNewProject] = useState({
     name: "",
@@ -47,6 +95,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
   const fetchAdminData = async () => {
     try {
       setFetchingProjects(true);
+      setLoadError("");
 
       // Get admin from localStorage
       const adminData = JSON.parse(sessionStorage.getItem("adminUser"));
@@ -92,6 +141,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
           "Load failed",
           `Error fetching projects: ${projectsResult.error.message}`
         );
+        setLoadError(projectsResult.error.message || "Error fetching projects.");
         setProjects([]);
       } else {
         setProjects(projectsResult.data || []);
@@ -106,6 +156,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
 
     } catch (error) {
       showError("Load failed", `Error loading data: ${error.message}`);
+      setLoadError(error.message || "Error loading data.");
       setProjects([]);
       setAdminDevelopers([]);
     } finally {
@@ -146,6 +197,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
       setMetricsLoading(true);
       setMetricsError("");
       setMetricsData(null);
+      setMetricsProject(project);
       setShowMetricsModal(true);
 
       const url = `/api/productivity?type=project&projectId=${project.id}&developerId=${project.assigned_developer_id}`;
@@ -518,13 +570,41 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
     if (fileInput) fileInput.value = '';
   };
 
+  const headerActions = (
+    <>
+      <Button
+        variant="outline"
+        onClick={fetchAdminData}
+        disabled={fetchingProjects}
+      >
+        <RefreshCw className="h-4 w-4" aria-hidden="true" />
+        Refresh
+      </Button>
+      <Button
+        onClick={() => setShowAddProject(true)}
+        disabled={adminDevelopers.length === 0}
+      >
+        <Plus className="h-4 w-4" aria-hidden="true" />
+        Add New Project
+      </Button>
+    </>
+  );
+
   // Show loading state
   if (fetchingProjects) {
     return (
-      <div className="rounded-xl border border-border bg-card p-6 shadow-card">
-        <div className="text-center py-8">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          <p className="mt-2 text-muted-foreground">Loading your projects...</p>
+      <div>
+        <PageHeader
+          title="My Projects"
+          description="Projects you created, with progress, deadlines and assigned developers."
+          actions={headerActions}
+        />
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <SkeletonCard key={i} />
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -533,16 +613,25 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
   // Show warning if admin is not logged in
   if (!currentAdmin) {
     return (
-      <div className="rounded-xl border border-border bg-card p-6 shadow-card">
-        <div className="text-center py-8">
-          <p className="text-muted-foreground">Please log in as an admin to view projects.</p>
+      <div>
+        <PageHeader
+          title="My Projects"
+          description="Projects you created, with progress, deadlines and assigned developers."
+          actions={headerActions}
+        />
+        <div className="space-y-6">
+          <EmptyState
+            icon={ShieldAlert}
+            title="Admin sign-in required"
+            description="Please log in as an admin to view projects."
+          />
         </div>
       </div>
     );
   }
 
   const getDeadlineSummary = (deadline) => {
-    if (!deadline) return { label: 'No deadline set', tone: 'text-muted-foreground' };
+    if (!deadline) return { label: 'No deadline set', variant: 'outline' };
 
     try {
       const deadlineDate = new Date(deadline);
@@ -553,128 +642,92 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
       if (diffDays < 0) {
         return {
           label: `Overdue by ${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? '' : 's'}`,
-          tone: 'text-destructive'
+          variant: 'destructive'
         };
       }
       if (diffDays === 0) {
-        return { label: 'Due today', tone: 'text-warning' };
+        return { label: 'Due today', variant: 'warning' };
       }
       if (diffDays === 1) {
-        return { label: '1 day left', tone: 'text-warning' };
+        return { label: '1 day left', variant: 'warning' };
       }
 
       return {
         label: `${diffDays} days left`,
-        tone: diffDays <= 3 ? 'text-warning' : 'text-success'
+        variant: diffDays <= 3 ? 'warning' : 'success'
       };
     } catch {
-      return { label: 'N/A', tone: 'text-muted-foreground' };
+      return { label: 'N/A', variant: 'outline' };
     }
   };
 
   return (
-    <div className="space-y-6 rounded-xl border border-border bg-card p-6 shadow-card">
-      {/* Debug Button - Temporary */}
+    <div>
+      <PageHeader
+        title="My Projects"
+        description="Projects you created, with progress, deadlines and assigned developers."
+        actions={headerActions}
+      />
 
-
-      {/* Header with Add Project Button and Admin Info */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight text-foreground">My Projects</h2>
-
-        </div>
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <button
-            onClick={fetchAdminData}
-            className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-50"
-            disabled={fetchingProjects}
+      <div className="space-y-6">
+        {/* Add Project Modal */}
+        {showAddProject && (
+          <Modal
+            open
+            onClose={() => setShowAddProject(false)}
+            title="Add New Project"
+            description="Assign a new project to one of the developers you added."
+            size="md"
           >
-            <RefreshCw className="w-4 h-4" />
-            Refresh
-          </button>
-          <button
-            onClick={() => setShowAddProject(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-            disabled={adminDevelopers.length === 0}
-          >
-            <Plus className="w-4 h-4" />
-            Add New Project
-          </button>
-        </div>
-      </div>
-
-      {/* Developer Stats */}
-
-
-      {/* Add Project Modal */}
-      {showAddProject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-popover max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold text-foreground">Add New Project</h3>
-              <button
-                onClick={() => setShowAddProject(false)}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
             <form onSubmit={handleAddProject} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
-                  Project Title *
-                </label>
-                <input
+              <Field label="Project Title" htmlFor="project-name" required>
+                <Input
+                  id="project-name"
                   type="text"
                   name="name"
                   value={newProject.name}
                   onChange={handleInputChange}
                   placeholder="Enter project title"
-                  className="w-full rounded-lg border border-input bg-background p-2 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
                   required
                 />
-              </div>
+              </Field>
 
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
-                  Deadline *
-                </label>
-                <input
+              <Field label="Deadline" htmlFor="project-deadline" required>
+                <Input
+                  id="project-deadline"
                   type="date"
                   name="deadline"
                   value={newProject.deadline}
                   onChange={handleInputChange}
                   min={new Date().toISOString().split('T')[0]}
-                  className="w-full rounded-lg border border-input bg-background p-2 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
                   required
                 />
-              </div>
+              </Field>
 
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
-                  Project Description
-                </label>
+              <Field
+                label="Project Description"
+                htmlFor="project-description"
+                hint="Requirements, scope and anything the developer needs up front."
+              >
                 <textarea
+                  id="project-description"
                   name="description"
                   value={newProject.description}
                   onChange={handleInputChange}
                   placeholder="Enter project description and requirements..."
                   rows="3"
-                  className="w-full rounded-lg border border-input bg-background p-2 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
+                  className={CONTROL_CLASS}
                 />
-              </div>
+              </Field>
 
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
-                  Assign to Developer *
-                </label>
-                {adminDevelopers.length > 0 ? (
+              {adminDevelopers.length > 0 ? (
+                <Field label="Assign to Developer" htmlFor="project-developer" required>
                   <select
+                    id="project-developer"
                     name="assigned_developer"
                     value={newProject.assigned_developer}
                     onChange={handleInputChange}
-                    className="w-full rounded-lg border border-input bg-background p-2 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
+                    className={CONTROL_CLASS}
                     required
                   >
                     <option value="">Select Developer (Added by you)</option>
@@ -684,246 +737,216 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
                       </option>
                     ))}
                   </select>
-                ) : (
-                  <div className="p-3 bg-warning/10 border border-warning/30 rounded-lg">
-                    <p className="text-sm text-warning">
-                      You haven't added any developers yet. Please add developers first in the "Add Developer" section.
-                    </p>
-                  </div>
-                )}
+                </Field>
+              ) : (
+                <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+                  <p className="text-sm text-warning">
+                    You haven&apos;t added any developers yet. Please add developers first in the &quot;Add Developer&quot; section.
+                  </p>
+                </div>
+              )}
 
-              </div>
-
-
-
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
-                  Attach Requirements File
-                </label>
+              <Field
+                label="Attach Requirements File"
+                htmlFor="file-input"
+                hint="Supported format only DOCX (Max 10MB)"
+              >
                 <input
                   id="file-input"
                   type="file"
                   onChange={handleFileChange}
-                  className="w-full rounded-lg border border-input bg-background p-2 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
+                  className={CONTROL_CLASS}
                   accept=".pdf,.doc,.docx,.txt"
                 />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Supported format only DOCX  (Max 10MB)
-                </p>
+              </Field>
 
-                {newProject.file && (
-                  <div className="mt-2 p-3 bg-success/10 border border-success/30 rounded-lg">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <p className="text-sm font-medium text-success">
-                          {newProject.file.name}
-                        </p>
-                        <p className="text-xs text-success">
-                          {(newProject.file.size / 1024 / 1024).toFixed(2)} MB
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={removeSelectedFile}
-                        className="text-destructive hover:text-destructive/80"
-                      >
-                        Remove
-                      </button>
-                    </div>
+              {newProject.file && (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-success/30 bg-success/10 p-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-success">
+                      {newProject.file.name}
+                    </p>
+                    <p className="text-xs text-success">
+                      {(newProject.file.size / 1024 / 1024).toFixed(2)} MB
+                    </p>
                   </div>
-                )}
-              </div>
+                  <Button type="button" variant="ghost" onClick={removeSelectedFile}>
+                    Remove
+                  </Button>
+                </div>
+              )}
 
-              <div className="flex space-x-3 pt-4">
-                <button
+              <div className="flex gap-3 pt-2">
+                <Button
                   type="submit"
                   disabled={loading || uploadingFile || adminDevelopers.length === 0}
-                  className={`flex-1 inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors ${loading || uploadingFile || adminDevelopers.length === 0
-                    ? 'bg-primary/50 cursor-not-allowed'
-                    : 'bg-primary hover:bg-primary/90'
-                    }`}
+                  className="flex-1"
                 >
                   {uploadingFile ? 'Uploading File...' :
                     loading ? 'Adding...' :
                       adminDevelopers.length === 0 ? 'No Developers Available' :
                         'Add Project'}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  variant="outline"
                   onClick={() => setShowAddProject(false)}
-                  className="flex-1 inline-flex items-center justify-center rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+                  className="flex-1"
                 >
                   Cancel
-                </button>
+                </Button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+          </Modal>
+        )}
 
-      {/* Delete Confirmation Modal */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-popover max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold text-destructive">Delete Project</h3>
-              <button
-                onClick={() => {
-                  setShowDeleteModal(false);
-                  setProjectToDelete(null);
-                }}
-                className="text-muted-foreground hover:text-foreground"
-                disabled={deleting}
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="mb-6">
-              <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg mb-4">
-                <div className="flex items-center">
-                  <AlertTriangle className="w-6 h-6 text-destructive mr-3" />
-                  <h4 className="text-lg font-medium text-destructive">Warning: This action cannot be undone</h4>
-                </div>
+        {/* Delete Confirmation Modal */}
+        {showDeleteModal && (
+          <Modal
+            open
+            onClose={() => {
+              if (deleting) return;
+              setShowDeleteModal(false);
+              setProjectToDelete(null);
+            }}
+            title="Delete Project"
+            description="This will permanently remove the project and all associated data."
+            size="md"
+          >
+            <div className="space-y-4">
+              <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" aria-hidden="true" />
+                <p className="text-sm font-medium text-destructive">
+                  Warning: this action cannot be undone.
+                </p>
               </div>
 
-              <p className="text-foreground mb-4">
-                Are you sure you want to delete the project <span className="font-bold">"{projectToDelete?.name}"</span>?
+              <p className="text-sm text-foreground">
+                Are you sure you want to delete the project{" "}
+                <span className="font-semibold">&quot;{projectToDelete?.name}&quot;</span>?
               </p>
 
-              <div className="p-3 bg-muted rounded-lg mb-4">
+              <div className="rounded-lg bg-muted p-3">
                 <p className="text-sm text-muted-foreground">
                   <span className="font-medium text-foreground">Assigned to:</span> {projectToDelete?.assigned_developer_name || 'No developer assigned'}
                 </p>
-                <p className="text-sm text-muted-foreground mt-1">
+                <p className="mt-1 text-sm text-muted-foreground">
                   <span className="font-medium text-foreground">Progress:</span> {projectToDelete?.progress}%
                 </p>
                 {projectToDelete?.deadline && (
-                  <p className="text-sm text-muted-foreground mt-1">
+                  <p className="mt-1 text-sm text-muted-foreground">
                     <span className="font-medium text-foreground">Deadline:</span> {formatDate(projectToDelete.deadline)}
                   </p>
                 )}
               </div>
 
               <p className="text-sm text-muted-foreground">
-                This will permanently remove the project and all associated data. The assigned developer will be notified.
+                The assigned developer will be notified.
               </p>
-            </div>
 
-            <div className="flex space-x-3">
-              <button
-                onClick={handleConfirmDelete}
-                disabled={deleting}
-                className={`flex-1 py-2 px-4 rounded-lg transition-colors text-destructive-foreground flex items-center justify-center ${deleting
-                  ? 'bg-destructive/60 cursor-not-allowed'
-                  : 'bg-destructive hover:bg-destructive/90'
-                  }`}
-              >
-                {deleting ? (
-                  <>
-                    <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Deleting...
-                  </>
-                ) : (
-                  'Yes, Delete Project'
-                )}
-              </button>
-              <button
-                onClick={() => {
-                  setShowDeleteModal(false);
-                  setProjectToDelete(null);
-                }}
-                disabled={deleting}
-                className="flex-1 inline-flex items-center justify-center rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Metrics / Productivity Modal */}
-      {showMetricsModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="w-full max-w-xl rounded-xl border border-border bg-card p-6 shadow-popover max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <div>
-                <h3 className="text-xl font-bold text-foreground">Developer Productivity</h3>
-                {metricsData?.project?.name && (
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {metricsData.project.name}
-                  </p>
-                )}
+              <div className="flex gap-3">
+                <Button
+                  variant="destructive"
+                  onClick={handleConfirmDelete}
+                  disabled={deleting}
+                  className="flex-1"
+                >
+                  {deleting ? 'Deleting...' : 'Yes, Delete Project'}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowDeleteModal(false);
+                    setProjectToDelete(null);
+                  }}
+                  disabled={deleting}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
               </div>
-              <button
-                onClick={() => {
-                  setShowMetricsModal(false);
-                  setMetricsData(null);
-                  setMetricsError("");
-                }}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <X className="w-5 h-5" />
-              </button>
             </div>
+          </Modal>
+        )}
 
+        {/* Metrics / Productivity Modal */}
+        {showMetricsModal && (
+          <Modal
+            open
+            onClose={() => {
+              setShowMetricsModal(false);
+              setMetricsData(null);
+              setMetricsError("");
+            }}
+            title="Developer Productivity"
+            description={metricsData?.project?.name || undefined}
+            size="lg"
+          >
             {metricsLoading ? (
-              <div className="py-10 text-center">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                <p className="mt-3 text-muted-foreground text-sm">Loading productivity metrics...</p>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
+                  {[0, 1, 2, 3].map((i) => (
+                    <SkeletonCard key={i} />
+                  ))}
+                </div>
+                <Skeleton className="h-16 w-full rounded-lg" />
               </div>
             ) : metricsError ? (
-              <div className="py-6">
-                <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 text-sm text-destructive">
-                  {metricsError}
-                </div>
-              </div>
+              <ErrorState
+                title="Couldn't load productivity metrics"
+                description={metricsError}
+                onRetry={() => handleViewMetrics(metricsProject)}
+              />
             ) : metricsData ? (
-              <div className="space-y-4">
-                {/* Summary cards similar to developer timesheet */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="bg-card rounded-xl border border-border p-4 text-center shadow-card">
-                    <div className="text-2xl font-bold text-foreground">{metricsData.totalTasks}</div>
-                    <div className="text-xs text-muted-foreground mt-1">Total Tasks</div>
+              <div className="animate-fade-in space-y-4">
+                {/* Summary tiles similar to developer timesheet */}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
+                  <div className="rounded-xl border border-border bg-card p-4 text-center shadow-card">
+                    <div className="text-2xl font-bold tabular-nums text-foreground">{metricsData.totalTasks}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">Total Tasks</div>
                   </div>
-                  <div className="bg-success/10 rounded-xl border border-success/30 p-4 text-center shadow-card">
-                    <div className="text-2xl font-bold text-success">{metricsData.summary?.onTime || 0}</div>
-                    <div className="text-xs text-success mt-1">On Time</div>
-                    <div className="text-[11px] text-success">+{metricsData.summary?.onTime || 0} pts</div>
+                  <div className="rounded-xl border border-border bg-card p-4 text-center shadow-card">
+                    <div className="text-2xl font-bold tabular-nums text-success">{metricsData.summary?.onTime || 0}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">On Time</div>
+                    <div className="mt-1 text-[11px] text-success">+{metricsData.summary?.onTime || 0} pts</div>
                   </div>
-                  <div className="bg-destructive/10 rounded-xl border border-destructive/30 p-4 text-center shadow-card">
-                    <div className="text-2xl font-bold text-destructive">{metricsData.summary?.late || 0}</div>
-                    <div className="text-xs text-destructive mt-1">Late</div>
-                    <div className="text-[11px] text-destructive">-{metricsData.summary?.late || 0} pts</div>
+                  <div className="rounded-xl border border-border bg-card p-4 text-center shadow-card">
+                    <div className="text-2xl font-bold tabular-nums text-destructive">{metricsData.summary?.late || 0}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">Late</div>
+                    <div className="mt-1 text-[11px] text-destructive">-{metricsData.summary?.late || 0} pts</div>
                   </div>
-                  <div
-                    className={`rounded-xl border p-4 text-center shadow-card ${parseFloat(metricsData.productivityPercentage || 0) >= 80
-                      ? "bg-success/10 border-success/30"
-                      : parseFloat(metricsData.productivityPercentage || 0) >= 50
-                        ? "bg-warning/10 border-warning/30"
-                        : "bg-destructive/10 border-destructive/30"
-                      }`}
-                  >
-                    <div
-                      className={`text-2xl font-bold ${parseFloat(metricsData.productivityPercentage || 0) >= 80
-                        ? "text-success"
-                        : parseFloat(metricsData.productivityPercentage || 0) >= 50
-                          ? "text-warning"
-                          : "text-destructive"
-                        }`}
-                    >
+                  <div className="rounded-xl border border-border bg-card p-4 text-center shadow-card">
+                    <div className="text-2xl font-bold tabular-nums text-foreground">
                       {metricsData.productivityPercentage || 0}%
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1">Productivity</div>
-                    <div className="text-[11px] text-muted-foreground">
+                    <div className="mt-1 text-xs text-muted-foreground">Productivity</div>
+                    <div className="mt-2 flex justify-center">
+                      <Badge
+                        size="sm"
+                        variant={
+                          parseFloat(metricsData.productivityPercentage || 0) >= 80
+                            ? "success"
+                            : parseFloat(metricsData.productivityPercentage || 0) >= 50
+                              ? "warning"
+                              : "destructive"
+                        }
+                      >
+                        {parseFloat(metricsData.productivityPercentage || 0) >= 80
+                          ? "On track"
+                          : parseFloat(metricsData.productivityPercentage || 0) >= 50
+                            ? "Needs attention"
+                            : "At risk"}
+                      </Badge>
+                    </div>
+                    <div className="mt-1 text-[11px] text-muted-foreground">
                       Points: {metricsData.productivityPoints >= 0 ? `+${metricsData.productivityPoints}` : metricsData.productivityPoints}
                     </div>
                   </div>
                 </div>
 
                 {/* Basic breakdown */}
-                <div className="bg-muted border border-border rounded-lg p-3 text-xs text-muted-foreground">
+                <div className="rounded-lg border border-border bg-muted p-3 text-xs text-muted-foreground">
                   <p className="mb-1">
                     <span className="font-semibold text-foreground">Completed:</span> {metricsData.summary?.completed || 0} ·
                     {" "}
@@ -937,173 +960,205 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
                   </p>
                 </div>
               </div>
-            ) : null}
-          </div>
-        </div>
-      )}
+            ) : (
+              <EmptyState
+                icon={BarChart3}
+                title="No productivity data"
+                description="This project has no productivity metrics to show yet."
+              />
+            )}
+          </Modal>
+        )}
 
-      {/* Projects Grid */}
-      {projects.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {projects.map(project => (
-            <div key={project.id} className="rounded-xl border border-border bg-card p-4 shadow-card hover:shadow-elevated transition-shadow relative">
-              {/* Delete Button - Top Right Corner */}
-              <button
-                onClick={() => handleDeleteClick(project)}
-                className="absolute top-3 right-3 text-muted-foreground hover:text-destructive transition-colors p-1"
-                title="Delete Project"
-              >
-                <Trash2 className="w-5 h-5" />
-              </button>
-
-              <div className="flex justify-between items-start mb-2 pr-8">
-                <h3 className="text-lg font-semibold text-foreground">{project.name}</h3>
-                <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${statusPill(project.status)}`}>
-                  {project.status}
-                </span>
-              </div>
-
-              {project.description && (
-                <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
-                  {project.description}
-                </p>
-              )}
-
-              <div className="mb-2">
-                <div className="flex justify-between text-sm mb-1 text-foreground">
-                  <span>Progress</span>
-                  <span>{project.progress}%</span>
-                </div>
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div
-                    className="bg-primary h-2 rounded-full"
-                    style={{ width: `${project.progress}%` }}
-                  ></div>
-                </div>
-              </div>
-
-              <div className="space-y-1 mb-3">
-                <p className="text-sm text-muted-foreground">
-                  <span className="font-medium text-foreground">Developers:</span> {project.developers_count}
-                </p>
-
-                {project.assigned_developer_name && (
-                  <div>
-                    <p className="text-sm text-muted-foreground">
-                      <span className="font-medium text-foreground">Assigned to:</span> {project.assigned_developer_name}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {project.assigned_developer_email}
-                    </p>
-                  </div>
-                )}
-
-                {project.deadline && (
-                  <p className="text-sm text-muted-foreground">
-                    <span className="font-medium text-foreground">Deadline:</span> {formatDate(project.deadline)}
-                  </p>
-                )}
-
-                <p className="text-xs text-muted-foreground">
-                  Created: {formatDate(project.created_at)}
-                </p>
-              </div>
-
-              {project.file_url && (
-                <div className="mb-3 p-2 bg-info/10 border border-info/30 rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2 flex-1 min-w-0">
-                      <FileText className="w-4 h-4 text-info" />
-                      <span className="text-sm text-info truncate">
-                        {project.file_name || 'Requirements File'}
-                      </span>
+        {/* Projects */}
+        {loadError ? (
+          <ErrorState
+            title="Couldn't load your projects"
+            description={loadError}
+            onRetry={fetchAdminData}
+          />
+        ) : projects.length > 0 ? (
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {projects.map(project => {
+              const deadlineSummary = getDeadlineSummary(project.deadline);
+              return (
+                <Card key={project.id} className="animate-fade-in">
+                  <CardHeader>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 space-y-1">
+                        <CardTitle className="truncate">{project.name}</CardTitle>
+                        {project.description && (
+                          <CardDescription className="line-clamp-2">
+                            {project.description}
+                          </CardDescription>
+                        )}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => handleDeleteClick(project)}
+                        aria-label={`Delete project ${project.name}`}
+                        title="Delete Project"
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      </Button>
                     </div>
-                    <button
-                      onClick={() => handleDownloadFile(project)}
-                      className="inline-flex items-center gap-1 text-info hover:text-info/80 text-sm font-medium"
+                    <div className="pt-1">
+                      <StatusPill
+                        size="sm"
+                        status={statusPillKey(project.status)}
+                        label={statusLabel(project.status)}
+                      />
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="space-y-3">
+                    <div>
+                      <div className="mb-1 flex justify-between text-sm text-foreground">
+                        <span>Progress</span>
+                        <span className="tabular-nums">{project.progress}%</span>
+                      </div>
+                      <div
+                        className="h-2 w-full overflow-hidden rounded-full bg-muted"
+                        role="progressbar"
+                        aria-valuenow={Number(project.progress) || 0}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-label={`${project.name} progress`}
+                      >
+                        <div
+                          className="h-2 rounded-full bg-primary"
+                          style={{ width: `${project.progress}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground">
+                        <span className="font-medium text-foreground">Developers:</span> {project.developers_count}
+                      </p>
+
+                      {project.assigned_developer_name && (
+                        <div>
+                          <p className="text-sm text-muted-foreground">
+                            <span className="font-medium text-foreground">Assigned to:</span> {project.assigned_developer_name}
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {project.assigned_developer_email}
+                          </p>
+                        </div>
+                      )}
+
+                      {project.deadline && (
+                        <p className="text-sm text-muted-foreground">
+                          <span className="font-medium text-foreground">Deadline:</span> {formatDate(project.deadline)}
+                        </p>
+                      )}
+
+                      <p className="text-xs text-muted-foreground">
+                        Created: {formatDate(project.created_at)}
+                      </p>
+                    </div>
+
+                    {project.file_url && (
+                      <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 p-2">
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <FileText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                          <span className="truncate text-sm text-foreground">
+                            {project.file_name || 'Requirements File'}
+                          </span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDownloadFile(project)}
+                        >
+                          <Download className="h-4 w-4" aria-hidden="true" />
+                          Download
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* Compact timeline similar to developer view */}
+                    <div className="rounded-lg border border-border bg-muted/40 p-3">
+                      <p className="mb-2 flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        <Calendar className="h-4 w-4" aria-hidden="true" />
+                        Project timeline
+                      </p>
+                      <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+                        <div>
+                          <p className="font-medium text-foreground">Created</p>
+                          <p>{formatDate(project.created_at)}</p>
+                        </div>
+                        <div className="relative mx-3 h-0.5 flex-1 bg-border">
+                          <span className="absolute -top-1 left-0 h-2 w-2 rounded-full bg-muted-foreground/50" />
+                          <span className="absolute -top-1 right-0 h-2 w-2 rounded-full bg-muted-foreground/50" />
+                        </div>
+                        <div className="text-right">
+                          <p className="font-medium text-foreground">Deadline</p>
+                          <p>{project.deadline ? formatDate(project.deadline) : 'Not set'}</p>
+                        </div>
+                      </div>
+                      <Badge size="sm" variant={deadlineSummary.variant}>
+                        {deadlineSummary.label}
+                      </Badge>
+                    </div>
+                  </CardContent>
+
+                  <CardFooter className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleViewMetrics(project)}
+                      title="View Productivity"
                     >
-                      <Download className="w-4 h-4" />
-                      Download
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Compact timeline similar to developer view */}
-              <div className="mt-2 mb-3 rounded-lg bg-muted/50 border border-dashed border-border p-3">
-                <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center">
-                  <Calendar className="w-3 h-3 mr-1 text-muted-foreground" />
-                  Project timeline
-                </p>
-                <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-                  <div>
-                    <p className="font-medium text-foreground">Created</p>
-                    <p>{formatDate(project.created_at)}</p>
-                  </div>
-                  <div className="flex-1 mx-3 h-0.5 bg-gradient-to-r from-border via-primary to-border relative">
-                    <span className="absolute -top-1 left-1 w-2 h-2 rounded-full bg-muted-foreground/50" />
-                    <span className="absolute -top-1 right-1 w-2 h-2 rounded-full bg-muted-foreground/50" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-foreground">Deadline</p>
-                    <p>{project.deadline ? formatDate(project.deadline) : 'Not set'}</p>
-                  </div>
-                </div>
-                <div className="mt-1">
-                  {(() => {
-                    const summary = getDeadlineSummary(project.deadline);
-                    return (
-                      <span className={`inline-flex items-center px-2 py-1 rounded-full bg-card border border-border text-[11px] font-medium ${summary.tone}`}>
-                        {summary.label}
-                      </span>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => handleViewMetrics(project)}
-                  className="bg-success/10 text-success py-2 px-2 rounded-lg text-xs font-semibold hover:bg-success/20 transition-colors flex items-center justify-center"
-                  title="View Productivity"
-                >
-                  <BarChart3 className="w-4 h-4 mr-1" />
-                  Metrics
-                </button>
-                <button
-                  onClick={() => handleViewGanttChart(project.id)}
-                  className="bg-violet-500/10 text-violet-600 py-2 px-2 rounded-lg text-xs font-semibold hover:bg-violet-500/20 transition-colors flex items-center justify-center"
-                  title="View Gantt Chart Timeline"
-                >
-                  <Calendar className="w-4 h-4 mr-1" />
-                  Timeline
-                </button>
-              </div>
-              <button
-                onClick={() => handleViewProjectDetails(project.id)}
-                className="mt-2 w-full bg-primary text-primary-foreground py-2 px-2 rounded-lg text-xs font-semibold hover:bg-primary/90 transition-colors flex items-center justify-center"
-                title="View Project Details"
-              >
-                <Eye className="w-4 h-4 mr-1" />
-                View Detail
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-8">
-          <FileText className="w-16 h-16 text-muted-foreground/40 mx-auto mb-4" strokeWidth={1} />
-
-
-          {adminDevelopers.length === 0 ? (
-            <div className="mb-6">
-              <p className="text-muted-foreground text-sm mb-4">You need to add developers first</p>
-            </div>
-          ) : (
-            <p className="text-muted-foreground text-sm mb-6">Start by creating your first project</p>
-          )}
-        </div>
-      )}
+                      <BarChart3 className="h-4 w-4" aria-hidden="true" />
+                      Metrics
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleViewGanttChart(project.id)}
+                      title="View Gantt Chart Timeline"
+                    >
+                      <Calendar className="h-4 w-4" aria-hidden="true" />
+                      Timeline
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleViewProjectDetails(project.id)}
+                      title="View Project Details"
+                      className="ml-auto"
+                    >
+                      <Eye className="h-4 w-4" aria-hidden="true" />
+                      View Detail
+                    </Button>
+                  </CardFooter>
+                </Card>
+              );
+            })}
+          </div>
+        ) : (
+          <EmptyState
+            icon={Inbox}
+            title="No projects yet"
+            description={
+              adminDevelopers.length === 0
+                ? "You need to add developers first — add them in the Add Developer section, then assign a project."
+                : "Start by creating your first project and assigning it to one of your developers."
+            }
+            action={
+              adminDevelopers.length === 0 ? undefined : (
+                <Button variant="outline" onClick={() => setShowAddProject(true)}>
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  Add New Project
+                </Button>
+              )
+            }
+          />
+        )}
+      </div>
     </div>
   );
 }

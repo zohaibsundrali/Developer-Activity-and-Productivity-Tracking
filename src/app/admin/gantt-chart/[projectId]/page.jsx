@@ -4,6 +4,26 @@ import { useRouter, useParams } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 import AdminGanttChart from "@/components/admin/AdminGanttChart";
 import { isSessionExpired, clearAdminSession } from "@/utils/sessionPolicy";
+import StatCard from "@/components/shell/StatCard";
+import {
+  Button,
+  EmptyState,
+  ErrorState,
+  PageHeader,
+  Section,
+  Skeleton,
+  SkeletonCard,
+} from "@/components/ui";
+import {
+  ArrowLeft,
+  CalendarClock,
+  CheckCircle2,
+  Download,
+  ListChecks,
+  RefreshCw,
+  SearchX,
+  TrendingUp,
+} from "lucide-react";
 
 // Authentication check function for admin
 const checkAdminAuth = () => {
@@ -191,207 +211,192 @@ export default function AdminGanttChartPage() {
     URL.revokeObjectURL(url);
   };
 
+  const pageFrame = (children) => (
+    <div className="min-h-screen bg-background">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">{children}</div>
+    </div>
+  );
+
+  const crumbs = [
+    { label: "Dashboard", href: "/admin/dashboard" },
+    { label: project?.name || "Gantt chart" },
+  ];
+
   if (loading) {
-    return (
-      <div className="min-h-screen bg-muted/50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
-          <p className="text-xl text-muted-foreground">Loading Gantt Chart...</p>
+    return pageFrame(
+      <>
+        <PageHeader title="Gantt chart" breadcrumbs={crumbs} />
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+            {[0, 1, 2, 3].map((i) => (
+              <SkeletonCard key={i} lines={1} />
+            ))}
+          </div>
+          <div className="rounded-xl border border-border bg-card p-5 shadow-card">
+            <Skeleton className="h-5 w-56" />
+            <Skeleton className="mt-4 h-9 w-full" />
+            <div className="mt-5 space-y-3">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <Skeleton className="h-3 w-36 shrink-0" />
+                  <Skeleton
+                    className="h-6 rounded-full"
+                    style={{ width: `${25 + ((i * 19) % 55)}%`, marginLeft: `${(i * 13) % 30}%` }}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   if (error) {
-    return (
-      <div className="min-h-screen bg-muted/50 flex items-center justify-center">
-        <div className="text-center max-w-md">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-            <svg className="w-16 h-16 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <h2 className="text-xl font-bold text-red-800 mb-2">Error Loading Project</h2>
-            <p className="text-red-600 mb-4">{error}</p>
-            <button
-              onClick={handleBack}
-              className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors"
-            >
-              Back to Dashboard
-            </button>
-          </div>
+    return pageFrame(
+      <>
+        <PageHeader title="Gantt chart" breadcrumbs={crumbs} />
+        <ErrorState
+          title="Couldn't load this project"
+          description={error}
+          onRetry={handleRefresh}
+        />
+        <div className="mt-4 flex justify-center">
+          <Button variant="outline" size="lg" onClick={handleBack}>
+            <ArrowLeft aria-hidden="true" />
+            Back to dashboard
+          </Button>
         </div>
-      </div>
+      </>
     );
   }
 
   if (!project) {
-    return (
-      <div className="min-h-screen bg-muted/50 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-xl text-muted-foreground">Project not found</p>
-          <button
-            onClick={handleBack}
-            className="mt-4 bg-primary text-white px-6 py-2 rounded-lg hover:bg-primary/90 transition-colors"
-          >
-            Back to Dashboard
-          </button>
-        </div>
-      </div>
+    return pageFrame(
+      <>
+        <PageHeader title="Gantt chart" breadcrumbs={crumbs} />
+        <EmptyState
+          icon={SearchX}
+          title="Project not found"
+          description="This project no longer exists, or you do not have access to it."
+          action={
+            <Button variant="outline" size="lg" onClick={handleBack}>
+              <ArrowLeft aria-hidden="true" />
+              Back to dashboard
+            </Button>
+          }
+        />
+      </>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-muted/50 py-8">
-      <div className="max-w-7xl mx-auto px-4">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center">
-            <button
-              onClick={handleBack}
-              className="flex items-center text-muted-foreground hover:text-foreground mr-4 bg-card px-4 py-2 rounded-lg shadow-sm border border-border hover:shadow-md transition-all"
-            >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-              Back to Dashboard
-            </button>
-            <div>
-              <h1 className="text-3xl font-bold text-foreground">{project.name}</h1>
-              <p className="text-muted-foreground mt-1">Project Timeline & Task Management</p>
-            </div>
-          </div>
+  const completedCount = tasks.filter((t) => t.status === "completed").length;
 
-          <div className="flex space-x-3">
-            <button
-              onClick={handleRefresh}
-              className="bg-muted text-foreground px-4 py-2 rounded-lg hover:bg-muted/70 transition-colors font-medium flex items-center"
-            >
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
+  return pageFrame(
+    <>
+      <PageHeader
+        title={project.name}
+        description="Project timeline and task management"
+        breadcrumbs={crumbs}
+        actions={
+          <>
+            <Button variant="outline" size="lg" onClick={handleBack}>
+              <ArrowLeft aria-hidden="true" />
+              Back
+            </Button>
+            <Button variant="outline" size="lg" onClick={handleRefresh}>
+              <RefreshCw aria-hidden="true" />
               Refresh
-            </button>
-            <button
-              onClick={handleExportData}
-              className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors font-medium flex items-center"
-            >
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Export Data
-            </button>
-          </div>
+            </Button>
+            <Button size="lg" onClick={handleExportData}>
+              <Download aria-hidden="true" />
+              Export data
+            </Button>
+          </>
+        }
+      />
+
+      <div className="space-y-6">
+        {/* Project overview stats */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard title="Total tasks" value={tasks.length} icon={ListChecks} tone="info" />
+          <StatCard title="Completed" value={completedCount} icon={CheckCircle2} tone="success" />
+          <StatCard
+            title="Progress"
+            value={`${project.progress ?? 0}%`}
+            icon={TrendingUp}
+            tone="primary"
+          />
+          <StatCard
+            title="Deadline"
+            value={
+              project.deadline ? new Date(project.deadline).toLocaleDateString() : "Not set"
+            }
+            icon={CalendarClock}
+            tone="warning"
+          />
         </div>
 
-        {/* Project Overview Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="rounded-xl border border-border bg-card shadow-card p-4">
-            <div className="flex items-center">
-              <div className="bg-info/10 p-3 rounded-lg mr-4">
-                <svg className="w-6 h-6 text-info" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total Tasks</p>
-                <p className="text-2xl font-bold text-foreground">{tasks.length}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-border bg-card shadow-card p-4">
-            <div className="flex items-center">
-              <div className="bg-green-100 p-3 rounded-lg mr-4">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Completed</p>
-                <p className="text-2xl font-bold text-foreground">
-                  {tasks.filter(t => t.status === 'completed').length}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-border bg-card shadow-card p-4">
-            <div className="flex items-center">
-              <div className="bg-violet-500/10 p-3 rounded-lg mr-4">
-                <svg className="w-6 h-6 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Progress</p>
-                <p className="text-2xl font-bold text-foreground">{project.progress}%</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-border bg-card shadow-card p-4">
-            <div className="flex items-center">
-              <div className="bg-amber-100 p-3 rounded-lg mr-4">
-                <svg className="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Deadline</p>
-                <p className="text-sm font-bold text-foreground">
-                  {project.deadline ? new Date(project.deadline).toLocaleDateString() : 'Not set'}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Gantt Chart Component */}
+        {/* Gantt chart */}
         <AdminGanttChart
           tasks={tasks}
           projectName={project.name}
           developers={developers}
         />
 
-        {/* Assigned Developers */}
+        {/* Assigned developers */}
         {Object.keys(developers).length > 0 && (
-          <div className="mt-6 rounded-xl border border-border bg-card shadow-card p-6">
-            <h3 className="text-xl font-bold text-foreground mb-4">Assigned Developers</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Section title="Assigned developers">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {Object.values(developers).map((dev) => {
-                const devTasks = tasks.filter(t => t.developer_id === dev.id);
-                const completedTasks = devTasks.filter(t => t.status === 'completed').length;
+                const devTasks = tasks.filter((t) => t.developer_id === dev.id);
+                const completedTasks = devTasks.filter((t) => t.status === "completed").length;
+                const pct = devTasks.length > 0 ? (completedTasks / devTasks.length) * 100 : 0;
 
                 return (
-                  <div key={dev.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
-                    <div className="flex items-center mb-3">
-                      <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center text-white font-bold mr-3">
+                  <div
+                    key={dev.id}
+                    className="rounded-xl border border-border bg-card p-4 shadow-card transition-shadow duration-150 hover:shadow-elevated"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
                         {dev.name?.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-foreground">{dev.name}</p>
-                        <p className="text-xs text-muted-foreground">{dev.designation || 'Developer'}</p>
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-foreground">{dev.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {dev.designation || "Developer"}
+                        </p>
                       </div>
                     </div>
-                    <div className="mt-3 pt-3 border-t">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Tasks:</span>
-                        <span className="font-semibold">{completedTasks}/{devTasks.length}</span>
+                    <div className="mt-4 border-t border-border pt-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Tasks</span>
+                        <span className="font-semibold tabular-nums text-foreground">
+                          {completedTasks}/{devTasks.length}
+                        </span>
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                      <div
+                        className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted"
+                        role="progressbar"
+                        aria-valuenow={completedTasks}
+                        aria-valuemin={0}
+                        aria-valuemax={devTasks.length}
+                        aria-label={`${dev.name} task completion`}
+                      >
                         <div
-                          className="bg-primary h-2 rounded-full"
-                          style={{ width: `${devTasks.length > 0 ? (completedTasks / devTasks.length * 100) : 0}%` }}
-                        ></div>
+                          className="h-full rounded-full bg-primary"
+                          style={{ width: `${pct}%` }}
+                        />
                       </div>
                     </div>
                   </div>
                 );
               })}
             </div>
-          </div>
+          </Section>
         )}
       </div>
-    </div>
+    </>
   );
 }

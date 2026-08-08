@@ -10,6 +10,7 @@ import {
   FolderKanban,
   Users,
   Zap,
+  TriangleAlert,
 } from "lucide-react";
 
 /**
@@ -50,12 +51,97 @@ export const TONE_CLASSES = {
   muted: "bg-muted text-muted-foreground",
 };
 
+// The same five tones expressed as ui-kit Badge variants, so a chip built from
+// category metadata and a chip built by hand cannot end up different shapes.
+export const TONE_BADGE_VARIANT = {
+  info: "info",
+  primary: "default",
+  success: "success",
+  warning: "warning",
+  muted: "secondary",
+};
+
 export function categoryIcon(meta) {
   return CATEGORY_ICONS[meta?.icon] || Bell;
 }
 
 export function toneClass(meta) {
   return TONE_CLASSES[meta?.tone] || TONE_CLASSES.muted;
+}
+
+export function toneBadgeVariant(meta) {
+  return TONE_BADGE_VARIANT[meta?.tone] || TONE_BADGE_VARIANT.muted;
+}
+
+/* ------------------------------------------------------------------ *
+ * Priority.
+ *
+ * A notification row carries no priority column — the only thing it says
+ * about its own urgency is its category. So priority is DERIVED here, in
+ * one place, rather than each surface inventing its own emphasis: a thing
+ * with a clock on it (due & overdue) and a thing that names you directly
+ * (a mention) are the two that go stale if they are not seen today;
+ * automation chatter is the class you can read next week.
+ *
+ * Deliberately three levels and not five. The whole difficulty of this
+ * screen is that shouting about everything is identical to shouting about
+ * nothing, so only `high` gets any extra ink at all, and it only gets it
+ * while the row is still unread — once it has been read the emphasis has
+ * done its job and comes back off.
+ * ------------------------------------------------------------------ */
+
+export const PRIORITY_HIGH_CATEGORIES = ["deadline", "mention"];
+export const PRIORITY_LOW_CATEGORIES = ["automation", "general"];
+
+export const PRIORITY_META = {
+  high: {
+    key: "high",
+    label: "Needs attention",
+    // A rail, not a filled row: it reads down the left edge of the list as a
+    // scannable column rather than turning a card amber.
+    rail: "bg-warning",
+    badgeVariant: "warning",
+    icon: TriangleAlert,
+    rank: 0,
+  },
+  normal: {
+    key: "normal",
+    label: "Normal",
+    rail: "bg-primary",
+    badgeVariant: "secondary",
+    icon: null,
+    rank: 1,
+  },
+  low: {
+    key: "low",
+    label: "Low",
+    rail: "bg-border",
+    badgeVariant: "secondary",
+    icon: null,
+    rank: 2,
+  },
+};
+
+export function notificationPriority(category) {
+  if (PRIORITY_HIGH_CATEGORIES.includes(category)) return "high";
+  if (PRIORITY_LOW_CATEGORIES.includes(category)) return "low";
+  return "normal";
+}
+
+export function priorityMeta(category) {
+  return PRIORITY_META[notificationPriority(category)] || PRIORITY_META.normal;
+}
+
+/**
+ * The left rail for one row.
+ *
+ * Read rows get no rail at all: unread is the primary distinction on this
+ * screen and it has to survive a row also being high priority, so the rail
+ * says "unread" first and "how unread" second.
+ */
+export function railClass({ read, category }) {
+  if (read) return "bg-transparent";
+  return priorityMeta(category).rail;
 }
 
 export function getTimeAgo(dateString) {

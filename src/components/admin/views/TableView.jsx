@@ -2,27 +2,22 @@
 
 import { useMemo, useState } from "react";
 import { STATUS_META, normalizeStatus } from "@/utils/pmData";
-import { ChevronUp, ChevronDown, ChevronsUpDown, Eye, EyeOff } from "lucide-react";
+import { Badge, DataTable } from "@/components/ui";
+import { ChevronUp, ChevronDown, ChevronsUpDown, Eye, EyeOff, Table as TableIcon } from "lucide-react";
+import {
+  Avatar,
+  DueDate,
+  PriorityBadge,
+  TaskStatusPill,
+  TypeBadge,
+  ViewEmpty,
+  ViewToolbar,
+  taskRef,
+} from "@/components/admin/views/viewKit";
 
 /* -------------------------------------------------------------------------- */
-/*  Token helpers                                                              */
+/*  Sort metadata                                                              */
 /* -------------------------------------------------------------------------- */
-
-// Status badge tones map STATUS_META.tone -> tailwind design tokens.
-const STATUS_TONE_CLASS = {
-  muted: "bg-muted text-muted-foreground",
-  info: "bg-info/15 text-info",
-  warning: "bg-warning/15 text-warning",
-  success: "bg-success/15 text-success",
-  destructive: "bg-destructive/15 text-destructive",
-};
-
-const PRIORITY_STYLES = {
-  low: "bg-muted text-muted-foreground",
-  medium: "bg-info/15 text-info",
-  high: "bg-warning/15 text-warning",
-  urgent: "bg-destructive/15 text-destructive",
-};
 
 // Highest first for descending sort.
 const PRIORITY_RANK = { urgent: 4, high: 3, medium: 2, low: 1 };
@@ -30,10 +25,10 @@ const PRIORITY_RANK = { urgent: 4, high: 3, medium: 2, low: 1 };
 // The client's verdict on a task, which is a different axis from `status`: a
 // task can be internally in review and already rejected by the client.
 const CLIENT_APPROVAL_META = {
-  pending: { label: "Awaiting", tone: "info" },
-  approved: { label: "Approved", tone: "success" },
-  changes_requested: { label: "Changes", tone: "warning" },
-  rejected: { label: "Rejected", tone: "destructive" },
+  pending: { label: "Awaiting", variant: "info" },
+  approved: { label: "Approved", variant: "success" },
+  changes_requested: { label: "Changes", variant: "warning" },
+  rejected: { label: "Rejected", variant: "destructive" },
 };
 
 // Ordered so that one click into descending pulls the tasks a client is unhappy
@@ -51,18 +46,11 @@ const STATUS_ORDER = Object.keys(STATUS_META).reduce((acc, id, i) => {
   return acc;
 }, {});
 
-function formatDue(value) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
 const COLUMNS = [
   { key: "title", label: "Title", type: "string" },
   // Sits next to the title on purpose: the title is the thing the portal
   // actually publishes, so the marker belongs against the words being exposed.
-  { key: "clientVisible", label: "Client", type: "flag" },
+  { key: "clientVisible", label: "Client", type: "flag", align: "center", width: "72px" },
   { key: "type", label: "Type", type: "string" },
   { key: "status", label: "Status", type: "status" },
   // Next to the team's own status, never merged into it: one column is where
@@ -70,27 +58,15 @@ const COLUMNS = [
   { key: "clientApproval", label: "Client approval", type: "approval" },
   { key: "priority", label: "Priority", type: "priority" },
   { key: "assignee", label: "Assignee", type: "string" },
-  { key: "points", label: "Points", type: "number", align: "right" },
-  { key: "due", label: "Due", type: "date" },
+  { key: "points", label: "Points", type: "number", align: "right", width: "88px" },
+  { key: "due", label: "Due", type: "date", align: "right", width: "104px" },
   { key: "sprint", label: "Sprint", type: "string" },
   { key: "epic", label: "Epic", type: "string" },
 ];
 
 /* -------------------------------------------------------------------------- */
-/*  Badges                                                                     */
+/*  Cells                                                                      */
 /* -------------------------------------------------------------------------- */
-
-const badgeBase = "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold";
-
-function StatusBadge({ status }) {
-  const meta = STATUS_META[normalizeStatus(status)] || STATUS_META.pending;
-  return <span className={`${badgeBase} ${STATUS_TONE_CLASS[meta.tone] || STATUS_TONE_CLASS.muted}`}>{meta.label}</span>;
-}
-
-function PriorityBadge({ priority }) {
-  const p = priority || "medium";
-  return <span className={`${badgeBase} ${PRIORITY_STYLES[p] || PRIORITY_STYLES.medium}`}>{p}</span>;
-}
 
 // A row carrying no client_visible value at all predates migration 032. Drawing
 // it as "internal" would state something the row does not actually say, so the
@@ -112,7 +88,7 @@ function ClientVisibleFlag({ value }) {
       className={`inline-flex items-center ${value ? "text-success" : "text-muted-foreground"}`}
       title={label}
     >
-      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+      <Icon className="h-4 w-4" aria-hidden="true" />
       <span className="sr-only">{label}</span>
     </span>
   );
@@ -125,15 +101,10 @@ function ClientApprovalBadge({ status }) {
   const meta = CLIENT_APPROVAL_META[status];
   if (!meta) return <span className="text-muted-foreground">—</span>;
   return (
-    <span className={`${badgeBase} ${STATUS_TONE_CLASS[meta.tone]}`} title={`Client: ${meta.label}`}>
+    <Badge variant={meta.variant} size="sm" title={`Client: ${meta.label}`}>
       {meta.label}
-    </span>
+    </Badge>
   );
-}
-
-function TypeBadge({ type }) {
-  if (!type) return <span className="text-muted-foreground">—</span>;
-  return <span className={`${badgeBase} bg-muted text-muted-foreground`}>{type}</span>;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -164,10 +135,11 @@ export default function TableView({ tasks, employees, sprints, epics, onOpenTask
   // Derive a display row for a task (also used as sort source).
   const rowOf = useMemo(
     () => (t) => ({
+      id: t.id,
       task: t,
       title: t.task_title || "Untitled task",
       type: t.task_type || null,
-      assignee: t.developer_id ? empById.get(t.developer_id) || "—" : "Unassigned",
+      assignee: t.developer_id ? empById.get(t.developer_id) || null : null,
       points: t.story_points == null ? null : Number(t.story_points),
       sprint: t.sprint_id != null ? sprintById.get(String(t.sprint_id)) || "—" : "—",
       epic: t.epic_id != null ? epicById.get(String(t.epic_id)) || "—" : "—",
@@ -231,87 +203,85 @@ export default function TableView({ tasks, employees, sprints, epics, onOpenTask
   const toggleSort = (key) =>
     setSort((prev) => (prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
 
-  const SortIcon = ({ colKey }) => {
-    if (sort.key !== colKey) return <ChevronsUpDown className="h-3 w-3 opacity-40" />;
-    return sort.dir === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />;
+  const SortHeader = ({ col }) => {
+    const activeSort = sort.key === col.key;
+    const Icon = !activeSort ? ChevronsUpDown : sort.dir === "asc" ? ChevronUp : ChevronDown;
+    return (
+      <button
+        type="button"
+        onClick={() => toggleSort(col.key)}
+        aria-label={`Sort by ${col.label}`}
+        className={`inline-flex items-center gap-1 rounded transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+          activeSort ? "text-foreground" : ""
+        }`}
+      >
+        {col.label}
+        <Icon className={`h-3 w-3 ${activeSort ? "" : "opacity-40"}`} aria-hidden="true" />
+      </button>
+    );
   };
 
-  if (!tasks || tasks.length === 0) {
-    return (
-      <div className="rounded-xl border border-border bg-card shadow-card overflow-hidden">
-        <p className="m-5 rounded-lg border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
-          No tasks
-        </p>
+  const renderers = {
+    title: (row) => (
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="hidden shrink-0 font-mono text-[10px] uppercase tracking-wide text-muted-foreground lg:inline">
+          {taskRef(row.task)}
+        </span>
+        <span className="line-clamp-1 font-medium text-foreground">{row.title}</span>
       </div>
-    );
-  }
+    ),
+    clientVisible: (row) => <ClientVisibleFlag value={row.task.client_visible} />,
+    type: (row) => (row.type ? <TypeBadge type={row.type} /> : <span className="text-muted-foreground">—</span>),
+    status: (row) => <TaskStatusPill status={row.task.status} />,
+    clientApproval: (row) => <ClientApprovalBadge status={row.task.client_approval_status} />,
+    priority: (row) => <PriorityBadge priority={row.task.priority} />,
+    assignee: (row) => (
+      <div className="flex min-w-0 items-center gap-2">
+        <Avatar name={row.assignee} />
+        <span className="truncate text-muted-foreground">{row.assignee || "Unassigned"}</span>
+      </div>
+    ),
+    points: (row) =>
+      row.points == null ? (
+        <span className="text-muted-foreground">—</span>
+      ) : (
+        <Badge variant="secondary" size="sm" className="tabular-nums">
+          {row.points}
+        </Badge>
+      ),
+    due: (row) =>
+      row.task.due_date ? <DueDate value={row.task.due_date} /> : <span className="text-muted-foreground">—</span>,
+    sprint: (row) => <span className="truncate text-muted-foreground">{row.sprint}</span>,
+    epic: (row) => <span className="truncate text-muted-foreground">{row.epic}</span>,
+  };
+
+  const columns = COLUMNS.map((col) => ({
+    key: col.key,
+    header: <SortHeader col={col} />,
+    align: col.align,
+    width: col.width,
+    render: renderers[col.key],
+  }));
+
+  const total = (tasks || []).length;
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-card overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="sticky top-0 bg-card text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {COLUMNS.map((col) => (
-                <th
-                  key={col.key}
-                  onClick={() => toggleSort(col.key)}
-                  className="cursor-pointer select-none px-3 py-2 text-left"
-                >
-                  <span className={`inline-flex items-center gap-1 ${col.align === "right" ? "justify-end" : ""}`}>
-                    {col.label}
-                    <SortIcon colKey={col.key} />
-                  </span>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sortedRows.map((row) => {
-              const t = row.task;
-              return (
-                <tr
-                  key={t.id}
-                  onClick={() => onOpenTask && onOpenTask(t)}
-                  className="cursor-pointer border-t border-border hover:bg-muted/40"
-                >
-                  <td className="px-3 py-2 font-medium text-foreground">
-                    <span className="line-clamp-1">{row.title}</span>
-                  </td>
-                  <td className="px-3 py-2">
-                    <ClientVisibleFlag value={t.client_visible} />
-                  </td>
-                  <td className="px-3 py-2">
-                    <TypeBadge type={row.type} />
-                  </td>
-                  <td className="px-3 py-2">
-                    <StatusBadge status={t.status} />
-                  </td>
-                  <td className="px-3 py-2">
-                    <ClientApprovalBadge status={t.client_approval_status} />
-                  </td>
-                  <td className="px-3 py-2">
-                    <PriorityBadge priority={t.priority} />
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground">{row.assignee}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {row.points == null ? (
-                      <span className="text-muted-foreground">—</span>
-                    ) : (
-                      <span className="inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                        {row.points}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground">{formatDue(t.due_date)}</td>
-                  <td className="px-3 py-2 text-muted-foreground">{row.sprint}</td>
-                  <td className="px-3 py-2 text-muted-foreground">{row.epic}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+    <div className="space-y-4">
+      <ViewToolbar
+        icon={TableIcon}
+        title="Table"
+        description={`${total} task${total === 1 ? "" : "s"} · sorted by ${
+          (COLUMNS.find((c) => c.key === sort.key) || COLUMNS[0]).label
+        } ${sort.dir === "asc" ? "ascending" : "descending"}`}
+      />
+
+      <DataTable
+        columns={columns}
+        rows={sortedRows}
+        keyField="id"
+        onRowClick={(row) => onOpenTask && onOpenTask(row.task)}
+        empty={<ViewEmpty />}
+      />
     </div>
   );
 }

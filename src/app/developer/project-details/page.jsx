@@ -3,6 +3,21 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabaseClient';
 import TaskCompletionModal from "@/components/developer/TaskCompletionModal";
+import { GanttChartSquare } from "lucide-react";
+// The only sanctioned source of concrete colour values — SweetAlert styles its
+// buttons through inline colour, so it cannot read the CSS tokens.
+import { PRIMARY, SEMANTIC } from "@/components/charts/chartTheme";
+import { Button, EmptyState, ErrorState, Field, Modal, Skeleton } from "@/components/ui";
+
+// Gantt bar colours, on tokens. Status is also spelled out in the legend and
+// in each bar's title, so the chart never relies on colour alone.
+const GANTT_BAR_CLASS = {
+  completed: "bg-success",
+  in_progress: "bg-warning",
+  awaiting_approval: "bg-info",
+  rejected: "bg-destructive",
+  pending: "bg-muted-foreground",
+};
 import { showError, showInfo, showWarning } from "@/utils/alerts";
 import Swal from 'sweetalert2';
 import { isSessionExpired, clearDeveloperSession } from '@/utils/sessionPolicy';
@@ -451,8 +466,8 @@ export default function ProjectDetailsPage() {
         showCancelButton: true,
         confirmButtonText: "Yes, submit tasks",
         cancelButtonText: "Cancel",
-        confirmButtonColor: "#0c8f6e",
-        cancelButtonColor: "#d33"
+        confirmButtonColor: PRIMARY,
+        cancelButtonColor: SEMANTIC.muted
       });
       
       if (!confirmResult.isConfirmed) {
@@ -986,8 +1001,8 @@ export default function ProjectDetailsPage() {
       showCancelButton: true,
       confirmButtonText: "Yes, delete it",
       cancelButtonText: "Cancel",
-      confirmButtonColor: "#d33",
-      cancelButtonColor: "#3085d6"
+      confirmButtonColor: SEMANTIC.danger,
+      cancelButtonColor: SEMANTIC.muted
     });
 
     if (confirmResult.isConfirmed) {
@@ -1056,37 +1071,60 @@ export default function ProjectDetailsPage() {
 
   // Simple Gantt Chart Component
   const GanttChart = () => {
-    if (!tasks.length) return null;
-    
     // Find min and max dates
     const dates = tasks.filter(t => t.startDate && t.endDate).flatMap(t => [
       new Date(t.startDate),
       new Date(t.endDate)
     ]);
-    
-    if (dates.length === 0) return null;
+
+    // An empty ruler is not an empty state — say why there is nothing to plot.
+    if (!tasks.length || dates.length === 0) {
+      return (
+        <div className="mt-6 rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
+          <h3 className="mb-4 text-base font-semibold text-foreground">Task timeline</h3>
+          <EmptyState
+            icon={GanttChartSquare}
+            title="Nothing to plot yet"
+            description="Give your tasks a start and end date and they will appear on this timeline."
+          />
+        </div>
+      );
+    }
     
     const minDate = new Date(Math.min(...dates.map(d => d.getTime())));
     const maxDate = new Date(Math.max(...dates.map(d => d.getTime())));
     
     const totalDays = Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24)) + 1;
-    
+
+    // A tick every day printed its number on top of its neighbour on any
+    // project longer than a fortnight. Show at most ~12 dated ticks, evenly
+    // spaced, and leave the rest as bare gridlines.
+    const labelEvery = Math.max(1, Math.ceil(totalDays / 12));
+
     return (
-      <div className="mt-6 bg-card rounded-xl shadow-card border border-border p-6">
-        <h3 className="text-xl font-bold mb-4 text-foreground">Gantt Chart</h3>
+      <div className="mt-6 rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
+        <h3 className="mb-1 text-base font-semibold text-foreground">Task timeline</h3>
+        <p className="mb-4 text-sm text-muted-foreground">
+          Each bar spans a task's start and end date.
+        </p>
         <div className="overflow-x-auto">
-          <div className="min-w-full">
-            <div className="flex items-center mb-2">
-              <div className="w-32 text-sm font-medium text-muted-foreground">Task</div>
-              <div className="flex-1 relative h-8">
+          <div className="min-w-[640px]">
+            <div className="mb-2 flex items-center">
+              <div className="w-32 shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground sm:w-44">
+                Task
+              </div>
+              <div className="relative h-8 flex-1">
                 <div className="absolute inset-0 flex items-center">
                   {Array.from({ length: totalDays }).map((_, i) => {
                     const date = new Date(minDate);
                     date.setDate(minDate.getDate() + i);
+                    const showLabel = i % labelEvery === 0 || i === totalDays - 1;
                     return (
-                      <div key={i} className="flex-1 border-l border-border h-4 text-xs text-muted-foreground text-center">
-                        {i === 0 || i === totalDays - 1 || date.getDate() === 1 ? 
-                          date.getDate() : ''}
+                      <div
+                        key={i}
+                        className="h-4 flex-1 border-l border-border text-center text-xs tabular-nums text-muted-foreground"
+                      >
+                        {showLabel ? date.getDate() : ""}
                       </div>
                     );
                   })}
@@ -1102,20 +1140,19 @@ export default function ProjectDetailsPage() {
               const startDay = Math.max(0, Math.ceil((start - minDate) / (1000 * 60 * 60 * 24)));
               const duration = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1);
               
-              const barColor = task.status === 'completed' ? 'bg-green-500' :
-                              task.status === 'in_progress' ? 'bg-yellow-500' :
-                              task.status === 'awaiting_approval' ? 'bg-orange-400' :
-                              task.status === 'rejected' ? 'bg-red-500' :
-                              'bg-blue-400';
-              
+              const barColor = GANTT_BAR_CLASS[task.status] || GANTT_BAR_CLASS.pending;
+
               return (
-                <div key={task.id} className="flex items-center mb-3">
-                  <div className="w-32 text-sm font-medium text-foreground truncate">
+                <div key={task.id} className="mb-3 flex items-center">
+                  <div
+                    className="w-32 shrink-0 truncate pr-3 text-sm font-medium text-foreground sm:w-44"
+                    title={task.title}
+                  >
                     {task.title}
                   </div>
-                  <div className="flex-1 relative h-6 bg-muted rounded">
-                    <div 
-                      className={`absolute h-4 rounded ${barColor} top-1`}
+                  <div className="relative h-6 flex-1 rounded bg-muted">
+                    <div
+                      className={`absolute top-1 h-4 rounded ${barColor}`}
                       style={{
                         left: `${(startDay / totalDays) * 100}%`,
                         width: `${(duration / totalDays) * 100}%`,
@@ -1123,7 +1160,7 @@ export default function ProjectDetailsPage() {
                       }}
                       title={`${task.title}: ${formatDate(task.startDate)} to ${formatDate(task.endDate)}`}
                     >
-                      <div className="text-xs text-white px-1 truncate">
+                      <div className="truncate px-1 text-xs tabular-nums text-primary-foreground">
                         {duration}d
                       </div>
                     </div>
@@ -1133,30 +1170,40 @@ export default function ProjectDetailsPage() {
             })}
           </div>
         </div>
-        <div className="mt-4 flex items-center flex-wrap gap-4 text-sm">
-          <div className="flex items-center"><div className="w-3 h-3 bg-blue-400 rounded mr-2"></div><span className="text-muted-foreground">Pending</span></div>
-          <div className="flex items-center"><div className="w-3 h-3 bg-yellow-500 rounded mr-2"></div><span className="text-muted-foreground">In Progress</span></div>
-          <div className="flex items-center"><div className="w-3 h-3 bg-orange-400 rounded mr-2"></div><span className="text-muted-foreground">Awaiting Review</span></div>
-          <div className="flex items-center"><div className="w-3 h-3 bg-green-500 rounded mr-2"></div><span className="text-muted-foreground">Completed</span></div>
-          <div className="flex items-center"><div className="w-3 h-3 bg-red-500 rounded mr-2"></div><span className="text-muted-foreground">Rejected</span></div>
-        </div>
+        <ul className="mt-4 flex flex-wrap items-center gap-4 text-sm">
+          {[
+            { label: "Pending", cls: GANTT_BAR_CLASS.pending },
+            { label: "In progress", cls: GANTT_BAR_CLASS.in_progress },
+            { label: "Awaiting review", cls: GANTT_BAR_CLASS.awaiting_approval },
+            { label: "Completed", cls: GANTT_BAR_CLASS.completed },
+            { label: "Rejected", cls: GANTT_BAR_CLASS.rejected },
+          ].map((item) => (
+            <li key={item.label} className="flex items-center gap-2">
+              <span className={`h-3 w-3 rounded ${item.cls}`} aria-hidden="true" />
+              <span className="text-muted-foreground">{item.label}</span>
+            </li>
+          ))}
+        </ul>
       </div>
     );
   };
 
-  // Loading state
+  // Loading — skeleton shaped like the page underneath.
   if (loading || developerLoading) {
     return (
-      <div className="min-h-screen bg-muted flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-          <div className="text-xl text-muted-foreground mt-4">Loading project details...</div>
-          <button
-            onClick={handleBack}
-            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-          >
-            Go to Dashboard
-          </button>
+      <div className="min-h-screen bg-background">
+        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8" aria-busy="true">
+          <div className="mb-6 space-y-2">
+            <Skeleton className="h-8 w-72" />
+            <Skeleton className="h-4 w-96" />
+          </div>
+          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[0, 1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-24 w-full rounded-xl" />
+            ))}
+          </div>
+          <Skeleton className="mb-6 h-64 w-full rounded-xl" />
+          <Skeleton className="h-48 w-full rounded-xl" />
         </div>
       </div>
     );
@@ -1165,16 +1212,14 @@ export default function ProjectDetailsPage() {
   // Error state
   if (error && (!project || !project.id)) {
     return (
-      <div className="min-h-screen bg-muted flex items-center justify-center">
-        <div className="text-center bg-card p-8 rounded-xl border border-border shadow-card">
-          <div className="text-destructive text-xl mb-4">Error Loading Project</div>
-          <p className="text-muted-foreground mb-6">{error}</p>
-          <button
-            onClick={handleBack}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-          >
-            Go to Dashboard
-          </button>
+      <div className="min-h-screen bg-background">
+        <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6 lg:px-8">
+          <ErrorState title="Couldn't load this project" description={error} />
+          <div className="mt-4 flex justify-center">
+            <Button variant="outline" onClick={handleBack}>
+              Go to dashboard
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -1415,7 +1460,7 @@ export default function ProjectDetailsPage() {
                         >
                           {downloading ? (
                             <>
-                              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                              <svg className="animate-spin motion-reduce:animate-none -ml-1 mr-2 h-4 w-4 text-primary-foreground" fill="none" viewBox="0 0 24 24">
                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                               </svg>
@@ -1441,16 +1486,16 @@ export default function ProjectDetailsPage() {
           {/* Right Column - Tasks List */}
           <div className="lg:col-span-2">
             <div className="bg-card rounded-xl shadow-card overflow-hidden border border-border">
-              <div className={`p-6 ${isSubmitted ? 'bg-slate-600' : 'bg-primary'} text-white`}>
+              <div className={`p-6 ${isSubmitted ? 'bg-muted text-foreground' : 'bg-primary text-primary-foreground'}`}>
                 <h2 className="text-2xl font-bold">Project Tasks</h2>
-                <p className="text-white mt-1 opacity-90">
+                <p className="mt-1 text-sm opacity-90">
                   {isPlanApproved && 'Task plan approved — work through tasks one by one sequentially'}
                   {isPlanPending && 'Task plan submitted — waiting for admin approval'}
                   {isPlanRejected && 'Task plan rejected — edit and resubmit'}
                   {!isSubmitted && 'Set task names, start dates, and deadlines'}
                 </p>
                 {currentDeveloper && (
-                  <p className="text-white/80 text-sm mt-2">
+                  <p className="mt-2 text-sm opacity-80">
                     Developer: <span className="font-semibold">{currentDeveloper.name}</span>
                   </p>
                 )}
@@ -1800,107 +1845,101 @@ export default function ProjectDetailsPage() {
         )}
       </div>
 
-      {/* Edit Task Modal */}
-      {editingTask && canEditTasks && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="bg-card rounded-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto border border-border shadow-popover">
-            <h3 className="text-xl font-bold mb-4 text-foreground">
-              {editingTask.title ? 'Edit Task' : 'Add New Task'}
-            </h3>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Task Title *</label>
-                <input
-                  type="text"
-                  value={editingTask.title}
-                  onChange={(e) => setEditingTask({...editingTask, title: e.target.value})}
-                  placeholder="Enter task title"
-                  className="w-full border border-input bg-background rounded-lg px-3 py-2 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Description</label>
-                <textarea
-                  value={editingTask.description}
-                  onChange={(e) => setEditingTask({...editingTask, description: e.target.value})}
-                  placeholder="Enter task description"
-                  rows="3"
-                  className="w-full border border-input bg-background rounded-lg px-3 py-2 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">Start Date *</label>
-                  <input
-                    type="date"
-                    value={editingTask.startDate}
-                    onChange={(e) => handleEditFieldChange("startDate", e.target.value)}
-                    className="w-full border border-input bg-background rounded-lg px-3 py-2 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">End Date *</label>
-                  <input
-                    type="date"
-                    value={editingTask.endDate}
-                    onChange={(e) => handleEditFieldChange("endDate", e.target.value)}
-                    className="w-full border border-input bg-background rounded-lg px-3 py-2 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">No of Days *</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={editingTask.noOfDays || ""}
-                  onChange={(e) => handleEditFieldChange("noOfDays", e.target.value)}
-                  className="w-full border border-input bg-background rounded-lg px-3 py-2 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
-                  required
-                />
-              </div>
-
-              {/* Date Validation Check */}
-              {editingTask.startDate && editingTask.endDate &&
-               new Date(editingTask.endDate) < new Date(editingTask.startDate) && (
-                <div className="bg-destructive/10 border border-destructive/20 rounded p-3">
-                  <p className="text-sm text-destructive flex items-center">
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    End date cannot be before start date
-                  </p>
-                </div>
-              )}
-
-            </div>
-
-            <div className="flex space-x-3 mt-6">
-              <button
-                onClick={handleCancelEdit}
-                className="flex-1 border border-border bg-card text-foreground py-2 px-4 rounded-lg hover:bg-muted font-semibold transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleUpdateTask}
-                className="flex-1 bg-primary text-primary-foreground py-2 px-4 rounded-lg hover:bg-primary/90 font-semibold transition-colors disabled:opacity-50"
-                disabled={!editingTask.title || !editingTask.startDate || !editingTask.endDate}
-              >
-                {editingTask.title ? 'Update Task' : 'Add Task'}
-              </button>
-            </div>
+      {/* Edit Task Modal — Modal supplies the focus trap, Escape and focus
+          restoration the hand-rolled overlay never had. */}
+      <Modal
+        open={Boolean(editingTask && canEditTasks)}
+        onClose={handleCancelEdit}
+        title={editingTask?.title ? "Edit task" : "Add new task"}
+        size="md"
+        footer={
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={handleCancelEdit}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleUpdateTask}
+              disabled={!editingTask?.title || !editingTask?.startDate || !editingTask?.endDate}
+            >
+              {editingTask?.title ? "Update task" : "Add task"}
+            </Button>
           </div>
-        </div>
-      )}
+        }
+      >
+        {editingTask && canEditTasks && (
+          <div className="space-y-4">
+            <Field label="Task title" htmlFor="edit-task-title" required>
+              <input
+                id="edit-task-title"
+                type="text"
+                value={editingTask.title}
+                onChange={(e) => setEditingTask({ ...editingTask, title: e.target.value })}
+                placeholder="Enter task title"
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                required
+              />
+            </Field>
+
+            <Field label="Description" htmlFor="edit-task-description">
+              <textarea
+                id="edit-task-description"
+                value={editingTask.description}
+                onChange={(e) => setEditingTask({ ...editingTask, description: e.target.value })}
+                placeholder="Enter task description"
+                rows="3"
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              />
+            </Field>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Start date" htmlFor="edit-task-start" required>
+                <input
+                  id="edit-task-start"
+                  type="date"
+                  value={editingTask.startDate}
+                  onChange={(e) => handleEditFieldChange("startDate", e.target.value)}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  required
+                />
+              </Field>
+
+              <Field label="End date" htmlFor="edit-task-end" required>
+                <input
+                  id="edit-task-end"
+                  type="date"
+                  value={editingTask.endDate}
+                  onChange={(e) => handleEditFieldChange("endDate", e.target.value)}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  required
+                />
+              </Field>
+            </div>
+
+            <Field label="Number of days" htmlFor="edit-task-days" required>
+              <input
+                id="edit-task-days"
+                type="number"
+                min="1"
+                value={editingTask.noOfDays || ""}
+                onChange={(e) => handleEditFieldChange("noOfDays", e.target.value)}
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 tabular-nums"
+                required
+              />
+            </Field>
+
+            {editingTask.startDate &&
+              editingTask.endDate &&
+              new Date(editingTask.endDate) < new Date(editingTask.startDate) && (
+                <p
+                  role="alert"
+                  className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
+                >
+                  End date cannot be before start date.
+                </p>
+              )}
+          </div>
+        )}
+      </Modal>
 
       {/* Task Completion / Re-submission Modal */}
       {showCompletionModal && completionTask && (

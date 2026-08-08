@@ -1,10 +1,19 @@
 "use client";
 
-import { useState, useRef, useMemo, useEffect } from "react";
-import { X, Upload, Save, Loader2, User } from "lucide-react";
+import { useState, useRef, useMemo, useEffect, useId } from "react";
+import { Upload, Save, Loader2, User, X, RotateCcw } from "lucide-react";
 import { uploadEmployeePhoto, saveEmployee, reportingCycleError } from "@/utils/employeesData";
 import { resolveOrgFileUrl } from "@/utils/orgFiles";
 import { showSuccess, showError } from "@/utils/alerts";
+import {
+  Modal,
+  Section,
+  Field,
+  Input,
+  Button,
+  Badge,
+  Skeleton,
+} from "@/components/ui";
 
 // Human-friendly label: "team_lead" -> "Team Lead".
 const pretty = (s) =>
@@ -18,13 +27,13 @@ const EMPLOYMENT_STATUS_OPTIONS = ["active", "on_leave", "suspended", "terminate
 const EMPLOYMENT_TYPE_OPTIONS = ["full_time", "part_time", "contract", "intern"];
 const MEMBERSHIP_STATUS_OPTIONS = ["active", "inactive", "suspended"];
 const DAYS = [
-  { key: "mon", label: "Mon" },
-  { key: "tue", label: "Tue" },
-  { key: "wed", label: "Wed" },
-  { key: "thu", label: "Thu" },
-  { key: "fri", label: "Fri" },
-  { key: "sat", label: "Sat" },
-  { key: "sun", label: "Sun" },
+  { key: "mon", label: "Mon", full: "Monday" },
+  { key: "tue", label: "Tue", full: "Tuesday" },
+  { key: "wed", label: "Wed", full: "Wednesday" },
+  { key: "thu", label: "Thu", full: "Thursday" },
+  { key: "fri", label: "Fri", full: "Friday" },
+  { key: "sat", label: "Sat", full: "Saturday" },
+  { key: "sun", label: "Sun", full: "Sunday" },
 ];
 
 const DEFAULT_SCHEDULE = {
@@ -33,10 +42,12 @@ const DEFAULT_SCHEDULE = {
   days: ["mon", "tue", "wed", "thu", "fri"],
 };
 
-const inputClass =
-  "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30";
-const labelClass = "mb-1 block text-xs font-medium text-foreground";
-const headingClass = "text-sm font-semibold text-foreground";
+// The kit has no Select/Textarea primitive, so these mirror Input's token
+// styling rather than inventing a look of their own.
+const controlClass =
+  "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60";
+const textareaClass =
+  "min-h-[96px] w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60";
 
 export default function EmployeeProfileEditor({
   emp,
@@ -50,6 +61,8 @@ export default function EmployeeProfileEditor({
 }) {
   const profile = emp?.profile || {};
   const fileInputRef = useRef(null);
+  const uid = useId();
+  const fid = (name) => `${uid}-${name}`;
 
   // Local form state, initialized defensively from emp + emp.profile.
   const [form, setForm] = useState(() => ({
@@ -247,149 +260,377 @@ export default function EmployeeProfileEditor({
     }
   };
 
+  // Photo has four visible states: uploading, failed, a resolved preview, and
+  // "a path we are still signing" — the last one used to render nothing at all.
+  const photoResolving = Boolean(form.photo_url) && !photoPreview && !uploading;
+
+  const scheduleSummary = (() => {
+    const picked = DAYS.filter((d) => form.work_schedule.days.includes(d.key));
+    if (!picked.length) return "No working days selected";
+    return `${picked.map((d) => d.label).join(", ")} · ${form.work_schedule.start}–${form.work_schedule.end}`;
+  })();
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-elevated">
-        {/* Header */}
-        <div className="mb-6 flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-muted">
-              {photoPreview ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={photoPreview} alt={emp?.name || "Employee"} className="h-full w-full object-cover" />
+    <Modal
+      open
+      onClose={() => onClose?.()}
+      title={emp?.name || "Employee"}
+      description={emp?.email || "Employee profile"}
+      size="lg"
+      footer={
+        <>
+          <Button variant="outline" onClick={() => onClose?.()}>
+            {canManage ? "Cancel" : "Close"}
+          </Button>
+          {canManage ? (
+            <Button onClick={handleSave} disabled={saving} aria-busy={saving || undefined}>
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
               ) : (
-                <User className="h-6 w-6 text-muted-foreground" />
+                <Save className="h-4 w-4" aria-hidden="true" />
               )}
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-foreground">{emp?.name || "Employee"}</h2>
-              <p className="text-sm text-muted-foreground">{emp?.email || ""}</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => onClose?.()}
-            aria-label="Close"
-            className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-2 text-sm font-semibold text-foreground hover:bg-muted"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+              {saving ? "Saving…" : "Save changes"}
+            </Button>
+          ) : null}
+        </>
+      }
+    >
+      <div className="space-y-6">
+        {!canManage && (
+          <p className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+            You have read-only access to this profile.
+          </p>
+        )}
 
-        <div className="space-y-6">
-          {/* Photo */}
-          <section className="rounded-xl border border-border p-4">
-            <h3 className={headingClass}>Photo</h3>
-            <div className="mt-3 flex items-center gap-3">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handlePhoto}
-                disabled={disabled || uploading}
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={disabled || uploading}
-                className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-50"
-              >
-                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                {uploading ? "Uploading..." : "Upload photo"}
-              </button>
-              {form.photo_url ? (
-                <span className="text-xs text-muted-foreground">Photo set</span>
-              ) : (
-                <span className="text-xs text-muted-foreground">No photo uploaded</span>
-              )}
-            </div>
-            {uploadError ? <p className="mt-2 text-xs text-red-500">{uploadError}</p> : null}
-          </section>
+        {/* ── Identity ─────────────────────────────────────────────────────── */}
+        <Section
+          title="Identity"
+          description="Who this person is in the directory."
+        >
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+            {/* Photo */}
+            <div className="flex items-center gap-4 sm:flex-col sm:items-start">
+              <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-full border border-border bg-muted">
+                {uploading ? (
+                  <div className="flex h-full w-full items-center justify-center bg-muted">
+                    <Loader2
+                      className="h-5 w-5 animate-spin text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                  </div>
+                ) : photoResolving ? (
+                  <Skeleton className="h-full w-full rounded-full" />
+                ) : photoPreview ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={photoPreview}
+                    alt={`${emp?.name || "Employee"} profile photo`}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center">
+                    <User
+                      className="h-7 w-7 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                  </div>
+                )}
+              </div>
 
-          {/* Identity (read-only) */}
-          <section className="rounded-xl border border-border p-4">
-            <h3 className={headingClass}>Identity</h3>
-            <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className={labelClass}>Full name</label>
-                <input className={inputClass} value={emp?.name || ""} readOnly disabled />
-              </div>
-              <div>
-                <label className={labelClass}>Email</label>
-                <input className={inputClass} value={emp?.email || ""} readOnly disabled />
-              </div>
-              <div>
-                <label className={labelClass}>Designation</label>
+              <div className="space-y-2">
                 <input
-                  className={inputClass}
+                  ref={fileInputRef}
+                  id={fid("photo")}
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={handlePhoto}
+                  disabled={disabled || uploading}
+                />
+                <Button
+                  type="button"
+                  variant={uploadError ? "destructive" : "outline"}
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={disabled || uploading}
+                  aria-busy={uploading || undefined}
+                  aria-describedby={
+                    uploadError ? fid("photo-error") : fid("photo-hint")
+                  }
+                >
+                  {uploading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  ) : uploadError ? (
+                    <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <Upload className="h-4 w-4" aria-hidden="true" />
+                  )}
+                  {uploading
+                    ? "Uploading…"
+                    : uploadError
+                    ? "Try again"
+                    : form.photo_url
+                    ? "Replace photo"
+                    : "Upload photo"}
+                </Button>
+                {uploadError ? (
+                  <p
+                    id={fid("photo-error")}
+                    role="alert"
+                    className="max-w-[16rem] text-xs font-medium text-destructive"
+                  >
+                    {uploadError}
+                  </p>
+                ) : (
+                  <p
+                    id={fid("photo-hint")}
+                    className="max-w-[16rem] text-xs text-muted-foreground"
+                  >
+                    {uploading
+                      ? "Uploading — this can take a moment."
+                      : form.photo_url
+                      ? "Photo set. Saving the profile keeps it."
+                      : "Square JPG or PNG works best."}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Name / email / designation */}
+            <div className="grid min-w-0 flex-1 grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field
+                label="Full name"
+                htmlFor={fid("name")}
+                hint="Set by the person in their own account."
+              >
+                <Input id={fid("name")} value={emp?.name || ""} readOnly disabled />
+              </Field>
+              <Field
+                label="Email"
+                htmlFor={fid("email")}
+                hint="Used to sign in — cannot be edited here."
+              >
+                <Input id={fid("email")} value={emp?.email || ""} readOnly disabled />
+              </Field>
+              <Field
+                label="Designation"
+                htmlFor={fid("designation")}
+                hint="The job title shown in the directory."
+              >
+                <Input
+                  id={fid("designation")}
                   value={form.designation}
                   onChange={(e) => setField("designation", e.target.value)}
                   disabled={disabled}
                   placeholder="e.g. Senior Engineer"
                 />
-              </div>
-              <div>
-                <label className={labelClass}>Role</label>
-                <select
-                  className={inputClass}
-                  value={form.role}
-                  onChange={(e) => setField("role", e.target.value)}
+              </Field>
+              <Field label="Phone" htmlFor={fid("phone")}>
+                <Input
+                  id={fid("phone")}
+                  value={form.phone}
+                  onChange={(e) => setField("phone", e.target.value)}
                   disabled={disabled}
+                  placeholder="e.g. +1 555 000 1234"
+                />
+              </Field>
+              <div className="sm:col-span-2">
+                <Field label="Address" htmlFor={fid("address")}>
+                  <Input
+                    id={fid("address")}
+                    value={form.address}
+                    onChange={(e) => setField("address", e.target.value)}
+                    disabled={disabled}
+                    placeholder="Street, city, country"
+                  />
+                </Field>
+              </div>
+              <div className="sm:col-span-2">
+                <Field
+                  label="Bio"
+                  htmlFor={fid("bio")}
+                  hint="A couple of sentences teammates see on the profile."
                 >
-                  {ROLE_OPTIONS.map((r) => (
-                    <option key={r} value={r}>
-                      {pretty(r)}
-                    </option>
-                  ))}
-                </select>
+                  <textarea
+                    id={fid("bio")}
+                    className={textareaClass}
+                    value={form.bio}
+                    onChange={(e) => setField("bio", e.target.value)}
+                    disabled={disabled}
+                    placeholder="Short description about the employee"
+                  />
+                </Field>
               </div>
             </div>
-          </section>
+          </div>
+        </Section>
 
-          {/* Org placement */}
-          <section className="rounded-xl border border-border p-4">
-            <h3 className={headingClass}>Organization</h3>
-            <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className={labelClass}>Department</label>
+        {/* ── Employment ───────────────────────────────────────────────────── */}
+        <Section
+          title="Employment"
+          description="Contract terms and workspace access."
+        >
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field
+              label="Role"
+              htmlFor={fid("role")}
+              hint="Decides what this person can do in the workspace."
+            >
+              <select
+                id={fid("role")}
+                className={controlClass}
+                value={form.role}
+                onChange={(e) => setField("role", e.target.value)}
+                disabled={disabled}
+              >
+                {ROLE_OPTIONS.map((r) => (
+                  <option key={r} value={r}>
+                    {pretty(r)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field
+              label="Membership status"
+              htmlFor={fid("status")}
+              hint="Whether the account can sign in to this organization."
+            >
+              <select
+                id={fid("status")}
+                className={controlClass}
+                value={form.status}
+                onChange={(e) => setField("status", e.target.value)}
+                disabled={disabled}
+              >
+                {MEMBERSHIP_STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {pretty(s)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field
+              label="Employment status"
+              htmlFor={fid("employment_status")}
+              hint="The HR record — separate from workspace access."
+            >
+              <select
+                id={fid("employment_status")}
+                className={controlClass}
+                value={form.employment_status}
+                onChange={(e) => setField("employment_status", e.target.value)}
+                disabled={disabled}
+              >
+                {EMPLOYMENT_STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {pretty(s)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="Employment type" htmlFor={fid("employment_type")}>
+              <select
+                id={fid("employment_type")}
+                className={controlClass}
+                value={form.employment_type}
+                onChange={(e) => setField("employment_type", e.target.value)}
+                disabled={disabled}
+              >
+                {EMPLOYMENT_TYPE_OPTIONS.map((t) => (
+                  <option key={t} value={t}>
+                    {pretty(t)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="Joining date" htmlFor={fid("joining_date")}>
+              <input
+                id={fid("joining_date")}
+                type="date"
+                className={controlClass}
+                value={form.joining_date || ""}
+                onChange={(e) => setField("joining_date", e.target.value)}
+                disabled={disabled}
+              />
+            </Field>
+          </div>
+        </Section>
+
+        {/* ── Reporting line ───────────────────────────────────────────────── */}
+        <Section
+          title="Reporting line"
+          description="Where this person sits in the org chart."
+        >
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Department" htmlFor={fid("department")}>
+              <select
+                id={fid("department")}
+                className={controlClass}
+                value={form.departmentId || ""}
+                onChange={(e) => handleDepartmentChange(e.target.value)}
+                disabled={disabled}
+              >
+                <option value="">Unassigned</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field
+              label="Team"
+              htmlFor={fid("team")}
+              hint={
+                form.departmentId
+                  ? "Limited to teams in the selected department."
+                  : undefined
+              }
+            >
+              <select
+                id={fid("team")}
+                className={controlClass}
+                value={form.teamId || ""}
+                onChange={(e) => setField("teamId", e.target.value)}
+                disabled={disabled}
+              >
+                <option value="">Unassigned</option>
+                {visibleTeams.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            {/* The reporting-cycle message is the one error in this form that a
+                person can actually trigger by thinking too fast, so it belongs
+                next to the control that caused it — not in a dialog after the
+                fact. Wording and detection are unchanged; only the presentation
+                is. */}
+            <div className="sm:col-span-2">
+              <Field
+                label="Reports to"
+                htmlFor={fid("reportsTo")}
+                error={hierarchyError || undefined}
+                hint={
+                  hierarchyError
+                    ? undefined
+                    : "The manager this person's chain rolls up to."
+                }
+              >
                 <select
-                  className={inputClass}
-                  value={form.departmentId || ""}
-                  onChange={(e) => handleDepartmentChange(e.target.value)}
-                  disabled={disabled}
-                >
-                  <option value="">Unassigned</option>
-                  {departments.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className={labelClass}>Team</label>
-                <select
-                  className={inputClass}
-                  value={form.teamId || ""}
-                  onChange={(e) => setField("teamId", e.target.value)}
-                  disabled={disabled}
-                >
-                  <option value="">Unassigned</option>
-                  {visibleTeams.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className={labelClass}>Reports to</label>
-                <select
-                  className={inputClass}
+                  id={fid("reportsTo")}
+                  className={controlClass}
                   value={form.reportsTo || ""}
                   onChange={(e) => setField("reportsTo", e.target.value)}
                   disabled={disabled}
+                  aria-invalid={hierarchyError ? true : undefined}
                 >
                   <option value="">No manager</option>
                   {reportOptions.map((e) => (
@@ -398,228 +639,125 @@ export default function EmployeeProfileEditor({
                     </option>
                   ))}
                 </select>
-              </div>
-              <div>
-                <label className={labelClass}>Membership status</label>
-                <select
-                  className={inputClass}
-                  value={form.status}
-                  onChange={(e) => setField("status", e.target.value)}
-                  disabled={disabled}
-                >
-                  {MEMBERSHIP_STATUS_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {pretty(s)}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              </Field>
             </div>
-          </section>
+          </div>
+        </Section>
 
-          {/* Employment */}
-          <section className="rounded-xl border border-border p-4">
-            <h3 className={headingClass}>Employment</h3>
-            <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className={labelClass}>Employment status</label>
-                <select
-                  className={inputClass}
-                  value={form.employment_status}
-                  onChange={(e) => setField("employment_status", e.target.value)}
-                  disabled={disabled}
-                >
-                  {EMPLOYMENT_STATUS_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {pretty(s)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className={labelClass}>Employment type</label>
-                <select
-                  className={inputClass}
-                  value={form.employment_type}
-                  onChange={(e) => setField("employment_type", e.target.value)}
-                  disabled={disabled}
-                >
-                  {EMPLOYMENT_TYPE_OPTIONS.map((t) => (
-                    <option key={t} value={t}>
-                      {pretty(t)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className={labelClass}>Joining date</label>
-                <input
-                  type="date"
-                  className={inputClass}
-                  value={form.joining_date || ""}
-                  onChange={(e) => setField("joining_date", e.target.value)}
-                  disabled={disabled}
-                />
-              </div>
-              <div>
-                <label className={labelClass}>Phone</label>
-                <input
-                  className={inputClass}
-                  value={form.phone}
-                  onChange={(e) => setField("phone", e.target.value)}
-                  disabled={disabled}
-                  placeholder="e.g. +1 555 000 1234"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className={labelClass}>Address</label>
-                <input
-                  className={inputClass}
-                  value={form.address}
-                  onChange={(e) => setField("address", e.target.value)}
-                  disabled={disabled}
-                  placeholder="Street, city, country"
-                />
-              </div>
-            </div>
-          </section>
+        {/* ── Schedule ─────────────────────────────────────────────────────── */}
+        <Section
+          title="Schedule"
+          description="Working hours and days used for attendance."
+        >
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Start time" htmlFor={fid("start")}>
+              <input
+                id={fid("start")}
+                type="time"
+                className={controlClass}
+                value={form.work_schedule.start}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    work_schedule: { ...prev.work_schedule, start: e.target.value },
+                  }))
+                }
+                disabled={disabled}
+              />
+            </Field>
+            <Field label="End time" htmlFor={fid("end")}>
+              <input
+                id={fid("end")}
+                type="time"
+                className={controlClass}
+                value={form.work_schedule.end}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    work_schedule: { ...prev.work_schedule, end: e.target.value },
+                  }))
+                }
+                disabled={disabled}
+              />
+            </Field>
+          </div>
 
-          {/* Work schedule */}
-          <section className="rounded-xl border border-border p-4">
-            <h3 className={headingClass}>Work schedule</h3>
-            <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className={labelClass}>Start time</label>
-                <input
-                  type="time"
-                  className={inputClass}
-                  value={form.work_schedule.start}
-                  onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      work_schedule: { ...prev.work_schedule, start: e.target.value },
-                    }))
-                  }
-                  disabled={disabled}
-                />
-              </div>
-              <div>
-                <label className={labelClass}>End time</label>
-                <input
-                  type="time"
-                  className={inputClass}
-                  value={form.work_schedule.end}
-                  onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      work_schedule: { ...prev.work_schedule, end: e.target.value },
-                    }))
-                  }
-                  disabled={disabled}
-                />
-              </div>
+          <fieldset className="mt-4 min-w-0">
+            <legend className="mb-2 text-sm font-medium text-foreground">
+              Working days
+            </legend>
+            <div className="flex flex-wrap gap-2">
+              {DAYS.map((d) => {
+                const active = form.work_schedule.days.includes(d.key);
+                return (
+                  <button
+                    key={d.key}
+                    type="button"
+                    onClick={() => toggleDay(d.key)}
+                    disabled={disabled}
+                    aria-pressed={active}
+                    aria-label={d.full}
+                    className={`min-w-[3.25rem] rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60 ${
+                      active
+                        ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                        : "border border-border bg-card text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {d.label}
+                  </button>
+                );
+              })}
             </div>
-            <div className="mt-3">
-              <label className={labelClass}>Working days</label>
-              <div className="flex flex-wrap gap-2">
-                {DAYS.map((d) => {
-                  const active = form.work_schedule.days.includes(d.key);
-                  return (
+            <p className="mt-2 text-xs text-muted-foreground">{scheduleSummary}</p>
+          </fieldset>
+        </Section>
+
+        {/* ── Skills ───────────────────────────────────────────────────────── */}
+        <Section
+          title="Skills"
+          description="Used to staff projects and search the directory."
+        >
+          {skills.length ? (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {skills.map((s) => (
+                <Badge key={s} variant="secondary" size="md">
+                  <span className="truncate">{s}</span>
+                  {!disabled ? (
                     <button
-                      key={d.key}
                       type="button"
-                      onClick={() => toggleDay(d.key)}
-                      disabled={disabled}
-                      className={
-                        active
-                          ? "rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                          : "rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
-                      }
+                      onClick={() => removeSkill(s)}
+                      aria-label={`Remove ${s}`}
+                      className="-mr-1 ml-1 rounded-full p-0.5 transition-colors duration-150 hover:bg-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
                     >
-                      {d.label}
+                      <X className="h-3 w-3" aria-hidden="true" />
                     </button>
-                  );
-                })}
-              </div>
+                  ) : null}
+                </Badge>
+              ))}
             </div>
-          </section>
-
-          {/* Skills */}
-          <section className="rounded-xl border border-border p-4">
-            <h3 className={headingClass}>Skills</h3>
-            <div className="mt-3">
-              {skills.length ? (
-                <div className="mb-3 flex flex-wrap gap-2">
-                  {skills.map((s) => (
-                    <span
-                      key={s}
-                      className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
-                    >
-                      {s}
-                      {!disabled ? (
-                        <button
-                          type="button"
-                          onClick={() => removeSkill(s)}
-                          aria-label={`Remove ${s}`}
-                          className="rounded-full hover:text-primary/70"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      ) : null}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="mb-3 text-xs text-muted-foreground">No skills added yet.</p>
-              )}
-              {!disabled ? (
-                <input
-                  className={inputClass}
-                  value={skillDraft}
-                  onChange={(e) => setSkillDraft(e.target.value)}
-                  onKeyDown={onSkillKeyDown}
-                  onBlur={() => addSkill(skillDraft)}
-                  placeholder="Type a skill and press Enter or comma"
-                />
-              ) : null}
-            </div>
-          </section>
-
-          {/* Bio */}
-          <section className="rounded-xl border border-border p-4">
-            <h3 className={headingClass}>Bio</h3>
-            <textarea
-              className={`${inputClass} mt-3 min-h-[96px] resize-y`}
-              value={form.bio}
-              onChange={(e) => setField("bio", e.target.value)}
-              disabled={disabled}
-              placeholder="Short description about the employee"
-            />
-          </section>
-        </div>
-
-        {/* Footer */}
-        <div className="mt-6 flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={() => onClose?.()}
-            className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted"
-          >
-            {canManage ? "Cancel" : "Close"}
-          </button>
-          {canManage ? (
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          ) : (
+            <p className="mb-3 rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+              No skills added yet.
+            </p>
+          )}
+          {!disabled ? (
+            <Field
+              label="Add a skill"
+              htmlFor={fid("skill")}
+              hint="Press Enter or comma to add."
             >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              {saving ? "Saving..." : "Save changes"}
-            </button>
+              <Input
+                id={fid("skill")}
+                value={skillDraft}
+                onChange={(e) => setSkillDraft(e.target.value)}
+                onKeyDown={onSkillKeyDown}
+                onBlur={() => addSkill(skillDraft)}
+                placeholder="e.g. TypeScript"
+              />
+            </Field>
           ) : null}
-        </div>
+        </Section>
       </div>
-    </div>
+    </Modal>
   );
 }

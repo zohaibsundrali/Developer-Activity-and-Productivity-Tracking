@@ -12,6 +12,8 @@ import {
   splitLine,
 } from "@/components/charts/chartTheme";
 import { showWarning } from "@/utils/alerts";
+import { EmptyState, Skeleton } from "@/components/ui";
+import { GanttChartSquare } from "lucide-react";
 
 export default function GanttChartPage() {
   const router = useRouter();
@@ -189,7 +191,7 @@ export default function GanttChartPage() {
     return {
       color: PALETTE,
       textStyle,
-      grid: { ...baseGrid, left: 8, right: 30, top: 20, bottom: 8, containLabel: true },
+      grid: { ...baseGrid, left: 8, right: 30, top: 20, bottom: 30, containLabel: true },
       tooltip: {
         trigger: "item",
         axisPointer: { type: "shadow" },
@@ -208,10 +210,21 @@ export default function GanttChartPage() {
       xAxis: {
         type: "value",
         min: 0,
+        minInterval: 1,
+        name: "Date",
+        nameLocation: "middle",
+        nameGap: 28,
+        nameTextStyle: axisLabel,
         axisLabel: {
           ...axisLabel,
+          // "January 5, 2026" on every tick guaranteed a smear. Short form
+          // plus hideOverlap keeps the axis readable at any width.
+          hideOverlap: true,
           formatter: (value) =>
-            formatDate(new Date(minDate.getTime() + value * dayMs)),
+            new Date(minDate.getTime() + value * dayMs).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+            }),
         },
         axisLine,
         splitLine,
@@ -220,7 +233,14 @@ export default function GanttChartPage() {
         type: "category",
         inverse: true,
         data: withOffsets.map((r) => r.title),
-        axisLabel: { ...axisLabel, fontSize: 12 },
+        // Task titles are free text: truncate rather than run into the bars.
+        axisLabel: {
+          ...axisLabel,
+          fontSize: 12,
+          width: 150,
+          overflow: "truncate",
+          hideOverlap: true,
+        },
         axisLine,
         axisTick: { show: false },
       },
@@ -248,25 +268,35 @@ export default function GanttChartPage() {
     };
   };
 
+  // Skeleton shaped like the page below it, so nothing jumps when data lands.
   if (loading) {
     return (
-      <div className="min-h-screen bg-muted/50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-xl text-muted-foreground">Loading Gantt Chart...</div>
+      <div className="min-h-screen bg-background">
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8" aria-busy="true">
+          <div className="mb-6 space-y-2">
+            <Skeleton className="h-8 w-72" />
+            <Skeleton className="h-4 w-96" />
+          </div>
+          <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-24 w-full rounded-xl" />
+            ))}
+          </div>
+          <Skeleton className="h-[320px] w-full rounded-xl" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-muted/50 py-8">
-      <div className="max-w-7xl mx-auto px-4">
+    <div className="min-h-screen bg-background">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="flex flex-col gap-4 mb-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <button
               onClick={handleBack}
-              className="flex items-center text-muted-foreground hover:text-foreground bg-card px-4 py-2 rounded-lg shadow-sm border border-border hover:shadow-md transition-all w-fit"
+              className="inline-flex w-fit items-center rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground shadow-card transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -281,7 +311,7 @@ export default function GanttChartPage() {
 
           <button
             onClick={handleExportData}
-            className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors font-medium flex items-center justify-center w-full sm:w-auto"
+            className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:w-auto"
           >
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -301,35 +331,35 @@ export default function GanttChartPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total Tasks</p>
-                <p className="text-2xl font-bold text-foreground">{stats.totalTasks}</p>
+                <p className="text-2xl font-bold tabular-nums text-foreground">{stats.totalTasks}</p>
               </div>
             </div>
           </div>
 
           <div className="rounded-xl border border-border bg-card shadow-card p-4">
             <div className="flex items-center">
-              <div className="bg-green-100 p-3 rounded-lg mr-4">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="bg-success/10 p-3 rounded-lg mr-4">
+                <svg className="w-6 h-6 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total Hours</p>
-                <p className="text-2xl font-bold text-foreground">{stats.totalHours} hrs</p>
+                <p className="text-2xl font-bold tabular-nums text-foreground">{stats.totalHours} hrs</p>
               </div>
             </div>
           </div>
 
           <div className="rounded-xl border border-border bg-card shadow-card p-4">
             <div className="flex items-center">
-              <div className="bg-violet-500/10 p-3 rounded-lg mr-4">
-                <svg className="w-6 h-6 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="bg-accent p-3 rounded-lg mr-4">
+                <svg className="w-6 h-6 text-accent-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Project Timeline</p>
-                <p className="text-sm font-bold text-foreground truncate">{stats.dateRange}</p>
+                <p className="truncate text-sm font-bold tabular-nums text-foreground" title={stats.dateRange}>{stats.dateRange}</p>
               </div>
             </div>
           </div>
@@ -351,13 +381,11 @@ export default function GanttChartPage() {
               </div>
             </div>
           ) : (
-            <div className="text-center py-12 border-2 border-dashed border-border rounded-lg">
-              <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <h3 className="text-lg font-medium text-foreground mb-2">No Task Data Available</h3>
-              <p className="text-muted-foreground mb-4">Submit project work with tasks to view the Gantt chart.</p>
-            </div>
+            <EmptyState
+              icon={GanttChartSquare}
+              title="No task data available"
+              description="Submit project work with tasks to see the timeline plotted here."
+            />
           )}
         </div>
 
@@ -403,20 +431,20 @@ export default function GanttChartPage() {
                         <div className="text-sm text-muted-foreground max-w-xs truncate">{task.description}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-foreground">
+                        <div className="text-sm tabular-nums text-foreground">
                           {startDate ? formatDate(startDate) : 'Not set'}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-foreground">
+                        <div className="text-sm tabular-nums text-foreground">
                           {endDate ? formatDate(endDate) : 'Not set'}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-foreground">{task.workingHours || 0} hrs</div>
+                        <div className="text-sm tabular-nums text-foreground">{task.workingHours || 0} hrs</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-foreground">
+                        <div className="text-sm tabular-nums text-foreground">
                           {typeof duration === 'number' ? `${duration} days` : duration}
                         </div>
                       </td>
@@ -427,9 +455,11 @@ export default function GanttChartPage() {
             </table>
 
             {tasks.length === 0 && (
-              <div className="text-center py-8">
-                <p className="text-muted-foreground">No tasks available for this project.</p>
-              </div>
+              <EmptyState
+                icon={GanttChartSquare}
+                title="No tasks yet"
+                description="Tasks submitted for this project appear in this table."
+              />
             )}
           </div>
         </div>

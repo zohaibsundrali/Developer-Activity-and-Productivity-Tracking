@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import { Camera, Keyboard, LogIn, MousePointer2, Monitor } from "lucide-react";
 import { useAuth } from "../../../contexts/AuthContext.jsx";
 import {
   useKeyboardRealtime,
@@ -16,9 +17,43 @@ import {
   AppUsageList,
   ScreenshotGrid,
 } from "../../../components/developer/SessionUI.jsx";
+import {
+  Button,
+  EmptyState,
+  PageHeader,
+  Section,
+  Skeleton,
+  StatusPill,
+} from "@/components/ui";
+
+/**
+ * One metric tile. Figures are tabular so the four tiles line up, and the
+ * loading variant is the same shape so the row never changes height.
+ */
+function MetricTile({ icon: Icon, title, rows, loading }) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
+      <h2 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <Icon className="h-4 w-4" aria-hidden="true" />
+        {title}
+      </h2>
+      <dl className="mt-3 space-y-1.5">
+        {rows.map((row) => (
+          <div key={row.label} className="flex items-baseline justify-between gap-3 text-sm">
+            <dt className="truncate text-muted-foreground">{row.label}</dt>
+            <dd className="shrink-0 font-semibold tabular-nums text-foreground">
+              {loading ? <Skeleton className="h-4 w-12" /> : row.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
 
 export default function SessionDetailPage() {
   const { sessionId } = useParams();
+  const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
 
   const userEmail = user?.email || null;
@@ -78,120 +113,187 @@ export default function SessionDetailPage() {
   });
 
   if (authLoading) {
-    return <div className="p-6 text-muted-foreground">Checking authentication…</div>;
+    return (
+      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-64" />
+            <Skeleton className="h-4 w-80" />
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[0, 1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-32 w-full rounded-xl" />
+            ))}
+          </div>
+        </div>
+      </main>
+    );
   }
 
   if (!userEmail) {
-    return <div className="p-6 text-foreground">Please log in to view session details.</div>;
+    return (
+      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+        <EmptyState
+          icon={LogIn}
+          title="Sign in to view this session"
+          description="Session detail is private to the account that recorded it."
+          action={<Button onClick={() => router.push("/login")}>Go to login</Button>}
+        />
+      </main>
+    );
   }
 
+  const started = session?.start_time ? new Date(session.start_time).toLocaleString() : null;
+  const ended = session?.end_time ? new Date(session.end_time).toLocaleString() : null;
+
   return (
-    <main className="mx-auto max-w-6xl px-4 py-6 space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          Session detail
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          session_id: <span className="font-mono">{sessionId}</span>
-        </p>
-        {sessionLoading ? (
-          <p className="text-xs text-muted-foreground">Loading session summary…</p>
-        ) : session ? (
-          <p className="text-xs text-muted-foreground">
-            {session.start_time &&
-              `Started ${new Date(session.start_time).toLocaleString()} | `}
-            {session.end_time &&
-              `Ended ${new Date(session.end_time).toLocaleString()} | `}
-            Score {session.productivity_score ?? 0}
-          </p>
-        ) : null}
-      </header>
+    <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+      <PageHeader
+        breadcrumbs={[{ label: "Sessions", href: "/sessions" }, { label: "Session detail" }]}
+        title="Session detail"
+        description={
+          <span className="font-mono text-xs tabular-nums">{sessionId}</span>
+        }
+        actions={
+          session?.status ? (
+            <StatusPill
+              status={String(session.status).toLowerCase() === "active" ? "active" : "success"}
+              label={session.status}
+            />
+          ) : null
+        }
+      />
 
-      {/* Stat cards row */}
-      <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-            Keyboard
-          </h2>
-          <p className="text-sm text-foreground">
-            Total keys: <span className="font-semibold">{keyboard.totalKeys}</span>
-          </p>
-          <p className="text-sm text-foreground">
-            Avg WPM: <span className="font-semibold">{keyboard.avgWpm.toFixed(1)}</span>
-          </p>
-          <p className="text-sm text-foreground">
-            Activity %: <span className="font-semibold">{keyboard.avgActivityPct.toFixed(1)}</span>
-          </p>
-        </div>
-
-        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-            Mouse
-          </h2>
-          <p className="text-sm text-foreground">
-            Total events: <span className="font-semibold">{mouse.totalEvents}</span>
-          </p>
-          <p className="text-sm text-foreground">
-            Avg active %: <span className="font-semibold">{mouse.avgActivePct.toFixed(1)}</span>
-          </p>
-          <p className="text-sm text-foreground">
-            Avg idle %: <span className="font-semibold">{mouse.avgIdlePct.toFixed(1)}</span>
-          </p>
-          {mouse.latest?.activity_status && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Latest status: {mouse.latest.activity_status}
+      <div className="space-y-6">
+        {/* Session summary line — a skeleton while it loads, never a bare null. */}
+        <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
+          {sessionLoading ? (
+            <div className="flex flex-wrap gap-x-6 gap-y-2">
+              <Skeleton className="h-4 w-48" />
+              <Skeleton className="h-4 w-48" />
+              <Skeleton className="h-4 w-24" />
+            </div>
+          ) : session ? (
+            <dl className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
+              <div className="flex items-baseline gap-2">
+                <dt className="text-muted-foreground">Started</dt>
+                <dd className="tabular-nums text-foreground">{started || "—"}</dd>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <dt className="text-muted-foreground">Ended</dt>
+                <dd className="tabular-nums text-foreground">{ended || "Ongoing"}</dd>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <dt className="text-muted-foreground">Productivity score</dt>
+                <dd className="font-semibold tabular-nums text-foreground">
+                  {session.productivity_score ?? 0}
+                </dd>
+              </div>
+            </dl>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No summary row was found for this session — the activity below is still live.
             </p>
           )}
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-            Apps
-          </h2>
-          <p className="text-sm text-foreground">
-            Unique apps: <span className="font-semibold">{apps.topApps.length}</span>
-          </p>
-          {apps.topBrowser && (
-            <p className="text-sm text-foreground">
-              Top browser: <span className="font-semibold">{apps.topBrowser.browser}</span>
-            </p>
-          )}
+        {/* Metric tiles */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <MetricTile
+            icon={Keyboard}
+            title="Keyboard"
+            loading={keyboard.loading}
+            rows={[
+              { label: "Total keys", value: keyboard.totalKeys },
+              { label: "Avg WPM", value: keyboard.avgWpm.toFixed(1) },
+              { label: "Activity %", value: `${keyboard.avgActivityPct.toFixed(1)}%` },
+            ]}
+          />
+          <MetricTile
+            icon={MousePointer2}
+            title="Mouse"
+            loading={mouse.loading}
+            rows={[
+              { label: "Total events", value: mouse.totalEvents },
+              { label: "Avg active %", value: `${mouse.avgActivePct.toFixed(1)}%` },
+              { label: "Avg idle %", value: `${mouse.avgIdlePct.toFixed(1)}%` },
+            ]}
+          />
+          <MetricTile
+            icon={Monitor}
+            title="Apps"
+            loading={apps.loading}
+            rows={[
+              { label: "Unique apps", value: apps.topApps.length },
+              { label: "Top browser", value: apps.topBrowser?.browser || "—" },
+            ]}
+          />
+          <MetricTile
+            icon={Camera}
+            title="Screenshots"
+            loading={screenshots.loading}
+            rows={[{ label: "Captured", value: screenshots.count }]}
+          />
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-            Screenshots
-          </h2>
-          <p className="text-sm text-foreground">
-            Count: <span className="font-semibold">{screenshots.count}</span>
-          </p>
-        </div>
-      </section>
+        {/* Charts */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <Section
+            title="Keyboard activity"
+            description="Words per minute against keyboard activity share, per minute."
+            className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5"
+          >
+            <KeyboardActivityChart
+              data={keyboard.rows}
+              loading={keyboard.loading}
+              error={keyboard.error}
+              onRetry={keyboard.refresh}
+            />
+          </Section>
 
-      {/* Charts and lists */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-          <h2 className="mb-2 text-sm font-semibold text-foreground">Keyboard activity</h2>
-          <KeyboardActivityChart data={keyboard.rows} />
+          <Section
+            title="Mouse activity"
+            description="Active and idle share of each tracked minute."
+            className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5"
+          >
+            <MouseActivityChart
+              data={mouse.rows}
+              loading={mouse.loading}
+              error={mouse.error}
+              onRetry={mouse.refresh}
+            />
+          </Section>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-          <h2 className="mb-2 text-sm font-semibold text-foreground">Mouse activity</h2>
-          <MouseActivityChart data={mouse.rows} />
-        </div>
-      </section>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <Section
+            title="App usage"
+            description="Applications used in this session, longest first."
+            className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5"
+          >
+            <AppUsageList
+              topApps={apps.topApps}
+              topBrowser={apps.topBrowser}
+              loading={apps.loading}
+              error={apps.error}
+              onRetry={apps.refresh}
+            />
+          </Section>
 
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-          <h2 className="mb-2 text-sm font-semibold text-foreground">App usage</h2>
-          <AppUsageList topApps={apps.topApps} topBrowser={apps.topBrowser} />
+          <Section
+            title="Screenshots"
+            description="Three most recent captures."
+            className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5"
+          >
+            <ScreenshotGrid
+              screenshots={screenshots.recentThree}
+              loading={screenshots.loading}
+              error={screenshots.error}
+              onRetry={screenshots.refresh}
+            />
+          </Section>
         </div>
-
-        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-          <h2 className="mb-2 text-sm font-semibold text-foreground">Screenshots</h2>
-          <ScreenshotGrid screenshots={screenshots.recentThree} />
-        </div>
-      </section>
+      </div>
     </main>
   );
 }

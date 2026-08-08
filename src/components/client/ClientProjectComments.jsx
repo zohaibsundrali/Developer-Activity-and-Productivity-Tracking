@@ -12,12 +12,14 @@ import { authFetch } from "@/utils/authFetch";
 import { showError } from "@/utils/alerts";
 import { uploadOrgFile } from "@/utils/orgFiles";
 import { getOrgId } from "@/utils/orgContext";
+import { Button } from "@/components/ui";
 import {
-  Spinner,
+  ClientPage,
+  Panel,
   EmptyState,
   ErrorState,
-  SectionHeader,
   LoadMoreButton,
+  ConversationSkeleton,
   formatDateTime,
   formatRelativeTime,
   formatFileSize,
@@ -180,71 +182,79 @@ export default function ClientProjectComments({ projectId, showHeader = false, p
     }
   };
 
-  const header = showHeader ? (
-    <SectionHeader
-      title="Conversation"
-      subtitle={projectName ? `Talk to the team about ${projectName}` : "Talk to the team about this project"}
-    />
-  ) : null;
-
   return (
-    <div className="space-y-5">
-      {header}
-
-      <form
-        onSubmit={handleSubmit}
-        className="rounded-xl border border-border bg-card p-4 shadow-card"
-      >
+    <ClientPage
+      title={showHeader ? "Conversation" : undefined}
+      description={
+        showHeader
+          ? projectName
+            ? `Talk to the team about ${projectName}`
+            : "Talk to the team about this project"
+          : undefined
+      }
+    >
+      <Panel as="form" onSubmit={handleSubmit} className="space-y-4">
+        <label htmlFor="client-project-comment" className="sr-only">
+          Write a message to your team
+        </label>
         <textarea
+          id="client-project-comment"
           value={body}
           onChange={(e) => setBody(e.target.value)}
           placeholder="Write a message to your team…"
           rows={3}
-          className="w-full resize-y rounded-lg border border-input bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+          className="w-full resize-y rounded-lg border border-input bg-background px-3.5 py-3 text-[15px] leading-relaxed text-foreground transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         />
 
         {file && (
-          <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/50 px-3 py-2">
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/50 px-3.5 py-2.5">
             <div className="flex min-w-0 items-center gap-2 text-sm text-foreground">
-              <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               <span className="truncate">{file.name}</span>
               {formatFileSize(file.size) && (
                 <span className="shrink-0 text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
               )}
             </div>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon-sm"
               onClick={clearFile}
               aria-label="Remove attachment"
-              className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
-              <X className="h-4 w-4" />
-            </button>
+              <X className="h-4 w-4" aria-hidden="true" />
+            </Button>
           </div>
         )}
 
-        {composeError && <p className="mt-3 text-sm text-destructive">{composeError}</p>}
+        {composeError && (
+          <p className="text-sm text-destructive" role="alert">
+            {composeError}
+          </p>
+        )}
 
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <label className="inline-flex cursor-pointer items-center self-start rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted">
-            <Paperclip className="mr-1.5 h-4 w-4" />
-            Attach file
-            <input ref={fileInputRef} type="file" onChange={handlePickFile} className="sr-only" />
-          </label>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <Button asChild variant="outline" size="lg" className="cursor-pointer self-start">
+            <label>
+              <Paperclip className="h-4 w-4" aria-hidden="true" />
+              Attach file
+              <input ref={fileInputRef} type="file" onChange={handlePickFile} className="sr-only" />
+            </label>
+          </Button>
 
-          <button
-            type="submit"
-            disabled={sending || !body.trim()}
-            className="inline-flex items-center justify-center rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-          >
-            {sending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}
+          <Button type="submit" size="lg" disabled={sending || !body.trim()}>
+            {sending ? (
+              <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            ) : (
+              <Send className="h-4 w-4" aria-hidden="true" />
+            )}
             {sending ? "Sending…" : "Send"}
-          </button>
+          </Button>
         </div>
-      </form>
+      </Panel>
 
       {loading ? (
-        <Spinner label="Loading conversation…" />
+        <ConversationSkeleton />
       ) : error ? (
         <ErrorState message={error} onRetry={load} />
       ) : comments.length === 0 ? (
@@ -254,7 +264,7 @@ export default function ClientProjectComments({ projectId, showHeader = false, p
           message="Ask a question or share feedback — your team will see it against this project."
         />
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-5">
           {comments.map((comment) => (
             <CommentRow key={comment.id} comment={comment} />
           ))}
@@ -266,23 +276,26 @@ export default function ClientProjectComments({ projectId, showHeader = false, p
           )}
         </div>
       )}
-    </div>
+    </ClientPage>
   );
 }
 
+// A message reads top-to-bottom: who, then when, then what they said. Author
+// and timestamp get their own lines and the body is pushed clear of both, so a
+// run of messages reads as a conversation rather than as a table of rows.
 function CommentRow({ comment }) {
   const fromClient = comment.author_type === "client";
   const initial = String(comment.author_name || "?").trim().charAt(0).toUpperCase() || "?";
 
   return (
     <article
-      className={`rounded-xl border p-4 shadow-card ${
+      className={`rounded-xl border p-5 shadow-card sm:p-6 ${
         fromClient ? "border-primary/30 bg-primary/5" : "border-border bg-card"
       }`}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-4">
         <span
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
             fromClient ? "bg-primary text-primary-foreground" : "bg-info/10 text-info"
           }`}
           aria-hidden="true"
@@ -291,44 +304,39 @@ function CommentRow({ comment }) {
         </span>
 
         <div className="min-w-0 flex-1">
-          <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-semibold text-foreground">{comment.author_name}</span>
-              <span
-                className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                  fromClient ? "bg-primary/10 text-primary" : "bg-info/10 text-info"
-                }`}
-              >
-                {fromClient ? "Client" : "Team"}
-              </span>
-            </div>
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+            <span className="text-[15px] font-semibold text-foreground">{comment.author_name}</span>
             <span
-              className="whitespace-nowrap text-xs text-muted-foreground"
-              title={formatDateTime(comment.created_at)}
+              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                fromClient ? "bg-primary/10 text-primary" : "bg-info/10 text-info"
+              }`}
             >
-              {formatRelativeTime(comment.created_at)}
+              {fromClient ? "Client" : "Team"}
             </span>
           </div>
 
-          <p className="mt-2 whitespace-pre-line break-words text-sm text-foreground">{comment.body}</p>
+          <p className="mt-1 text-sm text-muted-foreground" title={formatDateTime(comment.created_at)}>
+            {formatRelativeTime(comment.created_at)}
+          </p>
+
+          <p className="mt-4 whitespace-pre-line break-words text-[15px] leading-relaxed text-foreground">
+            {comment.body}
+          </p>
 
           {comment.attachment_name && (
-            <div className="mt-3">
+            <div className="mt-5">
               {comment.attachment_url ? (
-                <a
-                  href={comment.attachment_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex max-w-full items-center rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-primary transition-colors hover:bg-muted"
-                >
-                  <Download className="mr-1.5 h-4 w-4 shrink-0" />
-                  <span className="truncate">{comment.attachment_name}</span>
-                </a>
+                <Button asChild variant="outline" size="lg" className="max-w-full">
+                  <a href={comment.attachment_url} target="_blank" rel="noopener noreferrer">
+                    <Download className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span className="truncate">{comment.attachment_name}</span>
+                  </a>
+                </Button>
               ) : (
                 // A signed URL is minted per response and expires; an old row
                 // read from state can legitimately have the name without a link.
-                <span className="inline-flex items-center rounded-lg border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
-                  <Paperclip className="mr-1.5 h-4 w-4 shrink-0" />
+                <span className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
+                  <Paperclip className="h-4 w-4 shrink-0" aria-hidden="true" />
                   <span className="truncate">{comment.attachment_name}</span>
                 </span>
               )}

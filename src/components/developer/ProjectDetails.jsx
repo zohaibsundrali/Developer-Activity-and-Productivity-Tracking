@@ -3,6 +3,25 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/utils/supabaseClient'; // Correct path
 import { showInfo } from "@/utils/alerts";
+import {
+  ArrowLeft,
+  CalendarClock,
+  CalendarCheck2,
+  Download,
+  FileText,
+  LayoutDashboard,
+  FolderKanban,
+  CheckCircle2,
+} from "lucide-react";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  ErrorState,
+  PageHeader,
+  Section,
+  Skeleton,
+} from "@/components/ui";
 
 export default function ProjectDetails() {
   const router = useRouter();
@@ -180,16 +199,22 @@ export default function ProjectDetails() {
   const assignedDate = getAssignedDate();
   const daysSinceAssignment = getDaysSinceAssignment(assignedDate);
 
-  // Loading state
+  // Loading — a skeleton shaped like the page, not a spinner over a blank one.
   if (loading) {
     return (
-      <div className="min-h-screen bg-muted py-8">
-        <div className="max-w-6xl mx-auto px-4">
-          <div className="text-center py-20">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-            <p className="mt-4 text-muted-foreground">Fetching project details from Supabase...</p>
-            <p className="text-sm text-muted-foreground mt-2">Loading database data</p>
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8" aria-busy="true">
+        <div className="mb-6 space-y-2">
+          <Skeleton className="h-8 w-72" />
+          <Skeleton className="h-4 w-96" />
+        </div>
+        <div className="space-y-6 rounded-xl border border-border bg-card p-5 shadow-card">
+          <Skeleton className="h-24 w-full rounded-lg" />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-36 w-full rounded-xl" />
+            ))}
           </div>
+          <Skeleton className="h-28 w-full rounded-lg" />
         </div>
       </div>
     );
@@ -198,157 +223,96 @@ export default function ProjectDetails() {
   // Error state
   if (error && !project.id) {
     return (
-      <div className="min-h-screen bg-muted py-8">
-        <div className="max-w-6xl mx-auto px-4">
-          <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-6">
-            <div className="flex items-center">
-              <svg className="w-6 h-6 text-destructive mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <div>
-                <h3 className="font-semibold text-destructive">Error Loading Project</h3>
-                <p className="text-sm text-destructive mt-1">{error}</p>
-                <button
-                  onClick={handleBackToDashboard}
-                  className="mt-4 bg-destructive text-destructive-foreground px-4 py-2 rounded-lg hover:bg-destructive/90 transition-colors"
-                >
-                  Go to Dashboard
-                </button>
-              </div>
-            </div>
-          </div>
+      <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6 lg:px-8">
+        <ErrorState title="Couldn't load this project" description={error} />
+        <div className="mt-4 flex justify-center">
+          <Button variant="outline" onClick={handleBackToDashboard}>
+            Go to dashboard
+          </Button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-muted py-8">
-      <div className="max-w-6xl mx-auto px-4">
-        {/* ✅ FIXED: Header with better back button options */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={handleBack}
-              className="flex items-center text-foreground hover:bg-muted bg-card px-4 py-2 rounded-lg shadow-card hover:shadow transition-all border border-border"
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+      <PageHeader
+        breadcrumbs={[
+          { label: "Dashboard", href: "/developer/dashboard" },
+          { label: "Projects", href: "/developer/dashboard?section=projects" },
+          { label: project.name || "Project" },
+        ]}
+        title={project.name || "Unnamed project"}
+        description="Everything you were given for this piece of work."
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="ghost" onClick={handleBack}>
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              Back
+            </Button>
+            <Button variant="outline" onClick={handleBackToProjects}>
+              <FolderKanban className="h-4 w-4" aria-hidden="true" />
+              All projects
+            </Button>
+          </div>
+        }
+      />
+
+      <div className="space-y-6">
+        {/* Project not found warning */}
+        {(!project.id || project.id === "null") && (
+          <div className="rounded-lg border border-warning/20 bg-warning/10 p-4" role="status">
+            <p className="text-sm font-medium text-warning">Project data did not load properly</p>
+            <p className="text-sm text-warning">Go back to the projects list and open it again.</p>
+          </div>
+        )}
+
+        {/* Project summary */}
+        <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <h2 className="min-w-0 text-lg font-semibold tracking-tight text-foreground">
+              {project.name || "Unnamed project"}
+            </h2>
+            <Badge
+              variant={
+                project.status === "completed" || project.status === "active"
+                  ? "success"
+                  : project.status === "pending"
+                  ? "warning"
+                  : "secondary"
+              }
             >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-              Go Back
-            </button>
-            
-            {/* Alternative back buttons */}
-            <div className="hidden md:flex space-x-2">
-              <button
-                onClick={handleBackToDashboard}
-                className="flex items-center text-foreground hover:text-foreground bg-muted px-3 py-2 rounded-lg hover:bg-muted/70 transition-colors text-sm"
-              >
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                </svg>
-                Dashboard
-              </button>
-              <button
-                onClick={handleBackToProjects}
-                className="flex items-center text-foreground hover:text-foreground bg-muted px-3 py-2 rounded-lg hover:bg-muted/70 transition-colors text-sm"
-              >
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-                All Projects
-              </button>
-            </div>
+              {project.status
+                ? project.status.charAt(0).toUpperCase() + project.status.slice(1)
+                : "Unknown"}
+            </Badge>
           </div>
-          
-          <div className="text-right">
-            <h1 className="text-3xl font-bold text-foreground">Project Details</h1>
-            <p className="text-muted-foreground mt-1">
-              {dataSource === 'supabase' ? "Live data from Supabase" : "Using URL parameters"}
+
+          {project.assigned_developer_name && (
+            <p className="mt-2 text-sm text-muted-foreground">
+              Assigned to{" "}
+              <span className="font-medium text-foreground">{project.assigned_developer_name}</span>
+              {project.assigned_developer_email && ` (${project.assigned_developer_email})`}
             </p>
-          </div>
+          )}
+
+          <dl className="mt-4 flex flex-wrap gap-x-8 gap-y-2 text-sm">
+            <div className="flex items-center gap-2">
+              <CalendarClock className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              <dt className="text-muted-foreground">Created</dt>
+              <dd className="font-medium tabular-nums text-foreground">{formatDate(project.created_at)}</dd>
+            </div>
+            {assignedDate && (
+              <div className="flex items-center gap-2">
+                <CalendarCheck2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                <dt className="text-muted-foreground">Assigned</dt>
+                <dd className="font-medium tabular-nums text-foreground">{formatDate(assignedDate)}</dd>
+              </div>
+            )}
+          </dl>
         </div>
 
-        {/* Data source indicator */}
-        {dataSource === 'supabase' && (
-          <div className="mb-6 p-4 bg-info/10 border border-info/20 rounded-lg">
-            <div className="flex items-center">
-              <svg className="w-5 h-5 text-info mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              <p className="text-sm text-info">
-                <span className="font-semibold">✓ Live Data:</span> Project information loaded directly from Supabase database
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Project not found warning */}
-        {(!project.id || project.id === 'null') && (
-          <div className="mb-6 p-4 bg-warning/10 border border-warning/20 rounded-lg">
-            <div className="flex items-center">
-              <svg className="w-6 h-6 text-warning mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
-              <div>
-                <p className="font-medium text-warning">Project data not loaded properly</p>
-                <p className="text-sm text-warning">Please go back to the projects list and try again</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="bg-card rounded-xl shadow-card overflow-hidden border border-border">
-          {/* Project Header with Gradient */}
-          <div className="bg-primary p-8 text-primary-foreground relative">
-            <div className="absolute top-4 right-4">
-              <span className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-semibold ${
-                project.status === 'active' ? 'bg-success text-white' :
-                project.status === 'completed' ? 'bg-success text-white' :
-                project.status === 'pending' ? 'bg-warning text-white' :
-                'bg-muted text-muted-foreground'
-              }`}>
-                {project.status?.charAt(0).toUpperCase() + project.status?.slice(1)}
-              </span>
-            </div>
-            
-            <div className="max-w-3xl">
-              <h1 className="text-4xl font-bold mb-4">{project.name || 'Unnamed Project'}</h1>
-              
-              {project.assigned_developer_name && (
-                <div className="flex items-center mb-4">
-                  <div className="flex items-center bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2">
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                    <span className="font-medium">Assigned to: {project.assigned_developer_name}</span>
-                    {project.assigned_developer_email && (
-                      <span className="ml-2 text-sm text-primary-foreground/80">({project.assigned_developer_email})</span>
-                    )}
-                  </div>
-                </div>
-              )}
-              
-              <div className="flex flex-wrap gap-4 mt-6">
-                <div className="flex items-center bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2">
-                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  <span>Created: {formatDate(project.created_at)}</span>
-                </div>
-                
-                {assignedDate && (
-                  <div className="flex items-center bg-green-500/30 backdrop-blur-sm rounded-lg px-4 py-2">
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span className="font-semibold">Assigned: {formatDate(assignedDate)}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
+        <div className="rounded-xl border border-border bg-card shadow-card">
           {/* Project Content */}
           <div className="p-8">
             {/* Progress Section */}
@@ -367,7 +331,7 @@ export default function ProjectDetails() {
                     <p className="text-sm text-muted-foreground mt-1">Track your progress towards completion</p>
                   </div>
                   <div className="text-right">
-                    <span className="text-4xl font-bold text-primary">{project.progress}%</span>
+                    <span className="text-4xl font-bold tabular-nums text-primary">{project.progress}%</span>
                     <p className="text-sm text-muted-foreground">completed</p>
                   </div>
                 </div>
@@ -375,7 +339,7 @@ export default function ProjectDetails() {
                 <div className="mb-2">
                   <div className="w-full bg-muted rounded-full h-4">
                     <div
-                      className="bg-primary h-4 rounded-full transition-all duration-1000 ease-out"
+                      className="h-4 rounded-full bg-primary transition-all duration-150"
                       style={{ width: `${project.progress}%` }}
                     ></div>
                   </div>
@@ -397,7 +361,7 @@ export default function ProjectDetails() {
                 <svg className="w-6 h-6 mr-3 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                Project Timeline {dataSource === 'supabase' && <span className="text-sm font-normal text-info ml-2">(Live from Supabase)</span>}
+                Project timeline
               </h2>
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -412,13 +376,10 @@ export default function ProjectDetails() {
                     <div>
                       <h3 className="font-semibold text-foreground">Created On</h3>
                       <p className="text-sm text-muted-foreground">Project creation date</p>
-                      {dataSource === 'supabase' && (
-                        <span className="text-xs text-info bg-info/10 px-2 py-1 rounded">Supabase</span>
-                      )}
                     </div>
                   </div>
                   <div className="mt-4">
-                    <p className="text-lg font-medium text-foreground">{formatDate(project.created_at)}</p>
+                    <p className="text-lg font-medium tabular-nums text-foreground">{formatDate(project.created_at)}</p>
                     <p className="text-sm text-muted-foreground mt-1">{formatDateTime(project.created_at)}</p>
                   </div>
                 </div>
@@ -445,15 +406,8 @@ export default function ProjectDetails() {
                     </div>
                   </div>
                   <div className="mt-4 relative z-10">
-                    <p className="text-lg font-bold text-success">{formatDate(assignedDate)}</p>
+                    <p className="text-lg font-bold tabular-nums text-success">{formatDate(assignedDate)}</p>
                     <p className="text-sm text-success mt-1">{formatDateTime(assignedDate)}</p>
-
-                    {/* Data source indicator */}
-                    {dataSource === 'supabase' && assignedDate === project.created_at && (
-                      <div className="text-xs text-info bg-info/10 p-1 rounded mt-1">
-                        ⚡ Using Supabase created_at
-                      </div>
-                    )}
 
                     {daysSinceAssignment !== null && (
                       <div className="mt-3 p-2 bg-success/10 rounded-lg">
@@ -487,7 +441,7 @@ export default function ProjectDetails() {
                       </div>
                     </div>
                     <div className="mt-4">
-                      <p className="text-lg font-medium text-foreground">{formatDate(project.deadline)}</p>
+                      <p className="text-lg font-medium tabular-nums text-foreground">{formatDate(project.deadline)}</p>
                       <p className="text-sm text-muted-foreground mt-1">{formatDateTime(project.deadline)}</p>
 
                       {/* Days remaining calculation */}
@@ -541,13 +495,11 @@ export default function ProjectDetails() {
                       ))}
                     </div>
                   ) : (
-                    <div className="text-center py-12">
-                      <svg className="w-16 h-16 text-muted-foreground mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      <p className="text-muted-foreground text-lg">No description provided for this project.</p>
-                      <p className="text-muted-foreground text-sm mt-2">Contact the project manager for details</p>
-                    </div>
+                    <EmptyState
+                      icon={FileText}
+                      title="No description provided"
+                      description="Ask the project manager for the brief, or check the attached requirements file."
+                    />
                   )}
                 </div>
               </div>
@@ -581,59 +533,32 @@ export default function ProjectDetails() {
                       </div>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-3">
-                      <button
-                        onClick={handleDownloadFile}
-                        className="bg-primary text-primary-foreground px-6 py-3 rounded-lg hover:bg-primary/90 transition-all shadow-md hover:shadow-lg font-medium flex items-center justify-center"
-                      >
-                        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                        </svg>
-                        Download File
-                      </button>
-                      <button className="bg-card text-primary px-6 py-3 rounded-lg border border-border hover:bg-muted transition-colors font-medium">
-                        Preview
-                      </button>
+                      <Button onClick={handleDownloadFile}>
+                        <Download className="h-4 w-4" aria-hidden="true" />
+                        Download file
+                      </Button>
                     </div>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* ✅ FIXED: Action Buttons with better navigation */}
-            <div className="pt-8 border-t border-border">
-              <div className="flex flex-col sm:flex-row gap-4 justify-between">
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <button
-                    onClick={handleBackToDashboard}
-                    className="flex-1 bg-muted text-foreground py-3 px-6 rounded-xl hover:bg-muted/70 transition-colors font-medium flex items-center justify-center border border-border"
-                  >
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                    </svg>
-                    Dashboard
-                  </button>
-                  
-                  <button
-                    onClick={handleBackToProjects}
-                    className="flex-1 bg-info/10 text-info py-3 px-6 rounded-xl hover:bg-info/20 transition-colors font-medium flex items-center justify-center border border-info/20"
-                  >
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
-                    All Projects
-                  </button>
-                </div>
-                
-                <button
-                  onClick={handleSubmitWork}
-                  className="flex-1 bg-success text-white py-3 px-6 rounded-xl hover:bg-success/90 transition-all shadow-md hover:shadow-lg font-medium flex items-center justify-center"
-                >
-                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Submit Completed Work
-                </button>
+            {/* Actions — one primary per screen. */}
+            <div className="flex flex-col gap-3 border-t border-border pt-8 sm:flex-row sm:justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Button variant="outline" onClick={handleBackToDashboard}>
+                  <LayoutDashboard className="h-4 w-4" aria-hidden="true" />
+                  Dashboard
+                </Button>
+                <Button variant="outline" onClick={handleBackToProjects}>
+                  <FolderKanban className="h-4 w-4" aria-hidden="true" />
+                  All projects
+                </Button>
               </div>
+              <Button onClick={handleSubmitWork}>
+                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                Submit completed work
+              </Button>
             </div>
           </div>
         </div>

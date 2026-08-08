@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
 import { supabase } from "@/utils/supabaseClient";
+import { Skeleton } from "@/components/ui";
 import AppShell from "@/components/shell/AppShell";
 import { adminNavFor, staffNav } from "@/components/shell/navConfig";
 import NotificationHistory from "@/components/shell/NotificationHistory";
@@ -113,13 +113,48 @@ export default function NotificationsPage() {
   );
 
   if (status !== "ready" || !session) {
+    // Shaped like the page it is standing in for — history on the left,
+    // preferences on the right — so the layout does not rearrange itself the
+    // instant the session resolves.
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="flex flex-col items-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="mt-3 text-sm text-muted-foreground">
-            {status === "leaving" ? "Taking you to sign in…" : "Loading notifications…"}
-          </p>
+      <div className="min-h-screen bg-background" role="status" aria-busy="true">
+        <span className="sr-only">
+          {status === "leaving" ? "Taking you to sign in…" : "Loading notifications…"}
+        </span>
+
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+          <div className="space-y-2 pb-6">
+            <Skeleton className="h-8 w-56" />
+            <Skeleton className="h-4 w-72" />
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-3">
+            <div className="space-y-4 rounded-xl border border-border bg-card p-5 shadow-card lg:col-span-2">
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-8 w-full" />
+              {[0, 1, 2, 3, 4].map((row) => (
+                <div key={row} className="flex items-start gap-3 border-t border-border pt-4">
+                  <Skeleton className="h-10 w-10 shrink-0 rounded-full" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <Skeleton className="h-3.5 w-1/3" />
+                    <Skeleton className="h-3 w-3/4" />
+                    <Skeleton className="h-2.5 w-40" />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="space-y-4 rounded-xl border border-border bg-card p-5 shadow-card">
+              <Skeleton className="h-5 w-48" />
+              {[0, 1, 2, 3, 4, 5].map((row) => (
+                <div key={row} className="flex items-center gap-3">
+                  <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
+                  <Skeleton className="h-3.5 flex-1" />
+                  <Skeleton className="h-6 w-11 shrink-0 rounded-full" />
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     );

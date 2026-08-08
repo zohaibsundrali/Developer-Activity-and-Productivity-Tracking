@@ -4,12 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   FileText,
-  CalendarDays,
   Package,
   Megaphone,
   ListTodo,
   Users,
-  MessagesSquare,
   Download,
   Flag,
   Paperclip,
@@ -17,16 +15,20 @@ import {
 } from "lucide-react";
 import { authFetch } from "@/utils/authFetch";
 import { showError } from "@/utils/alerts";
+import { Button, Tabs } from "@/components/ui";
 import ClientTimeline from "./ClientTimeline";
 import ClientProjectComments from "./ClientProjectComments";
 import ClientTaskDetail from "./ClientTaskDetail";
 import {
-  Spinner,
+  ClientPage,
+  Panel,
   EmptyState,
   ErrorState,
   StatusBadge,
   HealthBadge,
   ProgressBar,
+  DetailSkeleton,
+  surface,
   healthMeta,
   formatDate,
   formatDateTime,
@@ -35,14 +37,14 @@ import {
 } from "./ClientShared";
 
 const TABS = [
-  { id: "overview", label: "Overview", icon: FileText },
-  { id: "milestones", label: "Milestones", icon: Flag },
-  { id: "tasks", label: "Tasks", icon: ListTodo },
-  { id: "team", label: "Team", icon: Users },
-  { id: "timeline", label: "Timeline", icon: CalendarDays },
-  { id: "deliverables", label: "Deliverables", icon: Package },
-  { id: "updates", label: "Updates", icon: Megaphone },
-  { id: "comments", label: "Conversation", icon: MessagesSquare },
+  { id: "overview", label: "Overview" },
+  { id: "milestones", label: "Milestones" },
+  { id: "tasks", label: "Tasks" },
+  { id: "team", label: "Team" },
+  { id: "timeline", label: "Timeline" },
+  { id: "deliverables", label: "Deliverables" },
+  { id: "updates", label: "Updates" },
+  { id: "comments", label: "Conversation" },
 ];
 
 // Priority arrives as a free-form string. Known words get a tone; anything else
@@ -153,14 +155,14 @@ export default function ClientProjectDetail({ projectId, onBack }) {
     }
   };
 
-  if (loading) return <Spinner label="Loading project details…" />;
+  if (loading) return <DetailSkeleton />;
 
   if (error || !project) {
     return (
-      <div className="space-y-4">
+      <ClientPage width="wide">
         <BackButton onBack={onBack} />
         <ErrorState message={error || "This project could not be loaded."} onRetry={load} />
-      </div>
+      </ClientPage>
     );
   }
 
@@ -174,49 +176,44 @@ export default function ClientProjectDetail({ projectId, onBack }) {
   const health = healthMeta(project.health);
 
   return (
-    <div className="space-y-6">
+    <ClientPage width="wide">
       <BackButton onBack={onBack} />
 
-      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
-        <div className="bg-primary p-5 text-primary-foreground sm:p-8">
+      <div className={`${surface} overflow-hidden`}>
+        {/* A quiet header, not a saturated banner: the project name is the
+            loudest thing on the screen because it is the most important. */}
+        <div className="border-b border-border bg-muted/50 p-6 sm:p-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0">
-              <h1 className="text-xl font-bold sm:text-3xl">{project.name}</h1>
+            <div className="min-w-0 space-y-2">
+              <h2 className="text-2xl font-semibold leading-tight tracking-tight text-foreground sm:text-3xl">
+                {project.name}
+              </h2>
               {project.deadline && (
-                <p className="mt-2 text-sm text-primary-foreground/80">
-                  Deadline: {formatDate(project.deadline)}
-                </p>
+                <p className="text-base text-muted-foreground">Deadline: {formatDate(project.deadline)}</p>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <HealthBadge health={project.health} className="bg-white/20 text-white" />
-              <StatusBadge status={project.status} className="bg-white/20 text-white" />
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <HealthBadge health={project.health} />
+              <StatusBadge status={project.status} />
             </div>
           </div>
         </div>
 
-        <div className="flex gap-1 overflow-x-auto border-b border-border px-2 sm:px-4">
-          {TABS.map((t) => {
-            const Icon = t.icon;
-            const active = tab === t.id;
-            return (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className={`inline-flex items-center gap-2 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium transition-colors sm:px-4 ${
-                  active
-                    ? "border-primary text-primary"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {t.label}
-              </button>
-            );
-          })}
-        </div>
+        <Tabs
+          tabs={TABS.map((t) => ({ ...t, panelId: `client-project-panel-${t.id}` }))}
+          active={tab}
+          onChange={(id) => setTab(id)}
+          aria-label="Project sections"
+          className="px-2 sm:px-4"
+        />
 
-        <div className="p-4 sm:p-6">
+        <div
+          id={`client-project-panel-${tab}`}
+          role="tabpanel"
+          aria-labelledby={`tab-${tab}`}
+          tabIndex={0}
+          className="p-6 sm:p-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        >
           {tab === "overview" && <OverviewTab project={project} health={health} />}
           {tab === "milestones" && <MilestonesTab milestones={milestones} />}
           {tab === "tasks" && <TasksTab tasks={tasks} onOpenTask={setOpenTaskId} />}
@@ -233,19 +230,16 @@ export default function ClientProjectDetail({ projectId, onBack }) {
           {tab === "comments" && <ClientProjectComments projectId={projectId} />}
         </div>
       </div>
-    </div>
+    </ClientPage>
   );
 }
 
 function BackButton({ onBack }) {
   return (
-    <button
-      onClick={onBack}
-      className="inline-flex items-center rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-card transition-all hover:bg-muted"
-    >
-      <ArrowLeft className="mr-2 h-4 w-4" />
+    <Button variant="outline" size="lg" onClick={onBack}>
+      <ArrowLeft className="h-4 w-4" aria-hidden="true" />
       Back to Projects
-    </button>
+    </Button>
   );
 }
 
@@ -253,16 +247,16 @@ function OverviewTab({ project, health }) {
   const pct = Math.max(0, Math.min(100, Number(project.progress) || 0));
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-xl border border-border bg-muted/50 p-5 sm:p-6">
-        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <span className="text-base font-semibold text-foreground">Completion Status</span>
-            <p className="text-sm text-muted-foreground">Progress across the work you can see</p>
+    <div className="space-y-8">
+      <div className="rounded-xl border border-border bg-muted/50 p-6">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <h3 className="text-lg font-semibold tracking-tight text-foreground">Completion status</h3>
+            <p className="text-[15px] text-muted-foreground">Progress across the work you can see</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             <HealthBadge health={project.health} />
-            <span className="text-3xl font-bold text-primary tabular-nums">{pct}%</span>
+            <span className="text-4xl font-semibold tabular-nums text-foreground">{pct}%</span>
           </div>
         </div>
         <ProgressBar value={project.progress} showLabel={false} tone={health?.barTone} />
@@ -280,10 +274,10 @@ function OverviewTab({ project, health }) {
         <InfoTile label="Awaiting your approval" value={Number(project.pending_approvals) || 0} />
       </div>
 
-      <div>
-        <h3 className="mb-3 text-base font-bold text-foreground">Description</h3>
+      <section className="space-y-4">
+        <h3 className="text-lg font-semibold tracking-tight text-foreground">Description</h3>
         {project.description ? (
-          <div className="space-y-3 rounded-xl border border-border bg-muted/50 p-5 text-foreground sm:p-6">
+          <div className="space-y-4 rounded-xl border border-border bg-muted/50 p-6 text-[15px] text-foreground">
             {String(project.description)
               .split("\n")
               .map((paragraph, index) => (
@@ -293,20 +287,20 @@ function OverviewTab({ project, health }) {
               ))}
           </div>
         ) : (
-          <p className="rounded-xl border border-border bg-muted/50 p-5 text-muted-foreground sm:p-6">
+          <p className="rounded-xl border border-border bg-muted/50 p-6 text-[15px] text-muted-foreground">
             No description provided for this project.
           </p>
         )}
-      </div>
+      </section>
     </div>
   );
 }
 
 function InfoTile({ label, value }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-      <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
-      <p className="mt-1 break-words text-sm font-semibold text-foreground">{value}</p>
+    <div className={`${surface} p-5`}>
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-2 break-words text-lg font-semibold text-foreground">{value}</p>
     </div>
   );
 }
@@ -323,22 +317,26 @@ function MilestonesTab({ milestones }) {
   }
 
   return (
-    <ol className="relative space-y-4 border-l border-border pl-5 sm:pl-6">
+    <ol className="relative space-y-5 border-l border-border pl-6 sm:pl-7">
       {milestones.map((milestone) => (
         <li key={milestone.id} className="relative">
           <span
-            className={`absolute -left-[30px] top-3 flex h-6 w-6 items-center justify-center rounded-full border-2 border-card sm:-left-[34px] ${
+            className={`absolute -left-[36px] top-5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-card sm:-left-[40px] ${
               milestone.completed_at ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"
             }`}
           >
-            {milestone.completed_at ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Flag className="h-3 w-3" />}
+            {milestone.completed_at ? (
+              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+            ) : (
+              <Flag className="h-3 w-3" aria-hidden="true" />
+            )}
           </span>
-          <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+          <Panel className="space-y-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-              <p className="min-w-0 font-semibold text-foreground">{milestone.title}</p>
+              <p className="min-w-0 text-lg font-semibold leading-snug text-foreground">{milestone.title}</p>
               <StatusBadge status={milestone.status} />
             </div>
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-muted-foreground">
               <span>
                 Due: <span className="font-medium text-foreground">{formatDate(milestone.due_date)}</span>
               </span>
@@ -349,7 +347,7 @@ function MilestonesTab({ milestones }) {
                 </span>
               )}
             </div>
-          </div>
+          </Panel>
         </li>
       ))}
     </ol>
@@ -368,12 +366,12 @@ function TasksTab({ tasks, onOpenTask }) {
   }
 
   return (
-    <ul className="space-y-3">
+    <ul className="space-y-4">
       {tasks.map((task) => {
         const priorityKey = String(task.priority || "").toLowerCase().trim();
         const labels = Array.isArray(task.labels) ? task.labels : [];
         return (
-          <li key={task.id} className="rounded-xl border border-border bg-card shadow-card">
+          <li key={task.id}>
             {/* The whole row is the control: a client reads the title to decide
                 whether to open it, so the title is what they should be able to
                 hit — on a phone as much as with a keyboard. */}
@@ -381,17 +379,17 @@ function TasksTab({ tasks, onOpenTask }) {
               type="button"
               onClick={() => onOpenTask(task.id)}
               aria-label={`Open task ${task.title}`}
-              className="w-full rounded-xl p-4 text-left transition-colors hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              className={`${surface} w-full space-y-4 p-6 text-left transition-colors duration-150 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2`}
             >
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                <p className="min-w-0 font-semibold text-foreground">{task.title}</p>
+                <p className="min-w-0 text-lg font-semibold leading-snug text-foreground">{task.title}</p>
                 <StatusBadge status={task.status} />
               </div>
 
-              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
                 {task.priority && (
                   <span
-                    className={`rounded-full px-2.5 py-1 font-semibold ${
+                    className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
                       PRIORITY_TONES[priorityKey] || "bg-muted text-muted-foreground"
                     }`}
                   >
@@ -409,15 +407,15 @@ function TasksTab({ tasks, onOpenTask }) {
                   </span>
                 )}
                 {Number(task.attachment_count) > 0 && (
-                  <span className="inline-flex items-center">
-                    <Paperclip className="mr-1 h-3.5 w-3.5" />
+                  <span className="inline-flex items-center gap-1.5">
+                    <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
                     {Number(task.attachment_count)}
                   </span>
                 )}
               </div>
 
               {labels.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-2">
                   {labels.map((label) => (
                     <span
                       key={label}
@@ -452,15 +450,12 @@ function TeamTab({ team }) {
   return (
     <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
       {team.map((member) => (
-        <li
-          key={member.id}
-          className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-card"
-        >
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-base font-bold text-primary">
+        <li key={member.id} className={`${surface} flex items-center gap-4 p-5`}>
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-lg font-semibold text-primary">
             {String(member.name || "?").trim().charAt(0).toUpperCase() || "?"}
           </span>
           <div className="min-w-0">
-            <p className="truncate font-semibold text-foreground">{member.name}</p>
+            <p className="truncate text-[15px] font-semibold text-foreground">{member.name}</p>
             <p className="truncate text-sm text-muted-foreground">{humanize(member.role)}</p>
           </div>
         </li>
@@ -477,35 +472,36 @@ function DeliverablesTab({ deliverables, onDownload, downloadingId }) {
   }
 
   return (
-    <ul className="space-y-3">
+    <ul className="space-y-4">
       {deliverables.map((deliverable) => {
         const size = formatFileSize(deliverable.file_size);
         return (
           <li
             key={deliverable.id}
-            className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-card sm:flex-row sm:items-center sm:justify-between"
+            className={`${surface} flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between`}
           >
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <FileText className="h-5 w-5" />
+            <div className="flex min-w-0 items-center gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <FileText className="h-5 w-5" aria-hidden="true" />
               </div>
               <div className="min-w-0">
-                <p className="truncate font-semibold text-foreground">{deliverable.file_name}</p>
-                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <p className="truncate text-[15px] font-semibold text-foreground">{deliverable.file_name}</p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                   {deliverable.file_type && <span>{deliverable.file_type}</span>}
                   {size && <span>{size}</span>}
                   {deliverable.submitted_at && <span>{formatDate(deliverable.submitted_at)}</span>}
                 </div>
               </div>
             </div>
-            <button
+            <Button
+              size="lg"
               onClick={() => onDownload(deliverable)}
               disabled={downloadingId === deliverable.id}
-              className="inline-flex shrink-0 items-center justify-center rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+              className="shrink-0"
             >
-              <Download className="mr-1.5 h-4 w-4" />
+              <Download className="h-4 w-4" aria-hidden="true" />
               {downloadingId === deliverable.id ? "Preparing…" : "Download"}
-            </button>
+            </Button>
           </li>
         );
       })}
@@ -521,24 +517,24 @@ function UpdatesTab({ updates }) {
   }
 
   return (
-    <ol className="relative space-y-4 border-l border-border pl-5 sm:pl-6">
+    <ol className="relative space-y-5 border-l border-border pl-6 sm:pl-7">
       {updates.map((update) => (
         <li key={update.id} className="relative">
-          <span className="absolute -left-[27px] top-3 h-3 w-3 rounded-full border-2 border-card bg-primary sm:-left-[31px]" />
-          <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
-              <p className="min-w-0 font-semibold text-foreground">{update.title}</p>
-              <span className="whitespace-nowrap text-xs text-muted-foreground">
+          <span className="absolute -left-[33px] top-6 h-3 w-3 rounded-full border-2 border-card bg-primary sm:-left-[37px]" />
+          <Panel className="space-y-2">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+              <p className="min-w-0 text-lg font-semibold leading-snug text-foreground">{update.title}</p>
+              <span className="whitespace-nowrap text-sm text-muted-foreground">
                 {formatDateTime(update.created_at)}
               </span>
             </div>
             {update.body && (
-              <p className="mt-1.5 whitespace-pre-line break-words text-sm text-muted-foreground">{update.body}</p>
+              <p className="whitespace-pre-line break-words text-[15px] leading-relaxed text-muted-foreground">
+                {update.body}
+              </p>
             )}
-            {update.author_name && (
-              <p className="mt-2 text-xs text-muted-foreground">{update.author_name}</p>
-            )}
-          </div>
+            {update.author_name && <p className="pt-1 text-sm text-muted-foreground">{update.author_name}</p>}
+          </Panel>
         </li>
       ))}
     </ol>

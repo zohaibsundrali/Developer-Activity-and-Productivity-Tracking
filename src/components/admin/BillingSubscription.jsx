@@ -21,6 +21,17 @@ import {
 import StatCard from "@/components/shell/StatCard";
 import { authFetch } from "@/utils/authFetch";
 import { showConfirm, showError } from "@/utils/alerts";
+import {
+  Badge,
+  Button,
+  DataTable,
+  EmptyState,
+  ErrorState,
+  Section,
+  Skeleton,
+  StatusPill,
+} from "@/components/ui";
+import { cn } from "@/lib/utils";
 
 /**
  * Admin → Billing & Subscription.
@@ -29,28 +40,40 @@ import { showConfirm, showError } from "@/utils/alerts";
  * Stripe owns (checkout, portal, cancel/resume). Nothing here decides
  * entitlement — the server is the only authority on limits, so this screen
  * renders `usage` as reported rather than recomputing it.
+ *
+ * Every price, plan name, limit and date on this screen comes out of that
+ * response. Where the response says nothing, the screen says nothing (or the
+ * Free-plan fallback the API itself documents) — an invented number on a
+ * billing screen is the one bug a customer will never forgive.
  */
 
 // -1 is the seeded convention for "no ceiling" (see migration 027 limits jsonb).
 const UNLIMITED = -1;
 
+// The bar turns amber here — far enough ahead of the wall to do something
+// about it. Same number drives the tick mark and the "Near limit" chip.
+const NEAR_LIMIT_PCT = 80;
+
+/**
+ * Subscription status → StatusPill. The pill carries a distinct glyph shape and
+ * always prints its label, so none of these states is told by colour alone.
+ */
 const STATUS_META = {
-  active: { label: "Active", badge: "bg-success/10 text-success", icon: CheckCircle2 },
-  trialing: { label: "Trial", badge: "bg-info/10 text-info", icon: Clock },
-  past_due: { label: "Past due", badge: "bg-destructive/10 text-destructive", icon: AlertTriangle },
-  unpaid: { label: "Unpaid", badge: "bg-destructive/10 text-destructive", icon: AlertTriangle },
-  incomplete: { label: "Incomplete", badge: "bg-warning/10 text-warning", icon: AlertTriangle },
-  incomplete_expired: { label: "Expired", badge: "bg-muted text-muted-foreground", icon: Ban },
-  canceled: { label: "Canceled", badge: "bg-muted text-muted-foreground", icon: Ban },
-  paused: { label: "Paused", badge: "bg-muted text-muted-foreground", icon: Ban },
+  active: { label: "Active", pill: "active" },
+  trialing: { label: "Trial", pill: "pending" },
+  past_due: { label: "Past due", pill: "error" },
+  unpaid: { label: "Unpaid", pill: "error" },
+  incomplete: { label: "Incomplete", pill: "warning" },
+  incomplete_expired: { label: "Expired", pill: "inactive" },
+  canceled: { label: "Canceled", pill: "inactive" },
+  paused: { label: "Paused", pill: "inactive" },
 };
 
 function statusMeta(status) {
   return (
     STATUS_META[status] || {
       label: prettyLabel(status) || "Unknown",
-      badge: "bg-muted text-muted-foreground",
-      icon: Info,
+      pill: "unknown",
     }
   );
 }
@@ -90,6 +113,13 @@ function invoiceAmountCents(inv) {
   return due ?? paid ?? 0;
 }
 
+function invoiceStatusPill(status) {
+  if (status === "paid") return "success";
+  if (status === "open") return "pending";
+  if (status === "void" || status === "uncollectible") return "inactive";
+  return "unknown";
+}
+
 function intervalSuffix(interval) {
   const key = String(interval || "month");
   return INTERVAL_SUFFIX[key] || `/${key}`;
@@ -127,9 +157,6 @@ function formatLimit(key, value) {
   if (key === "tracking_history_days") return `${n.toLocaleString()} days`;
   return n.toLocaleString();
 }
-
-const inputlessButton =
-  "inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-50";
 
 export default function BillingSubscription() {
   const router = useRouter();
@@ -215,12 +242,16 @@ export default function BillingSubscription() {
         pct,
         // Amber before the wall, red at it — a bar that only changes on failure
         // gives no warning that a limit is coming.
-        near: !unlimited && pct >= 80,
+        near: !unlimited && pct >= NEAR_LIMIT_PCT,
       };
     });
   }, [usage]);
 
   const atLimitCount = useMemo(() => usageRows.filter((r) => r.exceeded).length, [usageRows]);
+  const nearLimitCount = useMemo(
+    () => usageRows.filter((r) => r.near && !r.exceeded).length,
+    [usageRows]
+  );
 
   const redirectTo = useCallback(async (path, body, actionId) => {
     try {
@@ -281,12 +312,56 @@ export default function BillingSubscription() {
   );
 
   // ── Loading state ──────────────────────────────────────────────────────────
+  // Shaped like the screen: four counters, the plan anchor, the usage bars, the
+  // plan grid and the invoice table. Never a spinner on a blank panel.
   if (loading) {
     return (
-      <div className="rounded-xl border border-border bg-card p-10 shadow-card">
-        <div className="flex flex-col items-center justify-center gap-3 py-8">
-          <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-primary/30 border-t-primary" />
-          <p className="text-sm text-muted-foreground">Loading billing…</p>
+      <div className="space-y-6" role="status" aria-busy="true">
+        <span className="sr-only">Loading billing…</span>
+
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-2">
+            <Skeleton className="h-6 w-56" />
+            <Skeleton className="h-4 w-80" />
+          </div>
+          <Skeleton className="h-8 w-24" />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-32 w-full rounded-xl" />
+          ))}
+        </div>
+
+        <div className="space-y-4 rounded-xl border border-border bg-card p-5 shadow-card">
+          <div className="flex flex-wrap items-center gap-2">
+            <Skeleton className="h-6 w-32" />
+            <Skeleton className="h-6 w-20 rounded-full" />
+          </div>
+          <Skeleton className="h-9 w-40" />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        </div>
+
+        <div className="space-y-4 rounded-xl border border-border bg-card p-5 shadow-card">
+          <Skeleton className="h-4 w-40" />
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-3.5 w-28" />
+                <Skeleton className="h-3.5 w-16" />
+              </div>
+              <Skeleton className="h-2 w-full rounded-full" />
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-72 w-full rounded-xl" />
+          ))}
         </div>
       </div>
     );
@@ -294,22 +369,11 @@ export default function BillingSubscription() {
 
   // ── Error state ────────────────────────────────────────────────────────────
   if (error) {
-    return (
-      <div className="space-y-4">
-        <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
-        </div>
-        <button type="button" onClick={load} className={inputlessButton}>
-          <RefreshCw className="h-4 w-4" />
-          Try again
-        </button>
-      </div>
-    );
+    return <ErrorState title="Couldn't load billing" description={error} onRetry={load} />;
   }
 
   const status = subscription?.status || "active";
   const meta = statusMeta(status);
-  const StatusIcon = meta.icon;
   const cancelScheduled = Boolean(subscription?.cancel_at_period_end);
   const pastDue = status === "past_due" || status === "unpaid";
   const periodEnd = formatDate(subscription?.current_period_end);
@@ -322,22 +386,27 @@ export default function BillingSubscription() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-foreground">Billing &amp; Subscription</h2>
+          <h2 className="text-xl font-semibold tracking-tight text-foreground">
+            Billing &amp; Subscription
+          </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Your plan, usage against its limits, and payment settings.
           </p>
         </div>
         <div className="flex items-center gap-2">
           {testMode && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-warning">
-              <FlaskConical className="h-3.5 w-3.5" />
+            <Badge variant="warning" size="md">
+              <FlaskConical aria-hidden="true" />
               Stripe test mode
-            </span>
+            </Badge>
           )}
-          <button type="button" onClick={load} disabled={loading} className={inputlessButton}>
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+            <RefreshCw
+              className={cn(loading && "animate-spin motion-reduce:animate-none")}
+              aria-hidden="true"
+            />
             Refresh
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -346,7 +415,7 @@ export default function BillingSubscription() {
           "on its way" rather than promising the plan below is already updated. */}
       {checkoutOutcome === "success" && (
         <div className="flex items-start gap-3 rounded-xl border border-success/30 bg-success/5 p-4 text-sm text-foreground">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" />
           <p>
             <span className="font-semibold">Checkout complete.</span> Stripe is confirming the
             payment with us now — if the plan below still shows the old one, give it a moment and
@@ -356,7 +425,7 @@ export default function BillingSubscription() {
       )}
       {checkoutOutcome === "changed" && (
         <div className="flex items-start gap-3 rounded-xl border border-success/30 bg-success/5 p-4 text-sm text-foreground">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" />
           <p>
             <span className="font-semibold">Plan updated.</span> Your existing subscription was moved
             to the new plan and only the difference is charged. The change is confirmed by Stripe in
@@ -366,7 +435,7 @@ export default function BillingSubscription() {
       )}
       {checkoutOutcome === "cancelled" && (
         <div className="flex items-start gap-3 rounded-xl border border-border bg-muted/40 p-4 text-sm text-foreground">
-          <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <p>
             <span className="font-semibold">Checkout cancelled.</span> Nothing was charged and your
             plan is unchanged.
@@ -378,7 +447,7 @@ export default function BillingSubscription() {
           types a card number into a checkout that will never charge them. */}
       {testMode && (
         <div className="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm text-foreground">
-          <FlaskConical className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+          <FlaskConical className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
           <p>
             <span className="font-semibold">Stripe is in test mode.</span> No real charges occur and no
             real card is accepted — use Stripe&rsquo;s test card numbers. Switch to live keys before
@@ -390,7 +459,7 @@ export default function BillingSubscription() {
       {/* Stripe not configured — explain rather than offer buttons that fail. */}
       {unconfigured && (
         <div className="flex items-start gap-3 rounded-xl border border-info/30 bg-info/5 p-4 text-sm text-foreground">
-          <Info className="mt-0.5 h-4 w-4 shrink-0 text-info" />
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-info" aria-hidden="true" />
           <p>
             <span className="font-semibold">Billing isn&rsquo;t connected yet.</span> Stripe keys
             haven&rsquo;t been configured for this deployment, so checkout and the customer portal are
@@ -419,35 +488,38 @@ export default function BillingSubscription() {
           title="Resources at limit"
           value={atLimitCount}
           icon={Gauge}
-          tone={atLimitCount > 0 ? "destructive" : "success"}
-          badge={atLimitCount > 0 ? "Action needed" : undefined}
-          badgeTone="destructive"
+          tone={atLimitCount > 0 ? "destructive" : nearLimitCount > 0 ? "warning" : "success"}
+          badge={
+            atLimitCount > 0
+              ? "Action needed"
+              : nearLimitCount > 0
+              ? `${nearLimitCount} near limit`
+              : undefined
+          }
+          badgeTone={atLimitCount > 0 ? "destructive" : "muted"}
         />
       </div>
 
-      {/* Current plan */}
-      <section className="rounded-xl border border-border bg-card p-6 shadow-card">
+      {/* Current plan — the anchor of this screen. It gets the primary ring so
+          the eye lands on "what am I on, and until when" before anything else. */}
+      <section className="rounded-xl border border-primary/30 bg-card p-5 shadow-card ring-1 ring-primary/10">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-lg font-bold tracking-tight text-foreground">{plan?.name || "Free"}</h3>
-              <span
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${meta.badge}`}
-              >
-                <StatusIcon className="h-3.5 w-3.5" />
-                {meta.label}
-              </span>
+              <h3 className="text-lg font-semibold tracking-tight text-foreground">
+                {plan?.name || "Free"}
+              </h3>
+              <StatusPill status={meta.pill} label={meta.label} />
               {cancelScheduled && (
-                <span className="inline-flex rounded-full bg-warning/10 px-2.5 py-1 text-xs font-semibold text-warning">
+                <Badge variant="warning" size="md">
+                  <Clock aria-hidden="true" />
                   Cancels at period end
-                </span>
+                </Badge>
               )}
             </div>
-            {plan?.description && (
-              <p className="mt-1 text-sm text-muted-foreground">{plan.description}</p>
-            )}
+            {plan?.description && <p className="mt-1 text-sm text-muted-foreground">{plan.description}</p>}
             <div className="mt-3 flex items-baseline gap-1">
-              <span className="text-3xl font-bold tracking-tight text-foreground tabular-nums">
+              <span className="text-3xl font-semibold tracking-tight text-foreground tabular-nums">
                 {formatMoney(plan?.amount_cents, plan?.currency)}
               </span>
               <span className="text-sm font-medium text-muted-foreground">
@@ -456,14 +528,14 @@ export default function BillingSubscription() {
             </div>
             <dl className="mt-4 grid gap-3 sm:grid-cols-2">
               <div>
-                <dt className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   {cancelScheduled ? "Access ends" : "Renews on"}
                 </dt>
                 <dd className="mt-0.5 text-sm font-semibold text-foreground">{periodEnd || "—"}</dd>
               </div>
               {status === "trialing" && (
                 <div>
-                  <dt className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Trial remaining
                   </dt>
                   <dd className="mt-0.5 text-sm font-semibold text-foreground">
@@ -480,7 +552,7 @@ export default function BillingSubscription() {
               )}
               {subscription?.last_payment_status && (
                 <div>
-                  <dt className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Last payment
                   </dt>
                   <dd className="mt-0.5 text-sm font-semibold text-foreground">
@@ -494,41 +566,40 @@ export default function BillingSubscription() {
           {/* Actions */}
           {!unconfigured && (
             <div className="flex flex-col gap-2">
-              <button type="button" onClick={openPortal} disabled={busy === "portal"} className={inputlessButton}>
+              <Button variant="outline" size="lg" onClick={openPortal} disabled={busy === "portal"}>
                 {busy === "portal" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
                 ) : (
-                  <ExternalLink className="h-4 w-4" />
+                  <ExternalLink aria-hidden="true" />
                 )}
                 Manage billing
-              </button>
+              </Button>
               {cancelScheduled ? (
-                <button
-                  type="button"
-                  onClick={() => setCancellation(true)}
-                  disabled={busy === "resume"}
-                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-                >
+                <Button size="lg" onClick={() => setCancellation(true)} disabled={busy === "resume"}>
                   {busy === "resume" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
                   ) : (
-                    <RefreshCw className="h-4 w-4" />
+                    <RefreshCw aria-hidden="true" />
                   )}
                   Resume subscription
-                </button>
+                </Button>
               ) : (
-                <button
-                  type="button"
+                <Button
+                  variant="destructive"
+                  size="lg"
                   onClick={() => setCancellation(false)}
                   // There is nothing to cancel until Stripe holds a customer for
                   // this org. The API reports that as a boolean; the customer id
                   // itself never crosses to the browser.
                   disabled={busy === "cancel" || !subscription?.hasStripeCustomer}
-                  className="inline-flex items-center gap-2 rounded-lg border border-destructive/30 px-4 py-2 text-sm font-semibold text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
                 >
-                  {busy === "cancel" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
+                  {busy === "cancel" ? (
+                    <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                  ) : (
+                    <Ban aria-hidden="true" />
+                  )}
                   Cancel subscription
-                </button>
+                </Button>
               )}
             </div>
           )}
@@ -538,7 +609,7 @@ export default function BillingSubscription() {
             it is the moment the org actually loses its paid entitlements. */}
         {pastDue && (
           <div className="mt-5 flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-foreground">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-hidden="true" />
             <div>
               <p className="font-semibold text-destructive">Payment failed</p>
               <p className="mt-1">
@@ -554,19 +625,20 @@ export default function BillingSubscription() {
                 , after which this organization drops to the Free plan limits.
               </p>
               {!unconfigured && (
-                <button
-                  type="button"
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="mt-3"
                   onClick={openPortal}
                   disabled={busy === "portal"}
-                  className="mt-3 inline-flex items-center gap-2 rounded-lg bg-destructive px-4 py-2 text-sm font-semibold text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:opacity-50"
                 >
                   {busy === "portal" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
                   ) : (
-                    <CreditCard className="h-4 w-4" />
+                    <CreditCard aria-hidden="true" />
                   )}
                   Update payment method
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -575,7 +647,7 @@ export default function BillingSubscription() {
         {/* Scheduled cancellation — not an error, so it stays amber. */}
         {cancelScheduled && (
           <div className="mt-5 flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm text-foreground">
-            <Clock className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+            <Clock className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
             <div>
               <p className="font-semibold text-warning">Subscription ends soon</p>
               <p className="mt-1">
@@ -592,19 +664,19 @@ export default function BillingSubscription() {
                 , then this organization reverts to the Free plan.
               </p>
               {!unconfigured && (
-                <button
-                  type="button"
+                <Button
+                  size="sm"
+                  className="mt-3"
                   onClick={() => setCancellation(true)}
                   disabled={busy === "resume"}
-                  className="mt-3 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
                 >
                   {busy === "resume" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
                   ) : (
-                    <RefreshCw className="h-4 w-4" />
+                    <RefreshCw aria-hidden="true" />
                   )}
                   Resume subscription
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -612,71 +684,43 @@ export default function BillingSubscription() {
       </section>
 
       {/* Usage */}
-      <section className="rounded-xl border border-border bg-card p-6 shadow-card">
-        <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-foreground">
-          <Gauge className="h-4 w-4 text-primary" /> Usage this period
-        </h3>
-        {usageRows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No usage data is available yet.</p>
-        ) : (
-          <div className="space-y-4">
-            {usageRows.map((row) => (
-              <div key={row.key}>
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <span className="text-sm font-medium text-foreground">
-                    {row.label}
-                    {row.exceeded && (
-                      <span className="ml-2 inline-flex rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-semibold text-destructive">
-                        Over limit
-                      </span>
-                    )}
-                  </span>
-                  <span
-                    className={`text-sm font-semibold tabular-nums ${
-                      row.exceeded ? "text-destructive" : "text-muted-foreground"
-                    }`}
-                  >
-                    {row.used.toLocaleString()}
-                    {row.unlimited ? (
-                      <span className="font-medium text-muted-foreground"> / Unlimited</span>
-                    ) : (
-                      <span className="font-medium"> / {Number(row.limit).toLocaleString()}</span>
-                    )}
-                  </span>
-                </div>
-                <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
-                  <div
-                    className={`h-full rounded-full transition-all ${
-                      row.exceeded ? "bg-destructive" : row.near ? "bg-warning" : "bg-primary"
-                    }`}
-                    style={{ width: row.unlimited ? "100%" : `${row.exceeded ? 100 : row.pct}%` }}
-                  />
-                </div>
-                {!row.unlimited && !row.exceeded && typeof row.remaining === "number" && (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {row.remaining.toLocaleString()} remaining
-                  </p>
-                )}
-                {row.exceeded && (
-                  <p className="mt-1 text-xs font-medium text-destructive">
-                    Upgrade to add more — new {row.label.toLowerCase()} are blocked at this limit.
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      <Section
+        title="Usage this period"
+        description="Counts and limits are reported by the server, which is the only authority on them."
+      >
+        <div className="rounded-xl border border-border bg-card p-5 shadow-card">
+          {usageRows.length === 0 ? (
+            <EmptyState
+              icon={Gauge}
+              className="border-0 bg-transparent"
+              title="No usage data yet"
+              description="Nothing has been counted against this plan's limits so far. Numbers appear as people, projects and tasks are added."
+            />
+          ) : (
+            <div className="space-y-5">
+              {usageRows.map((row) => (
+                <UsageBar key={row.key} row={row} />
+              ))}
+            </div>
+          )}
+        </div>
+      </Section>
 
       {/* Plan comparison */}
-      <section className="space-y-4">
-        <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <CreditCard className="h-4 w-4 text-primary" /> Plans
-        </h3>
+      <Section
+        title="Plans"
+        description={
+          unconfigured
+            ? "Prices come from the billing API. Checkout is unavailable until Stripe is connected."
+            : "Every price and limit below is the one the billing API reports for that plan."
+        }
+      >
         {plans.length === 0 ? (
-          <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground shadow-card">
-            No plans are available.
-          </div>
+          <EmptyState
+            icon={CreditCard}
+            title="No plans available"
+            description="The billing API returned no plans for this deployment, so there is nothing to compare or switch to."
+          />
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             {plans.map((p) => (
@@ -692,76 +736,155 @@ export default function BillingSubscription() {
             ))}
           </div>
         )}
-      </section>
+      </Section>
 
       {/* Invoices */}
-      {invoices.length > 0 && (
-        <section className="rounded-xl border border-border bg-card shadow-card">
-          <h3 className="flex items-center gap-2 border-b border-border px-5 py-4 text-sm font-semibold text-foreground">
-            <Receipt className="h-4 w-4 text-primary" /> Recent invoices
-          </h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  <th className="px-5 py-3">Date</th>
-                  <th className="px-4 py-3">Amount</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3 text-right">Receipt</th>
-                </tr>
-              </thead>
-              <tbody>
-                {invoices.map((inv, i) => {
-                  const link = inv.hosted_invoice_url || inv.invoice_pdf_url || null;
-                  return (
-                    <tr
-                      key={inv.stripe_invoice_id || i}
-                      className="border-b border-border last:border-0 hover:bg-muted/40"
-                    >
-                      <td className="px-5 py-3 text-foreground">
-                        {/* Issue date is the one a customer recognises from the
-                            invoice itself; the row's own timestamps are only a
-                            fallback for rows a webhook wrote before Stripe
-                            finalised them. */}
-                        {formatDate(inv.issued_at || inv.created_at || inv.period_start) || "—"}
-                      </td>
-                      <td className="px-4 py-3 tabular-nums text-foreground">
-                        {formatMoney(invoiceAmountCents(inv), inv.currency)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                            inv.status === "paid"
-                              ? "bg-success/10 text-success"
-                              : inv.status === "open"
-                              ? "bg-warning/10 text-warning"
-                              : "bg-muted text-muted-foreground"
-                          }`}
-                        >
-                          {prettyLabel(inv.status) || "—"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {link ? (
-                          <a
-                            href={link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
-                          >
-                            View <ExternalLink className="h-3.5 w-3.5" />
-                          </a>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
+      <Section title="Billing history" description="Invoices Stripe has issued to this organization.">
+        <DataTable
+          keyField="stripe_invoice_id"
+          rows={invoices}
+          empty={
+            <EmptyState
+              icon={Receipt}
+              title="No invoices yet"
+              description="Stripe hasn't issued an invoice for this organization. Paid periods appear here as soon as one is finalised."
+            />
+          }
+          columns={[
+            {
+              key: "date",
+              header: "Date",
+              // Issue date is the one a customer recognises from the invoice
+              // itself; the row's own timestamps are only a fallback for rows a
+              // webhook wrote before Stripe finalised them.
+              render: (inv) =>
+                formatDate(inv.issued_at || inv.created_at || inv.period_start) || "—",
+            },
+            {
+              key: "amount",
+              header: "Amount",
+              align: "right",
+              cellClassName: "tabular-nums",
+              render: (inv) => formatMoney(invoiceAmountCents(inv), inv.currency),
+            },
+            {
+              key: "status",
+              header: "Status",
+              render: (inv) => (
+                <StatusPill
+                  status={invoiceStatusPill(inv.status)}
+                  label={prettyLabel(inv.status) || "Unknown"}
+                  size="sm"
+                />
+              ),
+            },
+            {
+              key: "receipt",
+              header: "Receipt",
+              align: "right",
+              render: (inv) => {
+                const link = inv.hosted_invoice_url || inv.invoice_pdf_url || null;
+                if (!link) return <span className="text-xs text-muted-foreground">—</span>;
+                return (
+                  <a
+                    href={link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-md text-xs font-semibold text-primary transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none"
+                  >
+                    View <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                  </a>
+                );
+              },
+            },
+          ]}
+        />
+      </Section>
+    </div>
+  );
+}
+
+/**
+ * One resource against its limit.
+ *
+ * The bar is the warning system: a tick at 80% is drawn on every bounded bar,
+ * so a fill approaching it reads as "coming up" rather than as a surprise the
+ * day it turns red. Colour is backed by a chip in words at both thresholds.
+ */
+function UsageBar({ row }) {
+  const width = row.unlimited ? 100 : row.exceeded ? 100 : row.pct;
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+          {row.label}
+          {row.exceeded ? (
+            <Badge variant="destructive" size="sm">
+              Over limit
+            </Badge>
+          ) : row.near ? (
+            <Badge variant="warning" size="sm">
+              Near limit
+            </Badge>
+          ) : null}
+        </span>
+        <span
+          className={cn(
+            "text-sm font-semibold tabular-nums",
+            row.exceeded ? "text-destructive" : row.near ? "text-warning" : "text-muted-foreground"
+          )}
+        >
+          {row.used.toLocaleString()}
+          {row.unlimited ? (
+            <span className="font-medium text-muted-foreground"> / Unlimited</span>
+          ) : (
+            <span className="font-medium"> / {Number(row.limit).toLocaleString()}</span>
+          )}
+        </span>
+      </div>
+
+      <div
+        className="relative mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted"
+        role="progressbar"
+        aria-label={`${row.label} usage`}
+        aria-valuemin={0}
+        aria-valuemax={row.unlimited ? undefined : 100}
+        aria-valuenow={row.unlimited ? undefined : width}
+        aria-valuetext={
+          row.unlimited
+            ? `${row.used.toLocaleString()} used, no limit`
+            : `${row.used.toLocaleString()} of ${Number(row.limit).toLocaleString()} used`
+        }
+      >
+        <div
+          className={cn(
+            "h-full rounded-full transition-all duration-150 motion-reduce:transition-none",
+            row.exceeded ? "bg-destructive" : row.near ? "bg-warning" : "bg-primary"
+          )}
+          style={{ width: `${width}%` }}
+        />
+        {/* The warning line. Present before anything is wrong, which is the
+            whole point — you can see the wall coming. */}
+        {!row.unlimited && (
+          <span
+            aria-hidden="true"
+            className="absolute inset-y-0 w-px bg-foreground/30"
+            style={{ left: `${NEAR_LIMIT_PCT}%` }}
+          />
+        )}
+      </div>
+
+      {!row.unlimited && !row.exceeded && typeof row.remaining === "number" && (
+        <p className={cn("mt-1 text-xs", row.near ? "font-medium text-warning" : "text-muted-foreground")}>
+          {row.remaining.toLocaleString()} remaining
+          {row.near ? " — you're close to this plan's limit" : ""}
+        </p>
+      )}
+      {row.exceeded && (
+        <p className="mt-1 text-xs font-medium text-destructive">
+          Upgrade to add more — new {row.label.toLowerCase()} are blocked at this limit.
+        </p>
       )}
     </div>
   );
@@ -788,25 +911,30 @@ function PlanCard({ plan, current, currentAmount, disabled, busy, onSelect }) {
 
   return (
     <div
-      className={`flex flex-col rounded-xl border bg-card p-5 shadow-card transition-shadow hover:shadow-elevated ${
+      className={cn(
+        "flex flex-col rounded-xl border bg-card p-5 shadow-card transition-shadow duration-150 hover:shadow-elevated motion-reduce:transition-none",
         current ? "border-primary ring-2 ring-primary/20" : "border-border"
-      }`}
+      )}
     >
       <div className="flex items-start justify-between gap-2">
-        <h4 className="text-base font-bold tracking-tight text-foreground">{plan?.name || plan?.code}</h4>
+        <h4 className="text-base font-semibold tracking-tight text-foreground">
+          {plan?.name || plan?.code}
+        </h4>
         {current && (
-          <span className="inline-flex shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+          <Badge variant="default" size="sm" className="shrink-0">
             Current
-          </span>
+          </Badge>
         )}
       </div>
       {plan?.description && <p className="mt-1 text-xs text-muted-foreground">{plan.description}</p>}
 
       <div className="mt-3 flex items-baseline gap-1">
-        <span className="text-2xl font-bold tracking-tight text-foreground tabular-nums">
+        <span className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
           {formatMoney(plan?.amount_cents, plan?.currency)}
         </span>
-        <span className="text-xs font-medium text-muted-foreground">{intervalSuffix(plan?.billing_interval)}</span>
+        <span className="text-xs font-medium text-muted-foreground">
+          {intervalSuffix(plan?.billing_interval)}
+        </span>
       </div>
       {Number(plan?.trial_days) > 0 && (
         <p className="mt-1 text-xs font-medium text-info">{plan.trial_days}-day free trial</p>
@@ -828,40 +956,38 @@ function PlanCard({ plan, current, currentAmount, disabled, busy, onSelect }) {
           {featureRows.map(([key, on]) => (
             <li key={key} className="flex items-center gap-2 text-xs">
               {on ? (
-                <Check className="h-3.5 w-3.5 shrink-0 text-success" />
+                <Check className="h-3.5 w-3.5 shrink-0 text-success" aria-hidden="true" />
               ) : (
-                <X className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                <X className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
               )}
-              <span className={on ? "text-foreground" : "text-muted-foreground/70 line-through"}>
+              <span className={on ? "text-foreground" : "text-muted-foreground line-through"}>
                 {FEATURE_LABELS[key] || prettyLabel(key)}
               </span>
+              <span className="sr-only">{on ? " included" : " not included"}</span>
             </li>
           ))}
         </ul>
       )}
 
-      <div className="mt-5 pt-1">
+      <div className="mt-auto pt-5">
         {current ? (
-          <div className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-muted px-4 py-2 text-sm font-semibold text-muted-foreground">
-            <CheckCircle2 className="h-4 w-4" />
+          <div className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-muted px-4 py-2 text-sm font-medium text-muted-foreground">
+            <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
             Your plan
           </div>
         ) : (
           <>
-            <button
-              type="button"
+            <Button
+              variant={isUpgrade ? "default" : "outline"}
+              size="lg"
+              className="w-full"
               onClick={onSelect}
               disabled={disabled || busy || notPurchasable}
               title={blockedReason || undefined}
-              className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${
-                isUpgrade
-                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                  : "border border-border bg-card text-foreground hover:bg-muted"
-              }`}
             >
-              {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+              {busy && <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />}
               {isUpgrade ? "Upgrade" : "Downgrade"}
-            </button>
+            </Button>
             {/* A greyed-out button with no explanation reads as a broken page;
                 the unconnected-Stripe case already has its own banner above. */}
             {!disabled && notPurchasable && (

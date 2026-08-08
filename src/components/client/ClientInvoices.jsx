@@ -4,12 +4,12 @@ import { useEffect, useState, useCallback } from "react";
 import { Receipt, FileText } from "lucide-react";
 import { authFetch } from "@/utils/authFetch";
 import { showError } from "@/utils/alerts";
+import { Button, DataTable } from "@/components/ui";
 import {
-  Spinner,
+  ClientPage,
   EmptyState,
   ErrorState,
   StatusBadge,
-  SectionHeader,
   formatDate,
 } from "./ClientShared";
 
@@ -73,74 +73,105 @@ export default function ClientInvoices() {
     }
   };
 
-  if (loading) return <Spinner label="Loading invoices…" />;
-  if (error) return <ErrorState message={error} onRetry={load} />;
+  // Money and dates are right-aligned and tabular so a column of figures lines
+  // up on the decimal point; everything else stays left so it reads as text.
+  const columns = [
+    {
+      key: "number",
+      header: "Invoice",
+      render: (inv) => (
+        <span className="font-semibold tabular-nums text-foreground">
+          {inv.number || inv.invoice_number || `#${inv.id}`}
+        </span>
+      ),
+    },
+    {
+      key: "title",
+      header: "Description",
+      render: (inv) => <span className="text-muted-foreground">{inv.title || "—"}</span>,
+    },
+    {
+      key: "amount",
+      header: "Amount",
+      align: "right",
+      render: (inv) => (
+        <span className="text-base font-semibold tabular-nums text-foreground">
+          {formatMoney(inv.amount, inv.currency)}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (inv) => <StatusBadge status={inv.status} />,
+    },
+    {
+      key: "issued",
+      header: "Issued",
+      align: "right",
+      render: (inv) => (
+        <span className="whitespace-nowrap tabular-nums text-muted-foreground">
+          {formatDate(inv.issued_at || inv.issue_date || inv.created_at)}
+        </span>
+      ),
+    },
+    {
+      key: "due",
+      header: "Due",
+      align: "right",
+      render: (inv) => (
+        <span className="whitespace-nowrap tabular-nums text-muted-foreground">
+          {formatDate(inv.due_at || inv.due_date)}
+        </span>
+      ),
+    },
+    {
+      key: "pdf",
+      header: <span className="sr-only">Document</span>,
+      align: "right",
+      width: "1%",
+      render: (inv) => {
+        const pdfAvailable = Boolean(inv.pdf_url ?? inv.has_pdf ?? true);
+        return (
+          <Button
+            size="sm"
+            onClick={() => handleViewPdf(inv)}
+            disabled={!pdfAvailable || openingId === inv.id}
+            title={pdfAvailable ? "View PDF" : "No PDF available"}
+          >
+            <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+            {openingId === inv.id ? "Opening…" : "View PDF"}
+          </Button>
+        );
+      },
+    },
+  ];
+
+  if (error) {
+    return (
+      <ClientPage title="Invoices" description="Your billing history and documents" width="wide">
+        <ErrorState message={error} onRetry={load} />
+      </ClientPage>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <SectionHeader title="Invoices" subtitle="Your billing history and documents" />
-
-      {items.length === 0 ? (
-        <EmptyState
-          icon={Receipt}
-          title="No invoices yet"
-          message="Invoices issued to you will appear here."
-        />
-      ) : (
-        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/50 text-left text-xs uppercase tracking-wider text-muted-foreground">
-                  <th className="px-4 py-3 font-semibold">Number</th>
-                  <th className="px-4 py-3 font-semibold">Title</th>
-                  <th className="px-4 py-3 font-semibold">Amount</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
-                  <th className="px-4 py-3 font-semibold">Issued</th>
-                  <th className="px-4 py-3 font-semibold">Due</th>
-                  <th className="px-4 py-3 text-right font-semibold">PDF</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((inv) => {
-                  const pdfAvailable = Boolean(inv.pdf_url ?? inv.has_pdf ?? true);
-                  return (
-                    <tr key={inv.id} className="border-b border-border last:border-0 hover:bg-muted/30">
-                      <td className="px-4 py-3 font-semibold text-foreground">
-                        {inv.number || inv.invoice_number || `#${inv.id}`}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{inv.title || "—"}</td>
-                      <td className="px-4 py-3 font-medium text-foreground tabular-nums">
-                        {formatMoney(inv.amount, inv.currency)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={inv.status} />
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {formatDate(inv.issued_at || inv.issue_date || inv.created_at)}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {formatDate(inv.due_at || inv.due_date)}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={() => handleViewPdf(inv)}
-                          disabled={!pdfAvailable || openingId === inv.id}
-                          className="inline-flex items-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-                          title={pdfAvailable ? "View PDF" : "No PDF available"}
-                        >
-                          <FileText className="mr-1.5 h-3.5 w-3.5" />
-                          {openingId === inv.id ? "Opening…" : "View PDF"}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-    </div>
+    <ClientPage title="Invoices" description="Your billing history and documents" width="wide">
+      {/* DataTable brings its own card shell, header casing, h-12 rows and
+          overflow-x guard — the table markup lives there, not here. */}
+      <DataTable
+        columns={columns}
+        rows={items}
+        loading={loading}
+        keyField="id"
+        empty={
+          <EmptyState
+            icon={Receipt}
+            title="No invoices yet"
+            message="Invoices issued to you will appear here."
+          />
+        }
+      />
+    </ClientPage>
   );
 }

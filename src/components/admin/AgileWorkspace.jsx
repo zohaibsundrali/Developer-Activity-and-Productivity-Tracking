@@ -8,7 +8,9 @@ import { loadEmployees } from "@/utils/employeesData";
 import { showError } from "@/utils/alerts";
 import SprintPlanning from "@/components/admin/SprintPlanning";
 import SprintBoard from "@/components/admin/SprintBoard";
-import { LayoutList, Kanban } from "lucide-react";
+import { SELECT_CLASS, ViewSkeleton } from "@/components/admin/views/viewKit";
+import { EmptyState, Skeleton, SkeletonCard, Tabs } from "@/components/ui";
+import { LayoutList, Kanban, FolderOpen } from "lucide-react";
 
 /* Agile workspace: project picker + tabbed Backlog/Planning and Sprint Board.
    Reuses pmData (sprints/epics/tasks) + employeesData; the underlying task
@@ -93,38 +95,43 @@ export default function AgileWorkspace() {
     reload();
   }, [reload]);
 
-  const inputClass =
-    "rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30";
-
   if (loadingProjects) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-primary/30 border-t-primary" />
+      <div className="space-y-6">
+        <div className="rounded-xl border border-border bg-card shadow-card">
+          <div className="px-4 pt-4">
+            <Skeleton className="h-8 w-52" />
+          </div>
+          <Skeleton className="mx-4 mb-3 mt-3 h-9" />
+        </div>
+        <SkeletonCard lines={5} />
       </div>
     );
   }
 
   if (!projects.length) {
     return (
-      <div className="rounded-xl border border-border bg-card p-8 text-center shadow-card">
-        <p className="text-sm font-medium text-foreground">No projects yet</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Create a project first to plan sprints and epics.
-        </p>
-      </div>
+      <EmptyState
+        icon={FolderOpen}
+        title="No projects yet"
+        description="Create a project first to plan sprints and epics."
+      />
     );
   }
 
   return (
-    <div className="space-y-4">
-      {/* Toolbar */}
-      <div className="rounded-xl border border-border bg-card p-3 shadow-card">
-        <div className="flex flex-wrap items-center gap-2">
+    <div className="space-y-6">
+      {/* Toolbar — same frame as the Views screen: picker, then a tab row. */}
+      <div className="rounded-xl border border-border bg-card shadow-card">
+        <div className="flex flex-wrap items-center gap-2 px-4 pt-4">
+          <label htmlFor="agile-project" className="sr-only">
+            Select project
+          </label>
           <select
+            id="agile-project"
             value={projectId || ""}
             onChange={(e) => setProjectId(e.target.value || null)}
-            className={inputClass}
-            aria-label="Select project"
+            className={`${SELECT_CLASS} font-medium`}
           >
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
@@ -132,35 +139,34 @@ export default function AgileWorkspace() {
               </option>
             ))}
           </select>
-
-          <div className="ml-auto flex items-center gap-1 rounded-lg border border-border bg-background p-1">
-            {TABS.map((t) => {
-              const Icon = t.icon;
-              const active = tab === t.id;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setTab(t.id)}
-                  className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                    active
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  {t.label}
-                </button>
-              );
-            })}
-          </div>
         </div>
+
+        <Tabs
+          className="mt-3 px-4"
+          aria-label="Agile workspace"
+          active={tab}
+          onChange={(id) => setTab(id)}
+          tabs={TABS.map((t) => {
+            const Icon = t.icon;
+            return {
+              id: t.id,
+              label: (
+                <span className="inline-flex items-center gap-1.5">
+                  <Icon className="h-4 w-4" aria-hidden="true" />
+                  {t.label}
+                </span>
+              ),
+            };
+          })}
+        />
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="h-7 w-7 animate-spin rounded-full border-[3px] border-primary/30 border-t-primary" />
-        </div>
+        tab === "planning" ? (
+          <SkeletonCard lines={6} />
+        ) : (
+          <ViewSkeleton viewType="kanban" />
+        )
       ) : tab === "planning" ? (
         <SprintPlanning
           projectId={projectId}

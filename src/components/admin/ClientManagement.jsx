@@ -6,6 +6,11 @@ import { getOrgId, getOrgContext } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
 import { showSuccess, showError, showConfirm } from "@/utils/alerts";
 import {
+  PageHeader, Section, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter,
+  Badge, StatusPill, EmptyState, Skeleton, SkeletonTable, SkeletonList,
+  ErrorState, Tabs, Field, Button, Input,
+} from "@/components/ui";
+import {
   Handshake, Link2, Megaphone, Receipt, CheckSquare, LifeBuoy, Mail, Plus,
   Trash2, Copy, RefreshCw, Send, Building2, MessageSquare, Upload, FileText, Check,
 } from "lucide-react";
@@ -24,12 +29,12 @@ async function notifyClients(payload) {
 }
 
 const TABS = [
-  { id: "clients", label: "Clients", icon: Handshake },
-  { id: "links", label: "Project links", icon: Link2 },
-  { id: "announcements", label: "Announcements", icon: Megaphone },
-  { id: "invoices", label: "Invoices", icon: Receipt },
-  { id: "approvals", label: "Approvals", icon: CheckSquare },
-  { id: "support", label: "Support", icon: LifeBuoy },
+  { id: "clients", label: "Clients" },
+  { id: "links", label: "Project links" },
+  { id: "announcements", label: "Announcements" },
+  { id: "invoices", label: "Invoices" },
+  { id: "approvals", label: "Approvals" },
+  { id: "support", label: "Support" },
 ];
 
 const INVOICE_STATUSES = ["draft", "sent", "paid", "overdue", "void"];
@@ -37,6 +42,16 @@ const INVOICE_STATUSES = ["draft", "sent", "paid", "overdue", "void"];
 // client's decision be stamped back onto the board the team works from. The
 // other four have no picker and still take a hand-entered reference.
 const APPROVAL_ITEM_TYPES = ["task", "deliverable", "milestone", "invoice", "general"];
+
+/* Shared presentation classes — the table/control shapes the UI kit contract asks for. */
+const TABLE_SHELL = "overflow-x-auto rounded-xl border border-border bg-card shadow-card";
+const TH = "px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground";
+const TH_RIGHT = "px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground";
+const TR = "h-12 transition-colors duration-150 hover:bg-muted/40";
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+const CONTROL = `w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors duration-150 ${FOCUS_RING}`;
+const DANGER_ICON_BTN = `text-muted-foreground hover:bg-destructive/10 hover:text-destructive ${FOCUS_RING}`;
 
 // Read the logged-in admin identity (id + display name) for author/sender stamps.
 function readAdmin() {
@@ -51,12 +66,14 @@ function readAdmin() {
   }
 }
 
-const statusPill = (s) => {
+// Same buckets the old colour-only pill used, mapped onto StatusPill's shapes so
+// status is never communicated by colour alone.
+const pillStatus = (s) => {
   const v = String(s || "").toLowerCase();
-  if (["active", "paid", "approved", "open"].includes(v)) return "bg-success/10 text-success";
-  if (["pending", "sent", "draft"].includes(v)) return "bg-warning/10 text-warning";
-  if (["inactive", "rejected", "overdue", "void", "closed"].includes(v)) return "bg-destructive/10 text-destructive";
-  return "bg-muted text-muted-foreground";
+  if (["active", "paid", "approved", "open"].includes(v)) return "success";
+  if (["pending", "sent", "draft"].includes(v)) return "pending";
+  if (["inactive", "rejected", "overdue", "void", "closed"].includes(v)) return "error";
+  return "unknown";
 };
 
 const fmtDate = (d) => {
@@ -78,6 +95,9 @@ export default function ClientManagement() {
   const [orgReady, setOrgReady] = useState(false);
   const [tab, setTab] = useState("clients");
   const [loading, setLoading] = useState(false);
+  // Presentation-only: surfaces the failure the loader already caught so the
+  // screen can offer a retry instead of an empty table.
+  const [error, setError] = useState(null);
 
   const [clients, setClients] = useState([]);
   const [clientInvites, setClientInvites] = useState([]);
@@ -98,6 +118,7 @@ export default function ClientManagement() {
   const loadAll = useCallback(async () => {
     if (!orgId) return;
     setLoading(true);
+    setError(null);
     try {
       const [cl, pc, prj, ann, inv, apr, thr] = await Promise.all([
         // Never select("*") here: clients carries a legacy plaintext `password`
@@ -131,8 +152,8 @@ export default function ClientManagement() {
       } catch {
         setClientInvites([]);
       }
-    } catch {
-      /* ignore */
+    } catch (err) {
+      setError(err?.message || "Something went wrong while loading this workspace.");
     } finally {
       setLoading(false);
     }
@@ -142,75 +163,80 @@ export default function ClientManagement() {
 
   if (!orgReady) {
     return (
-      <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground">
-        Loading clients…
+      <div className="space-y-6">
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-40" />
+          <Skeleton className="h-4 w-80" />
+        </div>
+        <Skeleton className="h-10 w-full" />
+        <div className="rounded-xl border border-border bg-card shadow-card">
+          <SkeletonTable rows={5} cols={4} />
+        </div>
       </div>
     );
   }
 
   if (!orgId) {
     return (
-      <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground">
-        No organization context found. Please sign in again.
-      </div>
+      <EmptyState
+        icon={Building2}
+        title="No organization context found"
+        description="We couldn't tell which workspace you're in. Please sign in again."
+      />
     );
   }
 
+  const counts = {
+    clients: clients.length,
+    links: projectClients.length,
+    announcements: announcements.length,
+    invoices: invoices.length,
+    approvals: approvals.length,
+    support: threads.length,
+  };
+  const tabItems = TABS.map((t) => ({ ...t, count: loading ? undefined : counts[t.id] }));
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight text-foreground">Clients</h2>
-          <p className="text-sm text-muted-foreground">
-            {ctx?.organizationName || "Your workspace"} · invite clients, link projects &amp; manage portal content
-          </p>
-        </div>
-        <button onClick={loadAll} disabled={loading}
-          className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground shadow-card transition-colors hover:bg-muted disabled:opacity-50">
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Refresh
-        </button>
-      </div>
+      <PageHeader
+        title="Clients"
+        description={`${ctx?.organizationName || "Your workspace"} · invite clients, link projects & manage portal content`}
+        actions={
+          <Button variant="outline" onClick={loadAll} disabled={loading}>
+            <RefreshCw aria-hidden="true" className={`h-4 w-4 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`} />
+            Refresh
+          </Button>
+        }
+      />
 
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-2 border-b border-border">
-        {TABS.map((t) => {
-          const Icon = t.icon;
-          const active = tab === t.id;
-          return (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className={`-mb-px inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
-                active ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}>
-              <Icon className="h-4 w-4" /> {t.label}
-            </button>
-          );
-        })}
-      </div>
+      <Tabs tabs={tabItems} active={tab} onChange={setTab} aria-label="Client workspace sections" />
 
-      {tab === "clients" && (
-        <ClientsTab clients={clients} invites={clientInvites} projects={projects} reload={loadAll} />
-      )}
-      {tab === "links" && (
-        <ClientLinksTab orgId={orgId} clients={clients} projects={projects} links={projectClients} reload={loadAll} />
-      )}
-      {tab === "announcements" && (
-        <ClientAnnouncementsTab orgId={orgId} admin={admin} projects={projects} announcements={announcements} reload={loadAll} />
-      )}
-      {tab === "invoices" && (
-        <ClientInvoicesTab orgId={orgId} admin={admin} clients={clients} projects={projects} invoices={invoices} reload={loadAll} />
-      )}
-      {tab === "approvals" && (
-        <ClientApprovalsTab orgId={orgId} admin={admin} clients={clients} projects={projects} links={projectClients} approvals={approvals} reload={loadAll} />
-      )}
-      {tab === "support" && (
-        <ClientSupportTab orgId={orgId} admin={admin} clients={clients} threads={threads} reload={loadAll} />
-      )}
+      <div key={tab} className="animate-fade-in motion-reduce:animate-none">
+        {tab === "clients" && (
+          <ClientsTab clients={clients} invites={clientInvites} projects={projects} reload={loadAll} loading={loading} loadError={error} />
+        )}
+        {tab === "links" && (
+          <ClientLinksTab orgId={orgId} clients={clients} projects={projects} links={projectClients} reload={loadAll} loading={loading} loadError={error} />
+        )}
+        {tab === "announcements" && (
+          <ClientAnnouncementsTab orgId={orgId} admin={admin} projects={projects} announcements={announcements} reload={loadAll} loading={loading} loadError={error} />
+        )}
+        {tab === "invoices" && (
+          <ClientInvoicesTab orgId={orgId} admin={admin} clients={clients} projects={projects} invoices={invoices} reload={loadAll} loading={loading} loadError={error} />
+        )}
+        {tab === "approvals" && (
+          <ClientApprovalsTab orgId={orgId} admin={admin} clients={clients} projects={projects} links={projectClients} approvals={approvals} reload={loadAll} loading={loading} loadError={error} />
+        )}
+        {tab === "support" && (
+          <ClientSupportTab orgId={orgId} admin={admin} clients={clients} threads={threads} reload={loadAll} loading={loading} loadError={error} />
+        )}
+      </div>
     </div>
   );
 }
 
 /* ---------------- Clients ---------------- */
-function ClientsTab({ clients, invites, projects, reload }) {
+function ClientsTab({ clients, invites, projects, reload, loading, loadError }) {
   const [email, setEmail] = useState("");
   const [selected, setSelected] = useState([]); // project ids to link on accept
   const [sending, setSending] = useState(false);
@@ -284,95 +310,123 @@ function ClientsTab({ clients, invites, projects, reload }) {
 
   return (
     <div className="grid gap-5 lg:grid-cols-3">
-      <form onSubmit={invite} className="rounded-xl border border-border bg-card p-5 shadow-card lg:col-span-1">
-        <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-          <Mail className="h-4 w-4 text-primary" /> Invite a client
-        </h3>
-        <label className="mb-1 block text-xs font-medium text-foreground">Email</label>
-        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="client@company.com" required
-          className="mb-3 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30" />
-        <label className="mb-1 block text-xs font-medium text-foreground">Link projects (optional)</label>
-        <div className="mb-3 max-h-44 space-y-1 overflow-y-auto rounded-lg border border-input bg-background p-2">
-          {projects.length === 0 ? (
-            <p className="px-1 py-2 text-xs text-muted-foreground">No projects yet.</p>
-          ) : projects.map((p) => (
-            <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted">
-              <input type="checkbox" checked={selected.includes(p.id)} onChange={() => toggle(p.id)}
-                className="h-4 w-4 rounded border-input text-primary focus:ring-primary/30" />
-              <span className="truncate text-foreground">{p.name}</span>
-            </label>
-          ))}
-        </div>
-        <p className="mb-3 text-xs text-muted-foreground">
-          Selected projects are linked automatically when the client accepts. You can add or remove links later under “Project links”.
-        </p>
-        <button disabled={sending} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-          <Mail className="h-4 w-4" /> {sending ? "Sending…" : "Send invitation"}
-        </button>
-      </form>
+      <Card className="lg:col-span-1">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Mail aria-hidden="true" className="h-4 w-4 text-primary" /> Invite a client
+          </CardTitle>
+          <CardDescription>They get portal access as soon as they accept.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={invite} className="space-y-4">
+            <Field label="Email" htmlFor="client-invite-email" required>
+              <Input id="client-invite-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                placeholder="client@company.com" required />
+            </Field>
 
-      <div className="space-y-5 lg:col-span-2">
+            <div className="space-y-1.5">
+              <p className="text-sm font-medium text-foreground">Link projects (optional)</p>
+              <div role="group" aria-label="Projects to link on acceptance"
+                className="max-h-44 space-y-1 overflow-y-auto rounded-lg border border-input bg-background p-2">
+                {projects.length === 0 ? (
+                  <p className="px-1 py-2 text-xs text-muted-foreground">No projects yet.</p>
+                ) : projects.map((p) => (
+                  <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors duration-150 hover:bg-muted">
+                    <input type="checkbox" checked={selected.includes(p.id)} onChange={() => toggle(p.id)}
+                      className={`h-4 w-4 rounded border-input text-primary ${FOCUS_RING}`} />
+                    <span className="truncate text-foreground">{p.name}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Selected projects are linked automatically when the client accepts. You can add or remove links later under “Project links”.
+              </p>
+            </div>
+
+            <Button type="submit" disabled={sending} className="w-full">
+              <Mail aria-hidden="true" className="h-4 w-4" /> {sending ? "Sending…" : "Send invitation"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <div className="space-y-6 lg:col-span-2">
         {/* Existing clients */}
-        <div>
-          <h3 className="mb-2 text-sm font-semibold text-foreground">Clients</h3>
-          {clients.length === 0 ? (
-            <EmptyCard label="No clients yet" />
+        <Section title="Clients" description="Everyone with access to this workspace's client portal.">
+          {loadError ? (
+            <ErrorState title="Couldn't load clients" description={loadError} onRetry={reload} />
+          ) : loading ? (
+            <div className={TABLE_SHELL}><SkeletonTable rows={4} cols={4} /></div>
+          ) : clients.length === 0 ? (
+            <EmptyState icon={Handshake} title="No clients yet"
+              description="Invite a client with the form on the left — they appear here once they accept." />
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-card">
-              <table className="w-full min-w-[560px]">
+            <div className={TABLE_SHELL}>
+              <table className="w-full min-w-[560px] divide-y divide-border">
                 <thead>
-                  <tr className="border-b border-border bg-muted/40">
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Name</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Email</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Company</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
+                  <tr className="bg-muted/40">
+                    <th scope="col" className={TH}>Name</th>
+                    <th scope="col" className={TH}>Email</th>
+                    <th scope="col" className={TH}>Company</th>
+                    <th scope="col" className={TH}>Status</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-border">
                   {clients.map((c) => (
-                    <tr key={c.id} className="border-b border-border last:border-0">
-                      <td className="px-4 py-3 text-sm font-medium text-foreground">{c.name || "—"}</td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">{c.email}</td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">{c.company || "—"}</td>
-                      <td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusPill(c.status)}`}>{c.status || "active"}</span></td>
+                    <tr key={c.id} className={TR}>
+                      <td className="px-4 text-sm font-medium text-foreground">{c.name || "—"}</td>
+                      <td className="px-4 text-sm text-muted-foreground">{c.email}</td>
+                      <td className="px-4 text-sm text-muted-foreground">{c.company || "—"}</td>
+                      <td className="px-4">
+                        <StatusPill status={pillStatus(c.status)} label={c.status || "active"} size="sm" className="capitalize" />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
-        </div>
+        </Section>
 
         {/* Pending client invitations */}
-        <div>
-          <h3 className="mb-2 text-sm font-semibold text-foreground">Pending invitations</h3>
-          {pendingInvites.length === 0 ? (
-            <EmptyCard label="No pending client invitations" />
+        <Section title="Pending invitations" description="Invites that have been sent but not accepted yet.">
+          {loadError ? (
+            <ErrorState title="Couldn't load invitations" description={loadError} onRetry={reload} />
+          ) : loading ? (
+            <div className={TABLE_SHELL}><SkeletonTable rows={3} cols={4} /></div>
+          ) : pendingInvites.length === 0 ? (
+            <EmptyState icon={Mail} title="No pending client invitations"
+              description="Every invitation you've sent has been accepted or revoked." />
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-card">
-              <table className="w-full min-w-[560px]">
+            <div className={TABLE_SHELL}>
+              <table className="w-full min-w-[560px] divide-y divide-border">
                 <thead>
-                  <tr className="border-b border-border bg-muted/40">
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Email</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Project</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Actions</th>
+                  <tr className="bg-muted/40">
+                    <th scope="col" className={TH}>Email</th>
+                    <th scope="col" className={TH}>Project</th>
+                    <th scope="col" className={TH}>Status</th>
+                    <th scope="col" className={TH_RIGHT}>Actions</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-border">
                   {pendingInvites.map((inv) => (
-                    <tr key={inv.id} className="border-b border-border last:border-0">
-                      <td className="px-4 py-3 text-sm font-medium text-foreground">{inv.email}</td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">{inv.project_id ? projName(inv.project_id) : "—"}</td>
-                      <td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusPill(inv.status)}`}>{inv.status}</span></td>
-                      <td className="px-4 py-3">
+                    <tr key={inv.id} className={TR}>
+                      <td className="px-4 text-sm font-medium text-foreground">{inv.email}</td>
+                      <td className="px-4 text-sm text-muted-foreground">{inv.project_id ? projName(inv.project_id) : "—"}</td>
+                      <td className="px-4">
+                        <StatusPill status={pillStatus(inv.status)} label={inv.status} size="sm" className="capitalize" />
+                      </td>
+                      <td className="px-4">
                         <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => copyLink(inv)} title="Copy invite link" className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
-                            <Copy className="h-4 w-4" />
-                          </button>
-                          <button onClick={() => revoke(inv)} title="Revoke" className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          <Button type="button" variant="ghost" size="icon-sm" onClick={() => copyLink(inv)}
+                            title="Copy invite link" aria-label={`Copy invite link for ${inv.email}`}
+                            className={`text-muted-foreground hover:text-foreground ${FOCUS_RING}`}>
+                            <Copy aria-hidden="true" className="h-4 w-4" />
+                          </Button>
+                          <Button type="button" variant="ghost" size="icon-sm" onClick={() => revoke(inv)}
+                            title="Revoke" aria-label={`Revoke invitation for ${inv.email}`} className={DANGER_ICON_BTN}>
+                            <Trash2 aria-hidden="true" className="h-4 w-4" />
+                          </Button>
                         </div>
                       </td>
                     </tr>
@@ -381,14 +435,14 @@ function ClientsTab({ clients, invites, projects, reload }) {
               </table>
             </div>
           )}
-        </div>
+        </Section>
       </div>
     </div>
   );
 }
 
 /* ---------------- Project links ---------------- */
-function ClientLinksTab({ orgId, clients, projects, links, reload }) {
+function ClientLinksTab({ orgId, clients, projects, links, reload, loading, loadError }) {
   const [clientId, setClientId] = useState("");
   const [projectId, setProjectId] = useState("");
   const [saving, setSaving] = useState(false);
@@ -432,67 +486,83 @@ function ClientLinksTab({ orgId, clients, projects, links, reload }) {
 
   return (
     <div className="grid gap-5 lg:grid-cols-3">
-      <form onSubmit={add} className="rounded-xl border border-border bg-card p-5 shadow-card lg:col-span-1">
-        <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-          <Link2 className="h-4 w-4 text-primary" /> Link a client to a project
-        </h3>
-        <label className="mb-1 block text-xs font-medium text-foreground">Client</label>
-        <select value={clientId} onChange={(e) => setClientId(e.target.value)}
-          className="mb-3 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
-          <option value="">— Select client —</option>
-          {clients.map((c) => <option key={c.id} value={c.id}>{c.name || c.email}</option>)}
-        </select>
-        <label className="mb-1 block text-xs font-medium text-foreground">Project</label>
-        <select value={projectId} onChange={(e) => setProjectId(e.target.value)}
-          className="mb-3 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
-          <option value="">— Select project —</option>
-          {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-        <button disabled={saving} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-          <Plus className="h-4 w-4" /> {saving ? "Linking…" : "Add link"}
-        </button>
-      </form>
+      <Card className="lg:col-span-1">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Link2 aria-hidden="true" className="h-4 w-4 text-primary" /> Link a client to a project
+          </CardTitle>
+          <CardDescription>A client only sees the projects they are linked to.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={add} className="space-y-4">
+            <Field label="Client" htmlFor="link-client">
+              <select id="link-client" value={clientId} onChange={(e) => setClientId(e.target.value)} className={CONTROL}>
+                <option value="">— Select client —</option>
+                {clients.map((c) => <option key={c.id} value={c.id}>{c.name || c.email}</option>)}
+              </select>
+            </Field>
+            <Field label="Project" htmlFor="link-project">
+              <select id="link-project" value={projectId} onChange={(e) => setProjectId(e.target.value)} className={CONTROL}>
+                <option value="">— Select project —</option>
+                {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </Field>
+            <Button type="submit" disabled={saving} className="w-full">
+              <Plus aria-hidden="true" className="h-4 w-4" /> {saving ? "Linking…" : "Add link"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
       <div className="lg:col-span-2">
-        {links.length === 0 ? (
-          <EmptyCard label="No client-project links yet" />
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-card">
-            <table className="w-full min-w-[520px]">
-              <thead>
-                <tr className="border-b border-border bg-muted/40">
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Client</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Project</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Linked</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {links.map((l) => (
-                  <tr key={l.id} className="border-b border-border last:border-0">
-                    <td className="px-4 py-3 text-sm font-medium text-foreground">{clientName(l.client_id)}</td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">{projName(l.project_id)}</td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">{fmtDate(l.created_at)}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end">
-                        <button onClick={() => unlink(l)} title="Unlink" className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
+        <Section title="Client ↔ project links" description="Who can see which project in the portal.">
+          {loadError ? (
+            <ErrorState title="Couldn't load project links" description={loadError} onRetry={reload} />
+          ) : loading ? (
+            <div className={TABLE_SHELL}><SkeletonTable rows={4} cols={4} /></div>
+          ) : links.length === 0 ? (
+            <EmptyState icon={Link2} title="No client-project links yet"
+              description="Link a client to a project so it shows up in their portal." />
+          ) : (
+            <div className={TABLE_SHELL}>
+              <table className="w-full min-w-[520px] divide-y divide-border">
+                <thead>
+                  <tr className="bg-muted/40">
+                    <th scope="col" className={TH}>Client</th>
+                    <th scope="col" className={TH}>Project</th>
+                    <th scope="col" className={TH}>Linked</th>
+                    <th scope="col" className={TH_RIGHT}>Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {links.map((l) => (
+                    <tr key={l.id} className={TR}>
+                      <td className="px-4 text-sm font-medium text-foreground">{clientName(l.client_id)}</td>
+                      <td className="px-4 text-sm text-muted-foreground">{projName(l.project_id)}</td>
+                      <td className="px-4 text-sm text-muted-foreground">{fmtDate(l.created_at)}</td>
+                      <td className="px-4">
+                        <div className="flex justify-end">
+                          <Button type="button" variant="ghost" size="icon-sm" onClick={() => unlink(l)}
+                            title="Unlink" aria-label={`Unlink ${clientName(l.client_id)} from ${projName(l.project_id)}`}
+                            className={DANGER_ICON_BTN}>
+                            <Trash2 aria-hidden="true" className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Section>
       </div>
     </div>
   );
 }
 
 /* ---------------- Announcements ---------------- */
-function ClientAnnouncementsTab({ orgId, admin, projects, announcements, reload }) {
+function ClientAnnouncementsTab({ orgId, admin, projects, announcements, reload, loading, loadError }) {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -534,61 +604,82 @@ function ClientAnnouncementsTab({ orgId, admin, projects, announcements, reload 
 
   return (
     <div className="grid gap-5 lg:grid-cols-3">
-      <form onSubmit={add} className="rounded-xl border border-border bg-card p-5 shadow-card lg:col-span-1">
-        <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-          <Megaphone className="h-4 w-4 text-primary" /> New announcement
-        </h3>
-        <label className="mb-1 block text-xs font-medium text-foreground">Title</label>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Sprint 3 shipped" required
-          className="mb-3 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30" />
-        <label className="mb-1 block text-xs font-medium text-foreground">Body</label>
-        <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} placeholder="What’s new for the client…"
-          className="mb-3 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30" />
-        <label className="mb-1 block text-xs font-medium text-foreground">Project</label>
-        <select value={projectId} onChange={(e) => setProjectId(e.target.value)}
-          className="mb-3 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
-          <option value="">— Org-wide (all clients) —</option>
-          {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-        <button disabled={saving} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-          <Plus className="h-4 w-4" /> {saving ? "Publishing…" : "Publish"}
-        </button>
-      </form>
+      <Card className="lg:col-span-1">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Megaphone aria-hidden="true" className="h-4 w-4 text-primary" /> New announcement
+          </CardTitle>
+          <CardDescription>Published straight to the client portal.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={add} className="space-y-4">
+            <Field label="Title" htmlFor="ann-title" required>
+              <Input id="ann-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Sprint 3 shipped" required />
+            </Field>
+            <Field label="Body" htmlFor="ann-body">
+              <textarea id="ann-body" value={body} onChange={(e) => setBody(e.target.value)} rows={4}
+                placeholder="What’s new for the client…" className={CONTROL} />
+            </Field>
+            <Field label="Project" htmlFor="ann-project">
+              <select id="ann-project" value={projectId} onChange={(e) => setProjectId(e.target.value)} className={CONTROL}>
+                <option value="">— Org-wide (all clients) —</option>
+                {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </Field>
+            <Button type="submit" disabled={saving} className="w-full">
+              <Plus aria-hidden="true" className="h-4 w-4" /> {saving ? "Publishing…" : "Publish"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
       <div className="lg:col-span-2">
-        {announcements.length === 0 ? (
-          <EmptyCard label="No announcements yet" />
-        ) : (
-          <div className="space-y-3">
-            {announcements.map((a) => (
-              <div key={a.id} className="rounded-xl border border-border bg-card p-4 shadow-card">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate font-semibold text-foreground">{a.title}</p>
-                    <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{a.body || "—"}</p>
-                  </div>
-                  <button onClick={() => remove(a)} title="Delete" className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 font-medium">
-                    <Building2 className="h-3.5 w-3.5" /> {a.project_id ? (projName(a.project_id) || "Project") : "Org-wide"}
-                  </span>
-                  <span>By {a.author_name || "—"}</span>
-                  <span>· {fmtDateTime(a.published_at)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        <Section title="Published announcements">
+          {loadError ? (
+            <ErrorState title="Couldn't load announcements" description={loadError} onRetry={reload} />
+          ) : loading ? (
+            <div className="space-y-3">
+              <SkeletonList rows={3} />
+            </div>
+          ) : announcements.length === 0 ? (
+            <EmptyState icon={Megaphone} title="No announcements yet"
+              description="Publish an update and every linked client sees it in their portal." />
+          ) : (
+            <div className="space-y-3">
+              {announcements.map((a) => (
+                <Card key={a.id}>
+                  <CardContent className="space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-foreground">{a.title}</p>
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{a.body || "—"}</p>
+                      </div>
+                      <Button type="button" variant="ghost" size="icon-sm" onClick={() => remove(a)}
+                        title="Delete" aria-label={`Delete announcement ${a.title}`}
+                        className={`shrink-0 ${DANGER_ICON_BTN}`}>
+                        <Trash2 aria-hidden="true" className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <Badge variant="outline" size="sm">
+                        <Building2 aria-hidden="true" /> {a.project_id ? (projName(a.project_id) || "Project") : "Org-wide"}
+                      </Badge>
+                      <span>By {a.author_name || "—"}</span>
+                      <span>· {fmtDateTime(a.published_at)}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </Section>
       </div>
     </div>
   );
 }
 
 /* ---------------- Invoices ---------------- */
-function ClientInvoicesTab({ orgId, admin, clients, projects, invoices, reload }) {
+function ClientInvoicesTab({ orgId, admin, clients, projects, invoices, reload, loading, loadError }) {
   const [clientId, setClientId] = useState("");
   const [projectId, setProjectId] = useState("");
   const [number, setNumber] = useState("");
@@ -710,139 +801,150 @@ function ClientInvoicesTab({ orgId, admin, clients, projects, invoices, reload }
 
   return (
     <div className="grid gap-5 lg:grid-cols-3">
-      <form onSubmit={add} className="rounded-xl border border-border bg-card p-5 shadow-card lg:col-span-1">
-        <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-          <Receipt className="h-4 w-4 text-primary" /> New invoice
-        </h3>
-        <label className="mb-1 block text-xs font-medium text-foreground">Client</label>
-        <select value={clientId} onChange={(e) => setClientId(e.target.value)}
-          className="mb-3 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
-          <option value="">— None —</option>
-          {clients.map((c) => <option key={c.id} value={c.id}>{c.name || c.email}</option>)}
-        </select>
-        <label className="mb-1 block text-xs font-medium text-foreground">Project</label>
-        <select value={projectId} onChange={(e) => setProjectId(e.target.value)}
-          className="mb-3 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
-          <option value="">— None —</option>
-          {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-        <div className="mb-3 grid grid-cols-2 gap-3">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-foreground">Number</label>
-            <input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="INV-001" required
-              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30" />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-foreground">Currency</label>
-            <input value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} placeholder="USD" maxLength={3}
-              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30" />
-          </div>
-        </div>
-        <label className="mb-1 block text-xs font-medium text-foreground">Title</label>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Milestone 1 payment"
-          className="mb-3 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30" />
-        <div className="mb-3 grid grid-cols-2 gap-3">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-foreground">Amount</label>
-            <input type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00"
-              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30" />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-foreground">Status</label>
-            <select value={status} onChange={(e) => setStatus(e.target.value)}
-              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
-              {INVOICE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-        </div>
-        <div className="mb-3 grid grid-cols-2 gap-3">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-foreground">Issued</label>
-            <input type="date" value={issuedAt} onChange={(e) => setIssuedAt(e.target.value)}
-              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30" />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-foreground">Due</label>
-            <input type="date" value={dueAt} onChange={(e) => setDueAt(e.target.value)}
-              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30" />
-          </div>
-        </div>
-        <label className="mb-1 block text-xs font-medium text-foreground">PDF (optional)</label>
-        <label className="mb-3 flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-input bg-background px-3 py-2 text-sm text-muted-foreground hover:border-primary">
-          <Upload className="h-4 w-4" />
-          <span className="truncate">{pdfFile ? pdfFile.name : "Attach an invoice PDF"}</span>
-          <input type="file" accept="application/pdf" className="hidden"
-            onChange={(e) => setPdfFile(e.target.files?.[0] || null)} />
-        </label>
-        <button disabled={saving} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-          <Plus className="h-4 w-4" /> {saving ? "Creating…" : "Create invoice"}
-        </button>
-        <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
-          PDF needs a private Supabase storage bucket named <code>invoices</code>.
-        </p>
-      </form>
+      <Card className="lg:col-span-1">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Receipt aria-hidden="true" className="h-4 w-4 text-primary" /> New invoice
+          </CardTitle>
+          <CardDescription>Drafts stay private until you move them out of draft.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={add} className="space-y-4">
+            <Field label="Client" htmlFor="inv-client">
+              <select id="inv-client" value={clientId} onChange={(e) => setClientId(e.target.value)} className={CONTROL}>
+                <option value="">— None —</option>
+                {clients.map((c) => <option key={c.id} value={c.id}>{c.name || c.email}</option>)}
+              </select>
+            </Field>
+            <Field label="Project" htmlFor="inv-project">
+              <select id="inv-project" value={projectId} onChange={(e) => setProjectId(e.target.value)} className={CONTROL}>
+                <option value="">— None —</option>
+                {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Number" htmlFor="inv-number" required>
+                <Input id="inv-number" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="INV-001" required />
+              </Field>
+              <Field label="Currency" htmlFor="inv-currency">
+                <Input id="inv-currency" value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+                  placeholder="USD" maxLength={3} />
+              </Field>
+            </div>
+            <Field label="Title" htmlFor="inv-title">
+              <Input id="inv-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Milestone 1 payment" />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Amount" htmlFor="inv-amount">
+                <Input id="inv-amount" type="number" step="0.01" min="0" value={amount}
+                  onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
+              </Field>
+              <Field label="Status" htmlFor="inv-status">
+                <select id="inv-status" value={status} onChange={(e) => setStatus(e.target.value)} className={`${CONTROL} capitalize`}>
+                  {INVOICE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Issued" htmlFor="inv-issued">
+                <Input id="inv-issued" type="date" value={issuedAt} onChange={(e) => setIssuedAt(e.target.value)} />
+              </Field>
+              <Field label="Due" htmlFor="inv-due">
+                <Input id="inv-due" type="date" value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
+              </Field>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-sm font-medium text-foreground">PDF (optional)</p>
+              <label className={`flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-input bg-background px-3 py-2 text-sm text-muted-foreground transition-colors duration-150 hover:border-primary focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background`}>
+                <Upload aria-hidden="true" className="h-4 w-4" />
+                <span className="truncate">{pdfFile ? pdfFile.name : "Attach an invoice PDF"}</span>
+                <input type="file" accept="application/pdf" className="sr-only"
+                  onChange={(e) => setPdfFile(e.target.files?.[0] || null)} />
+              </label>
+              <p className="text-xs leading-snug text-muted-foreground">
+                PDF needs a private Supabase storage bucket named <code>invoices</code>.
+              </p>
+            </div>
+            <Button type="submit" disabled={saving} className="w-full">
+              <Plus aria-hidden="true" className="h-4 w-4" /> {saving ? "Creating…" : "Create invoice"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
       <div className="lg:col-span-2">
-        {invoices.length === 0 ? (
-          <EmptyCard label="No invoices yet" />
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-card">
-            <table className="w-full min-w-[720px]">
-              <thead>
-                <tr className="border-b border-border bg-muted/40">
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Number</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Client</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Amount</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Due</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">PDF</th>
-                </tr>
-              </thead>
-              <tbody>
-                {invoices.map((inv) => (
-                  <tr key={inv.id} className="border-b border-border last:border-0">
-                    <td className="px-4 py-3">
-                      <p className="text-sm font-medium text-foreground">{inv.number}</p>
-                      <p className="text-xs text-muted-foreground">{inv.title || projName(inv.project_id)}</p>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">{inv.client_id ? clientName(inv.client_id) : "—"}</td>
-                    <td className="px-4 py-3 text-sm font-medium text-foreground">{money(inv)}</td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">{fmtDate(inv.due_at)}</td>
-                    <td className="px-4 py-3">
-                      <select value={inv.status} onChange={(e) => changeStatus(inv, e.target.value)}
-                        className={`rounded-full px-2.5 py-1 text-xs font-semibold outline-none ${statusPill(inv.status)}`}>
-                        {INVOICE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-4 py-3">
-                      <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-                        title={inv.pdf_path ? "Replace PDF" : "Attach PDF"}>
-                        {busyId === inv.id ? (
-                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                        ) : inv.pdf_path ? (
-                          <Check className="h-3.5 w-3.5 text-success" />
-                        ) : (
-                          <Upload className="h-3.5 w-3.5" />
-                        )}
-                        {inv.pdf_path ? "PDF" : "Upload"}
-                        <input type="file" accept="application/pdf" className="hidden"
-                          disabled={busyId === inv.id}
-                          onChange={(e) => onRowUpload(inv, e.target.files?.[0] || null)} />
-                      </label>
-                    </td>
+        <Section title="Invoices" description="Status changes out of draft notify the linked client.">
+          {loadError ? (
+            <ErrorState title="Couldn't load invoices" description={loadError} onRetry={reload} />
+          ) : loading ? (
+            <div className={TABLE_SHELL}><SkeletonTable rows={5} cols={6} /></div>
+          ) : invoices.length === 0 ? (
+            <EmptyState icon={FileText} title="No invoices yet"
+              description="Create an invoice on the left — clients see everything except drafts." />
+          ) : (
+            <div className={TABLE_SHELL}>
+              <table className="w-full min-w-[820px] divide-y divide-border">
+                <thead>
+                  <tr className="bg-muted/40">
+                    <th scope="col" className={TH}>Number</th>
+                    <th scope="col" className={TH}>Client</th>
+                    <th scope="col" className={TH}>Amount</th>
+                    <th scope="col" className={TH}>Due</th>
+                    <th scope="col" className={TH}>Status</th>
+                    <th scope="col" className={TH}>PDF</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {invoices.map((inv) => (
+                    <tr key={inv.id} className={TR}>
+                      <td className="px-4 py-2">
+                        <p className="text-sm font-medium text-foreground">{inv.number}</p>
+                        <p className="text-xs text-muted-foreground">{inv.title || projName(inv.project_id)}</p>
+                      </td>
+                      <td className="px-4 text-sm text-muted-foreground">{inv.client_id ? clientName(inv.client_id) : "—"}</td>
+                      <td className="px-4 text-sm font-medium text-foreground">{money(inv)}</td>
+                      <td className="px-4 text-sm text-muted-foreground">{fmtDate(inv.due_at)}</td>
+                      <td className="px-4">
+                        <div className="flex items-center gap-2">
+                          <StatusPill status={pillStatus(inv.status)} label={inv.status} size="sm" className="capitalize" />
+                          <select value={inv.status} onChange={(e) => changeStatus(inv, e.target.value)}
+                            aria-label={`Change status of invoice ${inv.number}`}
+                            className={`rounded-lg border border-input bg-background px-2 py-1 text-xs capitalize text-foreground transition-colors duration-150 ${FOCUS_RING}`}>
+                            {INVOICE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </div>
+                      </td>
+                      <td className="px-4">
+                        <label className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background`}
+                          title={inv.pdf_path ? "Replace PDF" : "Attach PDF"}>
+                          {busyId === inv.id ? (
+                            <RefreshCw aria-hidden="true" className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                          ) : inv.pdf_path ? (
+                            <Check aria-hidden="true" className="h-3.5 w-3.5 text-success" />
+                          ) : (
+                            <Upload aria-hidden="true" className="h-3.5 w-3.5" />
+                          )}
+                          {inv.pdf_path ? "PDF" : "Upload"}
+                          <input type="file" accept="application/pdf" className="sr-only"
+                            aria-label={inv.pdf_path ? `Replace PDF for invoice ${inv.number}` : `Attach PDF to invoice ${inv.number}`}
+                            disabled={busyId === inv.id}
+                            onChange={(e) => onRowUpload(inv, e.target.files?.[0] || null)} />
+                        </label>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Section>
       </div>
     </div>
   );
 }
 
 /* ---------------- Approvals ---------------- */
-function ClientApprovalsTab({ orgId, admin, clients, projects, links, approvals, reload }) {
+function ClientApprovalsTab({ orgId, admin, clients, projects, links, approvals, reload, loading, loadError }) {
   const [projectId, setProjectId] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -930,102 +1032,117 @@ function ClientApprovalsTab({ orgId, admin, clients, projects, links, approvals,
 
   return (
     <div className="grid gap-5 lg:grid-cols-3">
-      <form onSubmit={add} className="rounded-xl border border-border bg-card p-5 shadow-card lg:col-span-1">
-        <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-          <CheckSquare className="h-4 w-4 text-primary" /> Request approval
-        </h3>
-        <label className="mb-1 block text-xs font-medium text-foreground">Project</label>
-        <select value={projectId} onChange={(e) => setProjectId(e.target.value)}
-          className="mb-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
-          <option value="">— Select project —</option>
-          {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-        {projectId && (
-          <p className="mb-3 text-xs text-muted-foreground">
-            {linkedClients.length
-              ? `Visible to: ${linkedClients.map((c) => c.name || c.email).join(", ")}`
-              : "No clients linked to this project yet — link one under “Project links”."}
-          </p>
-        )}
-        <label className="mb-1 block text-xs font-medium text-foreground">Title</label>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Homepage design v2" required
-          className="mb-3 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30" />
-        <label className="mb-1 block text-xs font-medium text-foreground">Description</label>
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="What needs sign-off…"
-          className="mb-3 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30" />
-        <label className="mb-1 block text-xs font-medium text-foreground">Item type</label>
-        <select value={itemType} onChange={(e) => setItemType(e.target.value)}
-          className="mb-3 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
-          {APPROVAL_ITEM_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
-        {itemType === "task" ? (
-          <>
-            <label className="mb-1 block text-xs font-medium text-foreground">Task</label>
-            <select value={itemRef} onChange={(e) => setItemRef(e.target.value)} disabled={!projectId || tasksLoading}
-              className="mb-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 disabled:opacity-50">
-              <option value="">{!projectId ? "Pick a project first" : tasksLoading ? "Loading tasks…" : "Select a task"}</option>
-              {taskOptions.map((t) => <option key={t.id} value={t.id}>{t.task_title}</option>)}
-            </select>
-            <p className="mb-3 text-xs text-muted-foreground">
-              {projectId && !tasksLoading && taskOptions.length === 0
-                ? "This project has no client-visible tasks yet. Turn on \"Visible to client\" on a task first — a client cannot approve work they cannot open."
-                : "The client's decision is stamped back onto this task, so the team sees it on the board."}
-            </p>
-          </>
-        ) : (
-          <>
-            <label className="mb-1 block text-xs font-medium text-foreground">Item reference (optional)</label>
-            <input value={itemRef} onChange={(e) => setItemRef(e.target.value)} placeholder="UUID of referenced item"
-              className="mb-3 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30" />
-          </>
-        )}
-        <button disabled={saving} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-          <Plus className="h-4 w-4" /> {saving ? "Sending…" : "Request approval"}
-        </button>
-      </form>
+      <Card className="lg:col-span-1">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CheckSquare aria-hidden="true" className="h-4 w-4 text-primary" /> Request approval
+          </CardTitle>
+          <CardDescription>The client’s decision comes back onto the board.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={add} className="space-y-4">
+            <Field label="Project" htmlFor="apr-project"
+              hint={projectId
+                ? (linkedClients.length
+                  ? `Visible to: ${linkedClients.map((c) => c.name || c.email).join(", ")}`
+                  : "No clients linked to this project yet — link one under “Project links”.")
+                : undefined}>
+              <select id="apr-project" value={projectId} onChange={(e) => setProjectId(e.target.value)} className={CONTROL}>
+                <option value="">— Select project —</option>
+                {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Title" htmlFor="apr-title" required>
+              <Input id="apr-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Homepage design v2" required />
+            </Field>
+            <Field label="Description" htmlFor="apr-description">
+              <textarea id="apr-description" value={description} onChange={(e) => setDescription(e.target.value)} rows={3}
+                placeholder="What needs sign-off…" className={CONTROL} />
+            </Field>
+            <Field label="Item type" htmlFor="apr-item-type">
+              <select id="apr-item-type" value={itemType} onChange={(e) => setItemType(e.target.value)} className={`${CONTROL} capitalize`}>
+                {APPROVAL_ITEM_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </Field>
+            {itemType === "task" ? (
+              <Field label="Task" htmlFor="apr-task"
+                hint={projectId && !tasksLoading && taskOptions.length === 0
+                  ? "This project has no client-visible tasks yet. Turn on \"Visible to client\" on a task first — a client cannot approve work they cannot open."
+                  : "The client's decision is stamped back onto this task, so the team sees it on the board."}>
+                <select id="apr-task" value={itemRef} onChange={(e) => setItemRef(e.target.value)}
+                  disabled={!projectId || tasksLoading} className={`${CONTROL} disabled:opacity-50`}>
+                  <option value="">{!projectId ? "Pick a project first" : tasksLoading ? "Loading tasks…" : "Select a task"}</option>
+                  {taskOptions.map((t) => <option key={t.id} value={t.id}>{t.task_title}</option>)}
+                </select>
+              </Field>
+            ) : (
+              <Field label="Item reference (optional)" htmlFor="apr-item-ref">
+                <Input id="apr-item-ref" value={itemRef} onChange={(e) => setItemRef(e.target.value)}
+                  placeholder="UUID of referenced item" />
+              </Field>
+            )}
+            <Button type="submit" disabled={saving} className="w-full">
+              <Plus aria-hidden="true" className="h-4 w-4" /> {saving ? "Sending…" : "Request approval"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
       <div className="lg:col-span-2">
-        {approvals.length === 0 ? (
-          <EmptyCard label="No approval requests yet" />
-        ) : (
-          <div className="space-y-3">
-            {approvals.map((a) => (
-              <div key={a.id} className="rounded-xl border border-border bg-card p-4 shadow-card">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate font-semibold text-foreground">{a.title}</p>
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusPill(a.status)}`}>{a.status}</span>
+        <Section title="Approval requests">
+          {loadError ? (
+            <ErrorState title="Couldn't load approvals" description={loadError} onRetry={reload} />
+          ) : loading ? (
+            <SkeletonList rows={3} />
+          ) : approvals.length === 0 ? (
+            <EmptyState icon={CheckSquare} title="No approval requests yet"
+              description="Ask a client to sign off on a task, deliverable or milestone." />
+          ) : (
+            <div className="space-y-3">
+              {approvals.map((a) => (
+                <Card key={a.id}>
+                  <CardContent className="space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="truncate font-semibold text-foreground">{a.title}</p>
+                          <StatusPill status={pillStatus(a.status)} label={a.status} size="sm" className="capitalize" />
+                        </div>
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{a.description || "—"}</p>
+                      </div>
+                      <Button type="button" variant="ghost" size="icon-sm" onClick={() => remove(a)}
+                        title="Delete" aria-label={`Delete approval ${a.title}`}
+                        className={`shrink-0 ${DANGER_ICON_BTN}`}>
+                        <Trash2 aria-hidden="true" className="h-4 w-4" />
+                      </Button>
                     </div>
-                    <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{a.description || "—"}</p>
-                  </div>
-                  <button onClick={() => remove(a)} title="Delete" className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 font-medium">
-                    <Building2 className="h-3.5 w-3.5" /> {projName(a.project_id)}
-                  </span>
-                  <span className="rounded-full bg-muted px-2.5 py-1 font-medium capitalize">{a.item_type}</span>
-                  <span>Requested {fmtDate(a.created_at)}</span>
-                  {a.decided_at && <span>· Decided {fmtDate(a.decided_at)}</span>}
-                  {a.note && <span className="italic">“{a.note}”</span>}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <Badge variant="outline" size="sm">
+                        <Building2 aria-hidden="true" /> {projName(a.project_id)}
+                      </Badge>
+                      <Badge variant="secondary" size="sm" className="capitalize">{a.item_type}</Badge>
+                      <span>Requested {fmtDate(a.created_at)}</span>
+                      {a.decided_at && <span>· Decided {fmtDate(a.decided_at)}</span>}
+                      {a.note && <span className="italic">“{a.note}”</span>}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </Section>
       </div>
     </div>
   );
 }
 
 /* ---------------- Support ---------------- */
-function ClientSupportTab({ orgId, admin, clients, threads, reload }) {
+function ClientSupportTab({ orgId, admin, clients, threads, reload, loading, loadError }) {
   const [activeId, setActiveId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
+  // Presentation-only: surfaces the failure openThread already caught.
+  const [msgError, setMsgError] = useState(null);
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
 
@@ -1038,6 +1155,7 @@ function ClientSupportTab({ orgId, admin, clients, threads, reload }) {
   const openThread = useCallback(async (t) => {
     setActiveId(t.id);
     setLoadingMsgs(true);
+    setMsgError(null);
     try {
       const { data } = await supabase
         .from("support_messages")
@@ -1045,8 +1163,9 @@ function ClientSupportTab({ orgId, admin, clients, threads, reload }) {
         .eq("thread_id", t.id)
         .order("created_at", { ascending: true });
       setMessages(data || []);
-    } catch {
+    } catch (err) {
       setMessages([]);
+      setMsgError(err?.message || "Could not load this conversation.");
     } finally {
       setLoadingMsgs(false);
     }
@@ -1087,53 +1206,65 @@ function ClientSupportTab({ orgId, admin, clients, threads, reload }) {
     <div className="grid gap-5 lg:grid-cols-3">
       {/* Threads list */}
       <div className="lg:col-span-1">
-        <h3 className="mb-2 text-sm font-semibold text-foreground">Support threads</h3>
-        {threads.length === 0 ? (
-          <EmptyCard label="No support threads yet" />
-        ) : (
-          <div className="space-y-2">
-            {threads.map((t) => {
-              const active = t.id === activeId;
-              return (
-                <button key={t.id} onClick={() => openThread(t)}
-                  className={`w-full rounded-xl border p-3 text-left shadow-card transition-colors ${
-                    active ? "border-primary bg-primary/5" : "border-border bg-card hover:bg-muted"
-                  }`}>
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-sm font-semibold text-foreground">{t.subject}</p>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusPill(t.status)}`}>{t.status}</span>
-                  </div>
-                  <p className="mt-1 truncate text-xs text-muted-foreground">{clientName(t.client_id)}</p>
-                  <p className="mt-0.5 text-[11px] text-muted-foreground">{fmtDateTime(t.last_message_at)}</p>
-                </button>
-              );
-            })}
-          </div>
-        )}
+        <Section title="Support threads">
+          {loadError ? (
+            <ErrorState title="Couldn't load threads" description={loadError} onRetry={reload} />
+          ) : loading ? (
+            <SkeletonList rows={4} />
+          ) : threads.length === 0 ? (
+            <EmptyState icon={LifeBuoy} title="No support threads yet"
+              description="Clients start conversations from their portal — they land here." />
+          ) : (
+            <div className="space-y-2">
+              {threads.map((t) => {
+                const active = t.id === activeId;
+                return (
+                  <button key={t.id} type="button" onClick={() => openThread(t)} aria-pressed={active}
+                    className={`w-full rounded-xl border p-4 text-left shadow-card transition-colors duration-150 ${FOCUS_RING} ${
+                      active ? "border-primary bg-primary/5" : "border-border bg-card hover:bg-muted/40"
+                    }`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-sm font-semibold text-foreground">{t.subject}</p>
+                      <StatusPill status={pillStatus(t.status)} label={t.status} size="sm" className="shrink-0 capitalize" />
+                    </div>
+                    <p className="mt-1 truncate text-xs text-muted-foreground">{clientName(t.client_id)}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{fmtDateTime(t.last_message_at)}</p>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </Section>
       </div>
 
       {/* Conversation */}
       <div className="lg:col-span-2">
         {!activeThread ? (
-          <EmptyCard label="Select a thread to read and reply" />
+          <EmptyState icon={MessageSquare} title="Select a thread"
+            description="Pick a conversation on the left to read it and reply as the agency." />
         ) : (
-          <div className="flex h-full flex-col rounded-xl border border-border bg-card shadow-card">
-            <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+          <Card className="flex h-full flex-col animate-fade-in motion-reduce:animate-none">
+            <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-border pb-4">
               <div className="min-w-0">
-                <p className="truncate font-semibold text-foreground">{activeThread.subject}</p>
-                <p className="text-xs text-muted-foreground">{clientName(activeThread.client_id)}</p>
+                <CardTitle className="truncate">{activeThread.subject}</CardTitle>
+                <CardDescription className="truncate">{clientName(activeThread.client_id)}</CardDescription>
               </div>
-              <button onClick={() => toggleStatus(activeThread)}
-                className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted">
-                {activeThread.status === "open" ? "Close thread" : "Reopen"}
-              </button>
-            </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <StatusPill status={pillStatus(activeThread.status)} label={activeThread.status} size="sm" className="capitalize" />
+                <Button type="button" variant="outline" size="sm" onClick={() => toggleStatus(activeThread)}>
+                  {activeThread.status === "open" ? "Close thread" : "Reopen"}
+                </Button>
+              </div>
+            </CardHeader>
 
-            <div className="max-h-[420px] min-h-[220px] space-y-3 overflow-y-auto p-4">
-              {loadingMsgs ? (
-                <p className="text-center text-sm text-muted-foreground">Loading messages…</p>
+            <CardContent className="max-h-[420px] min-h-[220px] flex-1 space-y-3 overflow-y-auto">
+              {msgError ? (
+                <ErrorState title="Couldn't load messages" description={msgError} onRetry={() => openThread(activeThread)} />
+              ) : loadingMsgs ? (
+                <SkeletonList rows={3} />
               ) : messages.length === 0 ? (
-                <p className="text-center text-sm text-muted-foreground">No messages in this thread yet.</p>
+                <EmptyState icon={MessageSquare} title="No messages in this thread yet"
+                  description="Send the first reply below." />
               ) : messages.map((m) => {
                 const agency = m.sender_type === "agency";
                 return (
@@ -1141,35 +1272,30 @@ function ClientSupportTab({ orgId, admin, clients, threads, reload }) {
                     <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
                       agency ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
                     }`}>
-                      <p className="mb-0.5 flex items-center gap-1 text-[11px] opacity-80">
-                        <MessageSquare className="h-3 w-3" /> {m.sender_name || (agency ? "Agency" : "Client")}
+                      <p className="mb-0.5 flex items-center gap-1 text-xs opacity-80">
+                        <MessageSquare aria-hidden="true" className="h-4 w-4" /> {m.sender_name || (agency ? "Agency" : "Client")}
                       </p>
                       <p className="whitespace-pre-wrap">{m.body}</p>
-                      <p className="mt-1 text-[10px] opacity-70">{fmtDateTime(m.created_at)}</p>
+                      <p className="mt-1 text-xs opacity-70">{fmtDateTime(m.created_at)}</p>
                     </div>
                   </div>
                 );
               })}
-            </div>
+            </CardContent>
 
-            <form onSubmit={send} className="flex items-end gap-2 border-t border-border p-3">
-              <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={2} placeholder="Reply as agency…"
-                className="flex-1 resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30" />
-              <button disabled={sending || !reply.trim()} className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-                <Send className="h-4 w-4" /> {sending ? "…" : "Send"}
-              </button>
-            </form>
-          </div>
+            <CardFooter>
+              <form onSubmit={send} className="flex w-full items-end gap-2">
+                <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={2}
+                  aria-label="Reply as agency" placeholder="Reply as agency…"
+                  className={`flex-1 resize-none ${CONTROL}`} />
+                <Button type="submit" disabled={sending || !reply.trim()}>
+                  <Send aria-hidden="true" className="h-4 w-4" /> {sending ? "…" : "Send"}
+                </Button>
+              </form>
+            </CardFooter>
+          </Card>
         )}
       </div>
-    </div>
-  );
-}
-
-function EmptyCard({ label }) {
-  return (
-    <div className="flex h-full min-h-[160px] items-center justify-center rounded-xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
-      {label}
     </div>
   );
 }

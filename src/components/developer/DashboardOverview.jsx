@@ -5,11 +5,28 @@ import { setVisibleInterval } from "@/hooks/useVisibleInterval";
 import { supabase } from "@/utils/supabaseClient";
 import { Mail, CalendarDays, FolderKanban, CheckCircle2, Clock, Timer } from "lucide-react";
 import StatCard from "@/components/shell/StatCard";
+import { EmptyState, Section, Skeleton, StatusPill } from "@/components/ui";
+
+// Project status → StatusPill state. Status is colour + glyph + text, never a
+// bare tinted chip.
+const PROJECT_STATUS = {
+  completed: { status: "success", label: "Completed" },
+  in_progress: { status: "active", label: "In progress" },
+  "in progress": { status: "active", label: "In progress" },
+  active: { status: "active", label: "In progress" },
+  on_hold: { status: "warning", label: "On hold" },
+  "on hold": { status: "warning", label: "On hold" },
+  cancelled: { status: "error", label: "Cancelled" },
+  canceled: { status: "error", label: "Cancelled" },
+};
 
 export default function DashboardOverview({ user, assignedProjects = [] }) {
   const [recentProjects, setRecentProjects] = useState([]);
   const [todayTrackedTime, setTodayTrackedTime] = useState("00:00:00");
   const [taskStats, setTaskStats] = useState({ completed: 0, pending: 0 });
+  // Purely presentational: lets the first paint show skeletons instead of an
+  // "empty" card that is really still loading.
+  const [firstLoadDone, setFirstLoadDone] = useState(false);
 
   const userId = user?.id || null;
   const userEmail = user?.email || null;
@@ -44,19 +61,7 @@ export default function DashboardOverview({ user, assignedProjects = [] }) {
 
   const getStatusBadge = useCallback((status) => {
     const s = String(status || "pending").toLowerCase();
-    if (s === "completed") {
-      return { label: "Completed", className: "bg-green-100 text-green-700" };
-    }
-    if (s === "in_progress" || s === "in progress" || s === "active") {
-      return { label: "In progress", className: "bg-info/10 text-info" };
-    }
-    if (s === "on_hold" || s === "on hold") {
-      return { label: "On hold", className: "bg-yellow-100 text-yellow-800" };
-    }
-    if (s === "cancelled" || s === "canceled") {
-      return { label: "Cancelled", className: "bg-red-100 text-red-700" };
-    }
-    return { label: "Pending", className: "bg-gray-100 text-gray-700" };
+    return PROJECT_STATUS[s] || { status: "pending", label: "Pending" };
   }, []);
 
   const formatUpdatedAt = useCallback((value) => {
@@ -303,7 +308,7 @@ export default function DashboardOverview({ user, assignedProjects = [] }) {
         void Promise.all([
           loadProjects(),
           loadTodayTrackedTime(),
-        ]);
+        ]).finally(() => setFirstLoadDone(true));
       }, 250);
     };
 
@@ -387,21 +392,39 @@ export default function DashboardOverview({ user, assignedProjects = [] }) {
 
       {/* Stat cards */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Total Projects" value={assignedProjects?.length || recentProjects?.length || 0} icon={FolderKanban} tone="primary" />
-        <StatCard title="Completed Tasks" value={taskStats.completed} icon={CheckCircle2} tone="success" />
-        <StatCard title="Pending Tasks" value={taskStats.pending} icon={Clock} tone="warning" />
-        <StatCard title="Today's Tracked Time" value={todayTrackedTime} icon={Timer} tone="info" />
+        <StatCard title="Total projects" value={assignedProjects?.length || recentProjects?.length || 0} icon={FolderKanban} tone="primary" loading={!firstLoadDone} />
+        <StatCard title="Completed tasks" value={taskStats.completed} icon={CheckCircle2} tone="success" loading={!firstLoadDone} />
+        <StatCard title="Pending tasks" value={taskStats.pending} icon={Clock} tone="warning" loading={!firstLoadDone} />
+        <StatCard title="Tracked today" value={todayTrackedTime} icon={Timer} tone="info" loading={!firstLoadDone} />
       </div>
 
       {/* Recent projects */}
-      <div className="rounded-xl border border-border bg-card p-6 shadow-card">
-        <h3 className="mb-4 text-base font-semibold text-foreground">Most recent activity</h3>
-
-        {recentProjects.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border p-10 text-center">
-            <p className="text-sm font-medium text-muted-foreground">No projects to display</p>
-            <p className="mt-1 text-xs text-muted-foreground">Projects assigned to you will appear here.</p>
+      <Section
+        title="Most recent activity"
+        description="The three projects you touched most recently."
+        className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5"
+      >
+        {!firstLoadDone ? (
+          // Skeleton shaped like the loaded cards, so the panel does not jump.
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-busy="true">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="space-y-3 rounded-lg border border-border p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-5 w-20 rounded-full" />
+                </div>
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-2/3" />
+                <Skeleton className="h-3 w-full" />
+              </div>
+            ))}
           </div>
+        ) : recentProjects.length === 0 ? (
+          <EmptyState
+            icon={FolderKanban}
+            title="No projects to display"
+            description="Projects assigned to you will appear here as soon as they land."
+          />
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {recentProjects.map((p) => {
@@ -412,27 +435,27 @@ export default function DashboardOverview({ user, assignedProjects = [] }) {
               return (
                 <div
                   key={p.id}
-                  className="rounded-lg border border-border bg-card p-4 shadow-card transition-colors hover:border-primary/40"
+                  className="rounded-lg border border-border bg-card p-4 shadow-card transition-colors duration-150 hover:border-primary/40"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <p className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{p.name}</p>
-                    <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-medium ${badge.className}`}>
-                      {badge.label}
-                    </span>
+                    <p className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground" title={p.name}>
+                      {p.name}
+                    </p>
+                    <StatusPill status={badge.status} label={badge.label} size="sm" className="shrink-0" />
                   </div>
                   <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                     {desc || "No description provided."}
                   </p>
                   <div className="mt-3 flex items-center justify-between border-t border-border pt-2 text-xs text-muted-foreground">
                     <span>Last activity</span>
-                    <span className="font-medium text-foreground">{updated}</span>
+                    <span className="font-medium tabular-nums text-foreground">{updated}</span>
                   </div>
                 </div>
               );
             })}
           </div>
         )}
-      </div>
+      </Section>
     </div>
   );
 }

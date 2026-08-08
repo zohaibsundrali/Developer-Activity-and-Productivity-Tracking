@@ -3,7 +3,15 @@
 import { useEffect, useState, useCallback } from "react";
 import { Megaphone, Globe, FolderKanban } from "lucide-react";
 import { authFetch } from "@/utils/authFetch";
-import { Spinner, EmptyState, ErrorState, SectionHeader, formatDateTime } from "./ClientShared";
+import { Badge } from "@/components/ui";
+import {
+  ClientPage,
+  Panel,
+  EmptyState,
+  ErrorState,
+  RowsSkeleton,
+  formatDateTime,
+} from "./ClientShared";
 
 export default function ClientAnnouncements() {
   const [items, setItems] = useState([]);
@@ -32,13 +40,24 @@ export default function ClientAnnouncements() {
     load();
   }, [load]);
 
-  if (loading) return <Spinner label="Loading announcements…" />;
-  if (error) return <ErrorState message={error} onRetry={load} />;
+  if (loading) {
+    return (
+      <ClientPage title="Announcements" description="News and updates from your agency">
+        <RowsSkeleton count={3} />
+      </ClientPage>
+    );
+  }
+
+  if (error) {
+    return (
+      <ClientPage title="Announcements" description="News and updates from your agency">
+        <ErrorState message={error} onRetry={load} />
+      </ClientPage>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <SectionHeader title="Announcements" subtitle="News and updates from your agency" />
-
+    <ClientPage title="Announcements" description="News and updates from your agency">
       {items.length === 0 ? (
         <EmptyState
           icon={Megaphone}
@@ -46,33 +65,37 @@ export default function ClientAnnouncements() {
           message="When your agency posts an update, you'll see it here."
         />
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-6">
           {items.map((a) => {
             const isProject = Boolean(a.project_id || a.project_name);
             return (
-              <div key={a.id} className="rounded-xl border border-border bg-card p-5 shadow-card">
-                <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
-                  <h3 className="text-base font-bold text-foreground">{a.title || "Announcement"}</h3>
-                  <span
-                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
-                      isProject ? "bg-primary/10 text-primary" : "bg-info/10 text-info"
-                    }`}
-                  >
-                    {isProject ? <FolderKanban className="h-3.5 w-3.5" /> : <Globe className="h-3.5 w-3.5" />}
+              <Panel key={a.id} className="space-y-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <h2 className="text-lg font-semibold leading-snug text-foreground">
+                    {a.title || "Announcement"}
+                  </h2>
+                  <Badge variant={isProject ? "default" : "info"}>
+                    {isProject ? (
+                      <FolderKanban className="h-3.5 w-3.5" aria-hidden="true" />
+                    ) : (
+                      <Globe className="h-3.5 w-3.5" aria-hidden="true" />
+                    )}
                     {isProject ? a.project_name || "Project" : "Org-wide"}
-                  </span>
+                  </Badge>
                 </div>
-                {a.body && <p className="text-sm text-muted-foreground whitespace-pre-line">{a.body}</p>}
+                {a.body && (
+                  <p className="whitespace-pre-line text-[15px] leading-relaxed text-muted-foreground">{a.body}</p>
+                )}
                 {(a.published_at || a.created_at) && (
-                  <p className="mt-3 text-xs text-muted-foreground">
+                  <p className="text-sm text-muted-foreground">
                     {formatDateTime(a.published_at || a.created_at)}
                   </p>
                 )}
-              </div>
+              </Panel>
             );
           })}
         </div>
       )}
-    </div>
+    </ClientPage>
   );
 }

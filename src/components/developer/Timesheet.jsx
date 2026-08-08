@@ -1,10 +1,38 @@
 "use client";
 import { useState, useEffect } from "react";
+import { ListChecks } from "lucide-react";
 import { supabase } from "@/utils/supabaseClient";
+import {
+  Badge,
+  EmptyState,
+  ErrorState,
+  Skeleton,
+  SkeletonTable,
+  StatusPill,
+  Tabs,
+} from "@/components/ui";
+
+/** Deadline chips map onto StatusPill statuses so state is never colour alone. */
+const DEADLINE_TONE = {
+  overdue: "error",
+  soon: "warning",
+  ok: "success",
+  onTime: "success",
+  late: "error",
+};
+
+const STATUS_PILL = {
+  pending: { status: "pending", label: "Pending" },
+  in_progress: { status: "active", label: "In progress" },
+  awaiting_approval: { status: "pending", label: "Awaiting review" },
+  completed: { status: "success", label: "Completed" },
+  rejected: { status: "error", label: "Rejected" },
+};
 
 export default function Timesheet({ user }) {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [filter, setFilter] = useState("all"); // all, completed, pending, rejected
   const [developerId, setDeveloperId] = useState(null);
 
@@ -35,6 +63,7 @@ export default function Timesheet({ user }) {
   const fetchTasks = async () => {
     try {
       setLoading(true);
+      setError("");
       const { data, error } = await supabase
         .from("developer_tasks")
         .select(`
@@ -52,6 +81,7 @@ export default function Timesheet({ user }) {
       setTasks(data || []);
     } catch (err) {
       console.error("Failed to load timesheet:", err);
+      setError(err?.message || "Could not load your timesheet.");
     } finally {
       setLoading(false);
     }
@@ -72,32 +102,16 @@ export default function Timesheet({ user }) {
       const end = task.end_date ? new Date(task.end_date) : null;
       if (!end) return null;
       const daysLeft = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
-      if (daysLeft < 0) return { label: "Overdue", color: "text-destructive bg-destructive/10 border-destructive/20" };
-      if (daysLeft <= 3) return { label: `${daysLeft}d left`, color: "text-warning bg-warning/10 border-warning/20" };
-      return { label: `${daysLeft}d left`, color: "text-success bg-success/10 border-success/20" };
+      if (daysLeft < 0) return { label: "Overdue", tone: DEADLINE_TONE.overdue };
+      if (daysLeft <= 3) return { label: `${daysLeft}d left`, tone: DEADLINE_TONE.soon };
+      return { label: `${daysLeft}d left`, tone: DEADLINE_TONE.ok };
     }
-    if (task.is_on_time === true) return { label: "On Time", color: "text-success bg-success/10 border-success/20" };
-    if (task.is_on_time === false) return { label: "Late", color: "text-destructive bg-destructive/10 border-destructive/20" };
+    if (task.is_on_time === true) return { label: "On time", tone: DEADLINE_TONE.onTime };
+    if (task.is_on_time === false) return { label: "Late", tone: DEADLINE_TONE.late };
     return null;
   };
 
-  const getStatusBadge = (status) => {
-    const map = {
-      pending: "bg-warning/10 text-warning border-warning/20",
-      in_progress: "bg-info/10 text-info border-info/20",
-      awaiting_approval: "bg-info/10 text-info border-info/20",
-      completed: "bg-success/10 text-success border-success/20",
-      rejected: "bg-destructive/10 text-destructive border-destructive/20",
-    };
-    const labels = {
-      pending: "Pending",
-      in_progress: "In Progress",
-      awaiting_approval: "Awaiting Review",
-      completed: "Completed",
-      rejected: "Rejected",
-    };
-    return { cls: map[status] || map.pending, label: labels[status] || status };
-  };
+  const getStatusPill = (status) => STATUS_PILL[status] || { status: "unknown", label: status || "Unknown" };
 
   const filteredTasks = tasks.filter((t) => {
     if (filter === "all") return true;
@@ -118,113 +132,133 @@ export default function Timesheet({ user }) {
       : 0;
   const totalPoints = onTimeTasks - lateTasks;
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
-        <span className="ml-3 text-muted-foreground">Loading timesheet...</span>
-      </div>
-    );
-  }
+  // Written out in full — Tailwind only ships classes it can see as literals.
+  const productivityToneClass =
+    productivityPct >= 80
+      ? "text-success"
+      : productivityPct >= 50
+      ? "text-warning"
+      : "text-destructive";
+
+  const tabs = [
+    { id: "all", label: "All", count: tasks.length },
+    {
+      id: "pending",
+      label: "Active",
+      count: tasks.filter((t) => ["pending", "in_progress", "awaiting_approval"].includes(t.status)).length,
+    },
+    { id: "completed", label: "Completed", count: completedTasks.length },
+    { id: "rejected", label: "Rejected", count: tasks.filter((t) => t.status === "rejected").length },
+  ];
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
-        <h2 className="text-xl font-bold tracking-tight text-foreground">My Timesheet</h2>
-        <p className="text-muted-foreground text-sm mt-1">Track your task completion, deadlines, and productivity score</p>
+        <h2 className="text-xl font-semibold tracking-tight text-foreground">My timesheet</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Task completion, deadlines and your productivity score.
+        </p>
       </div>
 
-      {/* Productivity Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="rounded-xl border border-border bg-card p-4 text-center shadow-card">
-          <div className="text-3xl font-bold text-foreground">{totalTasks}</div>
-          <div className="text-sm text-muted-foreground mt-1">Total Tasks</div>
-        </div>
-        <div className="rounded-xl border border-success/20 bg-success/10 p-4 text-center shadow-card">
-          <div className="text-3xl font-bold text-success">{onTimeTasks}</div>
-          <div className="text-sm text-success mt-1">On Time</div>
-          <div className="text-xs text-success">+{onTimeTasks} pts</div>
-        </div>
-        <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-center shadow-card">
-          <div className="text-3xl font-bold text-destructive">{lateTasks}</div>
-          <div className="text-sm text-destructive mt-1">Late</div>
-          <div className="text-xs text-destructive">−{lateTasks} pts</div>
-        </div>
-        <div className={`rounded-xl border p-4 text-center shadow-card ${productivityPct >= 80 ? 'bg-success/10 border-success/20' : productivityPct >= 50 ? 'bg-warning/10 border-warning/20' : 'bg-destructive/10 border-destructive/20'}`}>
-          <div className={`text-3xl font-bold ${productivityPct >= 80 ? 'text-success' : productivityPct >= 50 ? 'text-warning' : 'text-destructive'}`}>
-            {productivityPct}%
-          </div>
-          <div className="text-sm text-muted-foreground mt-1">Productivity</div>
-          <div className="text-xs text-muted-foreground">Points: {totalPoints >= 0 ? `+${totalPoints}` : totalPoints}</div>
-        </div>
+      {/* Summary tiles — figures are tabular so the four numbers align. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {loading ? (
+          [0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-28 w-full rounded-xl" />)
+        ) : (
+          <>
+            <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
+              <div className="text-3xl font-semibold tabular-nums text-foreground">{totalTasks}</div>
+              <div className="mt-1 text-sm text-muted-foreground">Total tasks</div>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
+              <div className="text-3xl font-semibold tabular-nums text-success">{onTimeTasks}</div>
+              <div className="mt-1 text-sm text-muted-foreground">On time</div>
+              <div className="text-xs tabular-nums text-muted-foreground">+{onTimeTasks} pts</div>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
+              <div className="text-3xl font-semibold tabular-nums text-destructive">{lateTasks}</div>
+              <div className="mt-1 text-sm text-muted-foreground">Late</div>
+              <div className="text-xs tabular-nums text-muted-foreground">−{lateTasks} pts</div>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
+              <div className={`text-3xl font-semibold tabular-nums ${productivityToneClass}`}>
+                {productivityPct}%
+              </div>
+              <div className="mt-1 text-sm text-muted-foreground">Productivity</div>
+              <div className="text-xs tabular-nums text-muted-foreground">
+                Points: {totalPoints >= 0 ? `+${totalPoints}` : totalPoints}
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Filter Tabs */}
-      <div className="-mx-4 px-4 sm:mx-0 sm:px-0 border-b border-border">
-        <div className="flex gap-2 overflow-x-auto whitespace-nowrap">
-        {[
-          { key: "all", label: `All (${tasks.length})` },
-          { key: "pending", label: `Active (${tasks.filter(t => ["pending","in_progress","awaiting_approval"].includes(t.status)).length})` },
-          { key: "completed", label: `Completed (${completedTasks.length})` },
-          { key: "rejected", label: `Rejected (${tasks.filter(t => t.status === "rejected").length})` },
-        ].map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setFilter(tab.key)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap flex-shrink-0 ${
-              filter === tab.key
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-        </div>
-      </div>
+      <Tabs tabs={tabs} active={filter} onChange={setFilter} aria-label="Filter timesheet by status" />
 
-      {/* Tasks Table */}
-      {filteredTasks.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">No tasks found.</div>
+      {loading ? (
+        <div className="rounded-xl border border-border bg-card p-4 shadow-card" aria-busy="true">
+          <SkeletonTable rows={6} cols={6} />
+        </div>
+      ) : error ? (
+        <ErrorState title="Couldn't load your timesheet" description={error} onRetry={fetchTasks} />
+      ) : filteredTasks.length === 0 ? (
+        <EmptyState
+          icon={ListChecks}
+          title={filter === "all" ? "No tasks yet" : "Nothing in this view"}
+          description={
+            filter === "all"
+              ? "Tasks assigned to you will show up here with their deadlines and points."
+              : "Try another tab — you have tasks in other states."
+          }
+        />
       ) : (
-        <div className="rounded-xl border border-border bg-card shadow-card overflow-hidden">
+        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px] divide-y divide-border text-sm">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">#</th>
-                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Task Name</th>
-                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Project</th>
-                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Start Date</th>
-                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Deadline</th>
-                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Completed On</th>
-                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Status</th>
-                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Deadline Status</th>
-                  <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Points</th>
+              <thead>
+                <tr className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <th scope="col" className="px-4 py-3 text-right">#</th>
+                  <th scope="col" className="px-4 py-3 text-left">Task</th>
+                  <th scope="col" className="px-4 py-3 text-left">Project</th>
+                  <th scope="col" className="px-4 py-3 text-left">Start</th>
+                  <th scope="col" className="px-4 py-3 text-left">Deadline</th>
+                  <th scope="col" className="px-4 py-3 text-left">Completed</th>
+                  <th scope="col" className="px-4 py-3 text-left">Status</th>
+                  <th scope="col" className="px-4 py-3 text-left">Deadline status</th>
+                  <th scope="col" className="px-4 py-3 text-right">Points</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {filteredTasks.map((task, i) => {
-                  const status = getStatusBadge(task.status);
+                  const pill = getStatusPill(task.status);
                   const deadline = getDeadlineStatus(task);
                   return (
-                    <tr key={task.id} className="hover:bg-muted/50 transition-colors">
-                      <td className="px-4 py-3 text-muted-foreground font-mono">{i + 1}</td>
+                    <tr key={task.id} className="h-12 transition-colors duration-150 hover:bg-muted/40">
+                      <td className="px-4 py-3 text-right font-mono text-xs tabular-nums text-muted-foreground">
+                        {i + 1}
+                      </td>
                       <td className="px-4 py-3">
-                        <div className="font-medium text-foreground break-words max-w-[28rem]">
+                        <div className="max-w-[28rem] break-words font-medium text-foreground">
                           {task.task_title}
                         </div>
                         {task.rejection_reason && (
-                          <div className="text-xs text-destructive mt-1">
+                          <div className="mt-1 text-xs text-destructive">
                             Rejected: {task.rejection_reason}
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground">{task.projects?.name || "—"}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{formatDate(task.start_date)}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{formatDate(task.end_date)}</td>
                       <td className="px-4 py-3 text-muted-foreground">
+                        <span className="block max-w-[14rem] truncate" title={task.projects?.name || undefined}>
+                          {task.projects?.name || "—"}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 tabular-nums text-muted-foreground">
+                        {formatDate(task.start_date)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 tabular-nums text-muted-foreground">
+                        {formatDate(task.end_date)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 tabular-nums text-muted-foreground">
                         {task.actual_completion_date
                           ? formatDate(task.actual_completion_date)
                           : task.submitted_at
@@ -232,26 +266,26 @@ export default function Timesheet({ user }) {
                           : "—"}
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium border ${status.cls}`}>
-                          {status.label}
-                        </span>
+                        <StatusPill status={pill.status} label={pill.label} size="sm" />
                       </td>
                       <td className="px-4 py-3">
                         {deadline ? (
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium border ${deadline.color}`}>
-                            {deadline.label}
-                          </span>
+                          <StatusPill status={deadline.tone} label={deadline.label} size="sm" />
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-center font-bold">
+                      <td className="px-4 py-3 text-right">
                         {task.status === "completed" ? (
-                          <span className={task.is_on_time ? "text-success" : "text-destructive"}>
+                          <span
+                            className={`font-semibold tabular-nums ${
+                              task.is_on_time ? "text-success" : "text-destructive"
+                            }`}
+                          >
                             {task.is_on_time ? "+1" : "−1"}
                           </span>
                         ) : (
-                          <span className="text-muted-foreground">—</span>
+                          <span className="tabular-nums text-muted-foreground">—</span>
                         )}
                       </td>
                     </tr>
@@ -263,12 +297,13 @@ export default function Timesheet({ user }) {
         </div>
       )}
 
-      {/* Productivity Formula Note */}
-      <div className="bg-info/10 border border-info/20 rounded-lg p-4 text-sm text-info">
-        <strong>Productivity Formula:</strong> 
-        {" "}(On-time tasks − Late tasks) / Total tasks × 100 + 50%
-        {" "}· On-time completion = +1 point · Late completion = −1 point
-      </div>
+      {/* How the score is calculated — quiet, not another alert box. */}
+      <p className="text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">Productivity formula:</span>{" "}
+        (on-time tasks − late tasks) ÷ total tasks × 100 + 50%. On-time completion is{" "}
+        <Badge variant="success" size="sm">+1</Badge> point, late completion is{" "}
+        <Badge variant="destructive" size="sm">−1</Badge>.
+      </p>
     </div>
   );
 }

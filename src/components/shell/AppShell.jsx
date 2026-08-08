@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 import CommandPalette from "./CommandPalette";
 import GlobalSearchButton from "./GlobalSearchButton";
+
+const COLLAPSE_KEY = "devtrack.sidebarCollapsed";
 
 /**
  * Full dashboard chrome: premium left sidebar + sticky topbar + content area.
@@ -31,8 +33,54 @@ export default function AppShell({
   // the topbar button and the global Cmd+K listener inside CommandPalette.
   const [searchOpen, setSearchOpen] = useState(false);
 
+  // Restore the collapse preference after mount (never during render, so the
+  // server and first client paint agree).
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(COLLAPSE_KEY) === "1") setCollapsed(true);
+    } catch {
+      /* storage unavailable — the default expanded rail is fine */
+    }
+  }, []);
+
+  const toggleCollapse = useCallback(() => {
+    setCollapsed((value) => {
+      const next = !value;
+      try {
+        window.localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
+      } catch {
+        /* non-fatal */
+      }
+      return next;
+    });
+  }, []);
+
+  const closeMobile = useCallback(() => setMobileOpen(false), []);
+  const openMobile = useCallback(() => setMobileOpen(true), []);
+
+  // Crossing into the desktop breakpoint retires the drawer. Without this the
+  // drawer stays "open" in state after a rotate/resize, so the next time the
+  // window narrows the overlay is already covering the page.
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const query = window.matchMedia("(min-width: 1024px)");
+    const onChange = (event) => {
+      if (event.matches) setMobileOpen(false);
+    };
+    if (query.matches) setMobileOpen(false);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+
   return (
     <div className="min-h-screen bg-background">
+      <a
+        href="#main-content"
+        className="sr-only left-4 top-4 z-[60] rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-elevated focus:not-sr-only focus:fixed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      >
+        Skip to content
+      </a>
+
       <Sidebar
         role={role}
         brandName={brandName}
@@ -42,14 +90,14 @@ export default function AppShell({
         user={user}
         onLogout={onLogout}
         collapsed={collapsed}
-        onToggleCollapse={() => setCollapsed((v) => !v)}
+        onToggleCollapse={toggleCollapse}
         mobileOpen={mobileOpen}
-        onCloseMobile={() => setMobileOpen(false)}
+        onCloseMobile={closeMobile}
       />
 
       <div
         className={cn(
-          "flex min-h-screen flex-col transition-[padding] duration-300 ease-in-out",
+          "flex min-h-screen flex-col transition-[padding] duration-300 ease-in-out motion-reduce:transition-none",
           collapsed ? "lg:pl-[76px]" : "lg:pl-64"
         )}
       >
@@ -60,13 +108,12 @@ export default function AppShell({
           role={role}
           notificationSlot={notificationSlot}
           searchSlot={<GlobalSearchButton onClick={() => setSearchOpen(true)} />}
-          onOpenMobile={() => setMobileOpen(true)}
+          onOpenMobile={openMobile}
+          onLogout={onLogout}
         />
 
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mx-auto w-full max-w-[1400px] animate-fade-in">
-            {children}
-          </div>
+        <main id="main-content" tabIndex={-1} className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+          <div className="mx-auto w-full max-w-[1400px] animate-fade-in motion-reduce:animate-none">{children}</div>
         </main>
       </div>
 

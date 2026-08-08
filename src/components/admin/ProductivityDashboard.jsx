@@ -5,6 +5,8 @@ import { getOrgId } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
 import EChart from "@/components/charts/EChart";
 import {
+  PALETTE,
+  SEMANTIC,
   textStyle,
   baseGrid,
   baseTooltip,
@@ -13,8 +15,24 @@ import {
   axisLine,
   splitLine,
 } from "@/components/charts/chartTheme";
+import {
+  BarChart3,
+  RefreshCw,
+  Users,
+} from "lucide-react";
+import {
+  EmptyState,
+  ErrorState,
+  Field,
+  Section,
+  Skeleton,
+  SkeletonTable,
+  Tabs,
+} from "@/components/ui";
 
-const COLORS = ["#0c8f6e", "#0ea5e9", "#f59e0b", "#ef4444", "#0c8f6e", "#10b981"];
+// Status slices read left-to-right as good → bad, so the colours are semantic
+// rather than a rotation through the categorical palette.
+const STATUS_COLORS = [SEMANTIC.success, SEMANTIC.danger, SEMANTIC.muted];
 
 export default function ProductivityDashboard({ currentAdmin }) {
   const [loading, setLoading] = useState(true);
@@ -24,6 +42,9 @@ export default function ProductivityDashboard({ currentAdmin }) {
   const [developers, setDevelopers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [productivityData, setProductivityData] = useState(null);
+  // Presentation only: the fetch below already knew when it failed, it just
+  // had nowhere to say so.
+  const [loadError, setLoadError] = useState("");
 
   // Fetch developers and projects on mount
   useEffect(() => {
@@ -66,6 +87,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
   const fetchProductivityData = async () => {
     try {
       setLoading(true);
+      setLoadError("");
 
       let url = "/api/productivity?";
 
@@ -88,9 +110,12 @@ export default function ProductivityDashboard({ currentAdmin }) {
 
       if (data.success) {
         setProductivityData(data);
+      } else {
+        setLoadError(data?.error || "The productivity service returned no data.");
       }
     } catch (error) {
       console.error("Fetch productivity error:", error);
+      setLoadError(error?.message || "Could not reach the productivity service.");
     } finally {
       setLoading(false);
     }
@@ -103,30 +128,34 @@ export default function ProductivityDashboard({ currentAdmin }) {
     const circumference = 2 * Math.PI * radius;
     const offset = circumference - (value / 100) * circumference;
 
-    const getColor = (val) => {
-      if (val >= 80) return "#10b981"; // green
-      if (val >= 60) return "#f59e0b"; // yellow
-      return "#ef4444"; // red
-    };
+    // Stroke colours come from Tailwind's token-backed `stroke-*` utilities,
+    // so the dial follows the theme instead of three hard-coded hexes.
+    const strokeClass =
+      value >= 80 ? "stroke-success" : value >= 60 ? "stroke-warning" : "stroke-destructive";
 
     return (
-      <div className="relative" style={{ width: size, height: size }}>
-        <svg width={size} height={size} className="transform -rotate-90">
-          {/* Background circle */}
+      <div
+        className="relative shrink-0"
+        style={{ width: size, height: size }}
+        role="img"
+        aria-label={`Productivity ${value} percent`}
+      >
+        <svg width={size} height={size} className="-rotate-90" aria-hidden="true">
+          {/* Track */}
           <circle
             cx={size / 2}
             cy={size / 2}
             r={radius}
-            stroke="#e2e8f0"
+            className="stroke-border"
             strokeWidth={strokeWidth}
             fill="none"
           />
-          {/* Progress circle */}
+          {/* Progress */}
           <circle
             cx={size / 2}
             cy={size / 2}
             r={radius}
-            stroke={getColor(value)}
+            className={strokeClass}
             strokeWidth={strokeWidth}
             fill="none"
             strokeLinecap="round"
@@ -136,7 +165,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-4xl font-bold text-foreground">{value}%</span>
+          <span className="text-3xl font-semibold tabular-nums text-foreground">{value}%</span>
           <span className="text-sm text-muted-foreground">Productivity</span>
         </div>
       </div>
@@ -144,7 +173,17 @@ export default function ProductivityDashboard({ currentAdmin }) {
   };
 
   const renderOverallView = () => {
-    if (!productivityData) return null;
+    // Rendering `null` here left a blank panel between the tabs and the page
+    // footer whenever the API returned nothing. Say so instead.
+    if (!productivityData) {
+      return (
+        <EmptyState
+          icon={BarChart3}
+          title="No productivity data"
+          description="Once developers complete tasks, their scores and rankings appear here."
+        />
+      );
+    }
 
     const {
       totalDevelopers,
@@ -172,24 +211,58 @@ export default function ProductivityDashboard({ currentAdmin }) {
       { name: "Pending", value: (totalTasks || 0) - (totalCompleted || 0) },
     ];
 
+    const barNames = (barData || []).map((d) => d.name);
+
     const barOption = {
-      color: ["#0c8f6e"],
+      color: [PALETTE[0]],
       textStyle,
-      grid: baseGrid,
-      tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, ...baseTooltip },
+      // Bottom padding sized for rotated names plus the axis title; without it
+      // the labels were clipped by the panel rather than merely crowded.
+      grid: { ...baseGrid, bottom: 46, top: 34 },
+      tooltip: {
+        trigger: "axis",
+        axisPointer: { type: "shadow" },
+        valueFormatter: (v) => `${Number(v).toFixed(0)}%`,
+        ...baseTooltip,
+      },
       legend: { ...baseLegend, data: ["Productivity %"] },
       xAxis: {
         type: "category",
-        data: (barData || []).map((d) => d.name),
-        axisLabel,
+        name: "Developer",
+        nameLocation: "middle",
+        nameGap: 36,
+        nameTextStyle: axisLabel,
+        data: barNames,
+        // Ten first names on one axis collided at every width below ~900px.
+        // interval:0 keeps one tick per developer, the rotation and the fixed
+        // truncation width stop them ever printing over each other, and
+        // hideOverlap is the belt-and-braces guard on very narrow panels.
+        axisLabel: {
+          ...axisLabel,
+          interval: 0,
+          rotate: barNames.length > 5 ? 35 : 0,
+          width: 64,
+          overflow: "truncate",
+          hideOverlap: true,
+        },
         axisLine,
         axisTick: { show: false },
       },
-      yAxis: { type: "value", max: 100, axisLabel, splitLine },
+      yAxis: {
+        type: "value",
+        name: "Productivity",
+        nameLocation: "middle",
+        nameGap: 40,
+        nameTextStyle: axisLabel,
+        max: 100,
+        axisLabel: { ...axisLabel, formatter: "{value}%" },
+        splitLine,
+      },
       series: [
         {
           name: "Productivity %",
           type: "bar",
+          barMaxWidth: 32,
           itemStyle: { borderRadius: [4, 4, 0, 0] },
           data: (barData || []).map((d) => d.productivity),
         },
@@ -199,22 +272,31 @@ export default function ProductivityDashboard({ currentAdmin }) {
     const pieOption = {
       textStyle,
       tooltip: { trigger: "item", ...baseTooltip },
-      legend: { ...baseLegend, bottom: 0, top: "auto" },
+      legend: { ...baseLegend, bottom: 0, top: "auto", left: "center", right: "auto" },
       series: [
         {
           type: "pie",
           radius: ["45%", "70%"],
-          center: ["50%", "50%"],
-          padAngle: 5,
-          label: { formatter: "{b}: {c}" },
+          center: ["50%", "46%"],
+          padAngle: 3,
+          minAngle: 4,
+          avoidLabelOverlap: true,
+          // Slice labels used to print "{b}: {c}" on top of one another when
+          // two slices were thin. The legend carries the names; the tooltip
+          // carries the counts.
+          label: { show: false },
+          labelLine: { show: false },
           data: pieData.map((entry, index) => ({
             value: entry.value,
             name: entry.name,
-            itemStyle: { color: COLORS[index % COLORS.length] },
+            itemStyle: { color: STATUS_COLORS[index % STATUS_COLORS.length] },
           })),
         },
       ],
     };
+
+    const hasBarData = (barData || []).length > 0;
+    const hasPieData = pieData.some((d) => Number(d.value) > 0);
 
     return (
       <div>
@@ -230,11 +312,11 @@ export default function ProductivityDashboard({ currentAdmin }) {
           </div>
           <div className="rounded-xl border border-border bg-card p-4 shadow-card">
             <p className="text-sm text-muted-foreground">Total Projects</p>
-            <p className="text-3xl font-bold" style={{ color: "#0c8f6e" }}>{totalProjects}</p>
+            <p className="text-3xl font-bold tabular-nums text-primary">{totalProjects}</p>
           </div>
           <div className="rounded-xl border border-border bg-card p-4 shadow-card">
             <p className="text-sm text-muted-foreground">Tasks Completed</p>
-            <p className="text-3xl font-bold text-warning">
+            <p className="text-3xl font-bold tabular-nums text-warning">
               {totalCompleted}/{totalTasks}
             </p>
           </div>
@@ -243,18 +325,44 @@ export default function ProductivityDashboard({ currentAdmin }) {
         {/* Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           {/* Bar Chart */}
-          <div className="rounded-xl border border-border bg-card p-6 shadow-card">
-            <h3 className="text-lg font-semibold text-foreground mb-4">
-              Developer Productivity Comparison
-            </h3>
-            <EChart option={barOption} height={300} />
-          </div>
+          <Section
+            title="Developer productivity"
+            description="Top ten developers, scored out of 100."
+            className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5"
+          >
+            {hasBarData ? (
+              <EChart option={barOption} height={320} />
+            ) : (
+              <div className="flex h-[320px] items-center">
+                <EmptyState
+                  className="w-full"
+                  icon={Users}
+                  title="No developers to compare"
+                  description="Scores appear once developers have tasks with deadlines."
+                />
+              </div>
+            )}
+          </Section>
 
           {/* Pie Chart */}
-          <div className="rounded-xl border border-border bg-card p-6 shadow-card">
-            <h3 className="text-lg font-semibold text-foreground mb-4">Task Status Distribution</h3>
-            <EChart option={pieOption} height={300} />
-          </div>
+          <Section
+            title="Task status distribution"
+            description="On-time, late and still-pending tasks across the organization."
+            className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5"
+          >
+            {hasPieData ? (
+              <EChart option={pieOption} height={320} />
+            ) : (
+              <div className="flex h-[320px] items-center">
+                <EmptyState
+                  className="w-full"
+                  icon={BarChart3}
+                  title="No tasks yet"
+                  description="This breakdown fills in as tasks are created and completed."
+                />
+              </div>
+            )}
+          </Section>
         </div>
 
         {/* Developer Ranking Table */}
@@ -266,35 +374,35 @@ export default function ProductivityDashboard({ currentAdmin }) {
             <table className="w-full min-w-[1000px]">
               <thead className="bg-muted/50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Rank
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Developer
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">
+                  <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Projects
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">
+                  <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Tasks
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">
+                  <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     On Time
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">
+                  <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Late
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">
+                  <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Points
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">
+                  <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Productivity
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {developersBreakdown?.map((dev, index) => (
-                  <tr key={dev.developerId} className="hover:bg-muted/50">
+                  <tr key={dev.developerId} className="h-12 transition-colors duration-150 hover:bg-muted/40">
                     <td className="px-4 py-3">
                       <span
                         className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold ${
@@ -320,10 +428,10 @@ export default function ProductivityDashboard({ currentAdmin }) {
                         </p>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-center text-muted-foreground">
+                    <td className="px-4 py-3 text-center tabular-nums text-muted-foreground">
                       {dev.totalProjects}
                     </td>
-                    <td className="px-4 py-3 text-center text-muted-foreground">
+                    <td className="px-4 py-3 text-center tabular-nums text-muted-foreground">
                       {dev.completedTasks}/{dev.totalTasks}
                     </td>
                     <td className="px-4 py-3 text-center">
@@ -380,7 +488,16 @@ export default function ProductivityDashboard({ currentAdmin }) {
   };
 
   const renderDeveloperView = () => {
-    if (!productivityData || !selectedDeveloper) return null;
+    if (!selectedDeveloper) return null;
+    if (!productivityData) {
+      return (
+        <EmptyState
+          icon={BarChart3}
+          title="No data for this developer"
+          description="Nothing has been recorded for them in this organization yet."
+        />
+      );
+    }
 
     const {
       developerName,
@@ -395,11 +512,11 @@ export default function ProductivityDashboard({ currentAdmin }) {
     return (
       <div>
         {/* Developer Header */}
-        <div className="bg-primary rounded-xl p-6 mb-6 text-primary-foreground">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold">{developerName}</h2>
-              <p className="text-primary-foreground/80">Developer Productivity Report</p>
+        <div className="mb-6 rounded-xl border border-border bg-card p-5 shadow-card">
+          <div className="flex flex-col items-start justify-between gap-5 sm:flex-row sm:items-center">
+            <div className="min-w-0">
+              <h2 className="truncate text-xl font-semibold tracking-tight text-foreground">{developerName}</h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">Developer productivity report</p>
             </div>
             <ProductivityGauge percentage={productivityPercentage} size={150} />
           </div>
@@ -516,7 +633,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
                 </div>
                 <div className="mt-2 w-full bg-muted rounded-full h-2">
                   <div
-                    className="bg-primary h-2 rounded-full transition-all"
+                    className="h-2 rounded-full bg-primary transition-all duration-150"
                     style={{
                       width: `${(proj.completed / proj.totalTasks) * 100}%`,
                     }}
@@ -538,7 +655,16 @@ export default function ProductivityDashboard({ currentAdmin }) {
   };
 
   const renderProjectView = () => {
-    if (!productivityData || !selectedProject) return null;
+    if (!selectedProject) return null;
+    if (!productivityData) {
+      return (
+        <EmptyState
+          icon={BarChart3}
+          title="No data for this project"
+          description="Task-level productivity appears once this project has tasks with deadlines."
+        />
+      );
+    }
 
     const {
       projectName,
@@ -555,11 +681,11 @@ export default function ProductivityDashboard({ currentAdmin }) {
     return (
       <div>
         {/* Project Header */}
-        <div className="rounded-xl p-6 mb-6 text-white" style={{ background: "linear-gradient(to right, #0c8f6e, #0a7457)" }}>
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold">{projectName}</h2>
-              <p className="text-white/80">Project Productivity Analysis</p>
+        <div className="mb-6 rounded-xl border border-border bg-card p-5 shadow-card">
+          <div className="flex flex-col items-start justify-between gap-5 sm:flex-row sm:items-center">
+            <div className="min-w-0">
+              <h2 className="truncate text-xl font-semibold tracking-tight text-foreground">{projectName}</h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">Project productivity analysis</p>
             </div>
             <ProductivityGauge percentage={productivityPercentage} size={150} />
           </div>
@@ -605,7 +731,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
           </div>
           <div className="bg-card rounded-xl border border-border p-4 shadow-card">
             <p className="text-muted-foreground text-sm">Progress</p>
-            <p className="text-2xl font-bold" style={{ color: "#0c8f6e" }}>
+            <p className="text-2xl font-bold tabular-nums text-primary">
               {completionProgress}%
             </p>
           </div>
@@ -620,29 +746,29 @@ export default function ProductivityDashboard({ currentAdmin }) {
             <table className="w-full min-w-[900px]">
               <thead className="bg-muted/50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Task
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">
+                  <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Status
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">
+                  <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Deadline
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">
+                  <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     On Time?
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">
+                  <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Weight
                   </th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">
+                  <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Contribution
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {tasksBreakdown?.map((task) => (
-                  <tr key={task.id} className="hover:bg-muted/50">
+                  <tr key={task.id} className="h-12 transition-colors duration-150 hover:bg-muted/40">
                     <td className="px-4 py-3">
                       <p className="font-medium text-foreground">{task.title}</p>
                     </td>
@@ -661,7 +787,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
                         {task.status.replace("_", " ")}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center text-muted-foreground">
+                    <td className="px-4 py-3 text-center tabular-nums text-muted-foreground">
                       {task.endDate
                         ? new Date(task.endDate).toLocaleDateString()
                         : "N/A"}
@@ -677,7 +803,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
                         <span className="text-muted-foreground">-</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-center text-muted-foreground">
+                    <td className="px-4 py-3 text-center tabular-nums text-muted-foreground">
                       {task.weight}%
                     </td>
                     <td className="px-4 py-3 text-center">
@@ -703,114 +829,112 @@ export default function ProductivityDashboard({ currentAdmin }) {
     );
   };
 
+  const selectClass =
+    "h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+
   return (
-    <div className="bg-card rounded-xl border border-border shadow-card overflow-hidden">
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
       {/* Header */}
-      <div className="bg-primary p-6">
-        <h2 className="text-2xl font-bold text-primary-foreground mb-2">
-          Productivity Dashboard
-        </h2>
-        <p className="text-primary-foreground/80">
-          Monitor and analyze developer productivity metrics
+      <div className="border-b border-border p-4 sm:p-5">
+        <h2 className="text-lg font-semibold tracking-tight text-foreground">Productivity</h2>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          How the team is tracking against task deadlines.
         </p>
       </div>
 
-      {/* View Mode Tabs */}
-      <div className="border-b border-border px-6 py-3 bg-muted/50 flex flex-wrap gap-3 items-center">
-        <button
-          onClick={() => {
-            setViewMode("overall");
-            setSelectedDeveloper("");
-            setSelectedProject("");
+      {/* View mode + filters */}
+      <div className="flex flex-wrap items-end gap-3 border-b border-border bg-muted/40 p-4 sm:p-5">
+        <Tabs
+          tabs={[
+            { id: "overall", label: "Overall" },
+            { id: "developer", label: "By developer" },
+            { id: "project", label: "By project" },
+          ]}
+          active={viewMode}
+          onChange={(id) => {
+            if (id === "overall") {
+              setViewMode("overall");
+              setSelectedDeveloper("");
+              setSelectedProject("");
+              return;
+            }
+            setViewMode(id);
           }}
-          className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-            viewMode === "overall"
-              ? "bg-primary text-primary-foreground shadow-card"
-              : "bg-card text-muted-foreground hover:bg-muted border border-border"
-          }`}
-        >
-          Overall View
-        </button>
-        <button
-          onClick={() => setViewMode("developer")}
-          className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-            viewMode === "developer"
-              ? "bg-primary text-primary-foreground shadow-card"
-              : "bg-card text-muted-foreground hover:bg-muted border border-border"
-          }`}
-        >
-          By Developer
-        </button>
-        <button
-          onClick={() => setViewMode("project")}
-          className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-            viewMode === "project"
-              ? "bg-primary text-primary-foreground shadow-card"
-              : "bg-card text-muted-foreground hover:bg-muted border border-border"
-          }`}
-        >
-          By Project
-        </button>
+          aria-label="Productivity view"
+        />
 
         {/* Developer Select */}
         {(viewMode === "developer" || viewMode === "project") && (
-          <select
-            value={selectedDeveloper}
-            onChange={(e) => setSelectedDeveloper(e.target.value)}
-            className="px-3 py-2 border border-input bg-background rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/30"
-          >
-            <option value="">Select Developer</option>
-            {developers.map((dev) => (
-              <option key={dev.id} value={dev.id}>
-                {dev.name}
-              </option>
-            ))}
-          </select>
+          <Field label="Developer" htmlFor="productivity-developer">
+            <select
+              id="productivity-developer"
+              value={selectedDeveloper}
+              onChange={(e) => setSelectedDeveloper(e.target.value)}
+              className={selectClass}
+            >
+              <option value="">Select developer</option>
+              {developers.map((dev) => (
+                <option key={dev.id} value={dev.id}>
+                  {dev.name}
+                </option>
+              ))}
+            </select>
+          </Field>
         )}
 
         {/* Project Select */}
         {viewMode === "project" && (
-          <select
-            value={selectedProject}
-            onChange={(e) => setSelectedProject(e.target.value)}
-            className="px-3 py-2 border border-input bg-background rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/30"
-          >
-            <option value="">Select Project</option>
-            {projects.map((proj) => (
-              <option key={proj.id} value={proj.id}>
-                {proj.name}
-              </option>
-            ))}
-          </select>
+          <Field label="Project" htmlFor="productivity-project">
+            <select
+              id="productivity-project"
+              value={selectedProject}
+              onChange={(e) => setSelectedProject(e.target.value)}
+              className={selectClass}
+            >
+              <option value="">Select project</option>
+              {projects.map((proj) => (
+                <option key={proj.id} value={proj.id}>
+                  {proj.name}
+                </option>
+              ))}
+            </select>
+          </Field>
         )}
 
         <button
+          type="button"
           onClick={fetchProductivityData}
-          className="ml-auto inline-flex items-center justify-center px-4 py-2 bg-card text-muted-foreground rounded-lg border border-border hover:bg-muted transition-all"
+          aria-label="Refresh productivity data"
+          className="ml-auto inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
-          <svg
-            className="w-5 h-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-            />
-          </svg>
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`} aria-hidden="true" />
         </button>
       </div>
 
       {/* Content */}
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         {loading ? (
-          <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-            <p className="mt-4 text-muted-foreground">Loading productivity data...</p>
+          // Skeleton shaped like the overall view: four tiles, two charts, a table.
+          <div className="space-y-6" aria-busy="true">
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              {[0, 1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-24 w-full rounded-xl" />
+              ))}
+            </div>
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <Skeleton className="h-[320px] w-full rounded-xl" />
+              <Skeleton className="h-[320px] w-full rounded-xl" />
+            </div>
+            <div className="rounded-xl border border-border p-4">
+              <SkeletonTable rows={5} cols={6} />
+            </div>
           </div>
+        ) : loadError ? (
+          <ErrorState
+            title="Couldn't load productivity data"
+            description={loadError}
+            onRetry={fetchProductivityData}
+          />
         ) : viewMode === "overall" ? (
           renderOverallView()
         ) : viewMode === "developer" && selectedDeveloper ? (
@@ -818,25 +942,13 @@ export default function ProductivityDashboard({ currentAdmin }) {
         ) : viewMode === "project" && selectedProject ? (
           renderProjectView()
         ) : (
-          <div className="text-center py-12 text-muted-foreground">
-            <svg
-              className="w-16 h-16 mx-auto text-muted-foreground/40 mb-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-              />
-            </svg>
-            <p>
-              Select a {viewMode === "developer" ? "developer" : "project"} to
-              view productivity metrics
-            </p>
-          </div>
+          <EmptyState
+            icon={viewMode === "developer" ? Users : BarChart3}
+            title={`Pick a ${viewMode === "developer" ? "developer" : "project"}`}
+            description={`Choose a ${
+              viewMode === "developer" ? "developer" : "project"
+            } above to see their productivity breakdown.`}
+          />
         )}
       </div>
     </div>

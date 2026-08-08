@@ -8,6 +8,8 @@ import { resolveScreenshotUrls } from "@/utils/screenshotFiles";
 import { setVisibleInterval } from "@/hooks/useVisibleInterval";
 import EChart from "@/components/charts/EChart";
 import {
+  PALETTE,
+  SEMANTIC,
   textStyle,
   baseGrid,
   baseTooltip,
@@ -17,6 +19,12 @@ import {
   splitLine,
   verticalGradient,
 } from "@/components/charts/chartTheme";
+import {
+  EmptyState,
+  Modal,
+  Skeleton,
+  SkeletonTable,
+} from "@/components/ui";
 import {
   BarChart3,
   Calendar,
@@ -44,7 +52,33 @@ import {
   XCircle,
 } from "lucide-react";
 
-const CHART_COLORS = ["#0c8f6e", "#0ea5e9", "#7c3aed", "#f59e0b", "#ef4444", "#10b981", "#6366f1", "#ec4899"];
+// One categorical palette for the whole app — this file used to carry its own
+// eight hexes, which drifted from every other chart.
+const CHART_COLORS = PALETTE;
+
+/**
+ * Category-axis labels for time series. A day of per-minute samples is
+ * hundreds of ticks; without hideOverlap echarts stacks them into a smear.
+ */
+const timeAxisLabel = { ...axisLabel, hideOverlap: true, interval: "auto" };
+
+/**
+ * Shared donut config. Slice labels were the worst offender in this file —
+ * two thin slices printed their names on top of each other at every width.
+ * The legend carries the names, the tooltip carries the values.
+ */
+const donutBase = {
+  type: "pie",
+  radius: ["45%", "70%"],
+  center: ["50%", "46%"],
+  avoidLabelOverlap: true,
+  minAngle: 4,
+  padAngle: 2,
+  label: { show: false },
+  labelLine: { show: false },
+};
+
+const donutLegend = { ...baseLegend, bottom: 0, top: "auto", left: "center", right: "auto" };
 const POLL_INTERVAL = 10_000; // 10 seconds
 const MOUSE_PAGE_SIZE = 50;
 
@@ -1202,11 +1236,22 @@ export default function DeveloperActivity() {
         </div>
       )}
 
-      {/* Loading Spinner */}
+      {/* Loading — skeletons shaped like the view underneath (tiles, two
+          panels, a table) rather than a spinner on a blank page. */}
       {loading && (
-        <div className="text-center py-8">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          <p className="text-muted-foreground mt-2">Loading activity data...</p>
+        <div className="space-y-6" aria-busy="true">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <Skeleton key={i} className="h-20 w-full rounded-xl" />
+            ))}
+          </div>
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <Skeleton className="h-64 w-full rounded-xl" />
+            <Skeleton className="h-64 w-full rounded-xl" />
+          </div>
+          <div className="rounded-xl border border-border p-4">
+            <SkeletonTable rows={5} cols={4} />
+          </div>
         </div>
       )}
 
@@ -1223,13 +1268,13 @@ export default function DeveloperActivity() {
                   icon={<Hourglass className="h-5 w-5 text-foreground" aria-hidden="true" />}
                   label="Today's Total Time"
                   value={formatHHMMSS(todayTotalSeconds)}
-                  bg="bg-teal-100"
+                  bg="bg-primary/10"
                 />
-                {/* <StatCard icon={<Timer className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Today Active Time" value={fmtDuration(totalActiveTime)} bg="bg-green-100" /> */}
-                {/* <StatCard icon={<Pause className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Idle Time" value={fmtDuration(totalIdleTime)} bg="bg-red-100" /> */}
+                {/* <StatCard icon={<Timer className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Today Active Time" value={fmtDuration(totalActiveTime)} bg="bg-success/10" /> */}
+                {/* <StatCard icon={<Pause className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Idle Time" value={fmtDuration(totalIdleTime)} bg="bg-destructive/10" /> */}
                 <StatCard icon={<MousePointer2 className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Mouse Active %" value={`${avgMouseActive.toFixed(1)}%`} bg="bg-info/10" />
                 <StatCard icon={<Target className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Kb Activity %" value={`${avgKeyboardActivity.toFixed(1)}%`} bg="bg-primary/10" />
-                <StatCard icon={<Camera className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Screenshots" value={screenshots.length} bg="bg-pink-100" />
+                <StatCard icon={<Camera className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Screenshots" value={screenshots.length} bg="bg-accent" />
               </div>
 
               {/* Productivity Chart */}
@@ -1267,26 +1312,33 @@ export default function DeveloperActivity() {
                 <div className="rounded-xl border border-border bg-card p-6 shadow-card">
                   <h3 className="text-lg font-semibold text-foreground mb-4">Top Applications</h3>
                   {topApps.length > 0 ? (
-                    <div className="space-y-2">
+                    // Fixed row height + truncation with a title: an app with a
+                    // 60-character window name no longer makes its row taller
+                    // than its neighbours.
+                    <ul className="divide-y divide-border rounded-lg border border-border">
                       {topApps.slice(0, 5).map((app, i) => (
-                        <div key={i} className="flex justify-between items-center p-3 bg-card rounded border">
-                          <div className="flex items-center">
-                            <div
-                              className="w-8 h-8 rounded-lg flex items-center justify-center mr-3"
-                              style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] + "20" }}
-                            >
-                              <span style={{ color: CHART_COLORS[i % CHART_COLORS.length] }}>●</span>
-                            </div>
-                            <span className="font-medium text-sm truncate max-w-[180px]">{app.app}</span>
-                          </div>
-                          {/* Show total active time for this app as minutes + seconds */}
-                          <span className="bg-info/10 text-info px-3 py-1 rounded-full text-xs whitespace-nowrap">
+                        <li key={i} className="flex h-14 items-center gap-3 px-3">
+                          <span
+                            className="h-2.5 w-2.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}
+                            aria-hidden="true"
+                          />
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground" title={app.app}>
+                            {app.app}
+                          </span>
+                          <span className="shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-muted-foreground">
                             {fmtMinutesToMinSec(app.totalMinutes || 0)}
                           </span>
-                        </div>
+                        </li>
                       ))}
-                    </div>
-                  ) : <p className="text-muted-foreground text-center py-4">No app usage data</p>}
+                    </ul>
+                  ) : (
+                    <EmptyState
+                      icon={Monitor}
+                      title="No app usage yet"
+                      description="Applications the tracker sees appear here, longest first."
+                    />
+                  )}
                 </div>
 
                 {/* App Usage Distribution Pie Chart */}
@@ -1298,18 +1350,20 @@ export default function DeveloperActivity() {
                       option={{
                         color: CHART_COLORS,
                         textStyle,
-                        tooltip: { trigger: "item", ...baseTooltip },
+                        tooltip: {
+                          trigger: "item",
+                          valueFormatter: (v) => `${Number(v).toFixed(1)} min`,
+                          ...baseTooltip,
+                        },
+                        legend: donutLegend,
                         series: [
                           {
-                            type: "pie",
-                            radius: "68%",
-                            center: ["50%", "50%"],
+                            ...donutBase,
                             data: appPieData.map((d, i) => ({
                               value: d.value,
                               name: d.name,
                               itemStyle: { color: CHART_COLORS[i % CHART_COLORS.length] },
                             })),
-                            label: { formatter: (p) => `${p.name} ${p.percent.toFixed(0)}%` },
                           },
                         ],
                       }}
@@ -1326,14 +1380,14 @@ export default function DeveloperActivity() {
               {/* Mouse Summary Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <StatCard icon={<MousePointer2 className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Mouse Records" value={mouseData.length} bg="bg-info/10" />
-                <StatCard icon={<TrendingUp className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Avg Active %" value={`${avgMouseActive.toFixed(1)}%`} bg="bg-green-100" />
-                <StatCard icon={<TrendingDown className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Avg Idle %" value={`${avgMouseIdle.toFixed(1)}%`} bg="bg-red-100" />
+                <StatCard icon={<TrendingUp className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Avg Active %" value={`${avgMouseActive.toFixed(1)}%`} bg="bg-success/10" />
+                <StatCard icon={<TrendingDown className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Avg Idle %" value={`${avgMouseIdle.toFixed(1)}%`} bg="bg-destructive/10" />
                 {/* <div className="bg-card p-4 rounded-xl border border-border shadow-card">
                   <div className="flex items-center">
                     <div className={`p-3 rounded-lg mr-3 ${statusColor(latestMouseStatus)}`}><span className="text-xl">Status</span></div>
                     <div>
                       <p className="text-xs text-muted-foreground">Current Status</p>
-                      <p className={`text-lg font-bold ${latestMouseStatus.toLowerCase() === "active" ? "text-green-700" : latestMouseStatus.toLowerCase() === "idle" ? "text-yellow-700" : "text-muted-foreground"}`}>
+                      <p className={`text-lg font-bold ${latestMouseStatus.toLowerCase() === "active" ? "text-success" : latestMouseStatus.toLowerCase() === "idle" ? "text-yellow-700" : "text-muted-foreground"}`}>
                         {latestMouseStatus}
                       </p>
                     </div>
@@ -1350,15 +1404,15 @@ export default function DeveloperActivity() {
                   </h3>
                   <div className="grid grid-cols-3 gap-4">
                     <div className="bg-card p-4 rounded-lg text-center border border-border">
-                      <p className="text-2xl font-bold text-green-600">{avgSessionMouseActive.toFixed(1)}%</p>
+                      <p className="text-2xl font-bold text-success">{avgSessionMouseActive.toFixed(1)}%</p>
                       <p className="text-xs text-muted-foreground">Active %</p>
                     </div>
                     <div className="bg-card p-4 rounded-lg text-center border border-border">
-                      <p className="text-2xl font-bold text-red-500">{avgSessionMouseIdle.toFixed(1)}%</p>
+                      <p className="text-2xl font-bold text-destructive">{avgSessionMouseIdle.toFixed(1)}%</p>
                       <p className="text-xs text-muted-foreground">Idle %</p>
                     </div>
                     <div className="bg-card p-4 rounded-lg text-center border border-border">
-                      <p className={`text-2xl font-bold ${latestMouseStatus.toLowerCase() === "active" ? "text-green-600" : "text-yellow-600"}`}>{latestMouseStatus}</p>
+                      <p className={`text-2xl font-bold ${latestMouseStatus.toLowerCase() === "active" ? "text-success" : "text-warning"}`}>{latestMouseStatus}</p>
                       <p className="text-xs text-muted-foreground">Latest Status</p>
                     </div>
                   </div>
@@ -1368,13 +1422,13 @@ export default function DeveloperActivity() {
               {/* Mouse Activity Chart: Active vs Idle % Over Time */}
               {mouseChartData.length > 0 && (
                 <div className="rounded-xl border border-border bg-card p-6 shadow-card">
-                  <h3 className="text-lg font-semibold text-foreground mb-4">Mouse Active vs Idle % Over Time</h3>
+                  <h3 className="text-lg font-semibold text-foreground mb-4">Mouse active vs idle over time</h3>
                   <EChart
                     height={300}
                     option={{
-                      color: ["#10b981", "#ef4444"],
+                      color: [SEMANTIC.success, SEMANTIC.danger],
                       textStyle,
-                      grid: baseGrid,
+                      grid: { ...baseGrid, top: 36, bottom: 30 },
                       tooltip: {
                         trigger: "axis",
                         valueFormatter: (v) => `${Number(v).toFixed(1)}%`,
@@ -1384,13 +1438,22 @@ export default function DeveloperActivity() {
                       xAxis: {
                         type: "category",
                         boundaryGap: false,
+                        name: "Time",
+                        nameLocation: "middle",
+                        nameGap: 28,
+                        nameTextStyle: axisLabel,
                         data: mouseChartData.map((d) => d.time),
-                        axisLabel,
+                        // 50 timestamps per page used to overprint each other.
+                        axisLabel: timeAxisLabel,
                         axisLine,
                         axisTick: { show: false },
                       },
                       yAxis: {
                         type: "value",
+                        name: "Share of minute",
+                        nameLocation: "middle",
+                        nameGap: 42,
+                        nameTextStyle: axisLabel,
                         max: 100,
                         axisLabel: { ...axisLabel, formatter: "{value}%" },
                         splitLine,
@@ -1401,8 +1464,8 @@ export default function DeveloperActivity() {
                           type: "line",
                           smooth: true,
                           showSymbol: false,
-                          lineStyle: { width: 2, color: "#10b981" },
-                          areaStyle: { color: verticalGradient("#10b981") },
+                          lineStyle: { width: 2, color: SEMANTIC.success },
+                          areaStyle: { color: verticalGradient(SEMANTIC.success) },
                           data: mouseChartData.map((d) => d.active),
                         },
                         {
@@ -1410,8 +1473,8 @@ export default function DeveloperActivity() {
                           type: "line",
                           smooth: true,
                           showSymbol: false,
-                          lineStyle: { width: 2, color: "#ef4444" },
-                          areaStyle: { color: verticalGradient("#ef4444") },
+                          lineStyle: { width: 2, color: SEMANTIC.danger },
+                          areaStyle: { color: verticalGradient(SEMANTIC.danger) },
                           data: mouseChartData.map((d) => d.idle),
                         },
                       ],
@@ -1434,16 +1497,14 @@ export default function DeveloperActivity() {
                           valueFormatter: (v) => `${Number(v).toFixed(1)}%`,
                           ...baseTooltip,
                         },
+                        legend: donutLegend,
                         series: [
                           {
-                            type: "pie",
-                            radius: "68%",
-                            center: ["50%", "50%"],
+                            ...donutBase,
                             data: [
-                              { name: "Active", value: Math.round(avgMouseActive * 100) / 100, itemStyle: { color: "#10b981" } },
-                              { name: "Idle", value: Math.round(avgMouseIdle * 100) / 100, itemStyle: { color: "#ef4444" } },
+                              { name: "Active", value: Math.round(avgMouseActive * 100) / 100, itemStyle: { color: SEMANTIC.success } },
+                              { name: "Idle", value: Math.round(avgMouseIdle * 100) / 100, itemStyle: { color: SEMANTIC.danger } },
                             ],
-                            label: { formatter: (p) => `${p.name}: ${Number(p.value).toFixed(1)}%` },
                           },
                         ],
                       }}
@@ -1496,22 +1557,22 @@ export default function DeveloperActivity() {
                     </thead>
                     <tbody className="bg-card divide-y divide-border">
                       {mouseData.map((r, i) => (
-                        <tr key={r.id || i} className={`hover:bg-muted/50 ${i === 0 ? "bg-green-50" : ""}`}>
+                        <tr key={r.id || i} className={`hover:bg-muted/50 ${i === 0 ? "bg-success/10" : ""}`}>
                           <td className="px-4 py-3 text-sm text-muted-foreground">{fmtDateTime(r.created_at)}</td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
                               <div className="w-16 bg-muted rounded-full h-2">
-                                <div className="bg-green-500 h-2 rounded-full" style={{ width: `${Math.min(r.active_percentage || 0, 100)}%` }}></div>
+                                <div className="bg-success h-2 rounded-full" style={{ width: `${Math.min(r.active_percentage || 0, 100)}%` }}></div>
                               </div>
-                              <span className="text-sm font-medium text-green-700">{(r.active_percentage || 0).toFixed(1)}%</span>
+                              <span className="text-sm font-medium text-success">{(r.active_percentage || 0).toFixed(1)}%</span>
                             </div>
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
                               <div className="w-16 bg-muted rounded-full h-2">
-                                <div className="bg-red-400 h-2 rounded-full" style={{ width: `${Math.min(r.idle_percentage || 0, 100)}%` }}></div>
+                                <div className="bg-destructive h-2 rounded-full" style={{ width: `${Math.min(r.idle_percentage || 0, 100)}%` }}></div>
                               </div>
-                              <span className="text-sm font-medium text-red-600">{(r.idle_percentage || 0).toFixed(1)}%</span>
+                              <span className="text-sm font-medium text-destructive">{(r.idle_percentage || 0).toFixed(1)}%</span>
                             </div>
                           </td>
                         </tr>
@@ -1528,12 +1589,12 @@ export default function DeveloperActivity() {
           {viewMode === "logins" && (
             <div className="space-y-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard icon={<LockKeyhole className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Today's Login Count" value={todaysLoginCount} bg="bg-emerald-100" />
+                <StatCard icon={<LockKeyhole className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Today's Login Count" value={todaysLoginCount} bg="bg-success/10" />
                 <StatCard icon={<Clock1 className="h-5 w-5 text-foreground" aria-hidden="true" />} label="First Login" value={firstLoginTime} bg="bg-info/10" />
                 <StatCard icon={<Clock2 className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Second Login" value={secondLoginTime} bg="bg-primary/10" />
                 <div className="bg-card p-4 rounded-xl border border-border shadow-card">
                   <div className="flex items-center">
-                    <div className={`${dailyLoginStatus === "Blocked" ? "bg-red-100" : "bg-green-100"} p-3 rounded-lg mr-3`}>
+                    <div className={`${dailyLoginStatus === "Blocked" ? "bg-destructive/10" : "bg-success/10"} p-3 rounded-lg mr-3`}>
                       {dailyLoginStatus === "Blocked" ? (
                         <XCircle className="h-5 w-5 text-foreground" aria-hidden="true" />
                       ) : (
@@ -1542,7 +1603,7 @@ export default function DeveloperActivity() {
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Login Status</p>
-                      <p className={`text-lg font-bold ${dailyLoginStatus === "Blocked" ? "text-red-700" : "text-green-700"}`}>{dailyLoginStatus}</p>
+                      <p className={`text-lg font-bold ${dailyLoginStatus === "Blocked" ? "text-destructive" : "text-success"}`}>{dailyLoginStatus}</p>
                     </div>
                   </div>
                 </div>
@@ -1608,9 +1669,9 @@ export default function DeveloperActivity() {
               {keyboardData.length > 0 && (
                 <>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <StatCard icon={<Keyboard className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Total Keystrokes" value={totalKeystrokes.toLocaleString()} bg="bg-violet-500/10" />
-                    <StatCard icon={<Gauge className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Avg WPM" value={avgWPM.toFixed(1)} bg="bg-green-100" />
-                    <StatCard icon={<Target className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Activity Score" value={avgKeyboardScore.toFixed(1)} bg="bg-yellow-100" />
+                    <StatCard icon={<Keyboard className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Total Keystrokes" value={totalKeystrokes.toLocaleString()} bg="bg-accent" />
+                    <StatCard icon={<Gauge className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Avg WPM" value={avgWPM.toFixed(1)} bg="bg-success/10" />
+                    <StatCard icon={<Target className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Activity Score" value={avgKeyboardScore.toFixed(1)} bg="bg-warning/10" />
                     <div className="bg-card p-4 rounded-xl border border-border shadow-card">
                       <div className="flex items-center">
                         <div className="bg-primary/10 p-3 rounded-lg mr-3 flex items-center justify-center">
@@ -1626,26 +1687,26 @@ export default function DeveloperActivity() {
 
                   {/* Keyboard Performance Stats */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <StatCard icon={<Timer className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Active Time" value={`${totalKbActiveTime.toFixed(1)} min`} bg="bg-green-100" />
-                    <StatCard icon={<Pause className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Idle Time" value={`${totalKbIdleTime.toFixed(1)} min`} bg="bg-red-100" />
+                    <StatCard icon={<Timer className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Active Time" value={`${totalKbActiveTime.toFixed(1)} min`} bg="bg-success/10" />
+                    <StatCard icon={<Pause className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Idle Time" value={`${totalKbIdleTime.toFixed(1)} min`} bg="bg-destructive/10" />
                     <StatCard icon={<Type className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Unique Keys" value={totalUniqueKeys.toLocaleString()} bg="bg-info/10" />
                     <StatCard icon={<Clock className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Total Time" value={`${totalKbTime.toFixed(1)} min`} bg="bg-muted" />
                   </div>
 
                   {/* Active Session Keyboard Summary */}
                   {activeSession && sessionKeyboardData.length > 0 && (
-                    <div className="rounded-xl border p-6" style={{ borderColor: "#7c3aed33", backgroundColor: "#7c3aed14" }}>
-                      <h3 className="text-lg font-semibold mb-4" style={{ color: "#7c3aed" }}>
+                    <div className="rounded-xl border border-border bg-accent p-6">
+                      <h3 className="text-lg font-semibold mb-4 text-accent-foreground">
                         Active Session Keyboard Activity
-                        <span className="text-sm font-normal ml-2" style={{ color: "#7c3aed" }}>({sessionKeyboardData.length} records)</span>
+                        <span className="text-sm font-normal ml-2 text-muted-foreground">({sessionKeyboardData.length} records)</span>
                       </h3>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="bg-card p-4 rounded-lg text-center border border-border">
-                          <p className="text-2xl font-bold text-violet-600">{sessionTotalKeys.toLocaleString()}</p>
+                          <p className="text-2xl font-bold text-foreground">{sessionTotalKeys.toLocaleString()}</p>
                           <p className="text-xs text-muted-foreground">Keystrokes</p>
                         </div>
                         <div className="bg-card p-4 rounded-lg text-center border border-border">
-                          <p className="text-2xl font-bold text-green-600">{sessionAvgWPM.toFixed(1)}</p>
+                          <p className="text-2xl font-bold text-success">{sessionAvgWPM.toFixed(1)}</p>
                           <p className="text-xs text-muted-foreground">WPM</p>
                         </div>
                         <div className="bg-card p-4 rounded-lg text-center border border-border">
@@ -1653,7 +1714,7 @@ export default function DeveloperActivity() {
                           <p className="text-xs text-muted-foreground">Activity %</p>
                         </div>
                         <div className="bg-card p-4 rounded-lg text-center border border-border">
-                          <p className={`text-2xl font-bold ${sessionAvgScore >= 80 ? "text-green-600" : sessionAvgScore >= 60 ? "text-yellow-600" : "text-red-600"}`}>{sessionAvgScore.toFixed(1)}</p>
+                          <p className={`text-2xl font-bold ${sessionAvgScore >= 80 ? "text-success" : sessionAvgScore >= 60 ? "text-warning" : "text-destructive"}`}>{sessionAvgScore.toFixed(1)}</p>
                           <p className="text-xs text-muted-foreground">Score</p>
                         </div>
                       </div>
@@ -1680,16 +1741,14 @@ export default function DeveloperActivity() {
                               valueFormatter: (v) => `${Number(v).toFixed(1)} min`,
                               ...baseTooltip,
                             },
+                            legend: donutLegend,
                             series: [
                               {
-                                type: "pie",
-                                radius: "68%",
-                                center: ["50%", "50%"],
+                                ...donutBase,
                                 data: [
-                                  { name: "Active", value: Math.round(totalKbActiveTime * 100) / 100, itemStyle: { color: "#10b981" } },
-                                  { name: "Idle", value: Math.round(totalKbIdleTime * 100) / 100, itemStyle: { color: "#ef4444" } },
+                                  { name: "Active", value: Math.round(totalKbActiveTime * 100) / 100, itemStyle: { color: SEMANTIC.success } },
+                                  { name: "Idle", value: Math.round(totalKbIdleTime * 100) / 100, itemStyle: { color: SEMANTIC.danger } },
                                 ],
-                                label: { formatter: (p) => `${p.name}: ${Number(p.value).toFixed(1)} min` },
                               },
                             ],
                           }}
@@ -1721,11 +1780,11 @@ export default function DeveloperActivity() {
                         </thead>
                         <tbody className="bg-card divide-y divide-border">
                           {keyboardData.slice(0, 50).map((r, i) => (
-                            <tr key={r.id || i} className={`hover:bg-muted/50 ${i === 0 ? "bg-violet-500/5" : ""}`}>
+                            <tr key={r.id || i} className={`hover:bg-muted/50 ${i === 0 ? "bg-accent" : ""}`}>
                               <td className="px-4 py-3 text-sm text-muted-foreground">{fmtDateTime(r.tracked_at)}</td>
                               <td className="px-4 py-3 text-sm font-medium">{(r.total_keys || 0).toLocaleString()}</td>
                               <td className="px-4 py-3 text-sm">{r.unique_keys || 0}</td>
-                              <td className="px-4 py-3 text-sm font-medium text-green-700">{(r.words_per_minute || 0).toFixed(1)}</td>
+                              <td className="px-4 py-3 text-sm font-medium text-success">{(r.words_per_minute || 0).toFixed(1)}</td>
                               <td className="px-4 py-3">
                                 <div className="flex items-center gap-2">
                                   <div className="w-16 bg-muted rounded-full h-2">
@@ -1739,8 +1798,8 @@ export default function DeveloperActivity() {
                                   {(r.activity_score || 0).toFixed(0)}
                                 </span>
                               </td>
-                              <td className="px-4 py-3 text-sm text-green-600">{(r.active_time_minutes || 0).toFixed(1)}m</td>
-                              <td className="px-4 py-3 text-sm text-red-500">{(r.idle_time_minutes || 0).toFixed(1)}m</td>
+                              <td className="px-4 py-3 text-sm text-success">{(r.active_time_minutes || 0).toFixed(1)}m</td>
+                              <td className="px-4 py-3 text-sm text-destructive">{(r.idle_time_minutes || 0).toFixed(1)}m</td>
                               <td className="px-4 py-3 text-xs text-muted-foreground font-mono">{r.session_id ? String(r.session_id).slice(-8) : "—"}</td>
                             </tr>
                           ))}
@@ -1760,7 +1819,7 @@ export default function DeveloperActivity() {
               {/* App Usage Summary Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <StatCard icon={<Monitor className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Apps Used" value={totalAppsUsed} bg="bg-info/10" />
-                {/* <StatCard icon={<BarChart3 className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Usage Records" value={appUsageData.length} bg="bg-green-100" /> */}
+                {/* <StatCard icon={<BarChart3 className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Usage Records" value={appUsageData.length} bg="bg-success/10" /> */}
                 <StatCard
                   icon={<Clock className="h-5 w-5 text-foreground" aria-hidden="true" />}
                   label="Total Active Time"
@@ -1780,7 +1839,7 @@ export default function DeveloperActivity() {
                       return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
                     }
                   })()}
-                  bg="bg-violet-500/10"
+                  bg="bg-accent"
                 />
                 {/* {currentApp && (
                   <div className="bg-card p-4 rounded-xl border border-border shadow-card">
@@ -1811,7 +1870,7 @@ export default function DeveloperActivity() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-2xl font-bold text-orange-600">{(currentApp.duration_minutes || 0).toFixed(1)} min</p>
+                      <p className="text-2xl font-bold text-warning">{(currentApp.duration_minutes || 0).toFixed(1)} min</p>
                       <p className="text-xs text-muted-foreground">Since: {fmtDateTime(currentApp.start_time || currentApp.tracked_at)}</p>
                     </div>
                   </div>
@@ -1831,15 +1890,15 @@ export default function DeveloperActivity() {
                       <p className="text-xs text-muted-foreground">Unique Apps</p>
                     </div>
                     <div className="bg-card p-4 rounded-lg text-center border border-border">
-                      <p className="text-2xl font-bold text-green-600">{sessionAppData.reduce((s, r) => s + (r.duration_minutes || 0), 0).toFixed(1)}</p>
+                      <p className="text-2xl font-bold text-success">{sessionAppData.reduce((s, r) => s + (r.duration_minutes || 0), 0).toFixed(1)}</p>
                       <p className="text-xs text-muted-foreground">Total Minutes</p>
                     </div>
                     <div className="bg-card p-4 rounded-lg text-center border border-border">
-                      <p className="text-2xl font-bold text-violet-600">{sessionAppData.length}</p>
+                      <p className="text-2xl font-bold text-foreground">{sessionAppData.length}</p>
                       <p className="text-xs text-muted-foreground">App Switches</p>
                     </div>
                     <div className="bg-card p-4 rounded-lg text-center border border-border">
-                      <p className="text-2xl font-bold text-orange-600">{sessionAppData.filter(r => r.is_new_app).length}</p>
+                      <p className="text-2xl font-bold text-warning">{sessionAppData.filter(r => r.is_new_app).length}</p>
                       <p className="text-xs text-muted-foreground">New Apps</p>
                     </div>
                   </div>
@@ -1850,29 +1909,38 @@ export default function DeveloperActivity() {
               {topApps.length > 0 && (
                 <div className="rounded-xl border border-border bg-card p-6 shadow-card">
                   <h3 className="text-lg font-semibold text-foreground mb-4">Top Applications</h3>
-                  <div className="space-y-3">
+                  <ul className="divide-y divide-border rounded-lg border border-border">
                     {topApps.map((app, i) => (
-                      <div key={i} className="flex items-center justify-between p-3 bg-card rounded-lg border hover:shadow-sm transition-shadow">
-                        <div className="flex items-center gap-3 flex-1">
-                          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] + "20" }}>
-                            <span className="text-sm font-bold" style={{ color: CHART_COLORS[i % CHART_COLORS.length] }}>#{i + 1}</span>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-foreground truncate">{app.app}</p>
-                            <p className="text-xs text-muted-foreground">{app.count} usage{app.count !== 1 ? "s" : ""}</p>
-                          </div>
+                      <li key={i} className="flex h-16 items-center gap-3 px-3">
+                        <span className="w-6 shrink-0 text-right text-xs font-semibold tabular-nums text-muted-foreground">
+                          #{i + 1}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-foreground" title={app.app}>{app.app}</p>
+                          <p className="text-xs tabular-nums text-muted-foreground">
+                            {app.count} usage{app.count !== 1 ? "s" : ""}
+                          </p>
                         </div>
-                        <div className="flex items-center gap-4">
-                          {/* Progress bar showing % of session time */}
-                          <div className="w-24 bg-muted rounded-full h-2 hidden md:block">
-                            <div className="h-2 rounded-full" style={{ width: `${Math.min(app.pct, 100)}%`, backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}></div>
+                        <div className="flex shrink-0 items-center gap-3">
+                          <div className="hidden h-2 w-24 overflow-hidden rounded-full bg-muted md:block">
+                            <div
+                              className="h-2 rounded-full"
+                              style={{
+                                width: `${Math.min(app.pct, 100)}%`,
+                                backgroundColor: CHART_COLORS[i % CHART_COLORS.length],
+                              }}
+                            />
                           </div>
-                          <span className="text-xs text-muted-foreground w-12 text-right">{app.pct.toFixed(0)}%</span>
-                          <span className="bg-info/10 text-info px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap">{app.totalMinutes.toFixed(1)} min</span>
+                          <span className="w-10 text-right text-xs tabular-nums text-muted-foreground">
+                            {app.pct.toFixed(0)}%
+                          </span>
+                          <span className="w-20 whitespace-nowrap text-right font-mono text-xs tabular-nums text-foreground">
+                            {app.totalMinutes.toFixed(1)} min
+                          </span>
                         </div>
-                      </div>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 </div>
               )}
 
@@ -1891,17 +1959,15 @@ export default function DeveloperActivity() {
                           valueFormatter: (v) => `${Number(v).toFixed(1)} min`,
                           ...baseTooltip,
                         },
+                        legend: donutLegend,
                         series: [
                           {
-                            type: "pie",
-                            radius: "68%",
-                            center: ["50%", "50%"],
+                            ...donutBase,
                             data: appPieData.map((d, i) => ({
                               value: d.value,
                               name: d.name,
                               itemStyle: { color: CHART_COLORS[i % CHART_COLORS.length] },
                             })),
-                            label: { formatter: (p) => `${p.name} ${p.percent.toFixed(0)}%` },
                           },
                         ],
                       }}
@@ -1915,9 +1981,9 @@ export default function DeveloperActivity() {
                     <EChart
                       height={300}
                       option={{
-                        color: ["#0c8f6e"],
+                        color: [PALETTE[0]],
                         textStyle,
-                        grid: baseGrid,
+                        grid: { ...baseGrid, top: 24, bottom: 30 },
                         tooltip: {
                           trigger: "axis",
                           axisPointer: { type: "shadow" },
@@ -1943,12 +2009,28 @@ export default function DeveloperActivity() {
                           },
                           ...baseTooltip,
                         },
-                        xAxis: { type: "value", axisLabel, splitLine },
+                        xAxis: {
+                          type: "value",
+                          name: "Minutes",
+                          nameLocation: "middle",
+                          nameGap: 28,
+                          nameTextStyle: axisLabel,
+                          axisLabel,
+                          splitLine,
+                        },
                         yAxis: {
                           type: "category",
                           data: appBarData.map((d) => d.name),
                           inverse: true,
-                          axisLabel: { ...axisLabel, fontSize: 12 },
+                          // App names are arbitrary length; truncate at a fixed
+                          // width and drop any that still collide.
+                          axisLabel: {
+                            ...axisLabel,
+                            fontSize: 12,
+                            width: 120,
+                            overflow: "truncate",
+                            hideOverlap: true,
+                          },
                           axisLine,
                           axisTick: { show: false },
                         },
@@ -1957,7 +2039,7 @@ export default function DeveloperActivity() {
                             name: "Minutes",
                             type: "bar",
                             data: appBarData.map((d) => d.minutes),
-                            itemStyle: { color: "#0c8f6e", borderRadius: [0, 4, 4, 0] },
+                            itemStyle: { color: PALETTE[0], borderRadius: [0, 4, 4, 0] },
                           },
                         ],
                       }}
@@ -2038,7 +2120,7 @@ export default function DeveloperActivity() {
                           )}
                           <span className="text-sm font-medium text-foreground truncate max-w-[120px]">{r.app_name}</span>
                           <span className="text-xs text-muted-foreground ml-auto">{(r.duration_minutes || 0).toFixed(1)} min</span>
-                          {r.is_new_app && <span className="px-1.5 py-0.5 text-xs bg-yellow-100 text-yellow-800 rounded">NEW</span>}
+                          {r.is_new_app && <span className="px-1.5 py-0.5 text-xs bg-warning/10 text-warning rounded">NEW</span>}
                         </div>
                       );
                     })}
@@ -2053,11 +2135,11 @@ export default function DeveloperActivity() {
             <div className="space-y-6">
               {/* Screenshot Summary Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard icon={<Camera className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Total Screenshots" value={screenshots.length} bg="bg-pink-100" />
+                <StatCard icon={<Camera className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Total Screenshots" value={screenshots.length} bg="bg-accent" />
                 {screenshots.length > 0 && (
                   <div className="bg-card p-4 rounded-xl border border-border shadow-card">
                     <div className="flex items-center">
-                      <div className="bg-green-100 p-3 rounded-lg mr-3 flex items-center justify-center">
+                      <div className="bg-success/10 p-3 rounded-lg mr-3 flex items-center justify-center">
                         <CircleDot className="h-5 w-5 text-foreground" aria-hidden="true" />
                       </div>
                       <div>
@@ -2073,13 +2155,13 @@ export default function DeveloperActivity() {
               {/* Debug Info (shown when 0 screenshots) */}
               {/* {screenshots.length === 0 && developer && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <h4 className="text-sm font-semibold text-yellow-800 mb-2">Debug: No screenshots found</h4>
+                  <h4 className="text-sm font-semibold text-warning mb-2">Debug: No screenshots found</h4>
                   <div className="text-xs text-yellow-700 space-y-1">
                     <p><strong>Developer ID:</strong> {developer.id}</p>
                     <p><strong>Developer Email:</strong> {developer.email}</p>
                     <p><strong>Date Filter:</strong> {selectedDate} ({timeRange})</p>
                     <p>Check browser console for <code>[Screenshots]</code> logs showing query results and errors.</p>
-                    <p className="mt-2 text-yellow-600">Common causes: RLS policy blocking reads, developer_id/email mismatch, or date filter excluding data.</p>
+                    <p className="mt-2 text-warning">Common causes: RLS policy blocking reads, developer_id/email mismatch, or date filter excluding data.</p>
                     <button
                       onClick={async () => {
                         const { data, error } = await supabase
@@ -2110,40 +2192,28 @@ export default function DeveloperActivity() {
               <div className="rounded-xl border border-border bg-card p-6 shadow-card">
                 <h3 className="text-lg font-semibold text-foreground mb-4">Screenshot Gallery ({screenshots.length})</h3>
                 {screenshots.length > 0 ? (
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
                     {screenshots.map((ss, i) => (
-                      <div key={ss.id || i} className={`bg-card rounded-lg border overflow-hidden hover:shadow-lg transition-shadow cursor-pointer ${i === 0 ? "ring-2 ring-pink-300" : ""}`}
-                        onClick={() => setSelectedScreenshot(ss)}>
-                        {ss.public_url ? (
-                          <img src={ss.public_url} alt={ss.filename || `Screenshot ${i + 1}`} className="w-full h-40 object-cover" loading="lazy" />
-                        ) : (
-                          <div className="w-full h-40 bg-muted flex items-center justify-center"><span className="text-muted-foreground text-sm">No preview</span></div>
-                        )}
-                        <div className="p-3 space-y-1">
-                          {ss.app_active && (
-                            <div className="flex items-center gap-1">
-                              <Monitor className="h-3 w-3 text-info" aria-hidden="true" />
-                              <p className="text-xs font-medium text-info truncate">{ss.app_active}</p>
-                            </div>
-                          )}
-                          <p className="text-xs text-muted-foreground">{fmtDbExactTime(ss.timestamp || ss.created_at)}</p>
-                          <div className="flex items-center justify-between">
-                            {ss.size_kb && <span className="text-xs text-muted-foreground">{Number(ss.size_kb).toFixed(0)} KB</span>}
-                            {ss.width && ss.height && <span className="text-xs text-muted-foreground">{ss.width}×{ss.height}</span>}
-                          </div>
-                          {i === 0 && <span className="inline-block px-2 py-0.5 text-xs bg-pink-100 text-pink-700 rounded font-medium">Latest</span>}
-                        </div>
-                      </div>
+                      <ScreenshotTile
+                        key={ss.id || i}
+                        shot={ss}
+                        index={i}
+                        latest={i === 0}
+                        time={fmtDbExactTime(ss.timestamp || ss.created_at)}
+                        onSelect={() => setSelectedScreenshot(ss)}
+                      />
                     ))}
                   </div>
                 ) : (
-                  <p className="text-muted-foreground text-center py-8">
-                    {(() => {
-                      const todayStr = new Date().toLocaleDateString("en-CA");
-                      if (timeRange === "today" && selectedDate === todayStr) return "No screenshots available for today";
-                      return "No screenshots found for selected period";
-                    })()}
-                  </p>
+                  <EmptyState
+                    icon={Camera}
+                    title={
+                      timeRange === "today" && selectedDate === new Date().toLocaleDateString("en-CA")
+                        ? "No screenshots today"
+                        : "No screenshots in this period"
+                    }
+                    description="Captures appear here while the desktop tracker is running for this developer."
+                  />
                 )}
               </div>
 
@@ -2151,31 +2221,53 @@ export default function DeveloperActivity() {
               {screenshots.length > 0 && (
                 <div className="rounded-xl border border-border bg-card p-6 shadow-card">
                   <h3 className="text-lg font-semibold text-foreground mb-4">Screenshot Timeline</h3>
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                  <div className="max-h-96 space-y-2 overflow-y-auto">
                     {screenshots.map((ss, i) => (
-                      <div key={ss.id || i} className={`flex items-center gap-4 p-3 bg-card rounded-lg border hover:shadow-sm transition-shadow cursor-pointer ${i === 0 ? "border-pink-300 bg-pink-50" : ""}`}
-                        onClick={() => setSelectedScreenshot(ss)}>
-                        <div className="flex-shrink-0 w-16 text-center">
-                          <p className="text-sm font-bold text-foreground">{fmtDbExactTime(ss.timestamp || ss.created_at)}</p>
-                          {i === 0 && <span className="text-xs text-pink-600">Latest</span>}
+                      // Fixed row height + a reserved 64×48 thumb slot: the row
+                      // is the same size whether the image has arrived or not.
+                      <button
+                        type="button"
+                        key={ss.id || i}
+                        className={`flex h-16 w-full items-center gap-4 rounded-lg border bg-card px-3 text-left transition-colors duration-150 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                          i === 0 ? "border-primary" : "border-border"
+                        }`}
+                        onClick={() => setSelectedScreenshot(ss)}
+                      >
+                        <div className="w-16 shrink-0 text-center">
+                          <p className="text-sm font-semibold tabular-nums text-foreground">
+                            {fmtDbExactTime(ss.timestamp || ss.created_at)}
+                          </p>
+                          {i === 0 && <span className="text-xs text-primary">Latest</span>}
                         </div>
-                        <div className="w-px h-12 bg-border"></div>
-                        <div className="flex-shrink-0">
+                        <div className="h-10 w-px shrink-0 bg-border" />
+                        <div className="relative h-12 w-16 shrink-0 overflow-hidden rounded border border-border bg-muted">
                           {ss.public_url ? (
-                            <img src={ss.public_url} alt={ss.filename || ""} className="w-16 h-12 object-cover rounded border" loading="lazy" />
+                            <img
+                              src={ss.public_url}
+                              alt=""
+                              className="absolute inset-0 h-full w-full object-cover"
+                              loading="lazy"
+                              decoding="async"
+                            />
                           ) : (
-                            <div className="w-16 h-12 bg-muted rounded flex items-center justify-center"><span className="text-muted-foreground text-xs">N/A</span></div>
+                            <span className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
+                              N/A
+                            </span>
                           )}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          {ss.app_active && <p className="text-sm font-medium text-foreground truncate">{ss.app_active}</p>}
-                          <p className="text-xs text-muted-foreground truncate">{ss.filename || "screenshot"}</p>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-foreground" title={ss.app_active || "Unknown app"}>
+                            {ss.app_active || "Unknown app"}
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground" title={ss.filename || "screenshot"}>
+                            {ss.filename || "screenshot"}
+                          </p>
                         </div>
-                        <div className="flex-shrink-0 text-right">
-                          {ss.size_kb && <p className="text-xs text-muted-foreground">{Number(ss.size_kb).toFixed(0)} KB</p>}
-                          {ss.width && ss.height && <p className="text-xs text-muted-foreground">{ss.width}×{ss.height}</p>}
+                        <div className="shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                          {ss.size_kb && <p>{Number(ss.size_kb).toFixed(0)} KB</p>}
+                          {ss.width && ss.height && <p>{ss.width}×{ss.height}</p>}
                         </div>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -2224,57 +2316,68 @@ export default function DeveloperActivity() {
                 );
               })()} */}
 
-              {/* Screenshot Details Modal */}
-              {selectedScreenshot && (() => {
-                const ss = selectedScreenshot;
-                return (
-                  <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4" onClick={() => setSelectedScreenshot(null)}>
-                    <div className="relative bg-card rounded-xl max-w-5xl max-h-[90vh] overflow-hidden flex flex-col md:flex-row" onClick={(e) => e.stopPropagation()}>
-                      {/* Image Side */}
-                      <div className="flex-1 bg-black flex items-center justify-center min-h-[300px]">
-                        {ss.public_url ? (
-                          <img src={ss.public_url} alt={ss.filename || "Screenshot"} className="max-w-full max-h-[80vh] object-contain" />
-                        ) : (
-                          <div className="text-muted-foreground text-center p-8">No image available</div>
-                        )}
-                      </div>
-                      {/* Metadata Side */}
-                      <div className="w-full md:w-72 p-6 bg-card overflow-y-auto">
-                        <div className="flex items-center justify-between mb-4">
-                          <h4 className="text-lg font-bold text-foreground">Details</h4>
-                          <button onClick={() => setSelectedScreenshot(null)} className="text-muted-foreground hover:text-muted-foreground text-xl">&times;</button>
-                        </div>
-                        <div className="space-y-4">
-                          <div>
-                            <p className="text-xs text-muted-foreground uppercase tracking-wide">Filename</p>
-                            <p className="text-sm font-medium text-foreground break-all">{ss.filename || "—"}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground uppercase tracking-wide">Timestamp</p>
-                            <p className="text-sm font-medium text-foreground">{fmtDbExactTime(ss.timestamp || ss.created_at)}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground uppercase tracking-wide">Resolution</p>
-                            <p className="text-sm font-medium text-foreground">{ss.width && ss.height ? `${ss.width} × ${ss.height}` : "—"}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground uppercase tracking-wide">File Size</p>
-                            <p className="text-sm font-medium text-foreground">{ss.size_kb ? `${Number(ss.size_kb).toFixed(1)} KB` : "—"}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground uppercase tracking-wide">MIME Type</p>
-                            <p className="text-sm font-medium text-foreground">{ss.mime_type || "—"}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground uppercase tracking-wide">Developer</p>
-                            <p className="text-sm font-medium text-foreground">{ss.developer_email || "—"}</p>
-                          </div>
-                        </div>
-                      </div>
+              {/* Screenshot details — Modal gives focus trap, Escape and
+                  focus restoration, which the hand-rolled overlay never had. */}
+              <Modal
+                open={Boolean(selectedScreenshot)}
+                onClose={() => setSelectedScreenshot(null)}
+                title="Screenshot details"
+                description={selectedScreenshot?.app_active || undefined}
+                size="xl"
+              >
+                {selectedScreenshot && (
+                  <div className="flex flex-col gap-5 md:flex-row">
+                    <div className="flex min-h-[240px] flex-1 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted">
+                      {selectedScreenshot.public_url ? (
+                        <img
+                          src={selectedScreenshot.public_url}
+                          alt={selectedScreenshot.filename || "Screenshot"}
+                          className="max-h-[60vh] max-w-full object-contain"
+                          decoding="async"
+                        />
+                      ) : (
+                        <p className="p-8 text-center text-sm text-muted-foreground">No image available</p>
+                      )}
                     </div>
+
+                    <dl className="w-full shrink-0 space-y-4 md:w-64">
+                      {[
+                        { label: "Filename", value: selectedScreenshot.filename, wrap: true },
+                        {
+                          label: "Timestamp",
+                          value: fmtDbExactTime(selectedScreenshot.timestamp || selectedScreenshot.created_at),
+                        },
+                        {
+                          label: "Resolution",
+                          value:
+                            selectedScreenshot.width && selectedScreenshot.height
+                              ? `${selectedScreenshot.width} × ${selectedScreenshot.height}`
+                              : null,
+                        },
+                        {
+                          label: "File size",
+                          value: selectedScreenshot.size_kb
+                            ? `${Number(selectedScreenshot.size_kb).toFixed(1)} KB`
+                            : null,
+                        },
+                        { label: "MIME type", value: selectedScreenshot.mime_type },
+                        { label: "Developer", value: selectedScreenshot.developer_email, wrap: true },
+                      ].map((row) => (
+                        <div key={row.label}>
+                          <dt className="text-xs uppercase tracking-wide text-muted-foreground">{row.label}</dt>
+                          <dd
+                            className={`text-sm font-medium tabular-nums text-foreground ${
+                              row.wrap ? "break-all" : ""
+                            }`}
+                          >
+                            {row.value || "—"}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
                   </div>
-                );
-              })()}
+                )}
+              </Modal>
             </div>
           )}
 
@@ -2302,24 +2405,24 @@ export default function DeveloperActivity() {
                             <span className="px-3 py-1 bg-info/10 text-info rounded-full text-xs">
                               Active: {fmtDuration(session.active_duration)}
                             </span>
-                            <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-xs">
+                            <span className="px-3 py-1 bg-destructive/10 text-red-800 rounded-full text-xs">
                               Idle: {fmtDuration(session.idle_duration)}
                             </span>
                             {(session.mouse_events > 0 || session.mouse_clicks > 0) && (
-                              <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs">
+                              <span className="px-3 py-1 bg-success/10 text-green-800 rounded-full text-xs">
                                 Mouse: {session.mouse_events || session.mouse_clicks || 0}
                               </span>
                             )}
                             {(session.keyboard_events > 0 || session.keystrokes > 0) && (
-                              <span className="px-3 py-1 bg-violet-500/10 text-violet-700 rounded-full text-xs">
+                              <span className="px-3 py-1 bg-accent text-violet-700 rounded-full text-xs">
                                 Keyboard: {session.keyboard_events || session.keystrokes || 0}
                               </span>
                             )}
                           </div>
                         </div>
-                        <span className={`text-xs px-2 py-1 rounded ${session.status === "active" ? "bg-green-100 text-green-800" : "bg-muted text-foreground"}`}>
+                        <span className={`text-xs px-2 py-1 rounded ${session.status === "active" ? "bg-success/10 text-green-800" : "bg-muted text-foreground"}`}>
                           {session.status === "active" && (
-                            <span className="inline-block w-2 h-2 bg-green-500 rounded-full mr-1 animate-pulse"></span>
+                            <span className="inline-block w-2 h-2 bg-success rounded-full mr-1 animate-pulse"></span>
                           )}
                           {session.status || "completed"}
                         </span>
@@ -2390,6 +2493,67 @@ export default function DeveloperActivity() {
         </div>
       )}
     </div>
+  );
+}
+
+// ─── Screenshot tile ───
+/**
+ * The 16:9 frame is painted before the image exists and keeps its size in
+ * every state, so a screenshot landing (or failing) never reflows the grid —
+ * previously a fixed `h-40` img with no placeholder left a blank hole that
+ * filled in one row at a time as the network caught up.
+ */
+function ScreenshotTile({ shot, index, latest, time, onSelect }) {
+  const [state, setState] = useState(shot?.public_url ? "loading" : "failed");
+  const app = shot?.app_active || "Unknown app";
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`overflow-hidden rounded-lg border bg-card text-left transition-shadow duration-150 hover:shadow-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+        latest ? "border-primary" : "border-border"
+      }`}
+    >
+      <div className="relative aspect-video w-full bg-muted">
+        {shot?.public_url && state !== "failed" && (
+          <img
+            src={shot.public_url}
+            alt={shot.filename || `Screenshot ${index + 1}`}
+            className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-150 ${
+              state === "loaded" ? "opacity-100" : "opacity-0"
+            }`}
+            loading="lazy"
+            decoding="async"
+            onLoad={() => setState("loaded")}
+            onError={() => setState("failed")}
+          />
+        )}
+        {state === "failed" && (
+          <span className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
+            No preview
+          </span>
+        )}
+        {state === "loading" && <Skeleton className="absolute inset-0 h-full w-full rounded-none" />}
+      </div>
+
+      <div className="space-y-1 p-3">
+        <div className="flex items-center gap-1">
+          <Monitor className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <p className="truncate text-xs font-medium text-foreground" title={app}>{app}</p>
+        </div>
+        <p className="text-xs tabular-nums text-muted-foreground">{time}</p>
+        <div className="flex items-center justify-between text-xs tabular-nums text-muted-foreground">
+          <span>{shot?.size_kb ? `${Number(shot.size_kb).toFixed(0)} KB` : ""}</span>
+          <span>{shot?.width && shot?.height ? `${shot.width}×${shot.height}` : ""}</span>
+        </div>
+        {latest && (
+          <span className="inline-block rounded bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+            Latest
+          </span>
+        )}
+      </div>
+    </button>
   );
 }
 

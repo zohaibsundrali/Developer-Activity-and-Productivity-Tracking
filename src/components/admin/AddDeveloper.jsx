@@ -1,6 +1,20 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { RefreshCw, Users, AlertTriangle } from "lucide-react";
+import {
+  PageHeader,
+  Section,
+  Card,
+  CardContent,
+  Badge,
+  EmptyState,
+  ErrorState,
+  SkeletonTable,
+  SkeletonCard,
+  Field,
+  Input,
+  Button,
+} from "@/components/ui";
 import { showError, showSuccess, showWarning } from "@/utils/alerts";
 import { getOrgId } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
@@ -21,138 +35,149 @@ const DeveloperForm = ({
   isAddingDeveloper,
   currentAdmin
 }) => (
-  <form onSubmit={handleAddDeveloper} className="space-y-4 max-w-md mb-8">
-    <div>
-      <label className="block text-sm font-medium text-foreground mb-1">
-        Full Name *
-      </label>
-      <input
+  <form onSubmit={handleAddDeveloper} className="space-y-4 max-w-md">
+    <Field label="Full Name" htmlFor="developer-name" required>
+      <Input
+        id="developer-name"
         type="text"
         name="name"
         value={newDeveloper.name}
         onChange={handleInputChange}
-        className="w-full rounded-lg border border-input bg-background p-2 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
         placeholder="Enter developer's full name"
         required
         disabled={isAddingDeveloper || !currentAdmin}
       />
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-foreground mb-1">
-        Email *
-      </label>
-      <input
+    </Field>
+
+    <Field label="Email" htmlFor="developer-email" required>
+      <Input
+        id="developer-email"
         type="email"
         name="email"
         value={newDeveloper.email}
         onChange={handleInputChange}
-        className="w-full rounded-lg border border-input bg-background p-2 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
         placeholder="Enter developer's email"
         required
         disabled={isAddingDeveloper || !currentAdmin}
       />
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-foreground mb-1">
-        Password *
-      </label>
-      <input
+    </Field>
+
+    <Field
+      label="Password"
+      htmlFor="developer-password"
+      hint="Password must be at least 6 characters long"
+      required
+    >
+      <Input
+        id="developer-password"
         type="password"
         name="password"
         value={newDeveloper.password}
         onChange={handleInputChange}
-        className="w-full rounded-lg border border-input bg-background p-2 text-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
         placeholder="Set developer password"
         required
         minLength="6"
         disabled={isAddingDeveloper || !currentAdmin}
       />
-      <p className="text-xs text-muted-foreground mt-1">Password must be at least 6 characters long</p>
-    </div>
+    </Field>
 
     <div className="flex flex-col sm:flex-row gap-3">
-      <button
+      <Button
         type="submit"
         disabled={isAddingDeveloper || !currentAdmin}
-        className={`inline-flex w-full sm:flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors ${isAddingDeveloper || !currentAdmin
-          ? 'bg-primary/50 cursor-not-allowed'
-          : 'bg-primary hover:bg-primary/90'
-          }`}
+        className="w-full sm:flex-1"
       >
         {!currentAdmin ? 'Please Login' : isAddingDeveloper ? 'Adding...' : 'Add Developer'}
-      </button>
+      </Button>
     </div>
   </form>
 );
 
-const DeveloperTable = ({ developers, missingColumns }) => (
-  <div className="border-t border-border pt-6">
-    <div className="flex justify-between items-center mb-4">
-      <div>
-        <h3 className="text-lg font-semibold text-foreground">
-          {!missingColumns ? 'Your Developers' : 'All Developers'}
-          {developers.length > 0 && (
-            <span className="ml-2 text-sm font-normal text-muted-foreground">
-              ({developers.length} total)
-            </span>
-          )}
-        </h3>
-      </div>
-    </div>
+const DeveloperTable = ({ developers, missingColumns, loading, error, onRetry }) => (
+  <Section
+    title={!missingColumns ? 'Your Developers' : 'All Developers'}
+    description={
+      !missingColumns
+        ? 'Developers you have added to this organization.'
+        : 'Every developer in this organization, from all admins.'
+    }
+    actions={
+      developers.length > 0 ? (
+        <Badge variant="secondary" size="sm">{developers.length} total</Badge>
+      ) : null
+    }
+  >
+    {loading ? (
+      <Card className="sm:py-5">
+        <CardContent className="sm:px-5">
+          <SkeletonTable rows={5} cols={4} />
+        </CardContent>
+      </Card>
+    ) : error ? (
+      <ErrorState
+        title="Couldn't load developers"
+        description={error}
+        onRetry={onRetry}
+      />
+    ) : developers.length > 0 ? (
+      <Card className="sm:py-5">
+        <CardContent className="sm:px-5">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] divide-y divide-border">
+              <thead>
+                <tr className="h-10">
+                  <th className="px-4 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Name
+                  </th>
+                  <th className="px-4 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Email
+                  </th>
+                  <th className="px-4 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Projects
+                  </th>
+                  <th className="px-4 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Added On
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {developers.map(developer => (
+                  <tr
+                    key={developer.id}
+                    className="h-12 transition-colors duration-150 hover:bg-muted/40"
+                  >
+                    <td className="px-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-foreground">
+                        {developer.name}
+                      </div>
+                    </td>
+                    <td className="px-4 whitespace-nowrap">
+                      <div className="text-sm text-muted-foreground">
+                        {developer.email}
+                      </div>
+                    </td>
 
-    {developers.length > 0 ? (
-      <div className="overflow-x-auto rounded-xl border border-border">
-        <table className="w-full min-w-[720px] divide-y divide-border">
-          <thead className="bg-muted">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Name
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Email
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Projects
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Added On
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-card divide-y divide-border">
-            {developers.map(developer => (
-              <tr key={developer.id} className="hover:bg-muted/50">
-                <td className="px-4 py-3 whitespace-nowrap">
-                  <div className="text-sm font-medium text-foreground">
-                    {developer.name}
-                  </div>
-                </td>
-                <td className="px-4 py-3 whitespace-nowrap">
-                  <div className="text-sm text-muted-foreground">
-                    {developer.email}
-                  </div>
-                </td>
-
-                <td className="px-4 py-3 whitespace-nowrap text-sm text-muted-foreground">
-                  <span className="font-medium text-foreground">{developer.dynamic_projects_count ?? developer.projects_count ?? 0}</span>
-                </td>
-                <td className="px-4 py-3 whitespace-nowrap text-sm text-muted-foreground">
-                  {formatDate(developer.created_at)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                    <td className="px-4 whitespace-nowrap text-sm text-muted-foreground">
+                      <span className="font-medium tabular-nums text-foreground">{developer.dynamic_projects_count ?? developer.projects_count ?? 0}</span>
+                    </td>
+                    <td className="px-4 whitespace-nowrap text-sm text-muted-foreground">
+                      {formatDate(developer.created_at)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
     ) : (
-      <div className="text-center py-8">
-        <Users className="w-16 h-16 text-muted-foreground/40 mx-auto mb-4" strokeWidth={1} />
-        <p className="text-muted-foreground text-lg mb-2">
-          {!missingColumns ? 'No developers added by you yet' : 'No developers found'}
-        </p>
-      </div>
+      <EmptyState
+        icon={Users}
+        title={!missingColumns ? 'No developers added by you yet' : 'No developers found'}
+        description="Developers you add with the form above will appear here."
+      />
     )}
-  </div>
+  </Section>
 );
 
 export default function AddDeveloper({ user, developers: initialDevelopers, onRefresh, supabase }) {
@@ -166,10 +191,14 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
   const [currentAdmin, setCurrentAdmin] = useState(null);
   const [loading, setLoading] = useState(true);
   const [missingColumns, setMissingColumns] = useState(false);
+  // Presentation-only: mirrors an error that is already caught below, so the
+  // list can render an ErrorState with retry instead of a silent empty table.
+  const [loadError, setLoadError] = useState(null);
 
   const fetchAdminDevelopers = useCallback(async () => {
     try {
       setLoading(true);
+      setLoadError(null);
 
       // Get current admin from localStorage
       const adminData = JSON.parse(sessionStorage.getItem("adminUser"));
@@ -219,7 +248,7 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
               .from('projects')
               .select('*', { count: 'exact', head: true })
               .eq('assigned_developer_email', developer.email);
-            
+
             return {
               ...developer,
               dynamic_projects_count: countError ? 0 : (count || 0)
@@ -231,11 +260,13 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
       } catch (fetchError) {
         setMissingColumns(true);
         setDevelopers([]);
+        setLoadError(fetchError?.message || String(fetchError));
       }
 
     } catch (error) {
       showError("Load failed", `Error loading developers: ${error.message}`);
       setDevelopers([]);
+      setLoadError(error?.message || String(error));
     } finally {
       setLoading(false);
     }
@@ -483,64 +514,80 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
     }));
   };
 
+  const pageHeader = (
+    <PageHeader
+      title="Add Developer"
+      description="Create developer accounts for your organization and review the ones you have added."
+      actions={
+        <Button variant="outline" onClick={fetchAdminDevelopers} disabled={loading}>
+          <RefreshCw aria-hidden="true" className="h-4 w-4" />
+          Refresh
+        </Button>
+      }
+    />
+  );
+
   // Show warning about missing columns
   if (missingColumns && developers.length > 0) {
     return (
-      <div className="space-y-6 rounded-xl border border-border bg-card p-6 shadow-card">
-        <div>
-          <div className="rounded-lg border border-warning/30 bg-warning/10 p-4">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <AlertTriangle className="h-5 w-5 text-warning" />
-              </div>
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-foreground">
-                  Database Setup Required
-                </h3>
-                <div className="mt-2 text-sm text-muted-foreground">
-                  <p>
-                    To enable admin isolation (each admin seeing only their own developers),
-                    please run this SQL in Supabase SQL Editor:
-                  </p>
-                  <pre className="mt-2 bg-muted p-2 rounded text-xs overflow-x-auto text-foreground">
-                    {`ALTER TABLE developers
+      <div className="space-y-6">
+        {pageHeader}
+
+        <div
+          role="status"
+          className="animate-fade-in rounded-xl border border-warning/30 bg-warning/10 p-4 sm:p-5"
+        >
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <AlertTriangle aria-hidden="true" className="h-5 w-5 text-warning" />
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-foreground">
+                Database Setup Required
+              </h3>
+              <div className="mt-2 text-sm text-muted-foreground">
+                <p>
+                  To enable admin isolation (each admin seeing only their own developers),
+                  please run this SQL in Supabase SQL Editor:
+                </p>
+                <pre className="mt-2 overflow-x-auto rounded-lg bg-muted p-2 text-xs text-foreground">
+                  {`ALTER TABLE developers
 ADD COLUMN IF NOT EXISTS added_by UUID,
 ADD COLUMN IF NOT EXISTS added_by_admin TEXT,
 ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
-                  </pre>
-                  <p className="mt-2">
-                    Currently showing all developers from all admins.
-                  </p>
-                </div>
+                </pre>
+                <p className="mt-2">
+                  Currently showing all developers from all admins.
+                </p>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="flex justify-between items-center">
-          <div>
-            <h2 className="text-xl font-bold tracking-tight text-foreground">Add Developer</h2>
-          </div>
+        <Section
+          title="New developer"
+          description="The account is created immediately and the developer can sign in with these details."
+        >
+          <Card className="sm:py-5">
+            <CardContent className="sm:px-5">
+              <DeveloperForm
+                newDeveloper={newDeveloper}
+                handleInputChange={handleInputChange}
+                handleAddDeveloper={handleAddDeveloper}
+                isAddingDeveloper={isAddingDeveloper}
+                currentAdmin={currentAdmin}
+              />
+            </CardContent>
+          </Card>
+        </Section>
 
-          <button
-            onClick={fetchAdminDevelopers}
-            className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
-            disabled={loading}
-          >
-            <RefreshCw className="w-4 h-4" />
-            Refresh
-          </button>
-        </div>
-
-        <DeveloperForm
-          newDeveloper={newDeveloper}
-          handleInputChange={handleInputChange}
-          handleAddDeveloper={handleAddDeveloper}
-          isAddingDeveloper={isAddingDeveloper}
-          currentAdmin={currentAdmin}
+        <DeveloperTable
+          developers={developers}
+          missingColumns={missingColumns}
+          loading={loading}
+          error={loadError}
+          onRetry={fetchAdminDevelopers}
         />
-
-        <DeveloperTable developers={developers} missingColumns={missingColumns} />
       </div>
     );
   }
@@ -548,11 +595,14 @@ ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
   // Loading state
   if (loading) {
     return (
-      <div className="rounded-xl border border-border bg-card p-6 shadow-card">
-        <div className="text-center py-8">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          <p className="mt-2 text-muted-foreground">Loading developers...</p>
-        </div>
+      <div className="space-y-6">
+        {pageHeader}
+        <SkeletonCard lines={4} />
+        <Card className="sm:py-5">
+          <CardContent className="sm:px-5">
+            <SkeletonTable rows={5} cols={4} />
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -560,41 +610,45 @@ ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
   // Show warning if admin is not logged in
   if (!currentAdmin) {
     return (
-      <div className="rounded-xl border border-border bg-card p-6 shadow-card">
-        <div className="text-center py-8">
-          <Users className="w-16 h-16 text-muted-foreground/40 mx-auto mb-4" strokeWidth={1} />
-          <p className="text-muted-foreground">Please log in as an admin to view developers.</p>
-        </div>
+      <div className="space-y-6">
+        {pageHeader}
+        <EmptyState
+          icon={Users}
+          title="Admin sign-in required"
+          description="Please log in as an admin to view developers."
+        />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 rounded-xl border border-border bg-card p-6 shadow-card">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight text-foreground">Add Developer</h2>
-        </div>
+    <div className="space-y-6">
+      {pageHeader}
 
-        <button
-          onClick={fetchAdminDevelopers}
-          className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
-          disabled={loading}
-        >
-          <RefreshCw className="w-4 h-4" />
-          Refresh
-        </button>
-      </div>
+      <Section
+        title="New developer"
+        description="The account is created immediately and the developer can sign in with these details."
+      >
+        <Card className="sm:py-5">
+          <CardContent className="sm:px-5">
+            <DeveloperForm
+              newDeveloper={newDeveloper}
+              handleInputChange={handleInputChange}
+              handleAddDeveloper={handleAddDeveloper}
+              isAddingDeveloper={isAddingDeveloper}
+              currentAdmin={currentAdmin}
+            />
+          </CardContent>
+        </Card>
+      </Section>
 
-      <DeveloperForm
-        newDeveloper={newDeveloper}
-        handleInputChange={handleInputChange}
-        handleAddDeveloper={handleAddDeveloper}
-        isAddingDeveloper={isAddingDeveloper}
-        currentAdmin={currentAdmin}
+      <DeveloperTable
+        developers={developers}
+        missingColumns={missingColumns}
+        loading={loading}
+        error={loadError}
+        onRetry={fetchAdminDevelopers}
       />
-
-      <DeveloperTable developers={developers} missingColumns={missingColumns} />
     </div>
   );
 }

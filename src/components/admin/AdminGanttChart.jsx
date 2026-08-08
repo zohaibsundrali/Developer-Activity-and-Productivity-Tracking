@@ -7,8 +7,12 @@ import {
   axisLabel,
   axisLine,
   splitLine,
+  SEMANTIC,
   GANTT_STATUS_COLORS,
 } from "@/components/charts/chartTheme";
+import { Badge, Button, DataTable, EmptyState, Tabs } from "@/components/ui";
+import { SELECT_CLASS } from "@/components/admin/views/viewKit";
+import { GanttChartSquare, BarChart3, Table as TableIcon, FileX } from "lucide-react";
 
 /**
  * Admin Gantt Chart Component
@@ -22,6 +26,41 @@ import {
  * - Productivity points display
  * - Real-time updates via Supabase subscriptions
  */
+
+// Status labels for display
+const statusLabels = {
+  completed: "Completed",
+  awaiting_approval: "Awaiting Approval",
+  in_progress: "In Progress",
+  pending: "Pending",
+  rejected: "Rejected",
+};
+
+// The DOM legend and the status chips use design tokens; only the canvas, which
+// cannot read a CSS variable, uses the mirrored hex values from chartTheme.
+const STATUS_DOT_CLASS = {
+  completed: "bg-success",
+  awaiting_approval: "bg-warning",
+  in_progress: "bg-info",
+  pending: "bg-muted-foreground",
+  rejected: "bg-destructive",
+};
+
+const STATUS_BADGE_VARIANT = {
+  completed: "success",
+  awaiting_approval: "warning",
+  in_progress: "info",
+  pending: "secondary",
+  rejected: "destructive",
+};
+
+// The theme's surface colour, reused as the label colour drawn on top of a
+// filled bar. Referenced rather than re-typed so there is still one source.
+const ON_BAR_TEXT = baseTooltip.backgroundColor;
+const TOOLTIP_INK = textStyle.color;
+const TOOLTIP_MUTED = axisLabel.color;
+const TOOLTIP_RULE = splitLine.lineStyle.color;
+
 export default function AdminGanttChart({
   tasks,
   projectName,
@@ -50,23 +89,8 @@ export default function AdminGanttChart({
     return statusProgress[task?.status] ?? 0;
   };
 
-  // Status colors mapped to task statuses
-  const statusColors = {
-    completed: "#10b981", // green
-    awaiting_approval: "#f59e0b", // amber
-    in_progress: "#3b82f6", // blue
-    pending: "#9ca3af", // gray
-    rejected: "#ef4444", // red
-  };
-
-  // Status labels for display
-  const statusLabels = {
-    completed: "Completed",
-    awaiting_approval: "Awaiting Approval",
-    in_progress: "In Progress",
-    pending: "Pending",
-    rejected: "Rejected",
-  };
+  // Status colors mapped to task statuses (canvas only — see note above).
+  const statusColors = GANTT_STATUS_COLORS;
 
   // Filter tasks based on selected filters
   const filteredTasks = useMemo(() => {
@@ -214,11 +238,11 @@ export default function AdminGanttChart({
 
     const statusColor = statusColors[data.status] || statusColors.pending;
     let html = `<div style="max-width:240px">`;
-    html += `<div style="font-weight:700;color:#1e293b;margin-bottom:6px">${data.name}</div>`;
-    html += `<div style="font-size:12px;color:#1e293b;line-height:1.5">`;
+    html += `<div style="font-weight:700;color:${TOOLTIP_INK};margin-bottom:6px">${data.name}</div>`;
+    html += `<div style="font-size:12px;color:${TOOLTIP_INK};line-height:1.5">`;
     html += `<div><span style="font-weight:500">Developer:</span> ${data.developer}</div>`;
     if (data.developerEmail) {
-      html += `<div style="font-size:11px;color:#64748b">${data.developerEmail}</div>`;
+      html += `<div style="font-size:11px;color:${TOOLTIP_MUTED}">${data.developerEmail}</div>`;
     }
     html += `<div><span style="font-weight:500">Start:</span> ${data.startDate}</div>`;
     html += `<div><span style="font-weight:500">End:</span> ${data.endDate}</div>`;
@@ -229,34 +253,41 @@ export default function AdminGanttChart({
     html += `<div><span style="font-weight:500">Status:</span> <span style="font-weight:600;color:${statusColor}">${statusLabels[data.status] || data.status}</span></div>`;
     if (data.status === "completed" && data.completionStatus) {
       if (data.completionStatus === "On Time") {
-        html += `<div><span style="font-weight:500">Completion:</span> <span style="font-weight:600;color:#16a34a">✓ On Time (+1)</span></div>`;
+        html += `<div><span style="font-weight:500">Completion:</span> <span style="font-weight:600;color:${SEMANTIC.success}">✓ On Time (+1)</span></div>`;
       } else if (data.completionStatus === "Late") {
-        html += `<div><span style="font-weight:500">Completion:</span> <span style="font-weight:600;color:#ef4444">✗ Late (-1)</span></div>`;
+        html += `<div><span style="font-weight:500">Completion:</span> <span style="font-weight:600;color:${SEMANTIC.danger}">✗ Late (-1)</span></div>`;
       } else {
-        html += `<div><span style="font-weight:500">Completion:</span> <span style="color:#64748b">${data.completionStatus}</span></div>`;
+        html += `<div><span style="color:${TOOLTIP_MUTED}">${data.completionStatus}</span></div>`;
       }
     }
     if (data.description) {
-      html += `<div style="font-size:11px;color:#64748b;margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0">${data.description}</div>`;
+      html += `<div style="font-size:11px;color:${TOOLTIP_MUTED};margin-top:8px;padding-top:8px;border-top:1px solid ${TOOLTIP_RULE}">${data.description}</div>`;
     }
     html += `</div></div>`;
     return html;
   };
 
+  // Bar thickness follows the row count, so two tasks are not drawn as two
+  // ribbons in a 600px void and forty are not crushed into invisible slivers.
+  const barWidth = chartData.length > 24 ? 12 : chartData.length > 12 ? 18 : 28;
+  const chartHeight = Math.min(900, Math.max(280, chartData.length * (barWidth + 14) + 60));
+
   // Build the ECharts Gantt option from the existing computed chartData.
   const ganttOption = {
     textStyle,
-    grid: { left: 8, right: 30, top: 20, bottom: 20, containLabel: true },
+    grid: { left: 8, right: 30, top: 20, bottom: 28, containLabel: true },
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "shadow" },
       ...baseTooltip,
+      confine: true,
       formatter: ganttTooltipFormatter,
     },
     xAxis: {
       type: "value",
       min: 0,
-      axisLabel: { ...axisLabel, formatter: "Day {value}" },
+      minInterval: 1,
+      axisLabel: { ...axisLabel, hideOverlap: true, formatter: "Day {value}" },
       axisLine,
       splitLine: { ...splitLine, show: true },
     },
@@ -264,7 +295,7 @@ export default function AdminGanttChart({
       type: "category",
       data: chartData.map((d) => d.name),
       inverse: true,
-      axisLabel: { ...axisLabel, width: 160, overflow: "truncate" },
+      axisLabel: { ...axisLabel, width: 150, overflow: "truncate" },
       axisLine,
       axisTick: { show: false },
     },
@@ -273,7 +304,7 @@ export default function AdminGanttChart({
       {
         type: "bar",
         stack: "a",
-        barWidth: 28,
+        barWidth,
         silent: true,
         itemStyle: { color: "transparent" },
         tooltip: { show: false },
@@ -285,11 +316,11 @@ export default function AdminGanttChart({
             {
               type: "bar",
               stack: "a",
-              barWidth: 28,
+              barWidth,
               label: {
-                show: true,
+                show: barWidth >= 18,
                 position: "inside",
-                color: "#ffffff",
+                color: ON_BAR_TEXT,
                 fontSize: 11,
                 fontWeight: 700,
                 formatter: (p) => {
@@ -314,7 +345,7 @@ export default function AdminGanttChart({
             {
               type: "bar",
               stack: "a",
-              barWidth: 28,
+              barWidth,
               data: chartData.map((entry) => ({
                 value: entry.remainingDuration,
                 itemStyle: {
@@ -335,7 +366,7 @@ export default function AdminGanttChart({
             {
               type: "bar",
               stack: "a",
-              barWidth: 28,
+              barWidth,
               data: chartData.map((entry) => ({
                 value: entry.duration,
                 itemStyle: {
@@ -356,10 +387,10 @@ export default function AdminGanttChart({
       silent: true,
       symbol: "none",
       data: [{ xAxis: todayPosition }],
-      lineStyle: { color: "#ef4444", width: 2, type: "dashed" },
+      lineStyle: { color: SEMANTIC.danger, width: 2, type: "dashed" },
       label: {
         formatter: "Today",
-        color: "#ef4444",
+        color: SEMANTIC.danger,
         fontWeight: "bold",
         position: "start",
       },
@@ -369,147 +400,241 @@ export default function AdminGanttChart({
   // If no tasks
   if (!tasks || tasks.length === 0) {
     return (
-      <div className="bg-card rounded-xl border border-border shadow-card p-6">
-        <h3 className="text-xl font-bold text-foreground mb-4">Project Gantt Chart</h3>
-        <div className="text-center py-12 text-muted-foreground">
-          <svg className="w-16 h-16 mx-auto text-muted-foreground/40 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-              d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-          </svg>
-          <p className="text-lg">No tasks found for this project</p>
-          <p className="text-sm text-muted-foreground/70 mt-2">Create tasks with start and end dates to see the Gantt chart</p>
-        </div>
+      <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
+        <h3 className="mb-4 text-base font-semibold text-foreground">Project Gantt chart</h3>
+        <EmptyState
+          icon={GanttChartSquare}
+          title="No tasks found for this project"
+          description="Create tasks with start and end dates and they will be plotted here."
+        />
       </div>
     );
   }
 
+  const tableColumns = [
+    {
+      key: "name",
+      header: "Task",
+      render: (row) => (
+        <div className="min-w-0">
+          <p className="font-medium text-foreground">{row.name}</p>
+          {row.description && (
+            <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{row.description}</p>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "developer",
+      header: "Developer",
+      render: (row) => (
+        <div className="min-w-0">
+          <p className="text-sm text-foreground">{row.developer}</p>
+          {row.developerEmail && (
+            <p className="truncate text-xs text-muted-foreground">{row.developerEmail}</p>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "startDate",
+      header: "Start",
+      align: "right",
+      render: (row) => <span className="tabular-nums text-muted-foreground">{row.startDate}</span>,
+    },
+    {
+      key: "endDate",
+      header: "End",
+      align: "right",
+      render: (row) => <span className="tabular-nums text-muted-foreground">{row.endDate}</span>,
+    },
+    {
+      key: "duration",
+      header: "Duration",
+      align: "right",
+      render: (row) => (
+        <span className="tabular-nums text-muted-foreground">{row.duration} days</span>
+      ),
+    },
+    ...(showProgress
+      ? [
+          {
+            key: "progressPercent",
+            header: "Progress",
+            align: "right",
+            render: (row) => (
+              <span className="tabular-nums text-muted-foreground">{row.progressPercent}%</span>
+            ),
+          },
+        ]
+      : []),
+    {
+      key: "status",
+      header: "Status",
+      render: (row) => (
+        <Badge variant={STATUS_BADGE_VARIANT[row.status] || "secondary"} size="sm">
+          {statusLabels[row.status] || row.status}
+        </Badge>
+      ),
+    },
+    {
+      key: "completionStatus",
+      header: "Completion",
+      render: (row) =>
+        row.status === "completed" && row.completionStatus ? (
+          row.completionStatus === "On Time" ? (
+            <Badge variant="success" size="sm">
+              On time
+            </Badge>
+          ) : row.completionStatus === "Late" ? (
+            <Badge variant="destructive" size="sm">
+              Late
+            </Badge>
+          ) : (
+            <span className="text-muted-foreground">{row.completionStatus}</span>
+          )
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
+    {
+      key: "points",
+      header: "Points",
+      align: "right",
+      render: (row) =>
+        row.status === "completed" && row.completionStatus ? (
+          <span
+            className={`font-semibold tabular-nums ${
+              row.completionStatus === "On Time" ? "text-success" : "text-destructive"
+            }`}
+          >
+            {row.completionStatus === "On Time" ? "+1" : "-1"}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
+  ];
+
+  const statTiles = [
+    { label: "Total", value: stats.total, className: "text-foreground" },
+    { label: "Pending", value: stats.pending, className: "text-muted-foreground" },
+    { label: "In progress", value: stats.inProgress, className: "text-info" },
+    { label: "Awaiting", value: stats.awaitingApproval, className: "text-warning" },
+    { label: "Completed", value: stats.completed, className: "text-success" },
+    { label: "On time", value: stats.onTime, className: "text-success" },
+    { label: "Late", value: stats.late, className: "text-destructive" },
+    {
+      label: "Points",
+      value: `${stats.productivityPoints >= 0 ? "+" : ""}${stats.productivityPoints}`,
+      className: stats.productivityPoints >= 0 ? "text-success" : "text-destructive",
+    },
+  ];
+
+  const filtersActive =
+    filterStatus !== "all" || (showDeveloperFilter && filterDeveloper !== "all");
+
   return (
-    <div className="bg-card rounded-xl border border-border shadow-card overflow-hidden">
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
       {/* Header */}
-      <div className="bg-primary p-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <h3 className="text-xl font-bold text-primary-foreground">
-              {projectName || "Project"} - Gantt Chart
-            </h3>
-            <p className="text-primary-foreground/80 text-sm mt-1">Visual timeline and task management</p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setViewMode("chart")}
-              className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
-                viewMode === "chart"
-                  ? "bg-card text-primary"
-                  : "bg-white/20 text-primary-foreground hover:bg-white/30"
-              }`}
-            >
-              <svg className="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-              Chart
-            </button>
-            <button
-              onClick={() => setViewMode("table")}
-              className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
-                viewMode === "table"
-                  ? "bg-card text-primary"
-                  : "bg-white/20 text-primary-foreground hover:bg-white/30"
-              }`}
-            >
-              <svg className="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
-              Table
-            </button>
-          </div>
+      <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <div className="min-w-0">
+          <h3 className="truncate text-base font-semibold text-foreground">
+            {projectName || "Project"} — Gantt chart
+          </h3>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Visual timeline and task management
+          </p>
         </div>
       </div>
 
+      <Tabs
+        className="px-4 sm:px-6"
+        aria-label="Gantt display"
+        active={viewMode}
+        onChange={(id) => setViewMode(id)}
+        tabs={[
+          {
+            id: "chart",
+            label: (
+              <span className="inline-flex items-center gap-1.5">
+                <BarChart3 className="h-4 w-4" aria-hidden="true" /> Chart
+              </span>
+            ),
+          },
+          {
+            id: "table",
+            label: (
+              <span className="inline-flex items-center gap-1.5">
+                <TableIcon className="h-4 w-4" aria-hidden="true" /> Table
+              </span>
+            ),
+          },
+        ]}
+      />
+
       {/* Filters */}
-      <div className="bg-muted/50 border-b border-border p-4">
-        <div className="flex flex-wrap gap-4">
-          <div>
-            <label className="text-sm font-medium text-foreground mr-2">Status:</label>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="px-3 py-1.5 border border-input bg-background rounded-lg text-sm focus:border-primary focus:ring-2 focus:ring-primary/30"
-            >
-              <option value="all">All Statuses</option>
-              <option value="pending">Pending</option>
-              <option value="in_progress">In Progress</option>
-              <option value="awaiting_approval">Awaiting Approval</option>
-              <option value="completed">Completed</option>
-              <option value="rejected">Rejected</option>
-            </select>
-          </div>
+      <div className="border-b border-border bg-muted/30 px-4 py-3 sm:px-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <label htmlFor="gantt-status" className="text-sm font-medium text-foreground">
+            Status
+          </label>
+          <select
+            id="gantt-status"
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className={SELECT_CLASS}
+          >
+            <option value="all">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="in_progress">In Progress</option>
+            <option value="awaiting_approval">Awaiting Approval</option>
+            <option value="completed">Completed</option>
+            <option value="rejected">Rejected</option>
+          </select>
 
           {showDeveloperFilter && developers && Object.keys(developers).length > 0 && (
-            <div>
-              <label className="text-sm font-medium text-foreground mr-2">Developer:</label>
+            <>
+              <label htmlFor="gantt-developer" className="text-sm font-medium text-foreground">
+                Developer
+              </label>
               <select
+                id="gantt-developer"
                 value={filterDeveloper}
                 onChange={(e) => setFilterDeveloper(e.target.value)}
-                className="px-3 py-1.5 border border-input bg-background rounded-lg text-sm focus:border-primary focus:ring-2 focus:ring-primary/30"
+                className={SELECT_CLASS}
               >
-                <option value="all">All Developers</option>
+                <option value="all">All developers</option>
                 {Object.values(developers).map(dev => (
                   <option key={dev.id} value={dev.id}>{dev.name}</option>
                 ))}
               </select>
-            </div>
+            </>
           )}
 
-          {(filterStatus !== "all" || (showDeveloperFilter && filterDeveloper !== "all")) && (
-            <button
+          {filtersActive && (
+            <Button
+              variant="ghost"
+              size="lg"
               onClick={() => {
                 setFilterStatus("all");
                 setFilterDeveloper("all");
               }}
-              className="px-3 py-1.5 text-sm text-primary hover:text-primary/80 font-medium"
             >
-              Clear Filters
-            </button>
+              Clear filters
+            </Button>
           )}
         </div>
       </div>
 
-      {/* Stats Banner */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 divide-x divide-border bg-muted/50 border-b border-border">
-        <div className="p-3 text-center">
-          <p className="text-xl font-bold text-foreground">{stats.total}</p>
-          <p className="text-xs text-muted-foreground">Total</p>
-        </div>
-        <div className="p-3 text-center">
-          <p className="text-xl font-bold text-muted-foreground">{stats.pending}</p>
-          <p className="text-xs text-muted-foreground">Pending</p>
-        </div>
-        <div className="p-3 text-center">
-          <p className="text-xl font-bold text-info">{stats.inProgress}</p>
-          <p className="text-xs text-muted-foreground">In Progress</p>
-        </div>
-        <div className="p-3 text-center">
-          <p className="text-xl font-bold text-warning">{stats.awaitingApproval}</p>
-          <p className="text-xs text-muted-foreground">Awaiting</p>
-        </div>
-        <div className="p-3 text-center">
-          <p className="text-xl font-bold text-success">{stats.completed}</p>
-          <p className="text-xs text-muted-foreground">Completed</p>
-        </div>
-        <div className="p-3 text-center">
-          <p className="text-xl font-bold text-success">{stats.onTime}</p>
-          <p className="text-xs text-muted-foreground">On Time</p>
-        </div>
-        <div className="p-3 text-center">
-          <p className="text-xl font-bold text-destructive">{stats.late}</p>
-          <p className="text-xs text-muted-foreground">Late</p>
-        </div>
-        <div className="p-3 text-center">
-          <p className={`text-xl font-bold ${stats.productivityPoints >= 0 ? 'text-success' : 'text-destructive'}`}>
-            {stats.productivityPoints >= 0 ? '+' : ''}{stats.productivityPoints}
-          </p>
-          <p className="text-xs text-muted-foreground">Points</p>
-        </div>
+      {/* Stats banner */}
+      <div className="grid grid-cols-2 divide-x divide-y divide-border border-b border-border bg-muted/30 sm:grid-cols-4 lg:grid-cols-8 lg:divide-y-0">
+        {statTiles.map((tile) => (
+          <div key={tile.label} className="p-3 text-center">
+            <p className={`text-xl font-semibold tabular-nums ${tile.className}`}>{tile.value}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">{tile.label}</p>
+          </div>
+        ))}
       </div>
 
       {/* Content */}
@@ -517,132 +642,66 @@ export default function AdminGanttChart({
         {viewMode === "chart" ? (
           <>
             {/* Legend */}
-            <div className="flex flex-wrap gap-4 mb-6">
-              {Object.entries(statusColors).map(([status, color]) => (
-                <div key={status} className="flex items-center">
-                  <div className="w-4 h-4 rounded" style={{ backgroundColor: color }}></div>
-                  <span className="ml-2 text-sm text-muted-foreground">
-                    {statusLabels[status]}
-                  </span>
-                </div>
+            <ul className="mb-5 flex flex-wrap gap-x-4 gap-y-2">
+              {Object.keys(statusLabels).map((status) => (
+                <li key={status} className="flex items-center gap-2">
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full ${
+                      STATUS_DOT_CLASS[status] || "bg-muted-foreground"
+                    }`}
+                    aria-hidden="true"
+                  />
+                  <span className="text-sm text-muted-foreground">{statusLabels[status]}</span>
+                </li>
               ))}
-            </div>
+            </ul>
 
-            {/* Gantt Chart */}
+            {/* Gantt chart */}
             {chartData.length > 0 ? (
-              <div className="overflow-x-auto">
-                <div className="h-[600px] min-w-[900px]">
-                  <EChart option={ganttOption} height="100%" />
+              <div className="overflow-x-auto overscroll-x-contain">
+                <div className="min-w-[640px]">
+                  <EChart option={ganttOption} height={chartHeight} />
                 </div>
               </div>
             ) : (
-              <div className="text-center py-12 border-2 border-dashed border-border rounded-lg">
-                <svg className="w-16 h-16 text-muted-foreground/40 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <h3 className="text-lg font-medium text-foreground mb-2">No Tasks with Valid Dates</h3>
-                <p className="text-muted-foreground">Tasks need start and end dates to appear on the Gantt chart.</p>
-              </div>
+              <EmptyState
+                icon={FileX}
+                title="No tasks with valid dates"
+                description={
+                  filtersActive
+                    ? "No task matching these filters has both a start and an end date."
+                    : "Tasks need a start and an end date to appear on the Gantt chart."
+                }
+              />
             )}
           </>
         ) : (
-          /* Table View */
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1000px]">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Task</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Developer</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-foreground">Start</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-foreground">End</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-foreground">Duration</th>
-                  {showProgress && (
-                    <th className="px-4 py-3 text-center text-sm font-semibold text-foreground">Progress</th>
-                  )}
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-foreground">Status</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-foreground">Completion</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-foreground">Points</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {chartData.map((task, index) => (
-                  <tr key={task.taskId || index} className="hover:bg-muted/50">
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-foreground">{task.name}</p>
-                      {task.description && (
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{task.description}</p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-sm text-foreground">{task.developer}</p>
-                      {task.developerEmail && (
-                        <p className="text-xs text-muted-foreground">{task.developerEmail}</p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-center text-sm text-muted-foreground">{task.startDate}</td>
-                    <td className="px-4 py-3 text-center text-sm text-muted-foreground">{task.endDate}</td>
-                    <td className="px-4 py-3 text-center text-sm text-muted-foreground">{task.duration} days</td>
-                    {showProgress && (
-                      <td className="px-4 py-3 text-center text-sm text-muted-foreground">{task.progressPercent}%</td>
-                    )}
-                    <td className="px-4 py-3 text-center">
-                      <span
-                        className="px-2.5 py-1 rounded-full text-xs font-medium"
-                        style={{
-                          backgroundColor: `${statusColors[task.status]}20`,
-                          color: statusColors[task.status]
-                        }}
-                      >
-                        {statusLabels[task.status]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-center text-sm">
-                      {task.status === 'completed' && task.completionStatus ? (
-                        task.completionStatus === "On Time" ? (
-                          <span className="text-success font-semibold">✓ On Time</span>
-                        ) : task.completionStatus === "Late" ? (
-                          <span className="text-destructive font-semibold">✗ Late</span>
-                        ) : (
-                          <span className="text-muted-foreground">{task.completionStatus}</span>
-                        )
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {task.status === 'completed' && task.completionStatus ? (
-                        <span className={`font-bold text-sm ${
-                          task.completionStatus === "On Time" ? 'text-success' : 'text-destructive'
-                        }`}>
-                          {task.completionStatus === "On Time" ? '+1' : '-1'}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {chartData.length === 0 && (
-              <div className="text-center py-8">
-                <p className="text-muted-foreground">No tasks match the current filters.</p>
-              </div>
-            )}
-          </div>
+          <DataTable
+            columns={tableColumns}
+            rows={chartData}
+            keyField="taskId"
+            empty={
+              <EmptyState
+                icon={FileX}
+                title="No tasks match the current filters"
+                description="Clear a filter, or give these tasks start and end dates."
+              />
+            }
+          />
         )}
       </div>
 
-      {/* Footer Info */}
-      <div className="p-4 bg-muted/50 border-t border-border">
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <div>
-            <strong>Real-time Updates:</strong> This chart automatically updates when tasks change.
-          </div>
-          <div>
-            <strong>Productivity:</strong> On-time = +1 point, Late = -1 point
-          </div>
+      {/* Footer info */}
+      <div className="border-t border-border bg-muted/30 px-4 py-3 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+          <p>
+            <strong className="font-medium text-foreground">Real-time updates:</strong> this chart
+            refreshes when tasks change.
+          </p>
+          <p>
+            <strong className="font-medium text-foreground">Productivity:</strong> on time = +1
+            point, late = −1 point.
+          </p>
         </div>
       </div>
     </div>

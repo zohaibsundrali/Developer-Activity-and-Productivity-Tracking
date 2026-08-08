@@ -11,6 +11,34 @@ import ProjectDetails from "@/components/developer/ProjectDetails";
 import Account from "@/components/developer/Account";
 import TeamPanel from "@/components/developer/TeamPanel";
 import { isSessionExpired, clearDeveloperSession, touchDeveloperSession } from "@/utils/sessionPolicy";
+import { Skeleton } from "@/components/ui";
+
+/**
+ * The dashboard chrome while auth or the user record resolves.
+ *
+ * Both gates used to render a bare spinner (and one rendered `null`), so the
+ * page flashed empty before the shell appeared. This is the shell's shape:
+ * a header line, a stat row, then a wide panel.
+ */
+function DashboardSkeleton() {
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8" aria-busy="true">
+        <div className="mb-6 space-y-2">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-4 w-80" />
+        </div>
+        <Skeleton className="mb-6 h-32 w-full rounded-xl" />
+        <div className="mb-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-28 w-full rounded-xl" />
+          ))}
+        </div>
+        <Skeleton className="h-56 w-full rounded-xl" />
+      </div>
+    </div>
+  );
+}
 
 // Authentication check karne ka function
 const checkAuth = () => {
@@ -84,18 +112,12 @@ const withAuth = (WrappedComponent) => {
     }, [router]);
 
     if (loading) {
-      return (
-        <div className="flex min-h-screen items-center justify-center bg-background">
-          <div className="flex flex-col items-center gap-3">
-            <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-primary/30 border-t-primary" />
-            <div className="text-sm font-medium text-muted-foreground">Loading…</div>
-          </div>
-        </div>
-      );
+      return <DashboardSkeleton />;
     }
 
+    // Redirecting — keep the shell's shape rather than flashing a blank page.
     if (!isAuthenticated) {
-      return null; // Will redirect in useEffect
+      return <DashboardSkeleton />;
     }
 
     return <WrappedComponent {...props} />;
@@ -314,14 +336,7 @@ function DeveloperDashboardContent() {
   };
 
   if (!user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-primary/30 border-t-primary" />
-          <div className="text-sm font-medium text-muted-foreground">Loading…</div>
-        </div>
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   const effectiveRole = user?.membership_role || "developer";

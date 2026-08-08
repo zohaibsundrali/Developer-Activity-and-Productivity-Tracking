@@ -17,39 +17,41 @@ export default function TimeTrackingSection() {
   ];
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+    <div className="grid grid-cols-1 items-center gap-10 lg:grid-cols-2 lg:gap-16">
       <div>
-        <h3 className="text-2xl font-bold text-foreground mb-6">Smart Time Management</h3>
-        <p className="text-muted-foreground mb-6 font-light leading-relaxed">
+        <h3 className="text-2xl font-semibold tracking-tight text-foreground">
+          Smart time management
+        </h3>
+        <p className="mt-4 leading-relaxed text-muted-foreground">
           Our AI automatically tracks work hours, categorizes activities, and provides 
           intelligent time insights. Use the desktop app for comprehensive time management.
         </p>
         
-        <div className="space-y-4">
+        <div className="mt-8 space-y-6">
           {features.map((feature, index) => (
-            <div key={index} className="flex items-start">
-              <div className="flex-shrink-0 w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center mr-4 mt-1">
-                <Check className="w-4 h-4 text-primary" strokeWidth={2.5} />
-              </div>
+            <div key={index} className="flex items-start gap-4">
+              <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Check className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
+              </span>
               <div>
-                <h4 className="font-bold text-foreground">{feature.title}</h4>
-                <p className="text-muted-foreground text-sm">{feature.description}</p>
+                <h4 className="text-sm font-medium text-foreground">{feature.title}</h4>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                  {feature.description}
+                </p>
               </div>
             </div>
           ))}
         </div>
       </div>
       
-      <div className="bg-muted/50 rounded-2xl border border-border p-8">
-        <div className="text-center">
-          <div className="flex justify-center mb-6">
-            <Clock className="w-20 h-20 text-primary" strokeWidth={1.5} />
-          </div>
-          <h4 className="text-2xl font-bold text-foreground mb-4">summary</h4>
-          <p className="text-muted-foreground font-light">
-            Average time saved on manual tracking and reporting
-          </p>
-        </div>
+      <div className="rounded-xl border border-border bg-card p-8 text-center shadow-card sm:p-12">
+        <span className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <Clock className="h-7 w-7" strokeWidth={1.5} aria-hidden="true" />
+        </span>
+        <p className="text-4xl font-semibold tracking-tight text-foreground">summary</p>
+        <p className="mx-auto mt-3 max-w-xs text-sm leading-relaxed text-muted-foreground">
+          Average time saved on manual tracking and reporting
+        </p>
       </div>
     </div>
   );

@@ -1,8 +1,27 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 
-import "../../auth.css";
+import { ArrowRight, BadgeCheck, Ban, Clock3, SearchX } from "lucide-react";
+import { Field, Input, Skeleton } from "@/components/ui";
+import AuthShell, { BrandLockup } from "@/components/auth/AuthShell";
+import {
+  AUTH_INPUT,
+  AuthCard,
+  AuthError,
+  AuthHeading,
+  PasswordInput,
+  SubmitButton,
+} from "@/components/auth/AuthParts";
+
+// Presentational only: which icon fronts each guard state.
+const GUARD_ICONS = {
+  "not-found": SearchX,
+  revoked: Ban,
+  accepted: BadgeCheck,
+  expired: Clock3,
+};
 
 export default function AcceptInvitePage() {
   const params = useParams();
@@ -133,145 +152,138 @@ export default function AcceptInvitePage() {
     : "";
 
   return (
-    <div className="auth-root">
-      <div className="auth-orb auth-orb-1" />
-      <div className="auth-orb auth-orb-2" />
-      <div className="auth-orb auth-orb-3" />
+    <AuthShell panelTitle="You've been invited. Let's get your account set up.">
+      <div className="mb-8 flex items-center justify-between gap-4">
+        <BrandLockup className="lg:invisible" />
+      </div>
 
-      <div className="auth-card">
+      <AuthCard>
         {loading ? (
-          <div className="auth-brand">
-            <h1>Loading invitation…</h1>
-            <p>Please wait while we verify your invite.</p>
+          <div aria-busy="true" aria-live="polite">
+            <span className="sr-only">Loading invitation</span>
+            <Skeleton className="h-7 w-2/3" />
+            <Skeleton className="mt-3 h-4 w-full" />
+            <Skeleton className="mt-2 h-4 w-4/5" />
+            <div className="mt-8 space-y-5" aria-hidden="true">
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-11 w-full" />
+              </div>
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-11 w-full" />
+              </div>
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-11 w-full" />
+              </div>
+              <Skeleton className="h-11 w-full" />
+            </div>
           </div>
         ) : guard ? (
-          <>
-            <div className="auth-brand">
-              <h1>{guardMessages[guard].title}</h1>
-              <p>{guardMessages[guard].text}</p>
-            </div>
-            <div className="auth-footer">
-              <a href="/login">Go to sign in →</a>
-            </div>
-          </>
+          <div className="py-2 text-center">
+            {(() => {
+              const GuardIcon = GUARD_ICONS[guard];
+              return (
+                <span className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full border border-border bg-muted text-muted-foreground">
+                  <GuardIcon className="h-5 w-5" aria-hidden="true" />
+                </span>
+              );
+            })()}
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">
+              {guardMessages[guard].title}
+            </h1>
+            <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
+              {guardMessages[guard].text}
+            </p>
+            <Link
+              href="/login"
+              className="mt-6 inline-flex h-11 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-5 text-sm font-medium text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              Go to sign in
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+          </div>
         ) : (
           <>
-            <div className="auth-brand">
-              <h1>Accept your invitation</h1>
-              <p>
-                You've been invited to join
-                {orgName ? <strong> {orgName}</strong> : " the workspace"} as a{" "}
-                <strong>{roleLabel}</strong>. Set up your account to continue.
-              </p>
-            </div>
+            <AuthHeading
+              title="Accept your invitation"
+              description={
+                <>
+                  You&apos;ve been invited to join
+                  {orgName ? <strong className="font-medium text-foreground"> {orgName}</strong> : " the workspace"} as a{" "}
+                  <strong className="font-medium text-foreground">{roleLabel}</strong>. Set up your
+                  account to continue.
+                </>
+              }
+            />
 
-            <form onSubmit={handleAccept}>
-              <div className="auth-field">
-                <label className="auth-label">Email Address</label>
-                <div className="auth-input-wrap">
-                  <span className="auth-input-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-                    </svg>
-                  </span>
-                  <input
-                    type="email"
-                    value={invitation?.email || ""}
-                    className="auth-input"
-                    readOnly
-                    autoComplete="email"
-                  />
-                </div>
-              </div>
+            <form onSubmit={handleAccept} className="mt-7 space-y-5">
+              <Field
+                label="Email address"
+                htmlFor="invite-email"
+                hint="Taken from your invitation and can't be changed."
+              >
+                <Input
+                  id="invite-email"
+                  type="email"
+                  value={invitation?.email || ""}
+                  className={`${AUTH_INPUT} bg-muted/50 text-muted-foreground`}
+                  readOnly
+                  autoComplete="email"
+                />
+              </Field>
 
-              <div className="auth-field">
-                <label className="auth-label">Full Name</label>
-                <div className="auth-input-wrap">
-                  <span className="auth-input-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-                    </svg>
-                  </span>
-                  <input
-                    type="text"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Your full name"
-                    className="auth-input"
-                    required
-                    autoComplete="name"
-                  />
-                </div>
-              </div>
+              <Field label="Full name" htmlFor="invite-name" required>
+                <Input
+                  id="invite-name"
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Your full name"
+                  className={AUTH_INPUT}
+                  required
+                  autoComplete="name"
+                />
+              </Field>
 
-              <div className="auth-field">
-                <label className="auth-label">Password</label>
-                <div className="auth-input-wrap">
-                  <span className="auth-input-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                    </svg>
-                  </span>
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Create a password"
-                    className="auth-input"
-                    required
-                    autoComplete="new-password"
-                    style={{ paddingRight: "2.75rem" }}
-                  />
-                  <button
-                    type="button"
-                    className="auth-eye-btn"
-                    onClick={() => setShowPassword((v) => !v)}
-                    tabIndex={-1}
-                  >
-                    {showPassword ? (
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
-                      </svg>
-                    ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                    )}
-                  </button>
-                </div>
-              </div>
+              <Field label="Password" htmlFor="invite-password" required>
+                <PasswordInput
+                  id="invite-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Create a password"
+                  required
+                  autoComplete="new-password"
+                  aria-invalid={error ? true : undefined}
+                  visible={showPassword}
+                  onToggle={() => setShowPassword((v) => !v)}
+                />
+              </Field>
 
-              {error && (
-                <div className="auth-error-box">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                  </svg>
-                  <p>{error}</p>
-                </div>
-              )}
+              {error && <AuthError message={error} />}
 
-              <button type="submit" disabled={submitting} className="auth-submit-btn">
-                {submitting ? (
-                  <>
-                    <span className="auth-spinner" />
-                    Creating account…
-                  </>
-                ) : (
-                  "Accept & Create Account"
-                )}
-              </button>
+              <SubmitButton
+                loading={submitting}
+                loadingLabel="Creating account…"
+                disabled={submitting}
+              >
+                Accept &amp; create account
+              </SubmitButton>
             </form>
 
-            <div className="auth-divider">
-              <span>Already have an account?</span>
-            </div>
-            <div className="auth-footer">
-              <a href="/login">Sign in instead →</a>
-            </div>
+            <p className="mt-7 border-t border-border pt-5 text-center text-sm text-muted-foreground">
+              Already have an account?{" "}
+              <Link
+                href="/login"
+                className="font-medium text-primary underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                Sign in instead
+              </Link>
+            </p>
           </>
         )}
-      </div>
-    </div>
+      </AuthCard>
+    </AuthShell>
   );
 }

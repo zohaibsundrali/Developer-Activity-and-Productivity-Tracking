@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId } from "@/utils/orgContext";
 import {
@@ -12,133 +12,24 @@ import {
   loadSprints,
   loadEpics,
   BOARD_COLUMNS,
+  STATUS_META,
   PRIORITIES,
 } from "@/utils/pmData";
 import { loadEmployees } from "@/utils/employeesData";
 import TaskDetailDrawer from "@/components/admin/TaskDetailDrawer";
 import { showError } from "@/utils/alerts";
-import { Plus, Search, RefreshCw, LayoutGrid, Flag, Loader2 } from "lucide-react";
-
-/* -------------------------------------------------------------------------- */
-/*  Constants / helpers                                                        */
-/* -------------------------------------------------------------------------- */
-
-const PRIORITY_STYLES = {
-  low: "bg-muted text-muted-foreground",
-  medium: "bg-info/15 text-info",
-  high: "bg-warning/15 text-warning",
-  urgent: "bg-destructive/15 text-destructive",
-};
-
-const INPUT_CLASS =
-  "rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30";
-
-function taskLabels(task) {
-  const raw = task?.labels ?? task?.tags;
-  if (!raw) return [];
-  if (Array.isArray(raw)) return raw.filter(Boolean).map(String);
-  if (typeof raw === "string") {
-    return raw
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
-  return [];
-}
-
-function formatDue(value) {
-  if (!value) return null;
-  try {
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return String(value);
-    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  } catch {
-    return String(value);
-  }
-}
-
-/* -------------------------------------------------------------------------- */
-/*  Task card                                                                  */
-/* -------------------------------------------------------------------------- */
-
-function TaskCard({ task, assigneeName, onOpen, onDragStart, onDragEnd }) {
-  const priority = task?.priority || "medium";
-  const labels = taskLabels(task);
-  const due = formatDue(task?.due_date || task?.end_date);
-  const points = task?.story_points;
-
-  return (
-    <div
-      draggable
-      onDragStart={(e) => onDragStart(e, task)}
-      onDragEnd={onDragEnd}
-      onClick={() => onOpen(task)}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onOpen(task);
-        }
-      }}
-      className="rounded-lg border border-border bg-card p-3 shadow-card cursor-grab active:cursor-grabbing hover:shadow-elevated transition-shadow"
-    >
-      <p className="text-sm font-medium text-foreground line-clamp-2">
-        {task?.task_title || "Untitled task"}
-      </p>
-
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <span
-          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-            PRIORITY_STYLES[priority] || PRIORITY_STYLES.medium
-          }`}
-        >
-          <Flag className="h-2.5 w-2.5" />
-          {priority}
-        </span>
-
-        {points != null && points !== "" && (
-          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-            {points} pt
-          </span>
-        )}
-
-        {due && (
-          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-            {due}
-          </span>
-        )}
-
-        {labels.slice(0, 2).map((label) => (
-          <span
-            key={label}
-            className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground"
-          >
-            {label}
-          </span>
-        ))}
-      </div>
-
-      <div className="mt-2 text-[11px] text-muted-foreground">
-        {assigneeName || "Unassigned"}
-      </div>
-    </div>
-  );
-}
+import { Board, SELECT_CLASS, TaskCard } from "@/components/admin/views/viewKit";
+import { Button, EmptyState, Input, Skeleton, Toolbar } from "@/components/ui";
+import { Plus, RefreshCw, LayoutGrid, Loader2 } from "lucide-react";
 
 /* -------------------------------------------------------------------------- */
 /*  Add-task inline affordance                                                 */
 /* -------------------------------------------------------------------------- */
 
-function AddTask({ columnId, onCreate }) {
+function AddTask({ columnId, columnLabel, onCreate }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
-  const inputRef = useRef(null);
-
-  useEffect(() => {
-    if (open && inputRef.current) inputRef.current.focus();
-  }, [open]);
 
   const submit = async () => {
     const trimmed = title.trim();
@@ -158,17 +49,18 @@ function AddTask({ columnId, onCreate }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-2 flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-border py-2 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary"
+        className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border py-2 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
-        <Plus className="h-3.5 w-3.5" /> Add
+        <Plus className="h-3.5 w-3.5" aria-hidden="true" /> Add task
+        <span className="sr-only">to {columnLabel}</span>
       </button>
     );
   }
 
   return (
-    <div className="mt-2 space-y-2">
-      <input
-        ref={inputRef}
+    <div className="space-y-2">
+      <Input
+        autoFocus
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         onKeyDown={(e) => {
@@ -179,28 +71,23 @@ function AddTask({ columnId, onCreate }) {
           }
         }}
         placeholder="Task title…"
-        className={`w-full ${INPUT_CLASS}`}
+        aria-label={`New task in ${columnLabel}`}
       />
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={submit}
-          disabled={saving}
-          className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-60"
-        >
-          {saving && <Loader2 className="h-3 w-3 animate-spin" />}
+        <Button size="sm" onClick={submit} disabled={saving}>
+          {saving && <Loader2 className="animate-spin" aria-hidden="true" />}
           Add
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => {
             setTitle("");
             setOpen(false);
           }}
-          className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
         >
           Cancel
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -418,177 +305,188 @@ export default function ProjectBoard() {
   );
 
   /* ---- render helpers ------------------------------------------------- */
-  const spinner = (
-    <div className="flex items-center justify-center py-16">
-      <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-primary/30 border-t-primary" />
+  const boardSkeleton = (
+    <div className="flex gap-4 overflow-hidden pb-2">
+      {BOARD_COLUMNS.map((col, i) => (
+        <div
+          key={col.id}
+          className={`w-full shrink-0 rounded-xl border border-border bg-muted/30 p-3 sm:w-80 ${
+            i === 0 ? "" : "hidden sm:block"
+          }`}
+        >
+          <div className="mb-3 flex items-center gap-2">
+            <Skeleton className="h-2 w-2 rounded-full" />
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="ml-auto h-4 w-6 rounded-full" />
+          </div>
+          <div className="space-y-2">
+            <Skeleton className="h-24 w-full rounded-lg" />
+            <Skeleton className="h-24 w-full rounded-lg" />
+          </div>
+        </div>
+      ))}
     </div>
   );
 
   if (loadingProjects) {
-    return <div className="space-y-4">{spinner}</div>;
-  }
-
-  if (!projects.length) {
     return (
-      <div className="space-y-4">
-        <div className="rounded-xl border border-border bg-card p-8 text-center shadow-card">
-          <LayoutGrid className="mx-auto h-8 w-8 text-muted-foreground" />
-          <p className="mt-3 text-sm font-medium text-foreground">
-            No projects yet
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Create a project first to start planning work on the board.
-          </p>
+      <div className="space-y-6">
+        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+          <div className="flex flex-wrap items-center gap-3">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-8 w-64" />
+            <Skeleton className="ml-auto h-8 w-28" />
+          </div>
         </div>
+        {boardSkeleton}
       </div>
     );
   }
 
+  if (!projects.length) {
+    return (
+      <EmptyState
+        icon={LayoutGrid}
+        title="No projects yet"
+        description="Create a project first to start planning work on the board."
+      />
+    );
+  }
+
+  const boardColumns = columns.map((col) => {
+    const meta = STATUS_META[col.id] || { label: col.label, tone: "muted" };
+    return {
+      id: col.id,
+      label: meta.label,
+      tone: meta.tone,
+      count: col.items.length,
+      reviewOnly: col.reviewOnly,
+      isOver: dragOverCol === col.id,
+      dropProps: {
+        onDragOver: (e) => {
+          e.preventDefault();
+          if (col.reviewOnly) return; // never signals a valid drop
+          if (dragOverCol !== col.id) setDragOverCol(col.id);
+        },
+        onDragLeave: () => setDragOverCol((c) => (c === col.id ? null : c)),
+        onDrop: (e) => handleDrop(e, col.id),
+      },
+      children: col.items.map((task) => (
+        <TaskCard
+          key={task.id}
+          task={task}
+          assigneeName={assigneeName(task.developer_id)}
+          onOpen={setSelectedTask}
+          onDragStart={handleDragStart}
+          onDragEnd={() => setDragOverCol(null)}
+        />
+      )),
+      footer: col.reviewOnly ? null : (
+        <AddTask columnId={col.id} columnLabel={meta.label} onCreate={handleCreate} />
+      ),
+    };
+  });
+
   /* ---- main render ---------------------------------------------------- */
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Toolbar */}
-      <div className="rounded-xl border border-border bg-card p-3 shadow-card">
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={projectId || ""}
-            onChange={(e) => setProjectId(e.target.value || null)}
-            className={INPUT_CLASS}
-            aria-label="Select project"
-          >
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name || "Untitled project"}
-              </option>
-            ))}
-          </select>
+      <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+        <Toolbar
+          search={{
+            value: search,
+            onChange: (value) => setSearch(value),
+            placeholder: "Search tasks…",
+            label: "Search tasks",
+          }}
+          filters={
+            <>
+              <label htmlFor="board-project" className="sr-only">
+                Select project
+              </label>
+              <select
+                id="board-project"
+                value={projectId || ""}
+                onChange={(e) => setProjectId(e.target.value || null)}
+                className={`${SELECT_CLASS} font-medium`}
+              >
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name || "Untitled project"}
+                  </option>
+                ))}
+              </select>
 
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search tasks…"
-              className={`${INPUT_CLASS} pl-8`}
-              aria-label="Search tasks"
-            />
-          </div>
+              <label htmlFor="board-priority" className="sr-only">
+                Filter by priority
+              </label>
+              <select
+                id="board-priority"
+                value={priorityFilter}
+                onChange={(e) => setPriorityFilter(e.target.value)}
+                className={SELECT_CLASS}
+              >
+                <option value="all">All priorities</option>
+                {PRIORITIES.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
 
-          <select
-            value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value)}
-            className={INPUT_CLASS}
-            aria-label="Filter by priority"
-          >
-            <option value="all">All priorities</option>
-            {PRIORITIES.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
+              <label htmlFor="board-assignee" className="sr-only">
+                Filter by assignee
+              </label>
+              <select
+                id="board-assignee"
+                value={assigneeFilter}
+                onChange={(e) => setAssigneeFilter(e.target.value)}
+                className={SELECT_CLASS}
+              >
+                <option value="all">All assignees</option>
+                <option value="unassigned">Unassigned</option>
+                {(employees || []).map((emp) => (
+                  <option key={emp.userId || emp.membershipId} value={emp.userId}>
+                    {emp.name}
+                  </option>
+                ))}
+              </select>
 
-          <select
-            value={assigneeFilter}
-            onChange={(e) => setAssigneeFilter(e.target.value)}
-            className={INPUT_CLASS}
-            aria-label="Filter by assignee"
-          >
-            <option value="all">All assignees</option>
-            <option value="unassigned">Unassigned</option>
-            {(employees || []).map((emp) => (
-              <option key={emp.userId || emp.membershipId} value={emp.userId}>
-                {emp.name}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={sprintFilter}
-            onChange={(e) => setSprintFilter(e.target.value)}
-            className={INPUT_CLASS}
-            aria-label="Filter by sprint"
-          >
-            <option value="all">All sprints</option>
-            {(sprints || []).map((s) => (
-              <option key={s.id} value={String(s.id)}>
-                {s.name || `Sprint ${s.id}`}
-              </option>
-            ))}
-          </select>
-
-          <button
-            type="button"
-            onClick={reload}
-            disabled={loadingBoard}
-            className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:border-primary disabled:opacity-60"
-          >
-            <RefreshCw
-              className={`h-4 w-4 ${loadingBoard ? "animate-spin" : ""}`}
-            />
-            Refresh
-          </button>
-        </div>
+              <label htmlFor="board-sprint" className="sr-only">
+                Filter by sprint
+              </label>
+              <select
+                id="board-sprint"
+                value={sprintFilter}
+                onChange={(e) => setSprintFilter(e.target.value)}
+                className={SELECT_CLASS}
+              >
+                <option value="all">All sprints</option>
+                {(sprints || []).map((s) => (
+                  <option key={s.id} value={String(s.id)}>
+                    {s.name || `Sprint ${s.id}`}
+                  </option>
+                ))}
+              </select>
+            </>
+          }
+          actions={
+            <Button variant="outline" size="default" onClick={reload} disabled={loadingBoard}>
+              <RefreshCw
+                className={loadingBoard ? "animate-spin" : undefined}
+                aria-hidden="true"
+              />
+              Refresh
+            </Button>
+          }
+        />
       </div>
 
       {/* Board */}
       {loadingBoard && !tasks.length ? (
-        spinner
+        boardSkeleton
       ) : (
-        <div className="flex gap-4 overflow-x-auto pb-2">
-          {columns.map((col) => {
-            const isOver = dragOverCol === col.id;
-            return (
-              <div
-                key={col.id}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  if (col.reviewOnly) return; // never signals a valid drop
-                  if (dragOverCol !== col.id) setDragOverCol(col.id);
-                }}
-                onDragLeave={() => setDragOverCol((c) => (c === col.id ? null : c))}
-                onDrop={(e) => handleDrop(e, col.id)}
-                className={`w-72 shrink-0 rounded-xl border p-3 transition-colors ${
-                  isOver
-                    ? "border-primary bg-primary/5 ring-2 ring-primary/30"
-                    : "border-border bg-muted/30"
-                }`}
-              >
-                <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-foreground">
-                    {col.label}
-                  </h3>
-                  <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                    {col.items.length}
-                  </span>
-                </div>
-
-                <div className="max-h-[65vh] space-y-2 overflow-y-auto pr-0.5">
-                  {col.items.map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      assigneeName={assigneeName(task.developer_id)}
-                      onOpen={setSelectedTask}
-                      onDragStart={handleDragStart}
-                      onDragEnd={() => setDragOverCol(null)}
-                    />
-                  ))}
-
-                  {!col.items.length && (
-                    <p className="rounded-lg border border-dashed border-border py-6 text-center text-xs text-muted-foreground">
-                      No tasks
-                    </p>
-                  )}
-                </div>
-
-                {!col.reviewOnly && (
-                  <AddTask columnId={col.id} onCreate={handleCreate} />
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <Board columns={boardColumns} ariaLabel="Project board" />
       )}
 
       {/* Detail drawer */}

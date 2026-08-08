@@ -149,6 +149,23 @@
   }
 }
 
+/*
+  Reduced motion — global backstop for the UI kit.
+  Components also carry `motion-reduce:` utilities; this catches anything that
+  animates via a class the component does not control. Additive only: no token
+  is redefined here.
+*/
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Sidebar owns its own dark scrollbar */
 .sidebar-scroll::-webkit-scrollbar-thumb {
   background: hsl(var(--sidebar-border));

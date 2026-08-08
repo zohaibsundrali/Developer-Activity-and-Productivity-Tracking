@@ -1,8 +1,10 @@
 "use client";
 import { useState, useMemo } from "react";
+import { GanttChartSquare } from "lucide-react";
 import EChart from "@/components/charts/EChart";
 import {
   GANTT_STATUS_COLORS,
+  SEMANTIC,
   textStyle,
   baseGrid,
   baseTooltip,
@@ -10,6 +12,18 @@ import {
   axisLine,
   splitLine,
 } from "@/components/charts/chartTheme";
+import { EmptyState, StatusPill, Tabs } from "@/components/ui";
+
+// Task status → StatusPill state, so the list view carries a glyph and not
+// just a tinted chip.
+const GANTT_STATUS_PILL = {
+  completed: "success",
+  reviewed: "success",
+  awaiting_approval: "pending",
+  in_progress: "active",
+  pending: "inactive",
+  rejected: "error",
+};
 
 /**
  * Enhanced Gantt Chart Component
@@ -23,14 +37,15 @@ import {
  */
 export default function EnhancedGanttChart({ tasks, projectName }) {
   const [viewMode, setViewMode] = useState("chart"); // chart, list
-  
-  // Status colors
+
+  // Status colours come from the shared chart theme so the bars, the legend and
+  // the list chips can never drift apart (they used to be two separate maps).
   const statusColors = {
-    completed: "#10b981", // green
-    awaiting_approval: "#f59e0b", // amber
-    in_progress: "#3b82f6", // blue
-    pending: "#9ca3af", // gray
-    rejected: "#ef4444", // red
+    completed: GANTT_STATUS_COLORS.completed,
+    awaiting_approval: GANTT_STATUS_COLORS.awaiting_approval,
+    in_progress: GANTT_STATUS_COLORS.in_progress,
+    pending: GANTT_STATUS_COLORS.pending,
+    rejected: GANTT_STATUS_COLORS.rejected,
   };
 
   // Calculate chart data
@@ -128,13 +143,14 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
     const onTimeRow = (row) =>
       row.status === "completed"
         ? row.isOnTime
-          ? "<div style=\"color:#16a34a\">✓ Completed on time (+1)</div>"
-          : "<div style=\"color:#ef4444\">✗ Completed late (-1)</div>"
+          ? `<div style="color:${SEMANTIC.success}">✓ Completed on time (+1)</div>`
+          : `<div style="color:${SEMANTIC.danger}">✗ Completed late (−1)</div>`
         : "";
 
     return {
       textStyle,
-      grid: { ...baseGrid, left: 8, right: 30, top: 20, bottom: 8, containLabel: true },
+      // Extra bottom padding leaves room for the x-axis title.
+      grid: { ...baseGrid, left: 8, right: 30, top: 20, bottom: 28, containLabel: true },
       tooltip: {
         trigger: "item",
         axisPointer: { type: "shadow" },
@@ -155,7 +171,14 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
       xAxis: {
         type: "value",
         min: 0,
-        axisLabel: { ...axisLabel, formatter: (value) => `Day ${value}` },
+        name: "Days from project start",
+        nameLocation: "middle",
+        nameGap: 26,
+        nameTextStyle: axisLabel,
+        minInterval: 1,
+        // hideOverlap stops "Day 12"/"Day 13" printing on top of each other
+        // once a long project squeezes the axis at narrow widths.
+        axisLabel: { ...axisLabel, hideOverlap: true, formatter: (value) => `Day ${value}` },
         axisLine,
         splitLine,
       },
@@ -163,7 +186,15 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
         type: "category",
         inverse: true,
         data: chartData.map((d) => d.name),
-        axisLabel: { ...axisLabel, fontSize: 12 },
+        // Task titles are free text and used to run into the plot area. They
+        // now truncate at a fixed width with the full name in the tooltip.
+        axisLabel: {
+          ...axisLabel,
+          fontSize: 12,
+          width: 150,
+          overflow: "truncate",
+          hideOverlap: true,
+        },
         axisLine,
         axisTick: { show: false },
       },
@@ -196,8 +227,8 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
                 symbol: "none",
                 silent: true,
                 data: [{ xAxis: todayPosition }],
-                lineStyle: { color: "#ef4444", type: "dashed", width: 1 },
-                label: { formatter: "Today", color: "#ef4444", fontSize: 12, position: "insideEndTop" },
+                lineStyle: { color: SEMANTIC.danger, type: "dashed", width: 1 },
+                label: { formatter: "Today", color: SEMANTIC.danger, fontSize: 12, position: "insideEndTop" },
               }
             : undefined,
         },
@@ -207,84 +238,59 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
 
   if (!tasks || tasks.length === 0) {
     return (
-      <div className="rounded-xl border border-border bg-card shadow-card p-6">
-        <h3 className="text-xl font-bold tracking-tight text-foreground mb-4">Project Timeline</h3>
-        <div className="text-center py-12 text-muted-foreground">
-          <svg className="w-16 h-16 mx-auto text-muted-foreground mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-              d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-          </svg>
-          <p>No tasks with dates to display</p>
-        </div>
+      <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
+        <h3 className="mb-4 text-base font-semibold tracking-tight text-foreground">Project timeline</h3>
+        <EmptyState
+          icon={GanttChartSquare}
+          title="No tasks to plot yet"
+          description="Once tasks on this project have a start and end date, their timeline appears here."
+        />
       </div>
     );
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-card overflow-hidden">
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
       {/* Header */}
-      <div className="bg-primary p-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <h3 className="text-xl font-bold tracking-tight text-primary-foreground">
-              {projectName || "Project"} - Gantt Chart
-            </h3>
-            <p className="text-primary-foreground/80 text-sm mt-1">Visual timeline of all tasks</p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setViewMode("chart")}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                viewMode === "chart"
-                  ? "bg-card text-primary"
-                  : "bg-white/20 text-primary-foreground hover:bg-white/30"
-              }`}
-            >
-              Chart
-            </button>
-            <button
-              onClick={() => setViewMode("list")}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                viewMode === "list"
-                  ? "bg-card text-primary"
-                  : "bg-white/20 text-primary-foreground hover:bg-white/30"
-              }`}
-            >
-              List
-            </button>
-          </div>
+      <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <div className="min-w-0">
+          <h3 className="truncate text-base font-semibold tracking-tight text-foreground">
+            {projectName || "Project"} — timeline
+          </h3>
+          <p className="mt-0.5 text-sm text-muted-foreground">Every task, plotted against the project calendar.</p>
         </div>
+        <Tabs
+          tabs={[
+            { id: "chart", label: "Chart" },
+            { id: "list", label: "List" },
+          ]}
+          active={viewMode}
+          onChange={setViewMode}
+          aria-label="Timeline view"
+          className="shrink-0"
+        />
       </div>
 
-      {/* Stats Banner */}
-      <div className="grid grid-cols-2 sm:grid-cols-6 divide-x divide-border bg-muted/50 border-b border-border">
-        <div className="p-4 text-center">
-          <p className="text-2xl font-bold text-foreground">{stats.total}</p>
-          <p className="text-xs text-muted-foreground">Total Tasks</p>
-        </div>
-        <div className="p-4 text-center">
-          <p className="text-2xl font-bold text-success">{stats.completed}</p>
-          <p className="text-xs text-muted-foreground">Completed</p>
-        </div>
-        <div className="p-4 text-center">
-          <p className="text-2xl font-bold text-success">{stats.onTime}</p>
-          <p className="text-xs text-muted-foreground">On Time</p>
-        </div>
-        <div className="p-4 text-center">
-          <p className="text-2xl font-bold text-destructive">{stats.late}</p>
-          <p className="text-xs text-muted-foreground">Late</p>
-        </div>
-        <div className="p-4 text-center">
-          <p className="text-2xl font-bold text-warning">{stats.pending}</p>
-          <p className="text-xs text-muted-foreground">Pending</p>
-        </div>
-        <div className="p-4 text-center">
-          <p className={`text-2xl font-bold ${stats.productivityPoints >= 0 ? 'text-success' : 'text-destructive'}`}>
-            {stats.productivityPoints >= 0 ? '+' : ''}{stats.productivityPoints}
-          </p>
-          <p className="text-xs text-muted-foreground">Points</p>
-        </div>
-      </div>
+      {/* Stats banner — tabular figures so the six numbers line up. */}
+      <dl className="grid grid-cols-2 divide-x divide-y divide-border border-b border-border bg-muted/40 sm:grid-cols-3 lg:grid-cols-6 lg:divide-y-0">
+        {[
+          { label: "Total tasks", value: stats.total, className: "text-foreground" },
+          { label: "Completed", value: stats.completed, className: "text-success" },
+          { label: "On time", value: stats.onTime, className: "text-success" },
+          { label: "Late", value: stats.late, className: "text-destructive" },
+          { label: "Pending", value: stats.pending, className: "text-warning" },
+          {
+            label: "Points",
+            value: `${stats.productivityPoints >= 0 ? "+" : ""}${stats.productivityPoints}`,
+            className: stats.productivityPoints >= 0 ? "text-success" : "text-destructive",
+          },
+        ].map((s) => (
+          <div key={s.label} className="p-4 text-center">
+            <dd className={`text-2xl font-semibold tabular-nums ${s.className}`}>{s.value}</dd>
+            <dt className="text-xs text-muted-foreground">{s.label}</dt>
+          </div>
+        ))}
+      </dl>
 
       {/* Content */}
       <div className="p-4 sm:p-6">
@@ -302,66 +308,78 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
               ))}
             </div>
 
-            {/* Gantt Chart */}
+            {/* Gantt chart.
+                Height grows with the number of rows: at a fixed h-96 anything
+                past ~10 tasks squeezed the category axis until the task names
+                collided. 34px per row keeps every label on its own line, and
+                the floor stops a one-task chart from collapsing. */}
             <div className="overflow-x-auto">
-              <div className="h-96 min-w-[700px]">
-                <EChart option={chartOption} height="100%" />
+              <div className="min-w-[700px]">
+                <EChart
+                  option={chartOption}
+                  height={Math.max(260, chartData.length * 34 + 80)}
+                />
               </div>
             </div>
           </>
         ) : (
           /* List View */
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px]">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Task</th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">Start</th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">End</th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">Duration</th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">Status</th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">On Time</th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-muted-foreground">Points</th>
+            <table className="w-full min-w-[860px] divide-y divide-border text-sm">
+              <thead>
+                <tr className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <th scope="col" className="px-4 py-3 text-left">Task</th>
+                  <th scope="col" className="px-4 py-3 text-left">Start</th>
+                  <th scope="col" className="px-4 py-3 text-left">End</th>
+                  <th scope="col" className="px-4 py-3 text-right">Duration</th>
+                  <th scope="col" className="px-4 py-3 text-left">Status</th>
+                  <th scope="col" className="px-4 py-3 text-left">On time</th>
+                  <th scope="col" className="px-4 py-3 text-right">Points</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {chartData.map((task, index) => (
-                  <tr key={index} className="hover:bg-muted/50">
+                  <tr key={index} className="h-12 transition-colors duration-150 hover:bg-muted/40">
                     <td className="px-4 py-3">
-                      <p className="font-medium text-foreground">{task.name}</p>
+                      <p className="max-w-[24rem] truncate font-medium text-foreground" title={task.name}>
+                        {task.name}
+                      </p>
                     </td>
-                    <td className="px-4 py-3 text-center text-muted-foreground">{task.startDate}</td>
-                    <td className="px-4 py-3 text-center text-muted-foreground">{task.endDate}</td>
-                    <td className="px-4 py-3 text-center text-muted-foreground">{task.duration} days</td>
-                    <td className="px-4 py-3 text-center">
-                      <span
-                        className="px-2 py-1 rounded-full text-xs font-medium capitalize"
-                        style={{
-                          backgroundColor: `${statusColors[task.status]}20`,
-                          color: statusColors[task.status]
-                        }}
-                      >
-                        {task.status.replace('_', ' ')}
-                      </span>
+                    <td className="whitespace-nowrap px-4 py-3 tabular-nums text-muted-foreground">{task.startDate}</td>
+                    <td className="whitespace-nowrap px-4 py-3 tabular-nums text-muted-foreground">{task.endDate}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-muted-foreground">
+                      {task.duration} days
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      {task.status === 'completed' ? (
+                    <td className="px-4 py-3">
+                      <StatusPill
+                        status={GANTT_STATUS_PILL[task.status] || "unknown"}
+                        label={task.status.replace("_", " ")}
+                        size="sm"
+                        className="capitalize"
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      {task.status === "completed" ? (
                         task.isOnTime ? (
                           <span className="text-success">✓ Yes</span>
                         ) : (
                           <span className="text-destructive">✗ No</span>
                         )
                       ) : (
-                        <span className="text-muted-foreground">-</span>
+                        <span className="text-muted-foreground">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      {task.status === 'completed' ? (
-                        <span className={`font-bold ${task.isOnTime ? 'text-success' : 'text-destructive'}`}>
-                          {task.isOnTime ? '+1' : '-1'}
+                    <td className="px-4 py-3 text-right">
+                      {task.status === "completed" ? (
+                        <span
+                          className={`font-semibold tabular-nums ${
+                            task.isOnTime ? "text-success" : "text-destructive"
+                          }`}
+                        >
+                          {task.isOnTime ? "+1" : "−1"}
                         </span>
                       ) : (
-                        <span className="text-muted-foreground">-</span>
+                        <span className="tabular-nums text-muted-foreground">—</span>
                       )}
                     </td>
                   </tr>

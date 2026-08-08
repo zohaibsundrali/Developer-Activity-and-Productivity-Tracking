@@ -1,13 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Loader2, RefreshCw, BellOff } from "lucide-react";
+import { AlertTriangle, RefreshCw, BellOff } from "lucide-react";
 import {
   CATEGORY_KEYS,
   categoryMeta,
   fetchNotificationPreferences,
   setNotificationPreference,
 } from "@/utils/notifications";
+import { Badge, Button, Skeleton } from "@/components/ui";
+import { cn } from "@/lib/utils";
 import { categoryIcon, toneClass } from "./notificationVisuals";
 
 /**
@@ -99,18 +101,28 @@ export default function NotificationPreferences() {
           Turn a category off and nothing new in it is sent to you. Anything already here stays.
         </p>
         {mutedCount > 0 && (
-          <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
-            <BellOff className="h-3.5 w-3.5" />
+          <Badge variant="secondary" size="md" className="mt-2">
+            <BellOff aria-hidden="true" />
             {mutedCount} muted
-          </p>
+          </Badge>
         )}
       </div>
 
       {loading && !preferences ? (
-        <div className="flex flex-col items-center justify-center px-4 py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
-          <p className="mt-3 text-sm text-muted-foreground">Loading preferences…</p>
-        </div>
+        // One placeholder per real switch row — the panel keeps its height, so
+        // the column next to it does not reflow when the read lands.
+        <ul className="divide-y divide-border" aria-busy="true">
+          {CATEGORY_KEYS.map((key) => (
+            <li key={key} className="flex items-center gap-3 px-4 py-3 sm:px-5">
+              <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-3.5 w-32" />
+                <Skeleton className="h-2.5 w-10" />
+              </div>
+              <Skeleton className="h-6 w-11 shrink-0 rounded-full" />
+            </li>
+          ))}
+        </ul>
       ) : (
         <>
           {/* A read that failed still renders the switches, in the state a user
@@ -125,15 +137,10 @@ export default function NotificationPreferences() {
                   {error.message || "Showing defaults."} Your saved choices are still in effect.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={load}
-                className="flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1
-                  text-xs font-medium text-foreground transition-colors hover:bg-muted"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
+              <Button variant="outline" size="xs" onClick={load} className="shrink-0">
+                <RefreshCw aria-hidden="true" />
                 <span>Retry</span>
-              </button>
+              </Button>
             </div>
           )}
 
@@ -151,13 +158,15 @@ export default function NotificationPreferences() {
               const { Icon } = item;
 
               return (
-                <li key={item.key} className="flex items-center gap-3 px-4 py-3 sm:px-5">
-                  <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${item.tone}`}>
-                    <Icon className="h-4 w-4" />
-                  </div>
+                <li key={item.key} className="flex items-center gap-3 px-4 py-3 transition-colors duration-150 hover:bg-muted/40 motion-reduce:transition-none sm:px-5">
+                  <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-full", item.tone)}>
+                    <Icon className="h-4 w-4" aria-hidden="true" />
+                  </span>
 
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-foreground">{item.label}</p>
+                    {/* State in words as well as in the switch position, so
+                        "muted" survives a screenshot and a screen reader. */}
                     <p className="text-xs text-muted-foreground">{enabled ? "On" : "Muted"}</p>
                   </div>
 
@@ -168,15 +177,18 @@ export default function NotificationPreferences() {
                     aria-label={`${item.label} notifications`}
                     disabled={busy}
                     onClick={() => toggle(item.key, !enabled)}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full border
-                      transition-colors disabled:cursor-wait disabled:opacity-60 ${
-                        enabled ? "border-primary bg-primary" : "border-border bg-muted"
-                      }`}
+                    className={cn(
+                      "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-150",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                      "disabled:cursor-wait disabled:opacity-60 motion-reduce:transition-none",
+                      enabled ? "border-primary bg-primary" : "border-border bg-muted"
+                    )}
                   >
                     <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-card shadow-card transition-transform ${
+                      className={cn(
+                        "inline-block h-4 w-4 rounded-full bg-card shadow-card transition-transform duration-150 motion-reduce:transition-none",
                         enabled ? "translate-x-6" : "translate-x-1"
-                      }`}
+                      )}
                     />
                   </button>
                 </li>

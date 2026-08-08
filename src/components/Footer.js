@@ -1,4 +1,13 @@
-import { Sparkles, Github, Twitter, Linkedin, Mail, ArrowUp } from 'lucide-react';
+'use client';
+
+import { Activity, ArrowUp, Github, Linkedin, Mail, Twitter } from 'lucide-react';
+
+const socials = [
+  { href: '#', label: 'GitHub', icon: Github },
+  { href: '#', label: 'Twitter', icon: Twitter },
+  { href: '#', label: 'LinkedIn', icon: Linkedin },
+  { href: '#', label: 'Email', icon: Mail },
+];
 
 export default function Footer() {
   const scrollToTop = () => {
@@ -6,69 +15,48 @@ export default function Footer() {
   };
 
   return (
-    <footer className="bg-card text-foreground py-12 border-t border-border">
-      <div className="container mx-auto px-6">
-        <div className="flex flex-col md:flex-row justify-between items-center">
-          <div className="mb-6 md:mb-0 text-center md:text-left">
-            <div className="flex items-center gap-2 justify-center md:justify-start">
-              <div className="p-1.5 bg-primary rounded-lg">
-                <Sparkles className="w-4 h-4 text-primary-foreground" />
-              </div>
-              <h2 className="text-lg font-bold text-foreground">
+    <footer className="border-t border-border bg-muted/30 py-12 text-foreground">
+      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
+        <div className="flex flex-col gap-8 md:flex-row md:items-center md:justify-between">
+          <div className="text-center md:text-left">
+            <span className="inline-flex items-center gap-2.5">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                <Activity className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <span className="text-base font-semibold tracking-tight text-foreground">
                 DevTrack
-              </h2>
-            </div>
-            <p className="text-muted-foreground text-sm mt-1">
-              Activity & Productivity Tracking Platform
+              </span>
+            </span>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Activity &amp; productivity tracking platform.
             </p>
-
           </div>
 
-          <div className="text-center md:text-right">
-            <div className="flex items-center gap-4 justify-center md:justify-end mb-3">
-              <a
-                href="#"
-                className="text-muted-foreground hover:text-primary transition-colors duration-300"
-                aria-label="GitHub"
-              >
-                <Github className="w-5 h-5" />
-              </a>
-              <a
-                href="#"
-                className="text-muted-foreground hover:text-primary transition-colors duration-300"
-                aria-label="Twitter"
-              >
-                <Twitter className="w-5 h-5" />
-              </a>
-              <a
-                href="#"
-                className="text-muted-foreground hover:text-primary transition-colors duration-300"
-                aria-label="LinkedIn"
-              >
-                <Linkedin className="w-5 h-5" />
-              </a>
-              <a
-                href="#"
-                className="text-muted-foreground hover:text-primary transition-colors duration-300"
-                aria-label="Email"
-              >
-                <Mail className="w-5 h-5" />
-              </a>
+          <div className="flex flex-col items-center gap-4 md:items-end">
+            <div className="flex items-center gap-1">
+              {socials.map(({ href, label, icon: Icon }) => (
+                <a
+                  key={label}
+                  href={href}
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  aria-label={label}
+                >
+                  <Icon className="h-5 w-5" aria-hidden="true" />
+                </a>
+              ))}
               <button
                 onClick={scrollToTop}
-                className="text-muted-foreground hover:text-primary transition-colors duration-300 p-1.5 bg-muted hover:bg-primary/10 rounded-full"
-                aria-label="Scroll to top"
+                className="ml-1 inline-flex h-11 w-11 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                aria-label="Back to top"
               >
-                <ArrowUp className="w-4 h-4" />
+                <ArrowUp className="h-4 w-4" aria-hidden="true" />
               </button>
             </div>
-            <p className="text-muted-foreground text-sm">
-              © 2026 All rights reserved.
+            <p className="text-sm text-muted-foreground">
+              &copy; 2026 DevTrack. All rights reserved.
             </p>
           </div>
         </div>
-
-    
       </div>
     </footer>
   );

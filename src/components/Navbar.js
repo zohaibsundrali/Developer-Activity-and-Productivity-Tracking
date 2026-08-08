@@ -12,7 +12,8 @@ import {
   HelpCircle,
   Shield,
   Mail,
-  Award
+  Award,
+  Activity
 } from 'lucide-react';
 
 const navItems = [
@@ -254,9 +255,9 @@ export default function Navbar() {
   const DashboardButton = () => (
     <button
       onClick={(e) => navigateToDashboard(e)}
-      className="flex items-center w-full text-left px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors rounded-lg"
+      className="flex w-full items-center rounded-lg px-4 py-2.5 text-left text-sm text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
     >
-      <LayoutDashboard className="w-4 h-4 mr-3 text-muted-foreground" />
+      <LayoutDashboard className="mr-3 h-4 w-4 text-muted-foreground" aria-hidden="true" />
       Dashboard
     </button>
   );
@@ -266,7 +267,7 @@ export default function Navbar() {
     if (isLoading) {
       return (
         <div className="flex items-center space-x-4">
-          <div className="w-24 h-10 bg-primary-foreground/20 animate-pulse rounded-lg"></div>
+          <div className="h-9 w-24 animate-pulse rounded-lg bg-muted"></div>
         </div>
       );
     }
@@ -276,88 +277,91 @@ export default function Navbar() {
         <div className="relative" ref={profileMenuRef}>
           <button
             onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-            className="flex items-center space-x-3 focus:outline-none hover:opacity-90 transition-opacity group"
+            className="group flex items-center gap-2.5 rounded-lg px-1.5 py-1 transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             aria-label="User profile menu"
+            aria-haspopup="menu"
+            aria-expanded={isProfileMenuOpen}
           >
-            <div className="w-10 h-10 rounded-full bg-primary-foreground/20 flex items-center justify-center text-primary-foreground font-bold shadow-md ring-2 ring-primary-foreground/20 group-hover:ring-primary-foreground/40 transition-all">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
               {getUserInitials()}
-            </div>
+            </span>
 
-            <div className="hidden lg:flex flex-col items-start">
-             <span className="text-sm font-semibold text-primary-foreground">
+            <span className="hidden flex-col items-start lg:flex">
+              <span className="text-sm font-medium leading-tight text-foreground">
                 {getUserDisplayName()}
               </span>
-              <div className="flex items-center gap-1">
-                <Award className="w-3 h-3 text-primary-foreground/80" />
-                <span className="text-xs text-primary-foreground/80">
-                  {getUserRoleText()}
-                </span>
-              </div>
-            </div>
+              <span className="flex items-center gap-1 text-xs leading-tight text-muted-foreground">
+                <Award className="h-3 w-3" aria-hidden="true" />
+                {getUserRoleText()}
+              </span>
+            </span>
 
-            <ChevronDown className={`w-4 h-4 text-primary-foreground/80 transition-transform duration-200 ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
+            <ChevronDown
+              className={`h-4 w-4 text-muted-foreground transition-transform duration-150 ${isProfileMenuOpen ? 'rotate-180' : ''}`}
+              aria-hidden="true"
+            />
           </button>
 
           {/* Profile Dropdown Menu */}
           {isProfileMenuOpen && (
-            <div className="absolute right-0 mt-3 w-64 bg-card rounded-xl shadow-popover border border-border py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-              <div className="px-4 py-3 border-b border-border">
+            <div className="animate-fade-in absolute right-0 z-50 mt-3 w-64 rounded-xl border border-border bg-card py-1 shadow-popover">
+              <div className="border-b border-border px-4 py-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-bold text-lg shadow-md">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
                     {getUserInitials()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-foreground truncate">{getUserDisplayName()}</p>
-                    <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
-                      <Mail className="w-3 h-3" />
-                      {getUserEmail()}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-foreground">{getUserDisplayName()}</p>
+                    <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+                      <Mail className="h-3 w-3 shrink-0" aria-hidden="true" />
+                      <span className="truncate">{getUserEmail()}</span>
                     </p>
                   </div>
                 </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <Shield className="w-3 h-3 text-primary" />
-                  <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                <div className="mt-3">
+                  <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${
                     userRole === USER_TYPES.ADMIN
                       ? 'bg-info/10 text-info'
                       : 'bg-primary/10 text-primary'
                   }`}>
+                    <Shield className="h-3 w-3" aria-hidden="true" />
                     {getUserRoleText()}
                   </span>
                 </div>
               </div>
-              
-              <div className="py-1">
+
+              <div className="p-1">
                 <DashboardButton />
-                
+
                 <button
                   onClick={() => {
                     setIsProfileMenuOpen(false);
                     // Navigate to settings
                   }}
-                  className="flex items-center w-full text-left px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors rounded-lg"
+                  className="flex w-full items-center rounded-lg px-4 py-2.5 text-left text-sm text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
-                  <Settings className="w-4 h-4 mr-3 text-muted-foreground" />
+                  <Settings className="mr-3 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   Settings
                 </button>
-                
+
                 <button
                   onClick={() => {
                     setIsProfileMenuOpen(false);
                     // Navigate to help
                   }}
-                  className="flex items-center w-full text-left px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors rounded-lg"
+                  className="flex w-full items-center rounded-lg px-4 py-2.5 text-left text-sm text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
-                  <HelpCircle className="w-4 h-4 mr-3 text-muted-foreground" />
-                  Help & Support
+                  <HelpCircle className="mr-3 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                  Help &amp; Support
                 </button>
               </div>
-              
-              <div className="border-t border-border py-1">
+
+              <div className="border-t border-border p-1">
                 <button
                   onClick={handleLogout}
-                  className="flex items-center w-full text-left px-4 py-2.5 text-sm text-destructive hover:bg-destructive/10 transition-colors rounded-lg"
+                  className="flex w-full items-center rounded-lg px-4 py-2.5 text-left text-sm text-destructive transition-colors duration-150 hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
-                  <LogOut className="w-4 h-4 mr-3 text-destructive" />
+                  <LogOut className="mr-3 h-4 w-4" aria-hidden="true" />
                   Logout
                 </button>
               </div>
@@ -370,15 +374,15 @@ export default function Navbar() {
         <>
           <a
             href="/login"
-            className="px-5 py-2 text-primary-foreground border border-primary-foreground/30 rounded-lg hover:bg-primary-foreground/10 hover:border-primary-foreground transition-all duration-200 text-sm font-medium"
+            className="inline-flex h-9 items-center rounded-lg px-3 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
-            Sign In
+            Sign in
           </a>
           <a
             href="/admin/registration"
-           className="px-5 py-2 bg-primary-foreground text-primary font-semibold rounded-lg hover:bg-primary-foreground/90 hover:scale-[1.02] transition-all duration-200 text-sm shadow-md"
+            className="inline-flex h-9 items-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
-            Sign Up
+            Get started
           </a>
         </>
       );
@@ -392,8 +396,11 @@ export default function Navbar() {
     const currentNavItems = isLoggedIn && user ? getUserNavItems() : navItems;
 
     return (
-      <div className="md:hidden bg-primary border-t border-primary-foreground/10 mt-4">
-        <div className="py-3 space-y-1">
+      <div
+        id="mobile-nav"
+        className="animate-fade-in max-h-[calc(100vh-4rem)] overflow-y-auto overscroll-contain border-t border-border bg-background px-4 py-3 md:hidden"
+      >
+        <div className="space-y-1">
           {currentNavItems.map((item) => (
             <button
               key={item.name}
@@ -401,40 +408,40 @@ export default function Navbar() {
                 handleNavItemClick(item.href, e);
                 setIsMenuOpen(false);
               }}
-              className="block w-full text-left px-4 py-3 text-primary-foreground hover:bg-primary-foreground/10 text-sm font-medium rounded-lg transition-all"
+              className="block min-h-[44px] w-full rounded-lg px-3 py-3 text-left text-sm font-medium text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             >
               {item.name}
             </button>
           ))}
 
-          <div className="border-t border-primary-foreground/10 pt-2 mt-2 px-4">
+          <div className="mt-3 space-y-2 border-t border-border pt-3">
             {!(isLoggedIn && user) ? (
               <>
                 <a
                   href="/login"
-                  className="block py-3 text-primary-foreground text-sm font-medium hover:bg-primary-foreground/10 px-4 rounded-lg transition-all"
+                  className="flex min-h-[44px] items-center justify-center rounded-lg border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   onClick={() => setIsMenuOpen(false)}
                 >
-                  Sign In
+                  Sign in
                 </a>
                 <a
                   href="/admin/registration"
-                  className="block py-3 bg-primary-foreground text-primary text-center rounded-lg text-sm font-semibold mt-2 hover:bg-primary-foreground/90 transition-all"
+                  className="flex min-h-[44px] items-center justify-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   onClick={() => setIsMenuOpen(false)}
                 >
-                  Sign Up
+                  Get started
                 </a>
               </>
             ) : (
               <>
-                <div className="flex items-center space-x-3 mb-4 p-2 bg-primary-foreground/10 rounded-lg">
-                  <div className="w-12 h-12 rounded-full bg-primary-foreground/20 flex items-center justify-center text-primary-foreground font-bold text-lg shadow-md">
+                <div className="mb-2 flex items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
                     {getUserInitials()}
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-primary-foreground">{getUserDisplayName()}</p>
-                    <p className="text-xs text-primary-foreground/80 flex items-center gap-1">
-                      <Award className="w-3 h-3" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-foreground">{getUserDisplayName()}</p>
+                    <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Award className="h-3 w-3" aria-hidden="true" />
                       {getUserRoleText()}
                     </p>
                   </div>
@@ -445,9 +452,9 @@ export default function Navbar() {
                     navigateToDashboard(e);
                     setIsMenuOpen(false);
                   }}
-                  className="flex items-center w-full text-left px-4 py-3 text-primary-foreground hover:bg-primary-foreground/10 text-sm font-medium rounded-lg transition-colors"
+                  className="flex min-h-[44px] w-full items-center rounded-lg px-3 text-left text-sm font-medium text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
-                  <LayoutDashboard className="w-4 h-4 mr-3 text-primary-foreground/70" />
+                  <LayoutDashboard className="mr-3 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   Dashboard
                 </button>
 
@@ -456,17 +463,17 @@ export default function Navbar() {
                     setIsMenuOpen(false);
                     // Navigate to settings
                   }}
-                  className="flex items-center w-full text-left px-4 py-3 text-primary-foreground hover:bg-primary-foreground/10 text-sm font-medium rounded-lg transition-colors"
+                  className="flex min-h-[44px] w-full items-center rounded-lg px-3 text-left text-sm font-medium text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
-                  <Settings className="w-4 h-4 mr-3 text-primary-foreground/70" />
+                  <Settings className="mr-3 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   Settings
                 </button>
 
                 <button
                   onClick={handleLogout}
-                  className="w-full text-left flex items-center px-4 py-3 text-primary-foreground hover:bg-primary-foreground/10 text-sm font-medium rounded-lg transition-colors mt-2"
+                  className="flex min-h-[44px] w-full items-center rounded-lg px-3 text-left text-sm font-medium text-destructive transition-colors duration-150 hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
-                  <LogOut className="w-4 h-4 mr-3 text-primary-foreground/70" />
+                  <LogOut className="mr-3 h-4 w-4" aria-hidden="true" />
                   Logout
                 </button>
               </>
@@ -480,69 +487,71 @@ export default function Navbar() {
   // Show loading state
   if (isLoading) {
     return (
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-primary backdrop-blur-md border-b border-primary/20 shadow-elevated">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-primary-foreground/20 rounded-lg animate-pulse"></div>
-              <div className="h-6 w-48 bg-primary-foreground/20 rounded animate-pulse"></div>
-            </div>
-            <div className="h-10 w-24 bg-primary-foreground/20 rounded animate-pulse"></div>
+      <nav className="fixed left-0 right-0 top-0 z-50 border-b border-border bg-background">
+        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-2.5">
+            <div className="h-9 w-9 animate-pulse rounded-lg bg-muted"></div>
+            <div className="h-4 w-24 animate-pulse rounded bg-muted"></div>
           </div>
+          <div className="h-9 w-24 animate-pulse rounded-lg bg-muted"></div>
         </div>
       </nav>
     );
   }
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-primary text-primary-foreground backdrop-blur-sm border-b border-primary/20 shadow-card">
-      <div className="container mx-auto px-6 py-4">
-        <div className="flex items-center justify-between">
-          
+    <nav className="fixed left-0 right-0 top-0 z-50 border-b border-border bg-background text-foreground">
+      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
+        <div className="flex h-16 items-center justify-between gap-4">
+
           {/* Logo/Brand */}
-          <div className="flex items-center space-x-3">
-            <div>
-              <p className="text-lg font-bold text-primary-foreground">
-  DevTrack
-</p>
-            </div>
-          </div>
+          <a
+            href="/"
+            className="inline-flex items-center gap-2.5 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <Activity className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <span className="text-base font-semibold tracking-tight text-foreground">DevTrack</span>
+          </a>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-12">
-            <div className="flex items-center space-x-8">
+          <div className="hidden items-center gap-8 md:flex">
+            <div className="flex items-center gap-1">
               {(isLoggedIn && user ? getUserNavItems() : navItems).map((item) => (
                 <button
                   key={item.name}
                   onClick={(e) => handleNavItemClick(item.href, e)}
-                  className="text-primary-foreground hover:text-primary-foreground/80 font-medium transition-all duration-200 text-sm"
+                  className="inline-flex h-9 items-center rounded-lg px-3 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   {item.name}
                 </button>
               ))}
             </div>
 
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center gap-2">
               {renderAuthButtons()}
             </div>
           </div>
 
           {/* Mobile Menu Toggle */}
           <button
-            className="md:hidden p-2 rounded-lg text-primary-foreground hover:bg-primary-foreground/10 transition-all"
+            className="-mr-2 inline-flex h-11 w-11 items-center justify-center rounded-lg text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background md:hidden"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            aria-label="Toggle menu"
+            aria-label={isMenuOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={isMenuOpen}
+            aria-controls="mobile-nav"
           >
             {isMenuOpen ? (
-              <X className="w-6 h-6" />
+              <X className="h-5 w-5" aria-hidden="true" />
             ) : (
-              <Menu className="w-6 h-6" />
+              <Menu className="h-5 w-5" aria-hidden="true" />
             )}
           </button>
         </div>
-
-        <MobileMenu />
       </div>
+
+      <MobileMenu />
     </nav>
   );
 }
