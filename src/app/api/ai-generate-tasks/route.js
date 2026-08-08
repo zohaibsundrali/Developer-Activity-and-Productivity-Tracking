@@ -232,10 +232,13 @@ ${extractedText.substring(0, 6000)}`;
       status: 'pending',
     }));
 
+    // The org filter is redundant with the ownership check above, but this write
+    // uses the service-role client, so it is repeated here as defence in depth.
     await supabaseAdmin
       .from('projects')
       .update({ ai_task_template: JSON.stringify(templateData) })
-      .eq('id', projectId);
+      .eq('id', projectId)
+      .eq('organization_id', auth.orgId);
 
     return NextResponse.json({
       success: true,
