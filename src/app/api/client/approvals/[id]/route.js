@@ -9,17 +9,100 @@ import { buildApproval } from "@/app/api/client/_lib/shapes";
 export const dynamic = "force-dynamic";
 
 // The four things a client can do to an approval item, and what each one means
-// for the approvals row and for the audit trail.
-//   status: null  -> a comment does not change the decision, it only records one
-//   requiresNote  -> a decision the team cannot act on is not a decision
+// for the approvals row, for the audit trail, and for the task the item refers
+// to.
+//   status: null     -> a comment does not change the decision, it only records one
+//   requiresNote     -> a decision the team cannot act on is not a decision
+//   taskApproval     -> what the team's board is told; null leaves the task alone
 const ACTIONS = {
-  approve: { status: "approved", event: "approved", requiresNote: false },
-  request_changes: { status: "changes_requested", event: "changes_requested", requiresNote: true },
-  reject: { status: "rejected", event: "rejected", requiresNote: true },
-  comment: { status: null, event: "commented", requiresNote: false },
+  approve: {
+    status: "approved",
+    event: "approved",
+    requiresNote: false,
+    taskApproval: "approved",
+  },
+  request_changes: {
+    status: "changes_requested",
+    event: "changes_requested",
+    requiresNote: true,
+    taskApproval: "changes_requested",
+  },
+  reject: {
+    status: "rejected",
+    event: "rejected",
+    requiresNote: true,
+    taskApproval: "rejected",
+  },
+  comment: { status: null, event: "commented", requiresNote: false, taskApproval: null },
 };
 
 const APPROVAL_FIELDS = "id, project_id, item_type, title, description, status, created_at";
+
+// Item types whose `item_ref` is meant to name a row in developer_tasks. An
+// invoice or a milestone references an entirely different table, and a uuid
+// from one of those must never be used as a task id. "deliverable" is included
+// because it is the default type and the one the team uses when it asks for
+// sign-off on a piece of work; what actually decides the question is the lookup
+// below, which only ever matches when the reference really is a task.
+const TASK_ITEM_TYPES = new Set(["task", "developer_task", "deliverable"]);
+
+// Mirror the client's decision onto the task the approval points at, so the
+// team reads it on their own board instead of only in the portal.
+//
+// The write goes through the service role because a client has no update policy
+// on developer_tasks - being allowed to say "this is not what I asked for" is
+// not the same as being allowed to edit the team's work item.
+//
+// `status` is deliberately never in the patch. The review pipeline belongs to
+// the team, and letting a client decision move a task through it would drive
+// straight past the transition guards migration 021 exists to enforce; the
+// client's verdict lives in its own column and is read alongside the pipeline,
+// not inside it.
+async function stampTaskApproval({ svc, auth, approval, taskApproval, note, decidedAt }) {
+  if (!taskApproval) return; // a comment records something, it decides nothing
+  if (!TASK_ITEM_TYPES.has(String(approval?.item_type || "").toLowerCase())) return;
+
+  const taskId = approval?.item_ref;
+  if (!taskId) return;
+
+  try {
+    // Two conditions, neither of them taken from the request body. The approval
+    // row names the task, but an approval row can be stale or wrong, so the task
+    // must independently sit in the caller's organization AND in a project this
+    // client is allow-listed for. Reading the task first is what makes both
+    // checkable: without it the update would be a blind write against whatever
+    // uuid `item_ref` happens to hold.
+    const { data: task, error: taskError } = await svc
+      .from("developer_tasks")
+      .select("id, project_id")
+      .eq("id", taskId)
+      .eq("organization_id", auth.orgId)
+      .maybeSingle();
+
+    if (taskError || !task) return;
+    if (!clientCanAccessProject(auth, task.project_id)) return;
+
+    const { error: stampError } = await svc
+      .from("developer_tasks")
+      .update({
+        client_approval_status: taskApproval,
+        client_approval_note: note || null,
+        client_approval_at: decidedAt,
+      })
+      .eq("id", task.id)
+      .eq("organization_id", auth.orgId);
+
+    if (stampError) {
+      console.error("[client/approvals/:id] Task stamp error:", stampError);
+    }
+  } catch (err) {
+    // The decision is already in `approvals` and in the audit trail by the time
+    // this runs. Failing the response now would tell the client their decision
+    // did not land while the record says it did, so the mirror is best-effort
+    // and loud in the log rather than fatal to the request.
+    console.error("[client/approvals/:id] Task stamp error:", err);
+  }
+}
 
 // POST /api/client/approvals/[id]
 // Body: { action: "approve" | "request_changes" | "reject" | "comment", note? }
@@ -71,7 +154,7 @@ export async function POST(request, { params }) {
     const svc = serviceClient();
     const { data: approval, error: fetchError } = await svc
       .from("approvals")
-      .select("id, project_id")
+      .select("id, project_id, item_type, item_ref")
       .eq("organization_id", auth.orgId)
       .eq("id", approvalId)
       .single();
@@ -156,6 +239,15 @@ export async function POST(request, { params }) {
         { status: 500 }
       );
     }
+
+    await stampTaskApproval({
+      svc,
+      auth,
+      approval,
+      taskApproval: action.taskApproval,
+      note,
+      decidedAt,
+    });
 
     const { data: project, error: projectError } = await svc
       .from("projects")

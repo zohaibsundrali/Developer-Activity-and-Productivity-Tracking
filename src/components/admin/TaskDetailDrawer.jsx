@@ -13,6 +13,10 @@ import {
   Plus,
   Save,
   Loader2,
+  AlertTriangle,
+  CheckCircle2,
+  XCircle,
+  Clock,
 } from "lucide-react";
 import {
   updateTask,
@@ -57,6 +61,32 @@ const priorityChipClass = (p) => {
     default:
       return "bg-muted text-muted-foreground";
   }
+};
+
+// What the client has said about this task, kept strictly apart from `status`:
+// this is their verdict on the work, not a position in the team's pipeline, and
+// nothing here ever writes to `status`.
+const CLIENT_APPROVAL_META = {
+  pending: {
+    label: "Awaiting client",
+    chip: "bg-info/10 text-info",
+    icon: Clock,
+  },
+  approved: {
+    label: "Client approved",
+    chip: "bg-success/10 text-success",
+    icon: CheckCircle2,
+  },
+  changes_requested: {
+    label: "Client requested changes",
+    chip: "bg-warning/10 text-warning",
+    icon: AlertTriangle,
+  },
+  rejected: {
+    label: "Client rejected",
+    chip: "bg-destructive/10 text-destructive",
+    icon: XCircle,
+  },
 };
 
 const INPUT_CLASS =
@@ -585,6 +615,16 @@ export default function TaskDetailDrawer({
     form?.client_visible === true || form?.client_visible === false;
   const clientVisible = form?.client_visible === true;
   const savingClientVisible = savingField === "client_visible";
+
+  // Null means the client has never been asked or has never answered, which is
+  // not a decision and so gets no badge at all. An unrecognised value (a row
+  // written before the 033 check constraint, say) is left alone rather than
+  // drawn as one of the four known states.
+  const clientApproval = CLIENT_APPROVAL_META[form?.client_approval_status] || null;
+  const ClientApprovalIcon = clientApproval?.icon || null;
+  const clientApprovalNote = String(form?.client_approval_note || "").trim();
+  const clientWantsChanges = form?.client_approval_status === "changes_requested";
+
   const statusChoices = [
     currentStatus,
     ...allowedTransitions(currentStatus).filter((s) => s !== currentStatus),
@@ -677,6 +717,67 @@ export default function TaskDetailDrawer({
             </div>
           ) : null}
         </div>
+
+        {/* 1a. Client decision ----------------------------------------- */}
+        {/* Sits directly under the header, above everything the team edits: the
+            client's verdict is context for every decision taken below it, and
+            the note behind "changes requested" is the one piece of this feature
+            that has to be read before anyone moves the task on. It is shown, not
+            editable - the client owns this answer, the team owns `status`. */}
+        {clientApproval ? (
+          <div
+            className={`${CARD_CLASS} mb-4 ${
+              clientWantsChanges ? "border-warning/40" : ""
+            }`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className={`${HEADING_CLASS} flex items-center gap-2`}>
+                Client decision
+              </h3>
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium ${clientApproval.chip}`}
+              >
+                {ClientApprovalIcon ? (
+                  <ClientApprovalIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                ) : null}
+                {clientApproval.label}
+              </span>
+            </div>
+
+            {clientWantsChanges && clientApprovalNote ? (
+              <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-warning">
+                  What the client asked for
+                </p>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">
+                  {clientApprovalNote}
+                </p>
+              </div>
+            ) : clientApprovalNote ? (
+              <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
+                {clientApprovalNote}
+              </p>
+            ) : null}
+
+            {clientWantsChanges && !clientApprovalNote ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                The client asked for changes without leaving a note. Ask them
+                what they need before this moves on.
+              </p>
+            ) : null}
+
+            {form?.client_approval_at ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Decided {fmtDate(form.client_approval_at)}
+              </p>
+            ) : null}
+
+            <p className="mt-2 text-xs text-muted-foreground">
+              This is the client&apos;s answer on the work, not a stage of the
+              team&apos;s workflow. The Status above is still yours to set.
+            </p>
+          </div>
+        ) : null}
 
         {/* 2. Meta grid ----------------------------------------------- */}
         <div className={`${CARD_CLASS} mb-4`}>

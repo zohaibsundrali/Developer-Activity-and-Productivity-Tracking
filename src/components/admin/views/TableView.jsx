@@ -27,6 +27,24 @@ const PRIORITY_STYLES = {
 // Highest first for descending sort.
 const PRIORITY_RANK = { urgent: 4, high: 3, medium: 2, low: 1 };
 
+// The client's verdict on a task, which is a different axis from `status`: a
+// task can be internally in review and already rejected by the client.
+const CLIENT_APPROVAL_META = {
+  pending: { label: "Awaiting", tone: "info" },
+  approved: { label: "Approved", tone: "success" },
+  changes_requested: { label: "Changes", tone: "warning" },
+  rejected: { label: "Rejected", tone: "destructive" },
+};
+
+// Ordered so that one click into descending pulls the tasks a client is unhappy
+// about to the top of the project, which is the reason a manager sorts here.
+const CLIENT_APPROVAL_RANK = {
+  pending: 1,
+  approved: 2,
+  changes_requested: 3,
+  rejected: 4,
+};
+
 // Pipeline order for sensible status sorting.
 const STATUS_ORDER = Object.keys(STATUS_META).reduce((acc, id, i) => {
   acc[id] = i;
@@ -47,6 +65,9 @@ const COLUMNS = [
   { key: "clientVisible", label: "Client", type: "flag" },
   { key: "type", label: "Type", type: "string" },
   { key: "status", label: "Status", type: "status" },
+  // Next to the team's own status, never merged into it: one column is where
+  // the work has got to, the other is what the client said about it.
+  { key: "clientApproval", label: "Client approval", type: "approval" },
   { key: "priority", label: "Priority", type: "priority" },
   { key: "assignee", label: "Assignee", type: "string" },
   { key: "points", label: "Points", type: "number", align: "right" },
@@ -93,6 +114,19 @@ function ClientVisibleFlag({ value }) {
     >
       <Icon className="h-3.5 w-3.5" aria-hidden="true" />
       <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
+// No client decision on a task is the ordinary case - most tasks are never put
+// in front of a client - so it reads as the same em dash every other empty cell
+// here uses, not as a state of its own.
+function ClientApprovalBadge({ status }) {
+  const meta = CLIENT_APPROVAL_META[status];
+  if (!meta) return <span className="text-muted-foreground">—</span>;
+  return (
+    <span className={`${badgeBase} ${STATUS_TONE_CLASS[meta.tone]}`} title={`Client: ${meta.label}`}>
+      {meta.label}
     </span>
   );
 }
@@ -154,6 +188,10 @@ export default function TableView({ tasks, employees, sprints, epics, onOpenTask
         return t.task_type || "";
       case "status":
         return STATUS_ORDER[normalizeStatus(t.status)] ?? 0;
+      case "clientApproval":
+        // Null, so tasks the client has never ruled on fall to the bottom in
+        // both directions rather than crowding out the ones that need a reply.
+        return CLIENT_APPROVAL_RANK[t.client_approval_status] ?? null;
       case "priority":
         return PRIORITY_RANK[t.priority] ?? 0;
       case "assignee":
@@ -248,6 +286,9 @@ export default function TableView({ tasks, employees, sprints, epics, onOpenTask
                   </td>
                   <td className="px-3 py-2">
                     <StatusBadge status={t.status} />
+                  </td>
+                  <td className="px-3 py-2">
+                    <ClientApprovalBadge status={t.client_approval_status} />
                   </td>
                   <td className="px-3 py-2">
                     <PriorityBadge priority={t.priority} />

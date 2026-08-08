@@ -155,3 +155,92 @@ cannot act on is not a decision.
 Every call appends to `approval_events` with the service role. The client has no
 insert policy on that table: an audit trail the audited party can write is not
 an audit trail.
+
+## Client task detail
+
+These two routes take a **task** id, not a project id. The lookup key is still
+re-checked and never trusted: the task must exist in the caller's org, be
+`client_visible = true`, and sit in a project in `auth_client_project_ids()`.
+
+**All three failures answer `404`, never `403`.** A 403 confirms that the id
+names a real task and that there is something there worth hiding, so iterating
+ids against a route that distinguishes the cases maps out the private backlog —
+its size and its timing — without reading a single title. "Not allowed to see"
+and "does not exist" are told apart nowhere in the response.
+
+## `GET /api/client/tasks/[id]`
+
+```
+{ success: true, task: ClientTaskDetail }
+```
+
+`ClientTaskDetail`
+| field | type | note |
+|---|---|---|
+| `id` | uuid | |
+| `title` | string | from `developer_tasks.task_title` |
+| `description` | string \| null | from `developer_tasks.task_description` |
+| `status` | string | |
+| `priority` | string \| null | |
+| `due_date` | ISO date \| null | `due_date`, falling back to `end_date` — the same rule as `ClientTask`, so the row and its detail cannot disagree |
+| `assignee_name` | string \| null | **name only, never an email** |
+| `labels` | string[] | |
+| `client_approval_status` | `"pending" \| "approved" \| "changes_requested" \| "rejected"` \| null | migration 033 |
+| `client_approval_note` | string \| null | the reason behind `changes_requested` |
+| `attachments` | `[ ClientTaskAttachment ]` | |
+| `activity` | `[ ClientTaskActivity ]` | newest first |
+
+`ClientTaskAttachment`
+| field | type |
+|---|---|
+| `id` | uuid |
+| `file_name` | string |
+| `file_type` | string \| null |
+| `file_size` | number \| null |
+| `url` | signed URL \| null (**minted per response, never a path**) |
+
+`url` is signed for 10 minutes against the private `task-submissions` bucket,
+and only for a path inside `pm/{organization_id}/`. A row whose path fails that
+check is still listed, with `url: null` — metadata is not a download.
+
+`ClientTaskActivity`
+| field | type |
+|---|---|
+| `id` | string (stable, `"<source>:<uuid>"`) |
+| `kind` | `"task_status" \| "approval"` |
+| `title` | string |
+| `actor_name` | string \| null |
+| `created_at` | ISO timestamp |
+
+Merged newest-first from the task's own status (`updated_at` is when the status
+last moved — the timeline route reads it the same way), its
+`client_approval_status`, and `approval_events` for approvals whose `item_ref`
+is this task. **`pm_activity` is not a source**: it carries timer starts and
+stops, automation runs and internal field edits, which is the productivity data
+this contract forbids sending a client. Who moved a task is internal; a status
+event therefore has `actor_name: null`.
+
+## `GET /api/client/tasks/[id]/comments?limit=&before=`
+
+```
+{ success: true, comments: [ ClientComment ], hasMore: boolean }
+```
+
+## `POST /api/client/tasks/[id]/comments`
+
+Body: `{ body: string }` — nothing else is read from it.
+
+```
+{ success: true, comment: ClientComment }
+```
+
+Same `ClientComment` as the project thread, same keyset paging on `before`, same
+`limit` cap of 50. Two differences, both from the table rather than from taste:
+
+- `task_comments` (016) has no attachment columns, so `attachment_name` and
+  `attachment_url` are always `null`. They are still emitted, because a
+  `ClientComment` is one shape everywhere.
+- Reads filter `.eq("internal", false)`; writes hard-code `internal: false`,
+  `author_type: 'client'` and `author_id` from the verified session. A client
+  cannot post as staff or post an internal note by asking for one — enforced by
+  RLS in migration 033, not only by the route.
