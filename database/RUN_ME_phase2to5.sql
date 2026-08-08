@@ -1,7 +1,7 @@
 -- =====================================================================
 --  RUN ME - Phases 2 to 5 database changes, in order
 -- =====================================================================
---  Combines migrations 020, 021 and 022. Run each STEP separately, in the
+--  Combines migrations 020, 021, 023 and 022. Run each STEP separately, in the
 --  order given. The Supabase SQL editor wraps whatever you paste in ONE
 --  transaction, so a single failing statement rolls that whole step back -
 --  running step by step means a failure costs you one step, not all of them.
@@ -9,20 +9,14 @@
 --  Every statement sits on ONE PHYSICAL LINE with no double-quoted
 --  identifiers, because the editor mangles both.
 --
---  TWO COLUMNS ARE KNOWN ABSENT from this database and are therefore NOT
---  indexed here: notifications.task_id and productivity_sessions.developer_id.
---  Application code references both, so the cron due-reminder job and the
---  desktop-session half of Reports cannot be working. Fixing that is a
---  separate change - this file only avoids aborting on them.
---
 --  STEP 0 is a read-only safety check. Run it first and expect zero rows.
 -- =====================================================================
 
 
 -- =====================================================================
 --  STEP 0 - PRE-FLIGHT (read-only, changes nothing)
---  Expected result: ZERO ROWS. Any row is a column STEP 3 expects but this
---  database does not have.
+--  Expected result: ZERO ROWS. Any row is a column STEP 4 expects but this
+--  database does not have. Report it rather than running STEP 4.
 -- =====================================================================
 
 with needed(t, c) as (values ('activity_logs','created_at'), ('activity_logs','developer_id'), ('activity_logs','organization_id'), ('activity_logs','task_id'), ('announcements','organization_id'), ('announcements','published_at'), ('app_usage','session_id'), ('app_usage','start_time'), ('app_usage','tracked_at'), ('app_usage','user_email'), ('approvals','created_at'), ('approvals','organization_id'), ('clients','created_at'), ('clients','organization_id'), ('developer_tasks','created_at'), ('developer_tasks','developer_id'), ('developer_tasks','due_date'), ('developer_tasks','is_recurring'), ('developer_tasks','organization_id'), ('developer_tasks','project_id'), ('developer_tasks','reviewed_at'), ('developer_tasks','status'), ('developer_tasks','task_order'), ('developer_tasks','updated_at'), ('invoices','created_at'), ('invoices','organization_id'), ('keyboard_stats','developer_id'), ('keyboard_stats','session_id'), ('keyboard_stats','tracked_at'), ('keyboard_stats','user_email'), ('mouse_activities','developer_id'), ('mouse_activities','session_id'), ('mouse_activities','timestamp'), ('notifications','admin_id'), ('notifications','created_at'), ('notifications','developer_id'), ('notifications','organization_id'), ('notifications','read'), ('pm_activity','created_at'), ('pm_activity','organization_id'), ('productivity_metrics','developer_id'), ('productivity_metrics','organization_id'), ('productivity_sessions','created_at'), ('productivity_sessions','session_id'), ('productivity_sessions','start_time'), ('productivity_sessions','user_email'), ('project_clients','created_at'), ('project_clients','organization_id'), ('projects','archived'), ('projects','assigned_developer_id'), ('projects','created_at'), ('projects','organization_id'), ('projects','updated_at'), ('screenshots','created_at'), ('screenshots','developer_email'), ('screenshots','developer_id'), ('screenshots','timestamp'), ('support_messages','created_at'), ('support_messages','thread_id'), ('support_threads','last_message_at'), ('support_threads','organization_id'), ('task_submissions','developer_id'), ('task_submissions','organization_id'), ('task_submissions','project_id'), ('task_submissions','submitted_at'), ('task_time_logs','developer_id'), ('task_time_logs','organization_id'), ('task_time_logs','project_id'), ('task_time_logs','started_at')) select n.t as table_name, n.c as missing_column from needed n left join information_schema.columns ic on ic.table_schema = 'public' and ic.table_name = n.t and ic.column_name = n.c where ic.column_name is null order by 1, 2;
@@ -64,7 +58,18 @@ comment on constraint developer_tasks_terminal_status_reviewed_check on public.d
 
 
 -- =====================================================================
---  STEP 3 - Performance indexes
+--  STEP 3 - Notification columns
+--  Adds title / task_id / project_id, which seven writers already insert and no
+--  version of this table has ever had. Run this BEFORE step 4.
+-- =====================================================================
+alter table public.notifications add column if not exists title text;
+alter table public.notifications add column if not exists task_id uuid;
+alter table public.notifications add column if not exists project_id uuid;
+create index if not exists idx_notifications_task_type_created on public.notifications (task_id, type, created_at desc);
+
+
+-- =====================================================================
+--  STEP 4 - Performance indexes
 --  45 composite indexes. RUN STEP 0 FIRST. These builds hold a write-blocking
 --  lock for their duration, so prefer a quiet window.
 -- =====================================================================
@@ -116,9 +121,10 @@ create index if not exists idx_support_messages_thread_created on public.support
 
 
 -- =====================================================================
---  STEP 4 - VERIFY (read-only)
+--  STEP 5 - VERIFY (read-only)
 -- =====================================================================
 select policyname, cmd, roles::text from pg_policies where schemaname = 'storage' and (policyname like 'org_files%' or policyname like 'documents%' or policyname like 'monitoring%') order by policyname;
 select count(*) as unreviewed_terminal from public.developer_tasks where reviewed_at is null and status in ('completed','rejected');
+select count(*) as notification_columns_added from information_schema.columns where table_schema = 'public' and table_name = 'notifications' and column_name in ('title','task_id','project_id');
 select count(*) as new_indexes from pg_indexes where schemaname = 'public' and indexname like 'idx_%';
 
