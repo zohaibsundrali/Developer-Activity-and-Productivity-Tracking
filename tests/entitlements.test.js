@@ -5,6 +5,9 @@ import {
   resolveEntitlement,
   getUsage,
   checkResourceLimit,
+  checkSeatLimitForRole,
+  checkFeatureAccess,
+  seatResourcesForRole,
   hasFeature,
   RESOURCES,
   FREE_PLAN_CODE,
@@ -233,5 +236,110 @@ describe("checkResourceLimit", () => {
     // A database hiccup must not read as "limit reached" and halt the product.
     const svc = fakeService({ failCount: true });
     expect(await checkResourceLimit(svc, "org-1", "projects", NOW)).toBeNull();
+  });
+
+  it("discounts a row the caller already wrote, so the last seat is sellable", async () => {
+    // A route that checks AFTER inserting sees its own row in the count. Without
+    // discounting it, a 3-seat plan refuses the 3rd seat it actually sells.
+    const svc = fakeService({ counts: { developers: 3 } });
+    expect(
+      await checkResourceLimit(svc, "org-1", "developers", NOW, { alreadyCounted: 1 })
+    ).toBeNull();
+  });
+
+  it("still blocks once the count is genuinely over, row already written or not", async () => {
+    const svc = fakeService({ counts: { developers: 4 } });
+    const blocked = await checkResourceLimit(svc, "org-1", "developers", NOW, {
+      alreadyCounted: 1,
+    });
+    expect(blocked).toMatchObject({ status: 402, used: 3, limit: 3 });
+  });
+});
+
+describe("seatResourcesForRole", () => {
+  it("charges a developer to the developers meter, not only to employees", () => {
+    // A developer row lands in `developers` AND in a non-client membership, so
+    // both ceilings apply; metering it as an employee alone leaves the
+    // developers limit unenforced against actual developers.
+    expect(seatResourcesForRole("developer")).toEqual(["employees", "developers"]);
+    expect(seatResourcesForRole("employee")).toEqual(["employees", "developers"]);
+    expect(seatResourcesForRole("manager")).toEqual(["employees", "developers"]);
+  });
+
+  it("charges admin-like roles to employees only", () => {
+    // owner/admin/hr land in admin_users — nothing the developers meter counts.
+    for (const role of ["owner", "admin", "hr"]) {
+      expect(seatResourcesForRole(role)).toEqual(["employees"]);
+    }
+  });
+
+  it("charges a client to no seat meter at all", () => {
+    // A client gets a `clients` row and a client-typed membership; neither
+    // meter counts it, so billing it to `developers` was metering a fiction.
+    expect(seatResourcesForRole("client")).toEqual([]);
+  });
+
+  it("falls back to employees for an unrecognised role rather than unmetered", () => {
+    expect(seatResourcesForRole("wizard")).toEqual(["employees"]);
+    expect(seatResourcesForRole(undefined)).toEqual(["employees"]);
+  });
+});
+
+describe("checkSeatLimitForRole", () => {
+  it("blocks a developer on the developers meter even when employees has room", async () => {
+    // 1 non-client membership but 3 developer rows: the employees ceiling is
+    // clear and the developers ceiling is not. Checking only one lets it past.
+    const svc = fakeService({ counts: { memberships: 1, developers: 3 } });
+    const blocked = await checkSeatLimitForRole(svc, "org-1", "developer", NOW);
+    expect(blocked).toMatchObject({ status: 402, resource: "developers", limit: 3 });
+  });
+
+  it("blocks an admin on the employees meter", async () => {
+    const svc = fakeService({ counts: { memberships: 3, developers: 0 } });
+    const blocked = await checkSeatLimitForRole(svc, "org-1", "admin", NOW);
+    expect(blocked).toMatchObject({ status: 402, resource: "employees" });
+  });
+
+  it("does not charge a client seat to the developer meter", async () => {
+    // The old mapping refused this invitation because 3 developers filled a
+    // meter a client never touches.
+    const svc = fakeService({ counts: { memberships: 3, developers: 3 } });
+    expect(await checkSeatLimitForRole(svc, "org-1", "client", NOW)).toBeNull();
+  });
+
+  it("allows a seat when every applicable meter has room", async () => {
+    const svc = fakeService({ counts: { memberships: 1, developers: 1 } });
+    expect(await checkSeatLimitForRole(svc, "org-1", "developer", NOW)).toBeNull();
+  });
+});
+
+describe("checkFeatureAccess", () => {
+  it("refuses a feature the plan does not grant", async () => {
+    const blocked = await checkFeatureAccess(fakeService(), "org-1", "automation", "Automation", NOW);
+    expect(blocked).toMatchObject({
+      status: 402,
+      feature: "automation",
+      featureLocked: true,
+      upgradeRequired: true,
+      planCode: "free",
+    });
+  });
+
+  it("allows a feature the plan grants", async () => {
+    const svc = fakeService({ subscription: { plan_code: "business", status: "active" } });
+    expect(await checkFeatureAccess(svc, "org-1", "automation", "Automation", NOW)).toBeNull();
+  });
+
+  it("refuses once the paid plan lapses, not only on free", async () => {
+    const svc = fakeService({ subscription: { plan_code: "business", status: "canceled" } });
+    const blocked = await checkFeatureAccess(svc, "org-1", "reports", "Reports", NOW);
+    expect(blocked).toMatchObject({ status: 402, planCode: "free" });
+  });
+
+  it("treats a flag the plan never mentions as not granted", async () => {
+    // Fail closed: a plan earns a feature by naming it, not by omitting it.
+    const svc = fakeService({ subscription: { plan_code: "business", status: "active" } });
+    const blocked = await checkFeatureAccess(svc, "org-1", "api_access", "API access", NOW);
+    expect(blocked).toMatchObject({ status: 402, feature: "api_access" });
   });
 });

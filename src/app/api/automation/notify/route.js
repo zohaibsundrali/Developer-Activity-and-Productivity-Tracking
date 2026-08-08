@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
+import { checkFeatureAccess } from "@/utils/entitlements";
 import { sendMail, notifyEmailHtml, mailerConfigured } from "@/utils/mailer";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +35,15 @@ export async function POST(request) {
     }
 
     const svc = serviceClient();
+
+    // Automation is a paid capability. Without this the plan cards advertise a
+    // restriction that does not exist — a free organization could drive the
+    // whole automation engine and only the struck-through text in the billing
+    // page would say otherwise.
+    const gate = await checkFeatureAccess(svc, auth.orgId, "automation", "Automation");
+    if (gate) {
+      return NextResponse.json(gate, { status: gate.status });
+    }
 
     // ── Recipients must belong to the caller's organization ──
     const { data: members, error: memErr } = await svc

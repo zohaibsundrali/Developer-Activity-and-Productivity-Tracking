@@ -43,7 +43,9 @@ export async function POST(request) {
 
     const session = await stripe.billingPortal.sessions.create({
       customer: subscription.stripe_customer_id,
-      return_url: `${appOrigin(request)}/admin/billing`,
+      // The billing screen is a section of the admin dashboard, not a route of
+      // its own; returning to /admin/billing would 404 on the way back.
+      return_url: `${appOrigin(request)}/admin/dashboard?section=billing`,
     });
 
     return NextResponse.json({ url: session.url });

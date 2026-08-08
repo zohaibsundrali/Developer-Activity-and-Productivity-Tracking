@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
-import { checkResourceLimit } from "@/utils/entitlements";
+import { checkSeatLimitForRole } from "@/utils/entitlements";
 
 export const dynamic = "force-dynamic";
 
@@ -82,15 +82,8 @@ export async function POST(request) {
 
     const svc = serviceClient();
 
-    // Provisioning creates a real seat, so it is subject to the same plan limit
-    // as an invitation — otherwise the cheaper path around the invite flow
-    // would quietly hand out unlimited accounts.
-    const seatLimit = await checkResourceLimit(svc, auth.orgId, 'developers');
-    if (seatLimit) {
-      return NextResponse.json(seatLimit, { status: seatLimit.status });
-    }
-
     // ── A supplied app user id must belong to the caller's organization ──
+    let seatAlreadyWritten = false;
     if (appUserId) {
       const table = userType === "admin" ? "admin_users" : "developers";
       const { data: row } = await svc
@@ -104,6 +97,26 @@ export async function POST(request) {
           { status: 403 }
         );
       }
+      // The caller already wrote the profile row before asking for an auth
+      // account, so the live count includes this seat. Counting it again would
+      // refuse the last seat the plan actually sells.
+      seatAlreadyWritten = true;
+    }
+
+    // Provisioning creates a real seat, so it is subject to the same plan limit
+    // as an invitation — otherwise the cheaper path around the invite flow
+    // would quietly hand out unlimited accounts. Which meters apply follows the
+    // role being granted: an admin lands in admin_users and a developer in
+    // developers, and only the second is what the `developers` limit counts.
+    const seatLimit = await checkSeatLimitForRole(
+      svc,
+      auth.orgId,
+      requestedRole,
+      new Date(),
+      { alreadyCounted: seatAlreadyWritten ? 1 : 0 }
+    );
+    if (seatLimit) {
+      return NextResponse.json(seatLimit, { status: seatLimit.status });
     }
 
     // ── Organization comes from the verified token, never the body ──
