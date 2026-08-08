@@ -494,12 +494,21 @@ export async function GET(request) {
           .or(`developer_id.eq.${submission.developer_id},developer_email.eq.${submission.developers?.email}`)
           .order('timestamp', { ascending: false })
           .limit(5);
-        // Normalize the display URL across possible columns (desktop app writes
-        // public_url; website uploads may write image_url/thumbnail_url).
-        screenshots = (screenshotData || []).map((s) => ({
-          ...s,
-          public_url: s.public_url || s.image_url || s.thumbnail_url || null,
-        }));
+        // Resolve the display URL. Phase 2 screenshots live in the private
+        // `monitoring` bucket and carry no durable public_url, so they are
+        // signed here; older rows keep their stored public URL.
+        screenshots = await Promise.all(
+          (screenshotData || []).map(async (s) => {
+            const legacyUrl = s.public_url || s.image_url || s.thumbnail_url || null;
+            if (!s.storage_path || String(s.storage_path).startsWith('screenshots/')) {
+              return { ...s, public_url: legacyUrl };
+            }
+            const { data: signed } = await supabase.storage
+              .from('monitoring')
+              .createSignedUrl(s.storage_path, 600);
+            return { ...s, public_url: signed?.signedUrl || legacyUrl };
+          })
+        );
       } catch (_e) {
         screenshots = [];
       }

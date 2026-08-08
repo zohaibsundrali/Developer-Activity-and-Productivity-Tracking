@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { supabase } from "../utils/supabaseClient";
+import { resolveScreenshotUrls } from "../utils/screenshotFiles";
 
 // Default polling interval (ms) used as a fallback beside Realtime
 const DEFAULT_POLL_INTERVAL = 10_000;
@@ -522,15 +523,10 @@ export function useScreenshotsRealtime({
 
       const { data, error: err } = await query;
       if (err) throw err;
-      // Normalize the display URL: desktop app writes public_url; the website
-      // upload route may write image_url/thumbnail_url. Coalesce so every
-      // consumer can reliably render shot.public_url.
-      setRows(
-        (data || []).map((r) => ({
-          ...r,
-          public_url: r.public_url || r.image_url || r.thumbnail_url || null,
-        }))
-      );
+      // Resolve the display URL. Rows in the private `monitoring` bucket are
+      // signed on demand (short-lived); pre-Phase-2 rows fall back to their
+      // stored public URL. Either way consumers read shot.public_url.
+      setRows(await resolveScreenshotUrls(data || []));
     } catch (e) {
       setError(e);
     } finally {
