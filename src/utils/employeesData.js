@@ -64,6 +64,84 @@ export async function loadEmployees(orgId) {
   return { employees, teams: teams || [], departments: depts || [] };
 }
 
+/**
+ * A team move changes who someone sits with and who is accountable for them, so
+ * it goes to the employee and to whoever now owns them.
+ *
+ * The manager and the lead are two ids on the team row and one membership read
+ * says how each is addressed, so the cost is two queries no matter how many
+ * people the team has.
+ */
+async function notifyTeamAssignment(orgId, emp, teamId) {
+  if (!orgId || !teamId || !emp?.userId) return;
+
+  const { data: team } = await supabase
+    .from("teams")
+    .select("id, name, manager_id, team_lead_id")
+    .eq("id", teamId)
+    .single();
+  if (!team) return;
+
+  // Managing the team you were just added to is not news to you, and the
+  // employee already has their own, differently worded notification below.
+  const leadIds = [...new Set([team.manager_id, team.team_lead_id].filter(Boolean).map(String))].filter(
+    (id) => id !== String(emp.userId)
+  );
+  const { data: leads } = leadIds.length
+    ? await supabase
+        .from("memberships")
+        .select("user_id, user_type, email")
+        .eq("organization_id", orgId)
+        .in("user_id", leadIds)
+    : { data: [] };
+
+  const teamName = team.name || "a team";
+  const who = emp.name || emp.email || "A team member";
+  const metadata = {
+    teamId: team.id,
+    teamName: team.name || null,
+    employeeId: emp.userId,
+    employeeName: emp.name || null,
+    previousTeamId: emp.teamId || null,
+    previousTeamName: emp.teamName || null,
+  };
+  // Per day: someone can move between teams over the course of a reorganisation
+  // and each move is news, but the same save landing twice is not.
+  const keyFor = (recipientId) => dailyDedupeKey(`team_assigned:${team.id}`, emp.userId, recipientId);
+  const common = { category: "team", entityType: "team", entityId: team.id, metadata };
+
+  const sends = [
+    notify({
+      ...common,
+      audience: emp.userType === "admin" ? "admin" : "developer",
+      recipientId: emp.userId,
+      recipientEmail: emp.userType === "admin" ? emp.email || null : null,
+      type: "team_assigned",
+      title: "Added to a team",
+      message: `You were added to ${teamName}.`,
+      dedupeKey: keyFor(emp.userId),
+    }),
+  ];
+
+  for (const l of leads || []) {
+    const isAdmin = l.user_type === "admin";
+    sends.push(
+      notify({
+        ...common,
+        audience: isAdmin ? "admin" : "developer",
+        recipientId: l.user_id,
+        recipientEmail: isAdmin ? l.email || null : null,
+        type: "team_member_added",
+        title: "New team member",
+        message: `${who} was added to ${teamName}.`,
+        dedupeKey: keyFor(l.user_id),
+      })
+    );
+  }
+
+  await Promise.all(sends);
+}
+
 // Update a member's org fields (role/team/department/reports_to/status) and
 // upsert their rich profile. Pass only the patches you want to change.
 export async function saveEmployee({ orgId, emp, membershipPatch, profilePatch }) {
@@ -74,6 +152,20 @@ export async function saveEmployee({ orgId, emp, membershipPatch, profilePatch }
         .update({ ...membershipPatch, updated_at: new Date().toISOString() })
         .eq("id", emp.membershipId);
       if (error) return { error };
+
+      // The form submits the whole membership patch every time, so `team_id`
+      // being present says nothing on its own — only a different value is a
+      // move. Announced from here rather than at the end of the function
+      // because the move is already persisted at this point, and a later
+      // profile failure must not decide whether anyone was told about it.
+      const nextTeamId = membershipPatch.team_id;
+      if (nextTeamId && String(nextTeamId) !== String(emp?.teamId || "")) {
+        try {
+          await notifyTeamAssignment(orgId || getOrgId(), emp, nextTeamId);
+        } catch {
+          /* the membership is saved — announcing it must not report a failure */
+        }
+      }
     }
 
     if (profilePatch && Object.keys(profilePatch).length) {

@@ -1,18 +1,9 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Bell,
-  UserPlus,
-  ArrowRightLeft,
-  AtSign,
-  MessageSquare,
-  Clock,
-  ClipboardCheck,
-  Rocket,
-  FolderKanban,
-  Users,
-  Zap,
   Check,
   CheckCheck,
   ChevronDown,
@@ -20,9 +11,12 @@ import {
   Loader2,
   RefreshCw,
   AlertTriangle,
+  X,
+  History,
 } from "lucide-react";
 import useNotifications from "@/hooks/useNotifications";
 import { CATEGORY_KEYS, categoryMeta, notificationHref } from "@/utils/notifications";
+import { categoryIcon, toneClass, getTimeAgo } from "./notificationVisuals";
 
 /**
  * The notification centre: one panel behind both dashboards' bells.
@@ -32,53 +26,6 @@ import { CATEGORY_KEYS, categoryMeta, notificationHref } from "@/utils/notificat
  * that differs between the two surfaces is now the `audience` prop, which is
  * also what decides where a notification takes you.
  */
-
-// `categoryMeta` names a lucide icon; lucide has no runtime lookup by name, and
-// a dynamic import of the whole set would pull the entire library into the
-// bundle, so the eleven categories are wired up explicitly.
-const CATEGORY_ICONS = {
-  UserPlus,
-  ArrowRightLeft,
-  AtSign,
-  MessageSquare,
-  Clock,
-  ClipboardCheck,
-  Rocket,
-  FolderKanban,
-  Users,
-  Zap,
-  Bell,
-};
-
-// `tone` from the category metadata, mapped onto the semantic classes that
-// already exist — no new colour values enter the design system here.
-const TONE_CLASSES = {
-  info: "bg-info/10 text-info",
-  primary: "bg-primary/10 text-primary",
-  success: "bg-success/10 text-success",
-  warning: "bg-warning/10 text-warning",
-  muted: "bg-muted text-muted-foreground",
-};
-
-function getTimeAgo(dateString) {
-  if (!dateString) return "";
-  const now = new Date();
-  const date = new Date(dateString);
-  const seconds = Math.floor((now - date) / 1000);
-
-  if (seconds < 60) return "Just now";
-  if (seconds < 120) return "1 minute ago";
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} minutes ago`;
-  if (seconds < 7200) return "1 hour ago";
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`;
-  if (seconds < 172800) return "1 day ago";
-  if (seconds < 604800) return `${Math.floor(seconds / 86400)} days ago`;
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
-  });
-}
 
 export default function NotificationCenter({ audience = "admin", userId = null, email = null }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -99,6 +46,7 @@ export default function NotificationCenter({ audience = "admin", userId = null, 
     loadMore,
     markOneRead,
     markEveryRead,
+    dismissOne,
     refresh,
   } = useNotifications({ userId, email, audience });
 
@@ -141,8 +89,8 @@ export default function NotificationCenter({ audience = "admin", userId = null, 
         return {
           row,
           href: notificationHref(row, { audience }),
-          Icon: CATEGORY_ICONS[meta.icon] || Bell,
-          toneClass: TONE_CLASSES[meta.tone] || TONE_CLASSES.muted,
+          Icon: categoryIcon(meta),
+          toneClass: toneClass(meta),
           label: meta.label,
           timeAgo: getTimeAgo(row.created_at),
         };
@@ -347,17 +295,34 @@ export default function NotificationCenter({ audience = "admin", userId = null, 
                         <div className="flex flex-1 items-start gap-3 cursor-default min-w-0">{body}</div>
                       )}
 
-                      {isUnread && (
+                      <div className="flex flex-shrink-0 items-center gap-0.5">
+                        {isUnread && (
+                          <button
+                            type="button"
+                            onClick={() => markOneRead(item.row.id)}
+                            title="Mark as read"
+                            aria-label="Mark as read"
+                            className="rounded-lg p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          >
+                            <Check className="w-4 h-4" />
+                          </button>
+                        )}
+
+                        {/* Dismiss is offered on read and unread rows alike:
+                            "I have seen this and want it gone" is a different
+                            statement from "I have read it", and a row that must
+                            be marked read before it can be cleared makes the
+                            two indistinguishable in the record. */}
                         <button
                           type="button"
-                          onClick={() => markOneRead(item.row.id)}
-                          title="Mark as read"
-                          aria-label="Mark as read"
-                          className="flex-shrink-0 rounded-lg p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          onClick={() => dismissOne(item.row.id)}
+                          title="Dismiss"
+                          aria-label="Dismiss notification"
+                          className="rounded-lg p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                         >
-                          <Check className="w-4 h-4" />
+                          <X className="w-4 h-4" />
                         </button>
-                      )}
+                      </div>
                     </li>
                   );
                 })}
@@ -365,10 +330,13 @@ export default function NotificationCenter({ audience = "admin", userId = null, 
             )}
           </div>
 
-          {/* Footer */}
-          {!error && items.length > 0 && (
+          {/* Footer. Rendered whenever the list itself loaded, including when it
+              came back empty: the way out to the full history is the one thing
+              a user needs MOST from an empty panel — the row they are looking
+              for is either older than this page or already dismissed. */}
+          {!error && (
             <div className="px-4 py-3 border-t border-border bg-muted/50 rounded-b-xl">
-              {hasMore && (
+              {hasMore && items.length > 0 && (
                 <button
                   onClick={loadMore}
                   disabled={loadingMore}
@@ -390,11 +358,24 @@ export default function NotificationCenter({ audience = "admin", userId = null, 
                 </button>
               )}
 
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">
-                  Showing {items.length} notification{items.length !== 1 ? "s" : ""}
+              <div className="flex items-center justify-between gap-2 text-sm">
+                <span className="min-w-0 truncate text-xs text-muted-foreground">
+                  {items.length > 0
+                    ? `Showing ${items.length} notification${items.length !== 1 ? "s" : ""}${
+                        hasMore ? "" : " · all loaded"
+                      }`
+                    : "Nothing in this view"}
                 </span>
-                {!hasMore && <span className="text-muted-foreground text-xs">All loaded</span>}
+
+                <Link
+                  href="/notifications"
+                  onClick={() => setIsOpen(false)}
+                  className="flex flex-shrink-0 items-center gap-1.5 text-sm font-medium text-primary
+                    transition-colors hover:text-primary/80"
+                >
+                  <History className="w-4 h-4" />
+                  <span>Full history</span>
+                </Link>
               </div>
             </div>
           )}

@@ -9,6 +9,7 @@ import {
   getUnreadCount,
   markRead,
   markAllRead,
+  dismissNotification,
 } from "@/utils/notifications";
 
 /**
@@ -94,6 +95,19 @@ export function mergeRows(existing, incoming) {
 /** Fold a realtime row into the list: update in place, or prepend if new. */
 export function upsertRow(existing, row, { category, unreadOnly, isInsert = true }) {
   const index = existing.findIndex((item) => item.id === row.id);
+
+  // A dismissal is the one update that takes a row OFF the list instead of
+  // restyling it in place. The dismiss may have happened on the history page or
+  // in another tab, and a row that survives it offers to dismiss something the
+  // server has already dismissed — a control that reports success and changes
+  // nothing.
+  if (row.dismissed_at) {
+    if (index === -1) return existing;
+    const next = existing.slice();
+    next.splice(index, 1);
+    return next;
+  }
+
   if (index !== -1) {
     const next = existing.slice();
     // An update that takes the row out of the active filter leaves it on
@@ -150,6 +164,15 @@ export default function useNotifications({
   // Switching filters fires a second fetch while the first is still in flight;
   // whichever returns last would otherwise win regardless of what was asked.
   const requestRef = useRef(0);
+
+  // A dismissal has to put the row back where it was if the write fails, so it
+  // needs the row and its position BEFORE removing it. Reading them out of a
+  // `setRows` updater would mean a state updater with a side effect, which
+  // React is free to run twice; a mirror of the list keeps that read pure.
+  const rowsRef = useRef(rows);
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
 
   const refreshCount = useCallback(async () => {
     if (!hasIdentity) return;
@@ -339,6 +362,44 @@ export default function useNotifications({
     [refreshCount]
   );
 
+  /**
+   * Remove one notification from the list.
+   *
+   * Optimistic, because a dismiss whose row lingers reads as a dead button and
+   * invites a second press. An unread row also leaves the badge on the way out
+   * — the count query no longer counts it — so the local number is stepped down
+   * to match rather than waiting a round trip to stop contradicting the list.
+   */
+  const dismissOne = useCallback(
+    async (id) => {
+      if (!id) return;
+
+      const index = rowsRef.current.findIndex((row) => row.id === id);
+      const removed = index === -1 ? null : rowsRef.current[index];
+
+      setRows((prev) => prev.filter((row) => row.id !== id));
+      if (removed && !removed.read) setUnreadCount((prev) => Math.max(0, prev - 1));
+
+      const { error: dismissError } = await dismissNotification(id);
+      if (dismissError) {
+        setError(dismissError);
+        // Back to where it was, so the list still reflects the server. Guarded
+        // on absence because a refetch may already have restored it, and two
+        // copies of one notification is a worse failure than the first.
+        if (removed) {
+          setRows((prev) => {
+            if (prev.some((row) => row.id === id)) return prev;
+            const next = prev.slice();
+            next.splice(Math.min(index, next.length), 0, removed);
+            return next;
+          });
+        }
+      }
+      refreshCount();
+    },
+    [refreshCount]
+  );
+
   const markEveryRead = useCallback(async () => {
     // Scoped to the chip that is open: the button sits above a filtered list
     // and reads as "all of this". Sending it unscoped meant a user looking at
@@ -390,6 +451,7 @@ export default function useNotifications({
     loadMore,
     markOneRead,
     markEveryRead,
+    dismissOne,
     refresh,
   };
 }
