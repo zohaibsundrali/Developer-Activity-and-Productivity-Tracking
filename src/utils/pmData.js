@@ -301,23 +301,39 @@ export async function moveTask(taskId, { status, position }, logCtx = null) {
   return changeTaskStatus(taskId, status, { position, logCtx });
 }
 
-// Assign a task and fire "assigned" automations.
+// Assign a task, tell the new assignee, and fire "assigned" automations.
+//
+// Assignment was the one workflow event that produced no notification: the
+// person picked up work only by noticing it on a board. It is also why the
+// "assigned" automation trigger never fired - the drawer wrote the column
+// directly and never came through here.
 export async function assignTask(taskId, developerId, logCtx = null) {
   const res = await updateTask(taskId, { developer_id: developerId || null }, logCtx);
-  if (!res.error && developerId) {
-    try {
-      const { data } = await supabase
-        .from("developer_tasks")
-        .select("id, status, priority, task_type, developer_id, project_id, labels, task_title")
-        .eq("id", taskId)
-        .single();
-      if (data) {
-        const { runAutomations } = await import("@/utils/automation");
-        await runAutomations({ event: "assigned", task: data, projectId: data.project_id });
-      }
-    } catch {
-      /* automation is non-critical */
-    }
+  if (res.error || !developerId) return res;
+
+  try {
+    const { data } = await supabase
+      .from("developer_tasks")
+      .select("id, status, priority, task_type, developer_id, project_id, labels, task_title, organization_id")
+      .eq("id", taskId)
+      .single();
+    if (!data) return res;
+
+    await supabase.from("notifications").insert({
+      organization_id: data.organization_id || getOrgId(),
+      developer_id: developerId,
+      task_id: taskId,
+      project_id: data.project_id || null,
+      type: "task_assigned",
+      title: "Task assigned to you",
+      message: `You have been assigned "${data.task_title || "a task"}".`,
+      read: false,
+    });
+
+    const { runAutomations } = await import("@/utils/automation");
+    await runAutomations({ event: "assigned", task: data, projectId: data.project_id });
+  } catch {
+    /* neither the notification nor the automation should fail the assignment */
   }
   return res;
 }
@@ -446,7 +462,27 @@ export async function addDependency(taskId, dependsOnTaskId, type = "blocks") {
 // ---- Agile: sprint / epic task assignment ---------------------------
 // These only ever touch developer_tasks' additive 016 columns (sprint_id,
 // epic_id, task_type, story_points) — the status pipeline is never changed.
+// A closed sprint is a historical record. Burndown is recomputed from live rows
+// on every render and has no date filter, so adding a task to an already
+// completed sprint retroactively changes a chart that was supposed to be
+// settled — its total points move and the new task burns on whatever day it was
+// last touched. Removal stays allowed: pulling a stranded task back to the
+// backlog is how unfinished work leaves a closed sprint.
 export async function assignTaskToSprint(taskId, sprintId) {
+  if (sprintId) {
+    const { data: sprint } = await supabase
+      .from("sprints")
+      .select("id, name, status")
+      .eq("id", sprintId)
+      .single();
+    if (sprint && sprint.status === "completed") {
+      return {
+        error: new Error(
+          `"${sprint.name || "That sprint"}" is already completed — adding work to it would rewrite its burndown. Move the task to an active or planned sprint instead.`
+        ),
+      };
+    }
+  }
   return updateTask(taskId, { sprint_id: sprintId || null });
 }
 export async function setTaskEpic(taskId, epicId) {
@@ -612,13 +648,22 @@ export async function getActiveTimer() {
 
 // Start timing a task. Any other running timer for this user is stopped first
 // so a user can only be on one task at a time.
+//
+// Stopping-then-inserting is a read followed by a write, so two tabs or a
+// double click can both pass the read and open two timers whose elapsed time
+// then both keep counting. A partial unique index (migration 024) makes the
+// database refuse the second one; catching that here turns the collision into
+// the timer the user already has rather than an error they cannot act on.
 export async function startTaskTimer(taskId, projectId) {
   const orgId = getOrgId();
   const ctx = getOrgContext();
   if (!ctx?.userId) return { error: new Error("No signed-in user") };
 
   const running = await getActiveTimer();
-  if (running) await stopTaskTimer(running);
+  if (running) {
+    if (String(running.task_id) === String(taskId)) return { log: running, error: null };
+    await stopTaskTimer(running);
+  }
 
   const { data, error } = await supabase
     .from("task_time_logs")
@@ -632,10 +677,18 @@ export async function startTaskTimer(taskId, projectId) {
     })
     .select()
     .single();
-  if (!error) {
-    await logActivity({ projectId, entityType: "task", entityId: taskId, action: "timer_started", meta: {} });
+
+  if (error) {
+    // 23505 = another request opened a timer between our read and this insert.
+    if (error.code === "23505") {
+      const existing = await getActiveTimer();
+      if (existing) return { log: existing, error: null };
+    }
+    return { log: null, error };
   }
-  return { log: data, error };
+
+  await logActivity({ projectId, entityType: "task", entityId: taskId, action: "timer_started", meta: {} });
+  return { log: data, error: null };
 }
 
 // Stop a running timer and persist the elapsed seconds.

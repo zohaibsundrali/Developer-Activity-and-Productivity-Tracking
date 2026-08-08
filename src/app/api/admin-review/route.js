@@ -335,6 +335,11 @@ async function updateProductivityMetrics(developerId, projectId, organizationId)
       .upsert({
         developer_id: developerId,
         project_id: projectId,
+        // Without this the rollup row carries no organization, so it is
+        // invisible to every org-scoped read and to RLS. The stamp_org trigger
+        // cannot fill it either, because it only fires on INSERT and this is an
+        // upsert that usually resolves to an UPDATE.
+        organization_id: organizationId,
         total_tasks: totalTasks,
         completed_on_time: completedOnTime,
         completed_late: completedLate,

@@ -139,7 +139,7 @@ export async function POST(request) {
         .insert({
           task_id: taskId,
           project_id: projectId,
-          developer_id: developerId,
+          developer_id: actingDeveloperId,
           file_url: storedFileUrl,
           file_name: fileName,
           file_type: fileType || 'application/octet-stream',
@@ -193,7 +193,7 @@ export async function POST(request) {
       await supabase
         .from('activity_logs')
         .insert({
-          developer_id: developerId,
+          developer_id: actingDeveloperId,
           project_id: projectId,
           task_id: taskId,
           action_type: 'task_submitted',
@@ -216,7 +216,7 @@ export async function POST(request) {
         const { data: developer } = await supabase
           .from('developers')
           .select('name, email')
-          .eq('id', developerId)
+          .eq('id', actingDeveloperId)
           .single();
 
         // Create notification for admin
@@ -224,7 +224,7 @@ export async function POST(request) {
           .from('notifications')
           .insert({
             admin_id: project.admin_id || project.created_by,
-            developer_id: developerId,
+            developer_id: actingDeveloperId,
             type: 'review_required',
             title: 'Task Submission for Review',
             message: `${developer?.name || 'Developer'} has submitted "${task.task_title}" for review in project "${project.name}"`,

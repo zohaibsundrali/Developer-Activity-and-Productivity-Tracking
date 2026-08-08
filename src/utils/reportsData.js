@@ -229,7 +229,9 @@ async function loadStatusCounts(orgId) {
 
 /**
  * Desktop sessions for this org's people. Tracking tables have an unpopulated
- * organization_id, so we match on developer_id AND user_email and merge.
+ * organization_id, so we match on user_id AND user_email and merge. There is no
+ * developer_id column on this table - the desktop writer identifies a session by
+ * user_id / user_email only.
  * Degrades to [] if the table is unavailable — reports still render.
  */
 async function loadDesktopSessions(employees, fromIso, toIso) {
@@ -237,7 +239,7 @@ async function loadDesktopSessions(employees, fromIso, toIso) {
   const emails = (employees || []).map((e) => e.email).filter(Boolean);
   if (!ids.length && !emails.length) return { rows: [], truncated: false };
 
-  const cols = "session_id, developer_id, user_email, start_time, end_time, status, total_duration, productivity_score, created_at";
+  const cols = "session_id, user_id, user_email, start_time, end_time, status, total_duration, productivity_score, created_at";
   const base = () => {
     let q = supabase.from("productivity_sessions").select(cols);
     if (fromIso) q = q.gte("start_time", fromIso);
@@ -253,7 +255,7 @@ async function loadDesktopSessions(employees, fromIso, toIso) {
   const perChunk = Math.max(PAGE_SIZE, Math.floor(MAX_SESSION_ROWS / chunkCount));
 
   const queries = [
-    ...idChunks.map((c) => () => fetchPaged(() => base().in("developer_id", c), perChunk)),
+    ...idChunks.map((c) => () => fetchPaged(() => base().in("user_id", c), perChunk)),
     ...emailChunks.map((c) => () => fetchPaged(() => base().in("user_email", c), perChunk)),
   ];
 
@@ -272,7 +274,7 @@ async function loadDesktopSessions(employees, fromIso, toIso) {
   // Dedupe: a session can match on both id and email.
   const seen = new Set();
   const deduped = rows.filter((r) => {
-    const key = r.session_id || `${r.developer_id || r.user_email}-${r.start_time}`;
+    const key = r.session_id || `${r.user_id || r.user_email}-${r.start_time}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
