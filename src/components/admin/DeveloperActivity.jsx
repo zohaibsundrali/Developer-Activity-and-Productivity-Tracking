@@ -333,19 +333,17 @@ export default function DeveloperActivity() {
       const fetchLoginsSafe = async () => {
         const startIso = start;
         const endIso = end;
+        // developer_logins has exactly: id, developer_id, login_time, login_date,
+        // organization_id. The six probes that were here for developer_email,
+        // user_email, email and created_at named columns the table does not
+        // have, so each one returned 42703 and the screen paid for six failed
+        // round trips before reaching a query that could work.
         const attempts = [
-          // Preferred: keyed by developer_id + login_time
+          // Keyed by developer_id + login_time.
           () => supabase.from("developer_logins").select("*").eq("developer_id", devId).gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }).limit(LOGIN_LIMIT),
-          // Fallback: keyed by email + login_time
-          () => supabase.from("developer_logins").select("*").eq("developer_email", devEmail).gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }).limit(LOGIN_LIMIT),
-          () => supabase.from("developer_logins").select("*").eq("user_email", devEmail).gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }).limit(LOGIN_LIMIT),
-          () => supabase.from("developer_logins").select("*").eq("email", devEmail).gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }).limit(LOGIN_LIMIT),
-          // Fallback: some schemas may only have created_at
-          () => supabase.from("developer_logins").select("*").eq("developer_id", devId).gte("created_at", startIso).lt("created_at", endIso).order("created_at", { ascending: true }).limit(LOGIN_LIMIT),
-          () => supabase.from("developer_logins").select("*").eq("developer_email", devEmail).gte("created_at", startIso).lt("created_at", endIso).order("created_at", { ascending: true }).limit(LOGIN_LIMIT),
-          // Last resort: date-bounded fetch then client-side filter
+          // Last resort when the developer id is unknown: the window alone.
+          // RLS keeps this inside the caller's organization.
           () => supabase.from("developer_logins").select("*").gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }).limit(LOGIN_LIMIT),
-          () => supabase.from("developer_logins").select("*").gte("created_at", startIso).lt("created_at", endIso).order("created_at", { ascending: true }).limit(LOGIN_LIMIT),
         ];
 
         let lastError = null;
