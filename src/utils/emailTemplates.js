@@ -1,0 +1,485 @@
+/**
+ * Reusable transactional email templates.
+ *
+ * WHY THIS EXISTS
+ *  Before this module every email in the product was a template literal built
+ *  inline in the route that sent it (`api/invitations`, `api/send-verification`,
+ *  `notifyEmailHtml` in mailer.js). Three consequences:
+ *   - the branding drifted between them,
+ *   - only one of the three escaped anything, so a task title, a project name
+ *     or an org name containing markup was interpolated raw into the message,
+ *   - adding a new kind of email meant copying 40 lines of table markup.
+ *
+ * RULES THIS MODULE ENFORCES
+ *  1. EVERY interpolated value is HTML-escaped. There is no "trusted" caller.
+ *     `escapeHtml` is the same routine already used by
+ *     src/app/api/send-verification/route.js, lifted here so there is one copy.
+ *  2. URLs go through `safeUrl`, which rejects anything that is not http(s).
+ *     Escaping alone does not stop `javascript:` in an href.
+ *  3. Subjects go through `sanitizeHeader`, which strips CR/LF. A newline in a
+ *     header is header injection, and HTML-escaping a subject would only make
+ *     `&amp;` show up in the recipient's inbox.
+ *  4. Inline CSS only. Gmail, Outlook and Apple Mail all drop <style> blocks or
+ *     external stylesheets, so a class-based layout renders unstyled.
+ *
+ * Every template returns { subject, html, text }. The text part is built from
+ * the RAW values (text/plain must not carry HTML entities).
+ */
+
+// ── Escaping / sanitising ────────────────────────────────────────────
+
+/**
+ * HTML-escape a value for interpolation into element content or a quoted
+ * attribute. Same implementation as the one in send-verification/route.js.
+ *
+ * The slice happens BEFORE escaping so `maxLen` bounds the source text rather
+ * than the entity-expanded output; the escape then runs over the slice, so it
+ * is impossible to cut an entity in half.
+ */
+export function escapeHtml(value, maxLen = 500) {
+  return String(value ?? "")
+    .slice(0, maxLen)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
+ * Return an href that is safe to place in a link, or "" when it is not.
+ *
+ * Only absolute http/https URLs and site-relative paths are allowed.
+ * `javascript:`, `data:` and `vbscript:` are dropped entirely — escaping a
+ * quote does nothing about a scheme, and some clients still honour those.
+ * The survivor is then attribute-escaped like everything else.
+ */
+export function safeUrl(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  // Control characters are how `java\nscript:` gets past a naive prefix check.
+  const flat = raw.replace(/[\u0000-\u0020\u007f]/g, "");
+  if (/^https?:\/\//i.test(flat) || /^\//.test(flat)) return escapeHtml(flat, 2000);
+  return "";
+}
+
+/**
+ * Sanitise a value destined for a mail header (subject, display name).
+ * CR/LF are removed — a newline there lets a caller append headers of their
+ * own. Not HTML-escaped: headers are not HTML.
+ */
+export function sanitizeHeader(value, maxLen = 200) {
+  return String(value ?? "")
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .slice(0, maxLen);
+}
+
+/** Strip markup for the text/plain alternative. */
+function toText(value, maxLen = 2000) {
+  return String(value ?? "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s{3,}/g, "\n")
+    .trim()
+    .slice(0, maxLen);
+}
+
+// ── Shared layout ────────────────────────────────────────────────────
+
+const BRAND = "#009578";
+const BRAND_DARK = "#00795f";
+const TEXT = "#1f2933";
+const MUTED = "#6b7280";
+const BORDER = "#e5e7eb";
+const PRODUCT_NAME = "Developer Activity Tracking System";
+
+/**
+ * The one layout every template renders through: header bar, body, optional
+ * CTA button, optional detail rows, footer.
+ *
+ * Everything passed in is escaped here, so a template body may hand this
+ * function raw user data. The only fields that may contain markup are
+ * `bodyHtml` (assembled by a template out of already-escaped pieces) and the
+ * pre-escaped detail values.
+ */
+export function renderLayout({
+  title,
+  preheader = "",
+  heading = "",
+  bodyHtml = "",
+  details = [],
+  ctaLabel = "",
+  ctaUrl = "",
+  footerNote = "",
+  orgName = "",
+}) {
+  const href = safeUrl(ctaUrl);
+  const detailRows = (Array.isArray(details) ? details : [])
+    .filter((d) => d && d.label && d.value !== undefined && d.value !== null && d.value !== "")
+    .map(
+      (d) =>
+        `<tr><td style="padding:4px 12px 4px 0;color:${MUTED};font-size:13px;white-space:nowrap;">${escapeHtml(
+          d.label,
+          60
+        )}</td><td style="padding:4px 0;color:${TEXT};font-size:13px;">${escapeHtml(d.value, 300)}</td></tr>`
+    )
+    .join("");
+
+  return `<div style="background:#f5f6f8;padding:24px 0;font-family:Arial,Helvetica,sans-serif;">
+  <span style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(preheader, 160)}</span>
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid ${BORDER};border-radius:10px;overflow:hidden;">
+    <tr>
+      <td style="background:${BRAND};padding:20px 28px;">
+        <div style="color:#ffffff;font-size:18px;font-weight:bold;">${escapeHtml(title, 120) || PRODUCT_NAME}</div>
+        ${orgName ? `<div style="color:#e8f7f2;font-size:13px;margin-top:4px;">${escapeHtml(orgName, 120)}</div>` : ""}
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:28px;">
+        ${heading ? `<h2 style="margin:0 0 14px;color:${TEXT};font-size:19px;line-height:1.35;">${escapeHtml(heading, 200)}</h2>` : ""}
+        <div style="color:#374151;font-size:14px;line-height:1.65;">${bodyHtml}</div>
+        ${
+          detailRows
+            ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0 0;background:#f8fafc;border:1px solid ${BORDER};border-radius:8px;padding:12px;width:100%;"><tr><td style="padding:12px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0">${detailRows}</table></td></tr></table>`
+            : ""
+        }
+        ${
+          href && ctaLabel
+            ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:26px 0 0;"><tr><td style="background:${BRAND};border-radius:8px;"><a href="${href}" style="display:inline-block;padding:12px 24px;color:#ffffff;font-size:14px;font-weight:bold;text-decoration:none;border:1px solid ${BRAND_DARK};border-radius:8px;">${escapeHtml(ctaLabel, 60)}</a></td></tr></table>
+        <p style="margin:14px 0 0;font-size:12px;color:${MUTED};">If the button does not work, paste this into your browser:<br><span style="word-break:break-all;">${href}</span></p>`
+            : ""
+        }
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:16px 28px;border-top:1px solid ${BORDER};background:#fafafa;">
+        <p style="margin:0;color:${MUTED};font-size:12px;line-height:1.5;">${escapeHtml(footerNote, 300) || `Sent by ${PRODUCT_NAME}.`}</p>
+      </td>
+    </tr>
+  </table>
+</div>`;
+}
+
+/** Escape a run of paragraphs into the layout's body slot. */
+function paragraphs(...lines) {
+  return lines
+    .filter((l) => l !== undefined && l !== null && String(l).trim() !== "")
+    .map((l) => `<p style="margin:0 0 12px;">${escapeHtml(l, 1500)}</p>`)
+    .join("");
+}
+
+function textBlock(lines, ctaLabel, ctaUrl) {
+  const url = safeUrl(ctaUrl);
+  const parts = lines.filter(Boolean).map((l) => toText(l));
+  if (url) parts.push(`${ctaLabel || "Open"}: ${url.replace(/&amp;/g, "&")}`);
+  parts.push(`— ${PRODUCT_NAME}`);
+  return parts.join("\n\n");
+}
+
+function name(value, fallback = "there") {
+  const v = sanitizeHeader(value, 80);
+  return v || fallback;
+}
+
+// ── Templates ────────────────────────────────────────────────────────
+//
+// Each is (data) => { subject, html, text }. Unknown keys are ignored, missing
+// keys degrade to a sensible default — a template must never throw, because it
+// runs inside a best-effort send path.
+
+export const TEMPLATES = {
+  invitation(d = {}) {
+    const org = sanitizeHeader(d.orgName, 120);
+    const role = sanitizeHeader(d.roleLabel || d.role, 40) || "member";
+    const days = Number(d.expiresInDays) > 0 ? Number(d.expiresInDays) : 7;
+    const lines = [
+      `You have been invited to join ${org || "the workspace"} as a ${role}.`,
+      "Accept the invitation to set up your account and get access.",
+    ];
+    return {
+      subject: sanitizeHeader(`You have been invited${org ? ` to ${org}` : ""}`),
+      html: renderLayout({
+        title: "You are invited",
+        orgName: org,
+        preheader: `Join ${org || "the workspace"} as a ${role}.`,
+        heading: "You are invited",
+        bodyHtml: paragraphs(...lines),
+        details: [
+          { label: "Organization", value: org || "—" },
+          { label: "Role", value: role },
+          { label: "Expires", value: `${days} day${days === 1 ? "" : "s"} from now` },
+        ],
+        ctaLabel: "Accept invitation",
+        ctaUrl: d.inviteUrl || d.url,
+        footerNote: `This invitation expires in ${days} day${days === 1 ? "" : "s"}. If you were not expecting it you can ignore this email.`,
+      }),
+      text: textBlock([...lines, `This invitation expires in ${days} days.`], "Accept invitation", d.inviteUrl || d.url),
+    };
+  },
+
+  task_assigned(d = {}) {
+    const task = sanitizeHeader(d.taskTitle, 160) || "Untitled task";
+    const by = name(d.assignerName, "A teammate");
+    const lines = [`${by} assigned a task to you.`, d.note];
+    return {
+      subject: sanitizeHeader(`Task assigned: ${task}`),
+      html: renderLayout({
+        title: "Task assigned",
+        orgName: sanitizeHeader(d.orgName, 120),
+        preheader: task,
+        heading: task,
+        bodyHtml: paragraphs(...lines),
+        details: [
+          { label: "Project", value: d.projectName },
+          { label: "Assigned by", value: by },
+          { label: "Priority", value: d.priority },
+          { label: "Due", value: d.dueDate },
+        ],
+        ctaLabel: "Open task",
+        ctaUrl: d.taskUrl || d.url,
+        footerNote: "You are receiving this because you are the assignee.",
+      }),
+      text: textBlock([`${by} assigned "${task}" to you.`, d.note, d.dueDate ? `Due: ${d.dueDate}` : ""], "Open task", d.taskUrl || d.url),
+    };
+  },
+
+  mention(d = {}) {
+    const by = name(d.actorName, "Someone");
+    const where = sanitizeHeader(d.contextTitle, 160) || "a discussion";
+    const lines = [`${by} mentioned you in ${where}.`, d.excerpt];
+    return {
+      subject: sanitizeHeader(`${by} mentioned you in ${where}`),
+      html: renderLayout({
+        title: "You were mentioned",
+        orgName: sanitizeHeader(d.orgName, 120),
+        preheader: `${by} mentioned you.`,
+        heading: `${by} mentioned you`,
+        bodyHtml: paragraphs(...lines),
+        details: [
+          { label: "Where", value: where },
+          { label: "Project", value: d.projectName },
+        ],
+        ctaLabel: "View comment",
+        ctaUrl: d.url,
+        footerNote: "You are receiving this because you were mentioned by name.",
+      }),
+      text: textBlock(lines, "View comment", d.url),
+    };
+  },
+
+  review_requested(d = {}) {
+    const task = sanitizeHeader(d.taskTitle, 160) || "a submission";
+    const by = name(d.requesterName, "A teammate");
+    const lines = [`${by} asked you to review ${task}.`, d.note];
+    return {
+      subject: sanitizeHeader(`Review requested: ${task}`),
+      html: renderLayout({
+        title: "Review requested",
+        orgName: sanitizeHeader(d.orgName, 120),
+        preheader: `${by} requested your review.`,
+        heading: "Review requested",
+        bodyHtml: paragraphs(...lines),
+        details: [
+          { label: "Item", value: task },
+          { label: "Requested by", value: by },
+          { label: "Project", value: d.projectName },
+          { label: "Needed by", value: d.dueDate },
+        ],
+        ctaLabel: "Start review",
+        ctaUrl: d.url || d.taskUrl,
+        footerNote: "You are receiving this because you were named as a reviewer.",
+      }),
+      text: textBlock(lines, "Start review", d.url || d.taskUrl),
+    };
+  },
+
+  approval(d = {}) {
+    const item = sanitizeHeader(d.itemTitle || d.taskTitle, 160) || "Your submission";
+    const by = name(d.approverName || d.reviewerName, "A reviewer");
+    const lines = [`${item} was approved by ${by}.`, d.note];
+    return {
+      subject: sanitizeHeader(`Approved: ${item}`),
+      html: renderLayout({
+        title: "Approved",
+        orgName: sanitizeHeader(d.orgName, 120),
+        preheader: `${item} was approved.`,
+        heading: "Approved",
+        bodyHtml: paragraphs(...lines),
+        details: [
+          { label: "Item", value: item },
+          { label: "Approved by", value: by },
+          { label: "Project", value: d.projectName },
+        ],
+        ctaLabel: "View details",
+        ctaUrl: d.url,
+        footerNote: "No further action is needed.",
+      }),
+      text: textBlock(lines, "View details", d.url),
+    };
+  },
+
+  rejection(d = {}) {
+    const item = sanitizeHeader(d.itemTitle || d.taskTitle, 160) || "Your submission";
+    const by = name(d.reviewerName || d.approverName, "A reviewer");
+    const reason = d.reason || d.note;
+    const lines = [`${item} was sent back by ${by}.`, reason ? `Reason: ${reason}` : "No reason was given."];
+    return {
+      subject: sanitizeHeader(`Changes requested: ${item}`),
+      html: renderLayout({
+        title: "Changes requested",
+        orgName: sanitizeHeader(d.orgName, 120),
+        preheader: `${item} needs changes.`,
+        heading: "Changes requested",
+        bodyHtml: paragraphs(...lines),
+        details: [
+          { label: "Item", value: item },
+          { label: "Reviewed by", value: by },
+          { label: "Project", value: d.projectName },
+        ],
+        ctaLabel: "Open and revise",
+        ctaUrl: d.url,
+        footerNote: "Reply to the reviewer in the app so the discussion stays on the item.",
+      }),
+      text: textBlock(lines, "Open and revise", d.url),
+    };
+  },
+
+  deadline_reminder(d = {}) {
+    const task = sanitizeHeader(d.taskTitle, 160) || "A task";
+    const when = sanitizeHeader(d.dueDate, 60);
+    const lines = [`${task} is due${when ? ` on ${when}` : " soon"}.`, d.note];
+    return {
+      subject: sanitizeHeader(`Due soon: ${task}`),
+      html: renderLayout({
+        title: "Deadline reminder",
+        orgName: sanitizeHeader(d.orgName, 120),
+        preheader: `${task} is due soon.`,
+        heading: "Due soon",
+        bodyHtml: paragraphs(...lines),
+        details: [
+          { label: "Task", value: task },
+          { label: "Project", value: d.projectName },
+          { label: "Due", value: when },
+          { label: "Time left", value: d.timeRemaining },
+        ],
+        ctaLabel: "Open task",
+        ctaUrl: d.url || d.taskUrl,
+        footerNote: "Reminders can be turned off per category in your notification preferences.",
+      }),
+      text: textBlock(lines, "Open task", d.url || d.taskUrl),
+    };
+  },
+
+  overdue_reminder(d = {}) {
+    const task = sanitizeHeader(d.taskTitle, 160) || "A task";
+    const when = sanitizeHeader(d.dueDate, 60);
+    const late = sanitizeHeader(d.daysOverdue !== undefined ? `${d.daysOverdue} day(s)` : "", 40);
+    const lines = [`${task} is past its due date${when ? ` of ${when}` : ""}${late ? ` — ${late} overdue` : ""}.`, d.note];
+    return {
+      subject: sanitizeHeader(`Overdue: ${task}`),
+      html: renderLayout({
+        title: "Overdue task",
+        orgName: sanitizeHeader(d.orgName, 120),
+        preheader: `${task} is overdue.`,
+        heading: "This task is overdue",
+        bodyHtml: paragraphs(...lines),
+        details: [
+          { label: "Task", value: task },
+          { label: "Project", value: d.projectName },
+          { label: "Was due", value: when },
+          { label: "Overdue by", value: late },
+        ],
+        ctaLabel: "Open task",
+        ctaUrl: d.url || d.taskUrl,
+        footerNote: "Reminders can be turned off per category in your notification preferences.",
+      }),
+      text: textBlock(lines, "Open task", d.url || d.taskUrl),
+    };
+  },
+
+  employee_onboarding(d = {}) {
+    const who = name(d.employeeName, "there");
+    const org = sanitizeHeader(d.orgName, 120);
+    const lines = [
+      `Hello ${who},`,
+      `Your account for ${org || "the workspace"} is ready.`,
+      "Sign in to complete your profile and see what is waiting for you.",
+    ];
+    const steps = Array.isArray(d.checklist) ? d.checklist.slice(0, 8) : [];
+    const stepsHtml = steps.length
+      ? `<ul style="margin:0 0 12px;padding-left:20px;color:#374151;font-size:14px;line-height:1.6;">${steps
+          .map((s) => `<li>${escapeHtml(s, 200)}</li>`)
+          .join("")}</ul>`
+      : "";
+    return {
+      subject: sanitizeHeader(`Welcome${org ? ` to ${org}` : ""}, ${who}`),
+      html: renderLayout({
+        title: "Welcome aboard",
+        orgName: org,
+        preheader: `Your ${org || "workspace"} account is ready.`,
+        heading: "Welcome aboard",
+        bodyHtml: paragraphs(...lines) + stepsHtml,
+        details: [
+          { label: "Role", value: d.roleLabel || d.role },
+          { label: "Team", value: d.teamName },
+          { label: "Start date", value: d.startDate },
+          { label: "Manager", value: d.managerName },
+        ],
+        ctaLabel: "Sign in",
+        ctaUrl: d.url || d.loginUrl,
+        footerNote: "If anything looks wrong, contact your HR or workspace administrator.",
+      }),
+      text: textBlock([...lines, ...steps.map((s) => `- ${s}`)], "Sign in", d.url || d.loginUrl),
+    };
+  },
+
+  automation(d = {}) {
+    const heading = sanitizeHeader(d.heading || d.subject, 160) || "Workflow automation";
+    const message = d.message || "An automation rule ran on an item you follow.";
+    return {
+      subject: sanitizeHeader(d.subject || heading),
+      html: renderLayout({
+        title: "Automation",
+        orgName: sanitizeHeader(d.orgName, 120),
+        preheader: heading,
+        heading,
+        bodyHtml: paragraphs(message),
+        details: [
+          { label: "Rule", value: d.ruleName },
+          { label: "Task", value: d.taskTitle },
+          { label: "Project", value: d.projectName },
+        ],
+        ctaLabel: d.url ? "Open in app" : "",
+        ctaUrl: d.url,
+        footerNote: "Sent by an automation rule in your workspace.",
+      }),
+      text: textBlock([heading, message], "Open in app", d.url),
+    };
+  },
+};
+
+/** The template ids this module knows how to render. */
+export const TEMPLATE_NAMES = Object.keys(TEMPLATES);
+
+/**
+ * Render a template by id.
+ *
+ * An unknown id falls back to `automation` (the most generic shape) rather
+ * than throwing — a typo'd template name must not take down the send path.
+ */
+export function renderTemplate(templateName, data = {}) {
+  const key = String(templateName || "").trim();
+  const fn = TEMPLATES[key] || TEMPLATES.automation;
+  const rendered = fn(data || {});
+  return {
+    template: TEMPLATES[key] ? key : "automation",
+    subject: sanitizeHeader(data?.subjectOverride || rendered.subject),
+    html: rendered.html,
+    text: rendered.text,
+  };
+}
+
+const emailTemplates = { TEMPLATES, TEMPLATE_NAMES, renderTemplate, renderLayout, escapeHtml, safeUrl, sanitizeHeader };
+
+export default emailTemplates;

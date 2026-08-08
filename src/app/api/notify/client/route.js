@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
-import { sendMail, notifyEmailHtml, mailerConfigured } from "@/utils/mailer";
+import { sendMail, notifyEmailHtml } from "@/utils/mailer";
 
 export const dynamic = "force-dynamic";
 
@@ -67,9 +67,6 @@ export async function POST(request) {
 
     emails = [...new Set(emails.filter(Boolean))];
 
-    if (!mailerConfigured()) {
-      return NextResponse.json({ ok: false, skipped: true, reason: "mailer not configured", recipients: emails.length });
-    }
     if (emails.length === 0) {
       return NextResponse.json({ ok: true, sent: 0 });
     }
@@ -91,8 +88,19 @@ export async function POST(request) {
       ctaUrl: base ? `${base.replace(/\/$/, "")}/login` : "",
     });
 
-    const r = await sendMail({ bcc: emails, subject, html });
-    return NextResponse.json({ ok: r.ok, sent: r.ok ? emails.length : 0, error: r.error });
+    // No "mailer not configured" early return any more. With no provider the
+    // send falls through to the mock, which records the message in email_log —
+    // an unconfigured deploy now leaves a trace instead of silently dropping.
+    // `delivered` (not `ok`) is what makes `sent` an honest count.
+    const r = await sendMail({ bcc: emails, subject, html, organizationId: auth.orgId, template: `client_${kind || "update"}` });
+    return NextResponse.json({
+      ok: r.ok,
+      sent: r.delivered ? emails.length : 0,
+      recipients: emails.length,
+      mode: r.mode,
+      ...(r.skipped ? { skipped: true, reason: r.reason } : {}),
+      error: r.error,
+    });
   } catch (e) {
     return NextResponse.json({ ok: false, error: "notify failed" }, { status: 500 });
   }

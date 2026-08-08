@@ -7,6 +7,7 @@ import {
   toIso,
   gracePeriodDays,
 } from "@/utils/stripeServer";
+import { recordEvent } from "@/utils/systemEvents";
 
 // The Edge runtime cannot do the constant-time HMAC that signature
 // verification needs, and this route must read raw bytes.
@@ -136,6 +137,23 @@ export async function POST(request) {
     // Non-2xx so Stripe retries. The reason is kept in the ledger; the response
     // stays generic because this endpoint is reachable by anyone.
     console.error("[billing/webhook] Processing error:", err);
+    // Monitoring (best effort, never throws — see src/utils/systemEvents.js).
+    // The ledger row below already carries the reason, but nothing surfaces it:
+    // a payment that succeeded at Stripe while the plan never applied is
+    // invisible until a customer complains. `critical` because money moved.
+    // The org is resolved again here (cheaply, and only on the error path) so
+    // the event lands in the affected tenant's own health view rather than in
+    // the platform bucket no tenant can see; null when it cannot be resolved,
+    // which is itself the reason the event exists.
+    const failedOrgId = await resolveOrganizationId(svc, event).catch(() => null);
+    await recordEvent({
+      orgId: failedOrgId,
+      type: "billing.webhook_failed",
+      severity: "critical",
+      source: "api",
+      message: `Stripe webhook processing failed: ${String(err?.message || err)}`,
+      context: { eventType: event.type, stripeEventId: event.id, route: "/api/billing/webhook" },
+    });
     await svc
       .from("billing_events")
       .update({ processing_error: String(err?.message || err).slice(0, 500) })

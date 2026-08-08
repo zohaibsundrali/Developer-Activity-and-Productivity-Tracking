@@ -32,6 +32,20 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...but the placeholder template MUST be committed. Without this negation the
+# `.env*` rule above silently swallows it and new developers get no template.
+!.env.example
+
+# credentials / keys (never commit these)
+*.key
+*.p12
+*.pfx
+*.crt
+id_rsa*
+id_ed25519*
+*credentials*.json
+service-account*.json
+secrets.json
 
 # vercel
 .vercel
@@ -39,3 +53,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Playwright
+/playwright-report/
+/test-results/

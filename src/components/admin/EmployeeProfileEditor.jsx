@@ -2,7 +2,7 @@
 
 import { useState, useRef, useMemo, useEffect } from "react";
 import { X, Upload, Save, Loader2, User } from "lucide-react";
-import { uploadEmployeePhoto, saveEmployee } from "@/utils/employeesData";
+import { uploadEmployeePhoto, saveEmployee, reportingCycleError } from "@/utils/employeesData";
 import { resolveOrgFileUrl } from "@/utils/orgFiles";
 import { showSuccess, showError } from "@/utils/alerts";
 
@@ -104,6 +104,23 @@ export default function EmployeeProfileEditor({
     [employees, emp?.userId]
   );
 
+  // Dropping this employee under someone who already reports to them (directly
+  // or through anyone in between) closes a reporting loop, and a loop makes
+  // every walk up the chain — org chart, approval ladder, "notify my manager" —
+  // run forever. Migration 037 refuses the write at the database, which is what
+  // actually protects the data; this recomputes the same answer from the
+  // directory already in memory so the person sees why before they save,
+  // named, rather than a check-constraint violation afterwards.
+  const hierarchyError = useMemo(
+    () =>
+      reportingCycleError({
+        employees,
+        userId: emp?.userId,
+        reportsTo: form.reportsTo || null,
+      }),
+    [employees, emp?.userId, form.reportsTo]
+  );
+
   const toggleDay = (day) => {
     if (disabled) return;
     setForm((prev) => {
@@ -182,6 +199,10 @@ export default function EmployeeProfileEditor({
 
   const handleSave = async () => {
     if (!canManage || saving) return;
+    if (hierarchyError) {
+      showError("Invalid reporting line", hierarchyError);
+      return;
+    }
     setSaving(true);
     try {
       const membershipPatch = {
@@ -204,8 +225,15 @@ export default function EmployeeProfileEditor({
         bio: form.bio || null,
       };
 
-      const { error } = await saveEmployee({ orgId, emp, membershipPatch, profilePatch });
+      const { error } = await saveEmployee({ orgId, emp, membershipPatch, profilePatch, employees });
       if (error) {
+        // 23514 is the check violation migration 037 raises. Its message is
+        // already written for a human, so pass it through rather than burying
+        // it in "Could not save employee: ...".
+        if (error.code === "reporting_cycle" || error.code === "23514") {
+          showError("Invalid reporting line", error.message || String(error));
+          return;
+        }
         showError("Save failed", `Could not save employee: ${error.message || error}`);
         return;
       }

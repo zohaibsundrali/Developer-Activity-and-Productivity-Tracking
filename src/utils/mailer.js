@@ -1,58 +1,76 @@
-import nodemailer from "nodemailer";
+/**
+ * Server-only email helper — now a thin adapter over the single send path.
+ *
+ * The signatures (`mailerConfigured`, `sendMail`, `notifyEmailHtml`) are
+ * unchanged so the routes that already import them keep working untouched.
+ * What changed is what happens underneath: instead of constructing its own
+ * nodemailer Gmail transport, this delegates to `emailService`, which picks a
+ * provider (Resend / SMTP / mock), escapes, rate-limits, retries transient
+ * failures and writes an `email_log` row for every outcome.
+ *
+ * `notifyEmailHtml` now renders through the shared layout in emailTemplates.js,
+ * so its output matches every other email in the product — and its escaping is
+ * the full one (the old local `safe()` handled only `<` and `>`, which left
+ * quotes and `&` to be interpolated raw, and it did not check the CTA scheme at
+ * all).
+ */
 
-// Server-only email helper. Mirrors the Gmail transport used by the
-// invitations route so notifications share one code path/config.
-// Env: GMAIL_EMAIL, GMAIL_APP_PASSWORD. If either is missing, sends are
-// skipped gracefully (callers treat email as best-effort).
+import { sendEmail } from "@/utils/emailService";
+import { renderLayout } from "@/utils/emailTemplates";
+import { emailMode, providerConfigured } from "@/utils/emailProvider";
 
+/**
+ * True when a REAL delivery provider is configured (Resend or Gmail SMTP).
+ * False means the mock is active: sends still succeed and are still recorded
+ * in email_log, but nothing leaves the process.
+ */
 export function mailerConfigured() {
-  return !!(process.env.GMAIL_EMAIL && process.env.GMAIL_APP_PASSWORD);
+  return providerConfigured();
+}
+
+/** "resend" | "smtp" | "mock" — safe to surface on a health page. */
+export function mailerMode() {
+  return emailMode();
 }
 
 /**
  * Send an email. Recipients in `bcc` are hidden from each other (privacy).
- * Returns { ok, skipped?, error? } — never throws.
+ * Returns { ok, skipped?, error?, mode, messageId, attempts } — never throws.
  */
-export async function sendMail({ to, bcc, subject, html, text }) {
-  if (!mailerConfigured()) return { ok: false, skipped: true, error: "mailer not configured" };
-  const bccList = Array.isArray(bcc) ? bcc.filter(Boolean) : bcc ? [bcc] : [];
-  if (!to && bccList.length === 0) return { ok: false, error: "no recipient" };
-  try {
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: { user: process.env.GMAIL_EMAIL, pass: process.env.GMAIL_APP_PASSWORD },
-    });
-    await transporter.sendMail({
-      from: { name: "Developer Activity Tracking System", address: process.env.GMAIL_EMAIL },
-      to: to || process.env.GMAIL_EMAIL, // a `to` is required; default to self when using bcc
-      bcc: bccList.length ? bccList.join(", ") : undefined,
-      subject,
-      html,
-      text: text || undefined,
-    });
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e?.message || "send failed" };
-  }
+export async function sendMail({ to, bcc, subject, html, text, organizationId = null, template = null }) {
+  const result = await sendEmail({ to, bcc, subject, html, text, organizationId, template });
+  return {
+    ok: result.ok,
+    delivered: result.delivered,
+    mode: result.mode,
+    messageId: result.messageId,
+    attempts: result.attempts,
+    ...(result.skipped ? { skipped: true, reason: result.reason } : {}),
+    ...(result.error ? { error: result.error } : {}),
+  };
 }
 
 /** Minimal branded HTML template for client notifications. */
 export function notifyEmailHtml({ orgName, heading, body, ctaLabel, ctaUrl }) {
-  const safe = (s) => String(s || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  return `
-  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-    <div style="background: #009578; color: #fff; padding: 20px; text-align: center; border-radius: 10px 10px 0 0;">
-      <h2 style="margin:0;">${safe(orgName) || "Project update"}</h2>
-    </div>
-    <div style="padding: 28px; background: #fff; border: 1px solid #eee; border-top: none;">
-      <h3 style="margin-top:0; color:#111;">${safe(heading)}</h3>
-      ${body ? `<p style="color:#444; line-height:1.6;">${safe(body)}</p>` : ""}
-      ${
-        ctaUrl
-          ? `<p style="margin-top:24px;"><a href="${ctaUrl}" style="background:#009578;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;display:inline-block;">${safe(ctaLabel) || "Open portal"}</a></p>`
-          : ""
-      }
-      <p style="color:#999; font-size:12px; margin-top:28px;">You're receiving this because you have a client account in ${safe(orgName) || "the workspace"}.</p>
-    </div>
-  </div>`;
+  return renderLayout({
+    title: orgName || "Project update",
+    orgName: "",
+    preheader: heading || "",
+    heading: heading || "",
+    bodyHtml: body ? `<p style="margin:0 0 12px;">${escapeForBody(body)}</p>` : "",
+    ctaLabel: ctaLabel || "Open portal",
+    ctaUrl: ctaUrl || "",
+    footerNote: `You are receiving this because you have an account in ${orgName || "the workspace"}.`,
+  });
+}
+
+// Local alias so this file does not re-export the escaper under a second name.
+function escapeForBody(value) {
+  return String(value ?? "")
+    .slice(0, 1500)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }

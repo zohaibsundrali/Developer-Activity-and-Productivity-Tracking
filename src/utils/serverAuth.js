@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { recordEvent } from "@/utils/systemEvents";
 
 // Server-side auth helpers for API routes.
 //
@@ -32,7 +33,25 @@ export async function getAuthedOrg(request) {
   });
 
   const { data, error } = await admin.auth.getUser(token);
-  if (error || !data?.user) return null;
+  if (error || !data?.user) {
+    // Monitoring (best effort, never throws — see src/utils/systemEvents.js).
+    // A rejected token is the one auth failure worth a durable record: a burst
+    // of them is a forged/replayed token or an expiry bug, and today every one
+    // of them is an anonymous 401 that leaves no trace anywhere. Platform-scoped
+    // (orgId null) because an unverifiable token carries no trustworthy org
+    // claim — attributing it to an organization would mean believing it.
+    // `reason` is the driver's short code only; the token itself never leaves
+    // this function.
+    await recordEvent({
+      orgId: null,
+      type: "auth.token_rejected",
+      severity: "warning",
+      source: "auth",
+      message: "A bearer token was rejected during verification.",
+      context: { reason: error?.name || "invalid_token", code: error?.status || null },
+    });
+    return null;
+  }
 
   const meta = data.user.app_metadata || {};
   const orgId = meta.organization_id || null;
@@ -52,7 +71,21 @@ export async function getAuthedOrg(request) {
       .eq("user_id", appUserId)
       .eq("user_type", userType)
       .maybeSingle();
-    if (membership && !isActiveStatus(membership.status)) return null;
+    if (membership && !isActiveStatus(membership.status)) {
+      // Monitoring (best effort, never throws). This one IS org-scoped: the
+      // token verified, so the org claim is trustworthy, and a suspended member
+      // still holding a live session is exactly what an owner should be able to
+      // see. Only opaque ids and the status word are stored.
+      await recordEvent({
+        orgId,
+        type: "auth.membership_blocked",
+        severity: "warning",
+        source: "auth",
+        message: "A member with a blocked membership was denied API access.",
+        context: { userId: appUserId, userType, status: membership.status, role: meta.role || null },
+      });
+      return null;
+    }
   }
 
   return {

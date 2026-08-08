@@ -2,6 +2,7 @@ import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
 import { isTransitionAllowed, REVIEW_ONLY_STATUSES } from "@/utils/pmData";
+import { recordEvent } from "@/utils/systemEvents";
 
 /**
  * Workflow automation engine (ClickUp/Jira style).
@@ -261,5 +262,38 @@ export async function runAutomations({ event, task, prev, projectId }) {
   } catch (err) {
     result.errors.push({ action: "engine", message: err?.message || String(err) });
   }
+
+  // Monitoring (best effort, never throws — see src/utils/systemEvents.js).
+  //
+  // Every rule failure — a refused status transition, a failed write, a dead
+  // email route, and the engine catch above — ends up in `result.errors`, which
+  // the callers in pmData.js ignore. So a rule that has been silently failing
+  // for a month looks identical to a rule that is working, and this is the one
+  // point that sees all of them. Behaviour is unchanged: the same result is
+  // returned either way.
+  //
+  // NOTE: this engine runs client-side (see the header) under the user's JWT,
+  // and recordEvent needs the service role, so today this call is a documented
+  // no-op in the browser rather than a failing write — system_events has no
+  // INSERT policy precisely so a browser cannot append to the log. It records
+  // for real the moment the engine is invoked from a server context.
+  if (result.errors.length) {
+    const first = result.errors[0];
+    await recordEvent({
+      orgId: getOrgId() || null,
+      type: "automation.rule_failed",
+      severity: "warning",
+      source: "automation",
+      message: `Automation for "${event}" finished with ${result.errors.length} failure(s): ${first?.message || "unknown"}`,
+      context: {
+        event,
+        action: first?.action,
+        count: result.errors.length,
+        taskId: task?.id,
+        projectId: projectId || task?.project_id || null,
+      },
+    });
+  }
+
   return result;
 }
