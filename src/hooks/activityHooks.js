@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { supabase } from "../utils/supabaseClient";
 import { resolveScreenshotUrls } from "../utils/screenshotFiles";
+import { setVisibleInterval } from "./useVisibleInterval";
 
 // Default polling interval (ms) used as a fallback beside Realtime
 const DEFAULT_POLL_INTERVAL = 10_000;
@@ -60,13 +61,13 @@ export function useCurrentSession(userEmail, { pollIntervalMs = DEFAULT_POLL_INT
 
   // Initial fetch + polling fallback
   useEffect(() => {
-    let intervalId;
+    let stopPolling = null;
     fetchSession();
     if (pollIntervalMs && userEmail) {
-      intervalId = setInterval(fetchSession, pollIntervalMs);
+      stopPolling = setVisibleInterval(fetchSession, pollIntervalMs);
     }
     return () => {
-      if (intervalId) clearInterval(intervalId);
+      if (stopPolling) stopPolling();
     };
   }, [fetchSession, pollIntervalMs, userEmail]);
 
@@ -159,13 +160,13 @@ export function useKeyboardRealtime({
 
   // Initial fetch + polling
   useEffect(() => {
-    let intervalId;
+    let stopPolling = null;
     fetchKeyboard();
     if (pollIntervalMs && sessionId && (developerId || developerEmail)) {
-      intervalId = setInterval(fetchKeyboard, pollIntervalMs);
+      stopPolling = setVisibleInterval(fetchKeyboard, pollIntervalMs);
     }
     return () => {
-      if (intervalId) clearInterval(intervalId);
+      if (stopPolling) stopPolling();
     };
   }, [fetchKeyboard, pollIntervalMs, sessionId, developerId, developerEmail]);
 
@@ -294,13 +295,13 @@ export function useMouseRealtime({
   }, [sessionId, developerId, developerEmail, limit]);
 
   useEffect(() => {
-    let intervalId;
+    let stopPolling = null;
     fetchMouse();
     if (pollIntervalMs && sessionId && (developerId || developerEmail)) {
-      intervalId = setInterval(fetchMouse, pollIntervalMs);
+      stopPolling = setVisibleInterval(fetchMouse, pollIntervalMs);
     }
     return () => {
-      if (intervalId) clearInterval(intervalId);
+      if (stopPolling) stopPolling();
     };
   }, [fetchMouse, pollIntervalMs, sessionId, developerId, developerEmail]);
 
@@ -415,13 +416,13 @@ export function useAppUsageRealtime({
   }, [sessionId, userEmail, limit]);
 
   useEffect(() => {
-    let intervalId;
+    let stopPolling = null;
     fetchApps();
     if (pollIntervalMs && sessionId && userEmail) {
-      intervalId = setInterval(fetchApps, pollIntervalMs);
+      stopPolling = setVisibleInterval(fetchApps, pollIntervalMs);
     }
     return () => {
-      if (intervalId) clearInterval(intervalId);
+      if (stopPolling) stopPolling();
     };
   }, [fetchApps, pollIntervalMs, sessionId, userEmail]);
 
@@ -562,13 +563,13 @@ export function useScreenshotsRealtime({
   }, [developerId, developerEmail, session, hasIdentity, limit]);
 
   useEffect(() => {
-    let intervalId;
+    let stopPolling = null;
     fetchScreenshots();
     if (pollIntervalMs && hasIdentity) {
-      intervalId = setInterval(fetchScreenshots, pollIntervalMs);
+      stopPolling = setVisibleInterval(fetchScreenshots, pollIntervalMs);
     }
     return () => {
-      if (intervalId) clearInterval(intervalId);
+      if (stopPolling) stopPolling();
     };
   }, [fetchScreenshots, pollIntervalMs, hasIdentity]);
 

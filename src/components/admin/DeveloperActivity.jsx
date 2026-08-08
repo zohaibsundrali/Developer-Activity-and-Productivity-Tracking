@@ -5,6 +5,7 @@ import { getOrgId } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
 import { showPre } from "@/utils/alerts";
 import { resolveScreenshotUrls } from "@/utils/screenshotFiles";
+import { setVisibleInterval } from "@/hooks/useVisibleInterval";
 import EChart from "@/components/charts/EChart";
 import {
   textStyle,
@@ -569,11 +570,12 @@ export default function DeveloperActivity() {
 
   // ─── Polling (10s auto-refresh) ───
   useEffect(() => {
-    if (pollRef.current) clearInterval(pollRef.current);
+    if (pollRef.current) pollRef.current();
+    pollRef.current = null;
     if (autoRefresh && selectedDeveloper) {
-      pollRef.current = setInterval(() => fetchDeveloperActivity(true), POLL_INTERVAL);
+      pollRef.current = setVisibleInterval(() => fetchDeveloperActivity(true), POLL_INTERVAL);
     }
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    return () => { if (pollRef.current) pollRef.current(); pollRef.current = null; };
   }, [autoRefresh, selectedDeveloper, fetchDeveloperActivity]);
 
   // ─── Supabase Realtime for mouse_activities ───
@@ -596,7 +598,7 @@ export default function DeveloperActivity() {
       return t >= startMs && t < endMs;
     };
 
-    let channel = supabase.channel("mouse-activity-realtime");
+    let channel = supabase.channel("admin-activity-mouse");
     const mouseFilters = [`developer_id=eq.${dev.id}`];
     if (dev.user_id) mouseFilters.push(`developer_id=eq.${dev.user_id}`);
 
@@ -645,7 +647,7 @@ export default function DeveloperActivity() {
       return t >= startMs && t < endMs;
     };
 
-    let kbChannel = supabase.channel("keyboard-stats-realtime");
+    let kbChannel = supabase.channel("admin-activity-keyboard");
     const kbFilters = [`developer_id=eq.${dev.id}`];
     if (dev.user_id) kbFilters.push(`developer_id=eq.${dev.user_id}`);
     if (dev.email) kbFilters.push(`user_email=eq.${dev.email}`);
@@ -688,7 +690,7 @@ export default function DeveloperActivity() {
       return t >= startMs && t < endMs;
     };
     const appChannel = supabase
-      .channel("app-usage-realtime")
+      .channel("admin-activity-app-usage")
       .on("postgres_changes", {
         event: "INSERT",
         schema: "public",
@@ -748,13 +750,16 @@ export default function DeveloperActivity() {
       if (!row.public_url) return;
       setScreenshots(prev => {
         if (row.id && prev.some(s => s.id === row.id)) return prev;
-        return [row, ...prev];
+        // Trim to the same ceiling the fetch uses. Without this an admin page
+        // left open accumulated screenshots without limit — every other
+        // realtime handler here caps its array, this one did not.
+        return [row, ...prev].slice(0, SCREENSHOT_LIMIT);
       });
       setLastUpdated(new Date());
     };
 
     const ssChannel = supabase
-      .channel("screenshots-realtime")
+      .channel("admin-activity-screenshots")
       .on("postgres_changes", {
         event: "INSERT",
         schema: "public",
@@ -802,7 +807,7 @@ export default function DeveloperActivity() {
     };
 
     const channel = supabase
-      .channel("developer-logins-realtime")
+      .channel("admin-activity-logins")
       .on("postgres_changes", {
         event: "INSERT",
         schema: "public",
@@ -915,36 +920,13 @@ export default function DeveloperActivity() {
     idle: r.idle_percentage || 0,
   }));
 
-  const keyboardChartData = keyboardData.slice().reverse().map(r => ({
-    time: new Date(r.tracked_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
-    totalKeys: Number(r.total_keys) || 0,
-    wpm: Number(r.words_per_minute) || 0,
-    activityPct: Number(r.keyboard_activity_percentage) || 0,
-    score: Number(r.activity_score) || 0,
-  }));
+  // keyboardChartData and perMinuteData used to be computed here on every
+  // render. The charts that consumed them are commented out, so both were pure
+  // waste — and perMinuteData ran a JSON.parse per keyboard_stats row, up to a
+  // thousand of them, on a component that re-renders every 10 seconds from
+  // polling and again on each of five realtime channels. Restore them next to
+  // whichever chart needs them, inside a useMemo.
 
-  // Build per-minute breakdown from per_minute_summary jsonb
-  const perMinuteData = keyboardData.slice().reverse().flatMap(r => {
-    if (!r.per_minute_summary) return [];
-    try {
-      const summary = typeof r.per_minute_summary === "string" ? JSON.parse(r.per_minute_summary) : r.per_minute_summary;
-      if (Array.isArray(summary)) {
-        return summary.map(entry => ({
-          time: entry.minute || entry.time || "",
-          keys: entry.keys || entry.total_keys || entry.key_count || 0,
-          wpm: entry.wpm || entry.words_per_minute || 0,
-        }));
-      }
-      if (typeof summary === "object") {
-        return Object.entries(summary).map(([minute, data]) => ({
-          time: minute,
-          keys: typeof data === "number" ? data : (data.keys || data.total_keys || 0),
-          wpm: typeof data === "object" ? (data.wpm || 0) : 0,
-        }));
-      }
-    } catch { /* ignore parse errors */ }
-    return [];
-  });
 
   const appPieData = topApps.slice(0, 6).map(a => ({
     name: a.app.length > 20 ? a.app.slice(0, 20) + "…" : a.app,

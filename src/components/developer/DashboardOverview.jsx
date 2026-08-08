@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { setVisibleInterval } from "@/hooks/useVisibleInterval";
 import { supabase } from "@/utils/supabaseClient";
 import { Mail, CalendarDays, FolderKanban, CheckCircle2, Clock, Timer } from "lucide-react";
 import StatCard from "@/components/shell/StatCard";
@@ -339,11 +340,11 @@ export default function DashboardOverview({ user, assignedProjects = [] }) {
       .subscribe();
 
     // Polling fallback (mirrors Admin's approach for resilience)
-    const pollId = setInterval(scheduleRefresh, 10_000);
+    const stopPolling = setVisibleInterval(scheduleRefresh, 10_000);
 
     return () => {
       clearTimeout(initialLoadTimer);
-      clearInterval(pollId);
+      stopPolling();
 
       if (refreshDebounceRef.current) {
         clearTimeout(refreshDebounceRef.current);
