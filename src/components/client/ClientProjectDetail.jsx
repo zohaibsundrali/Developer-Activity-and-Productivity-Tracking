@@ -19,6 +19,7 @@ import { authFetch } from "@/utils/authFetch";
 import { showError } from "@/utils/alerts";
 import ClientTimeline from "./ClientTimeline";
 import ClientProjectComments from "./ClientProjectComments";
+import ClientTaskDetail from "./ClientTaskDetail";
 import {
   Spinner,
   EmptyState,
@@ -80,6 +81,9 @@ export default function ClientProjectDetail({ projectId, onBack }) {
   const [error, setError] = useState("");
   const [tab, setTab] = useState("overview");
   const [downloadingId, setDownloadingId] = useState(null);
+  // The open task lives here rather than inside the tab so closing it comes
+  // back to the same project, on the same tab, without a re-fetch.
+  const [openTaskId, setOpenTaskId] = useState(null);
 
   const load = useCallback(async () => {
     if (!projectId) return;
@@ -160,6 +164,13 @@ export default function ClientProjectDetail({ projectId, onBack }) {
     );
   }
 
+  // A task takes over the whole panel: it carries its own back control, and
+  // stacking a second header above it would leave two "back" buttons meaning
+  // two different things.
+  if (openTaskId) {
+    return <ClientTaskDetail taskId={openTaskId} onBack={() => setOpenTaskId(null)} />;
+  }
+
   const health = healthMeta(project.health);
 
   return (
@@ -208,7 +219,7 @@ export default function ClientProjectDetail({ projectId, onBack }) {
         <div className="p-4 sm:p-6">
           {tab === "overview" && <OverviewTab project={project} health={health} />}
           {tab === "milestones" && <MilestonesTab milestones={milestones} />}
-          {tab === "tasks" && <TasksTab tasks={tasks} />}
+          {tab === "tasks" && <TasksTab tasks={tasks} onOpenTask={setOpenTaskId} />}
           {tab === "team" && <TeamTab team={team} />}
           {tab === "timeline" && <ClientTimeline projectId={projectId} />}
           {tab === "deliverables" && (
@@ -345,7 +356,7 @@ function MilestonesTab({ milestones }) {
   );
 }
 
-function TasksTab({ tasks }) {
+function TasksTab({ tasks, onOpenTask }) {
   if (tasks.length === 0) {
     return (
       <EmptyState
@@ -362,52 +373,62 @@ function TasksTab({ tasks }) {
         const priorityKey = String(task.priority || "").toLowerCase().trim();
         const labels = Array.isArray(task.labels) ? task.labels : [];
         return (
-          <li key={task.id} className="rounded-xl border border-border bg-card p-4 shadow-card">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-              <p className="min-w-0 font-semibold text-foreground">{task.title}</p>
-              <StatusBadge status={task.status} />
-            </div>
-
-            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
-              {task.priority && (
-                <span
-                  className={`rounded-full px-2.5 py-1 font-semibold ${
-                    PRIORITY_TONES[priorityKey] || "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {humanize(task.priority)}
-                </span>
-              )}
-              {task.due_date && (
-                <span>
-                  Due: <span className="font-medium text-foreground">{formatDate(task.due_date)}</span>
-                </span>
-              )}
-              {task.assignee_name && (
-                <span>
-                  Assigned to <span className="font-medium text-foreground">{task.assignee_name}</span>
-                </span>
-              )}
-              {Number(task.attachment_count) > 0 && (
-                <span className="inline-flex items-center">
-                  <Paperclip className="mr-1 h-3.5 w-3.5" />
-                  {Number(task.attachment_count)}
-                </span>
-              )}
-            </div>
-
-            {labels.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {labels.map((label) => (
-                  <span
-                    key={label}
-                    className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground"
-                  >
-                    {label}
-                  </span>
-                ))}
+          <li key={task.id} className="rounded-xl border border-border bg-card shadow-card">
+            {/* The whole row is the control: a client reads the title to decide
+                whether to open it, so the title is what they should be able to
+                hit — on a phone as much as with a keyboard. */}
+            <button
+              type="button"
+              onClick={() => onOpenTask(task.id)}
+              aria-label={`Open task ${task.title}`}
+              className="w-full rounded-xl p-4 text-left transition-colors hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            >
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                <p className="min-w-0 font-semibold text-foreground">{task.title}</p>
+                <StatusBadge status={task.status} />
               </div>
-            )}
+
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                {task.priority && (
+                  <span
+                    className={`rounded-full px-2.5 py-1 font-semibold ${
+                      PRIORITY_TONES[priorityKey] || "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {humanize(task.priority)}
+                  </span>
+                )}
+                {task.due_date && (
+                  <span>
+                    Due: <span className="font-medium text-foreground">{formatDate(task.due_date)}</span>
+                  </span>
+                )}
+                {task.assignee_name && (
+                  <span>
+                    Assigned to <span className="font-medium text-foreground">{task.assignee_name}</span>
+                  </span>
+                )}
+                {Number(task.attachment_count) > 0 && (
+                  <span className="inline-flex items-center">
+                    <Paperclip className="mr-1 h-3.5 w-3.5" />
+                    {Number(task.attachment_count)}
+                  </span>
+                )}
+              </div>
+
+              {labels.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {labels.map((label) => (
+                    <span
+                      key={label}
+                      className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground"
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </button>
           </li>
         );
       })}
