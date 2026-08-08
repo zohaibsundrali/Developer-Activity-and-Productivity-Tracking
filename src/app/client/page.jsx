@@ -15,6 +15,8 @@ import {
 import ClientOverview from "@/components/client/ClientOverview";
 import ClientProjects from "@/components/client/ClientProjects";
 import ClientProjectDetail from "@/components/client/ClientProjectDetail";
+import ClientProjectComments from "@/components/client/ClientProjectComments";
+import ClientTimeline from "@/components/client/ClientTimeline";
 import ClientAnnouncements from "@/components/client/ClientAnnouncements";
 import ClientApprovals from "@/components/client/ClientApprovals";
 import ClientInvoices from "@/components/client/ClientInvoices";
@@ -142,13 +144,17 @@ function ClientDashboardContent() {
     router.push(`/client?${params.toString()}`, { scroll: false });
   };
 
-  // Navigate into a project detail view
-  const handleViewProject = (projectId) => {
+  // Navigate into a project-scoped view. `section` selects which one, so the
+  // activity feed and the project conversation are linkable on their own rather
+  // than only reachable as a tab inside the detail screen.
+  const handleViewProjectIn = (section) => (projectId) => {
     const params = new URLSearchParams();
-    params.set("section", "projects");
+    params.set("section", section);
     params.set("projectId", String(projectId));
     router.push(`/client?${params.toString()}`, { scroll: false });
   };
+
+  const handleViewProject = handleViewProjectIn("projects");
 
   const handleLogout = () => {
     try {
@@ -174,10 +180,22 @@ function ClientDashboardContent() {
           );
         }
         return <ClientProjects onViewProject={handleViewProject} />;
+      // Both project-scoped feeds need a project. Without one in the URL the
+      // picker stands in, rather than rendering a view with nothing to fetch.
+      case "timeline":
+        if (projectId) {
+          return <ClientTimeline projectId={projectId} showHeader />;
+        }
+        return <ClientProjects onViewProject={handleViewProjectIn("timeline")} />;
+      case "comments":
+        if (projectId) {
+          return <ClientProjectComments projectId={projectId} showHeader />;
+        }
+        return <ClientProjects onViewProject={handleViewProjectIn("comments")} />;
       case "announcements":
         return <ClientAnnouncements />;
       case "approvals":
-        return <ClientApprovals />;
+        return <ClientApprovals onViewProject={handleViewProject} />;
       case "invoices":
         return <ClientInvoices />;
       case "support":

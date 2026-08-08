@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { STATUS_META, normalizeStatus } from "@/utils/pmData";
-import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
+import { ChevronUp, ChevronDown, ChevronsUpDown, Eye, EyeOff } from "lucide-react";
 
 /* -------------------------------------------------------------------------- */
 /*  Token helpers                                                              */
@@ -42,6 +42,9 @@ function formatDue(value) {
 
 const COLUMNS = [
   { key: "title", label: "Title", type: "string" },
+  // Sits next to the title on purpose: the title is the thing the portal
+  // actually publishes, so the marker belongs against the words being exposed.
+  { key: "clientVisible", label: "Client", type: "flag" },
   { key: "type", label: "Type", type: "string" },
   { key: "status", label: "Status", type: "status" },
   { key: "priority", label: "Priority", type: "priority" },
@@ -66,6 +69,32 @@ function StatusBadge({ status }) {
 function PriorityBadge({ priority }) {
   const p = priority || "medium";
   return <span className={`${badgeBase} ${PRIORITY_STYLES[p] || PRIORITY_STYLES.medium}`}>{p}</span>;
+}
+
+// A row carrying no client_visible value at all predates migration 032. Drawing
+// it as "internal" would state something the row does not actually say, so the
+// unknown case gets the same em dash every other empty cell here uses.
+function ClientVisibleFlag({ value }) {
+  if (value !== true && value !== false) {
+    return (
+      <span className="text-muted-foreground" title="No client-visibility setting on this task">
+        —
+      </span>
+    );
+  }
+  const label = value
+    ? "Visible to client — shown in the client portal"
+    : "Internal only — not shown in the client portal";
+  const Icon = value ? Eye : EyeOff;
+  return (
+    <span
+      className={`inline-flex items-center ${value ? "text-success" : "text-muted-foreground"}`}
+      title={label}
+    >
+      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+      <span className="sr-only">{label}</span>
+    </span>
+  );
 }
 
 function TypeBadge({ type }) {
@@ -116,6 +145,11 @@ export default function TableView({ tasks, employees, sprints, epics, onOpenTask
     switch (col.key) {
       case "title":
         return t.task_title || "";
+      case "clientVisible":
+        // Sorting this column is the audit: one click pulls every task the
+        // client can read to the top of the project.
+        if (t.client_visible !== true && t.client_visible !== false) return null;
+        return t.client_visible ? 1 : 0;
       case "type":
         return t.task_type || "";
       case "status":
@@ -205,6 +239,9 @@ export default function TableView({ tasks, employees, sprints, epics, onOpenTask
                 >
                   <td className="px-3 py-2 font-medium text-foreground">
                     <span className="line-clamp-1">{row.title}</span>
+                  </td>
+                  <td className="px-3 py-2">
+                    <ClientVisibleFlag value={t.client_visible} />
                   </td>
                   <td className="px-3 py-2">
                     <TypeBadge type={row.type} />

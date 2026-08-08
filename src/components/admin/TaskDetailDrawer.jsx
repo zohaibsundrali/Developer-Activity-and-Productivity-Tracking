@@ -9,6 +9,7 @@ import {
   ListChecks,
   GitBranch,
   Eye,
+  EyeOff,
   Plus,
   Save,
   Loader2,
@@ -29,6 +30,7 @@ import {
   PRIORITIES,
 } from "@/utils/pmData";
 import { getOrgContext, isMembershipActive } from "@/utils/orgContext";
+import { hasRole } from "@/utils/permissions";
 import { showError, showSuccess } from "@/utils/alerts";
 import TaskExtras from "@/components/admin/TaskExtras";
 import TaskTimer from "@/components/admin/TaskTimer";
@@ -564,6 +566,25 @@ export default function TaskDetailDrawer({
 
   const currentStatus = form?.status || task?.status || "pending";
   const currentPriority = form?.priority || task?.priority || "medium";
+
+  // Owner / Admin / Manager. Publishing a task to the client is a decision about
+  // what the client is TOLD, not about running the board: can("manage_tasks")
+  // would hand the same switch to a team lead, who can legitimately move any
+  // card but is not the person who should decide that "chase the client about
+  // the overdue invoice" is something the client gets to read. Naming the three
+  // roles through hasRole keeps that set pinned here instead of borrowing a
+  // capability whose membership is free to drift for unrelated reasons.
+  const canSetClientVisibility = hasRole("owner", "admin", "manager");
+
+  // Migration 032 adds the column NOT NULL, so a loaded task always carries a
+  // real boolean once it has run. undefined/null therefore means "the column is
+  // not there yet", which is a different thing from "private" and must not be
+  // drawn as an unchecked box - that is precisely the reading ("it failed to
+  // load") that would get someone to flip it without knowing what it did.
+  const clientVisibilityKnown =
+    form?.client_visible === true || form?.client_visible === false;
+  const clientVisible = form?.client_visible === true;
+  const savingClientVisible = savingField === "client_visible";
   const statusChoices = [
     currentStatus,
     ...allowedTransitions(currentStatus).filter((s) => s !== currentStatus),
@@ -771,6 +792,70 @@ export default function TaskDetailDrawer({
             </div>
           </div>
         </div>
+
+        {/* 2a. Client visibility --------------------------------------- */}
+        {canSetClientVisibility ? (
+          <div className={`${CARD_CLASS} mb-4`}>
+            <h3 className={`${HEADING_CLASS} mb-3 flex items-center gap-2`}>
+              {clientVisible ? (
+                <Eye className="h-4 w-4 text-primary" />
+              ) : (
+                <EyeOff className="h-4 w-4 text-primary" />
+              )}
+              Client visibility
+            </h3>
+
+            {clientVisibilityKnown ? (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="flex items-center gap-2 text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-input accent-primary"
+                      checked={clientVisible}
+                      disabled={savingClientVisible}
+                      onChange={(e) =>
+                        saveField("client_visible", e.target.checked)
+                      }
+                    />
+                    Visible to client
+                  </label>
+                  {/* The state is spelled out next to the box as well, because a
+                      lone unchecked box reads as "nothing here" rather than as a
+                      deliberate "this one is ours". */}
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium ${
+                      clientVisible
+                        ? "bg-success/10 text-success"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {savingClientVisible ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : null}
+                    {clientVisible ? "In the client portal" : "Internal only"}
+                  </span>
+                </div>
+
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {clientVisible
+                    ? "The client sees this task in their portal: its title, status, priority, due date and the assignee's name. Comments, attachments, time logs and everything else stay internal."
+                    : "Only your team sees this task. It is not listed in the client's portal at all."}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  New tasks start internal, so a title written for the team is
+                  never shown to the client until someone turns this on.
+                </p>
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                This task carries no visibility setting, which means the client
+                portal columns have not been added to the database yet — not that
+                the client can read it. Run migration 032 and reopen this task.
+              </p>
+            )}
+          </div>
+        ) : null}
 
         {/* 3. Description --------------------------------------------- */}
         <div className={`${CARD_CLASS} mb-4`}>

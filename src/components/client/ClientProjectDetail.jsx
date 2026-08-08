@@ -1,51 +1,85 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   FileText,
   CalendarDays,
   Package,
   Megaphone,
-  CheckSquare,
+  ListTodo,
+  Users,
+  MessagesSquare,
   Download,
-  Milestone as MilestoneIcon,
-  Check,
-  X,
+  Flag,
+  Paperclip,
+  CheckCircle2,
 } from "lucide-react";
 import { authFetch } from "@/utils/authFetch";
-import { showSuccess, showError } from "@/utils/alerts";
+import { showError } from "@/utils/alerts";
+import ClientTimeline from "./ClientTimeline";
+import ClientProjectComments from "./ClientProjectComments";
 import {
   Spinner,
   EmptyState,
   ErrorState,
   StatusBadge,
+  HealthBadge,
   ProgressBar,
+  healthMeta,
   formatDate,
   formatDateTime,
+  formatFileSize,
   humanize,
 } from "./ClientShared";
 
 const TABS = [
   { id: "overview", label: "Overview", icon: FileText },
-  { id: "milestones", label: "Milestones", icon: MilestoneIcon },
+  { id: "milestones", label: "Milestones", icon: Flag },
+  { id: "tasks", label: "Tasks", icon: ListTodo },
+  { id: "team", label: "Team", icon: Users },
   { id: "timeline", label: "Timeline", icon: CalendarDays },
   { id: "deliverables", label: "Deliverables", icon: Package },
   { id: "updates", label: "Updates", icon: Megaphone },
-  { id: "approvals", label: "Approvals", icon: CheckSquare },
+  { id: "comments", label: "Conversation", icon: MessagesSquare },
 ];
 
-function asArray(value) {
-  return Array.isArray(value) ? value : [];
-}
+// Priority arrives as a free-form string. Known words get a tone; anything else
+// is shown verbatim in the neutral style rather than being guessed at.
+const PRIORITY_TONES = {
+  urgent: "bg-destructive/10 text-destructive",
+  critical: "bg-destructive/10 text-destructive",
+  highest: "bg-destructive/10 text-destructive",
+  high: "bg-warning/10 text-warning",
+  medium: "bg-info/10 text-info",
+  normal: "bg-info/10 text-info",
+  low: "bg-muted text-muted-foreground",
+  lowest: "bg-muted text-muted-foreground",
+};
+
+const asArray = (value) => (Array.isArray(value) ? value : []);
+
+const timeOf = (value) => {
+  const parsed = Date.parse(String(value || ""));
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+// Undated rows sink to the bottom instead of pretending to be due at epoch.
+const byDateAsc = (a, b) => {
+  const at = timeOf(a);
+  const bt = timeOf(b);
+  if (at === bt) return 0;
+  if (at === null) return 1;
+  if (bt === null) return -1;
+  return at - bt;
+};
 
 export default function ClientProjectDetail({ projectId, onBack }) {
-  const [data, setData] = useState(null);
+  const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [tab, setTab] = useState("overview");
   const [downloadingId, setDownloadingId] = useState(null);
-  const [decidingId, setDecidingId] = useState(null);
 
   const load = useCallback(async () => {
     if (!projectId) return;
@@ -53,12 +87,12 @@ export default function ClientProjectDetail({ projectId, onBack }) {
       setLoading(true);
       setError("");
       const res = await authFetch(`/api/client/projects/${projectId}`);
-      const payload = await res.json().catch(() => ({}));
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(payload?.error || "Failed to load project details.");
+        setError(data?.error || "Failed to load project details.");
         return;
       }
-      setData(payload);
+      setProject(data.project || null);
     } catch {
       setError("Something went wrong while loading this project.");
     } finally {
@@ -69,6 +103,34 @@ export default function ClientProjectDetail({ projectId, onBack }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  const milestones = useMemo(
+    () => [...asArray(project?.milestones)].sort((a, b) => byDateAsc(a.due_date, b.due_date)),
+    [project]
+  );
+
+  const tasks = useMemo(
+    () => [...asArray(project?.tasks)].sort((a, b) => byDateAsc(a.due_date, b.due_date)),
+    [project]
+  );
+
+  const team = useMemo(() => asArray(project?.team), [project]);
+
+  const deliverables = useMemo(
+    () =>
+      [...asArray(project?.deliverables)].sort(
+        (a, b) => (timeOf(b.submitted_at) ?? 0) - (timeOf(a.submitted_at) ?? 0)
+      ),
+    [project]
+  );
+
+  const updates = useMemo(
+    () =>
+      [...asArray(project?.updates)].sort(
+        (a, b) => (timeOf(b.created_at) ?? 0) - (timeOf(a.created_at) ?? 0)
+      ),
+    [project]
+  );
 
   const handleDownload = async (deliverable) => {
     try {
@@ -87,73 +149,41 @@ export default function ClientProjectDetail({ projectId, onBack }) {
     }
   };
 
-  const handleDecision = async (approval, decision) => {
-    try {
-      setDecidingId(approval.id);
-      const res = await authFetch(`/api/client/approvals/${approval.id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decision }),
-      });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        showError("Action failed", payload?.error || "Could not submit your decision.");
-        return;
-      }
-      // Optimistic local update
-      setData((prev) => {
-        if (!prev) return prev;
-        const approvals = asArray(prev.approvals).map((a) =>
-          a.id === approval.id ? { ...a, status: decision === "approve" ? "approved" : "rejected" } : a
-        );
-        return { ...prev, approvals };
-      });
-      showSuccess(decision === "approve" ? "Approved" : "Rejected", "Your decision has been recorded.");
-    } catch {
-      showError("Action failed", "Something went wrong. Please try again.");
-    } finally {
-      setDecidingId(null);
-    }
-  };
-
   if (loading) return <Spinner label="Loading project details…" />;
-  if (error) {
+
+  if (error || !project) {
     return (
       <div className="space-y-4">
         <BackButton onBack={onBack} />
-        <ErrorState message={error} onRetry={load} />
+        <ErrorState message={error || "This project could not be loaded."} onRetry={load} />
       </div>
     );
   }
 
-  const project = data?.project || data || {};
-  const milestones = asArray(data?.milestones);
-  const tasks = asArray(data?.tasks);
-  const deliverables = asArray(data?.deliverables);
-  const updates = asArray(data?.updates || data?.project_updates);
-  const approvals = asArray(data?.approvals);
+  const health = healthMeta(project.health);
 
   return (
     <div className="space-y-6">
       <BackButton onBack={onBack} />
 
-      {/* Header */}
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
-        <div className="bg-primary p-6 text-primary-foreground sm:p-8">
+        <div className="bg-primary p-5 text-primary-foreground sm:p-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
-              <h1 className="text-2xl font-bold sm:text-3xl">{project.name || "Untitled Project"}</h1>
+              <h1 className="text-xl font-bold sm:text-3xl">{project.name}</h1>
               {project.deadline && (
                 <p className="mt-2 text-sm text-primary-foreground/80">
                   Deadline: {formatDate(project.deadline)}
                 </p>
               )}
             </div>
-            <StatusBadge status={project.status} className="bg-white/20 text-white" />
+            <div className="flex flex-wrap items-center gap-2">
+              <HealthBadge health={project.health} className="bg-white/20 text-white" />
+              <StatusBadge status={project.status} className="bg-white/20 text-white" />
+            </div>
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="flex gap-1 overflow-x-auto border-b border-border px-2 sm:px-4">
           {TABS.map((t) => {
             const Icon = t.icon;
@@ -162,7 +192,7 @@ export default function ClientProjectDetail({ projectId, onBack }) {
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className={`inline-flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
+                className={`inline-flex items-center gap-2 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium transition-colors sm:px-4 ${
                   active
                     ? "border-primary text-primary"
                     : "border-transparent text-muted-foreground hover:text-foreground"
@@ -175,10 +205,12 @@ export default function ClientProjectDetail({ projectId, onBack }) {
           })}
         </div>
 
-        <div className="p-5 sm:p-6">
-          {tab === "overview" && <OverviewTab project={project} />}
+        <div className="p-4 sm:p-6">
+          {tab === "overview" && <OverviewTab project={project} health={health} />}
           {tab === "milestones" && <MilestonesTab milestones={milestones} />}
-          {tab === "timeline" && <TimelineTab tasks={tasks} />}
+          {tab === "tasks" && <TasksTab tasks={tasks} />}
+          {tab === "team" && <TeamTab team={team} />}
+          {tab === "timeline" && <ClientTimeline projectId={projectId} />}
           {tab === "deliverables" && (
             <DeliverablesTab
               deliverables={deliverables}
@@ -187,9 +219,7 @@ export default function ClientProjectDetail({ projectId, onBack }) {
             />
           )}
           {tab === "updates" && <UpdatesTab updates={updates} />}
-          {tab === "approvals" && (
-            <ApprovalsTab approvals={approvals} onDecision={handleDecision} decidingId={decidingId} />
-          )}
+          {tab === "comments" && <ClientProjectComments projectId={projectId} />}
         </div>
       </div>
     </div>
@@ -208,40 +238,51 @@ function BackButton({ onBack }) {
   );
 }
 
-function OverviewTab({ project }) {
+function OverviewTab({ project, health }) {
+  const pct = Math.max(0, Math.min(100, Number(project.progress) || 0));
+
   return (
-    <div className="space-y-8">
-      <div className="rounded-2xl border border-border bg-muted/50 p-6">
-        <div className="mb-4 flex items-center justify-between">
+    <div className="space-y-6">
+      <div className="rounded-xl border border-border bg-muted/50 p-5 sm:p-6">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <span className="text-base font-semibold text-foreground">Completion Status</span>
-            <p className="text-sm text-muted-foreground">Progress toward completion</p>
+            <p className="text-sm text-muted-foreground">Progress across the work you can see</p>
           </div>
-          <span className="text-3xl font-bold text-primary">{Math.max(0, Math.min(100, Number(project.progress) || 0))}%</span>
+          <div className="flex items-center gap-3">
+            <HealthBadge health={project.health} />
+            <span className="text-3xl font-bold text-primary tabular-nums">{pct}%</span>
+          </div>
         </div>
-        <ProgressBar value={project.progress} showLabel={false} />
+        <ProgressBar value={project.progress} showLabel={false} tone={health?.barTone} />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <InfoTile label="Status" value={humanize(project.status) || "—"} />
+        <InfoTile label="Start" value={project.start_date ? formatDate(project.start_date) : "Not set"} />
+        <InfoTile label="End" value={project.end_date ? formatDate(project.end_date) : "Not set"} />
         <InfoTile label="Deadline" value={project.deadline ? formatDate(project.deadline) : "Not set"} />
-        <InfoTile label="Created" value={project.created_at ? formatDate(project.created_at) : "—"} />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <InfoTile label="Open tasks" value={Number(project.open_tasks) || 0} />
+        <InfoTile label="Awaiting your approval" value={Number(project.pending_approvals) || 0} />
       </div>
 
       <div>
         <h3 className="mb-3 text-base font-bold text-foreground">Description</h3>
         {project.description ? (
-          <div className="space-y-3 rounded-2xl border border-border bg-muted/50 p-6 text-foreground">
+          <div className="space-y-3 rounded-xl border border-border bg-muted/50 p-5 text-foreground sm:p-6">
             {String(project.description)
               .split("\n")
-              .map((p, i) => (
-                <p key={i} className="leading-relaxed">
-                  {p}
+              .map((paragraph, index) => (
+                <p key={index} className="leading-relaxed">
+                  {paragraph}
                 </p>
               ))}
           </div>
         ) : (
-          <p className="rounded-2xl border border-border bg-muted/50 p-6 text-muted-foreground">
+          <p className="rounded-xl border border-border bg-muted/50 p-5 text-muted-foreground sm:p-6">
             No description provided for this project.
           </p>
         )}
@@ -254,59 +295,153 @@ function InfoTile({ label, value }) {
   return (
     <div className="rounded-xl border border-border bg-card p-4 shadow-card">
       <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-foreground break-words">{value}</p>
+      <p className="mt-1 break-words text-sm font-semibold text-foreground">{value}</p>
     </div>
   );
 }
 
 function MilestonesTab({ milestones }) {
   if (milestones.length === 0) {
-    return <EmptyState icon={MilestoneIcon} title="No milestones yet" message="Milestones for this project will show up here." />;
+    return (
+      <EmptyState
+        icon={Flag}
+        title="No milestones yet"
+        message="Milestones for this project will show up here."
+      />
+    );
   }
+
   return (
-    <ul className="space-y-3">
-      {milestones.map((m) => (
-        <li
-          key={m.id}
-          className="flex items-start justify-between gap-4 rounded-xl border border-border bg-card p-4 shadow-card"
-        >
-          <div className="min-w-0">
-            <p className="font-semibold text-foreground">{m.title || m.name || "Milestone"}</p>
-            {m.description && <p className="mt-1 text-sm text-muted-foreground">{m.description}</p>}
-            <p className="mt-2 text-xs text-muted-foreground">
-              Due: <span className="font-medium text-foreground">{formatDate(m.due_date || m.deadline)}</span>
-            </p>
+    <ol className="relative space-y-4 border-l border-border pl-5 sm:pl-6">
+      {milestones.map((milestone) => (
+        <li key={milestone.id} className="relative">
+          <span
+            className={`absolute -left-[30px] top-3 flex h-6 w-6 items-center justify-center rounded-full border-2 border-card sm:-left-[34px] ${
+              milestone.completed_at ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"
+            }`}
+          >
+            {milestone.completed_at ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Flag className="h-3 w-3" />}
+          </span>
+          <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+              <p className="min-w-0 font-semibold text-foreground">{milestone.title}</p>
+              <StatusBadge status={milestone.status} />
+            </div>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span>
+                Due: <span className="font-medium text-foreground">{formatDate(milestone.due_date)}</span>
+              </span>
+              {milestone.completed_at && (
+                <span>
+                  Completed:{" "}
+                  <span className="font-medium text-success">{formatDate(milestone.completed_at)}</span>
+                </span>
+              )}
+            </div>
           </div>
-          <StatusBadge status={m.status} />
         </li>
       ))}
+    </ol>
+  );
+}
+
+function TasksTab({ tasks }) {
+  if (tasks.length === 0) {
+    return (
+      <EmptyState
+        icon={ListTodo}
+        title="No tasks to show"
+        message="Tasks shared with you will appear here as work progresses."
+      />
+    );
+  }
+
+  return (
+    <ul className="space-y-3">
+      {tasks.map((task) => {
+        const priorityKey = String(task.priority || "").toLowerCase().trim();
+        const labels = Array.isArray(task.labels) ? task.labels : [];
+        return (
+          <li key={task.id} className="rounded-xl border border-border bg-card p-4 shadow-card">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+              <p className="min-w-0 font-semibold text-foreground">{task.title}</p>
+              <StatusBadge status={task.status} />
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+              {task.priority && (
+                <span
+                  className={`rounded-full px-2.5 py-1 font-semibold ${
+                    PRIORITY_TONES[priorityKey] || "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {humanize(task.priority)}
+                </span>
+              )}
+              {task.due_date && (
+                <span>
+                  Due: <span className="font-medium text-foreground">{formatDate(task.due_date)}</span>
+                </span>
+              )}
+              {task.assignee_name && (
+                <span>
+                  Assigned to <span className="font-medium text-foreground">{task.assignee_name}</span>
+                </span>
+              )}
+              {Number(task.attachment_count) > 0 && (
+                <span className="inline-flex items-center">
+                  <Paperclip className="mr-1 h-3.5 w-3.5" />
+                  {Number(task.attachment_count)}
+                </span>
+              )}
+            </div>
+
+            {labels.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {labels.map((label) => (
+                  <span
+                    key={label}
+                    className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground"
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
-function TimelineTab({ tasks }) {
-  if (tasks.length === 0) {
-    return <EmptyState icon={CalendarDays} title="No tasks to show" message="The project timeline will appear here as work progresses." />;
+function TeamTab({ team }) {
+  if (team.length === 0) {
+    return (
+      <EmptyState
+        icon={Users}
+        title="No team members listed"
+        message="The people assigned to your project will appear here."
+      />
+    );
   }
+
+  // Name and role are the only two fields the contract sends, and the only two
+  // rendered. Contact details for staff never belong on a client screen.
   return (
-    <ul className="space-y-3">
-      {tasks.map((t) => (
+    <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      {team.map((member) => (
         <li
-          key={t.id}
-          className="flex items-start justify-between gap-4 rounded-xl border border-border bg-card p-4 shadow-card"
+          key={member.id}
+          className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-card"
         >
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-base font-bold text-primary">
+            {String(member.name || "?").trim().charAt(0).toUpperCase() || "?"}
+          </span>
           <div className="min-w-0">
-            <p className="font-semibold text-foreground">{t.title || t.name || "Task"}</p>
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              {(t.start_date || t.created_at) && (
-                <span>Start: <span className="font-medium text-foreground">{formatDate(t.start_date || t.created_at)}</span></span>
-              )}
-              {(t.due_date || t.end_date || t.deadline) && (
-                <span>Due: <span className="font-medium text-foreground">{formatDate(t.due_date || t.end_date || t.deadline)}</span></span>
-              )}
-            </div>
+            <p className="truncate font-semibold text-foreground">{member.name}</p>
+            <p className="truncate text-sm text-muted-foreground">{humanize(member.role)}</p>
           </div>
-          <StatusBadge status={t.status} />
         </li>
       ))}
     </ul>
@@ -315,114 +450,76 @@ function TimelineTab({ tasks }) {
 
 function DeliverablesTab({ deliverables, onDownload, downloadingId }) {
   if (deliverables.length === 0) {
-    return <EmptyState icon={Package} title="No deliverables yet" message="Files shared with you will appear here." />;
+    return (
+      <EmptyState icon={Package} title="No deliverables yet" message="Files shared with you will appear here." />
+    );
   }
+
   return (
     <ul className="space-y-3">
-      {deliverables.map((d) => (
-        <li
-          key={d.id}
-          className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-card sm:flex-row sm:items-center sm:justify-between"
-        >
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <FileText className="h-5 w-5" />
-            </div>
-            <div className="min-w-0">
-              <p className="truncate font-semibold text-foreground">{d.name || d.file_name || "Deliverable"}</p>
-              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                {(d.type || d.file_type) && <span>{humanize(d.type || d.file_type)}</span>}
-                {(d.created_at || d.date) && <span>{formatDate(d.created_at || d.date)}</span>}
+      {deliverables.map((deliverable) => {
+        const size = formatFileSize(deliverable.file_size);
+        return (
+          <li
+            key={deliverable.id}
+            className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-card sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <FileText className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-foreground">{deliverable.file_name}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  {deliverable.file_type && <span>{deliverable.file_type}</span>}
+                  {size && <span>{size}</span>}
+                  {deliverable.submitted_at && <span>{formatDate(deliverable.submitted_at)}</span>}
+                </div>
               </div>
             </div>
-          </div>
-          <div className="flex items-center gap-3 sm:justify-end">
-            {(d.review_status || d.status) && <StatusBadge status={d.review_status || d.status} />}
             <button
-              onClick={() => onDownload(d)}
-              disabled={downloadingId === d.id}
-              className="inline-flex items-center rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+              onClick={() => onDownload(deliverable)}
+              disabled={downloadingId === deliverable.id}
+              className="inline-flex shrink-0 items-center justify-center rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
             >
               <Download className="mr-1.5 h-4 w-4" />
-              {downloadingId === d.id ? "Preparing…" : "Download"}
+              {downloadingId === deliverable.id ? "Preparing…" : "Download"}
             </button>
-          </div>
-        </li>
-      ))}
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
 function UpdatesTab({ updates }) {
   if (updates.length === 0) {
-    return <EmptyState icon={Megaphone} title="No updates yet" message="Project updates from your team will appear here." />;
+    return (
+      <EmptyState icon={Megaphone} title="No updates yet" message="Project updates from your team will appear here." />
+    );
   }
+
   return (
-    <ol className="relative space-y-6 border-l border-border pl-6">
-      {updates.map((u) => (
-        <li key={u.id} className="relative">
-          <span className="absolute -left-[27px] top-1.5 h-3 w-3 rounded-full border-2 border-card bg-primary" />
+    <ol className="relative space-y-4 border-l border-border pl-5 sm:pl-6">
+      {updates.map((update) => (
+        <li key={update.id} className="relative">
+          <span className="absolute -left-[27px] top-3 h-3 w-3 rounded-full border-2 border-card bg-primary sm:-left-[31px]" />
           <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-            <div className="mb-1 flex items-center justify-between gap-3">
-              <p className="font-semibold text-foreground">{u.title || "Update"}</p>
-              <span className="text-xs text-muted-foreground">
-                {formatDateTime(u.created_at || u.published_at || u.date)}
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
+              <p className="min-w-0 font-semibold text-foreground">{update.title}</p>
+              <span className="whitespace-nowrap text-xs text-muted-foreground">
+                {formatDateTime(update.created_at)}
               </span>
             </div>
-            {u.body && <p className="text-sm text-muted-foreground whitespace-pre-line">{u.body}</p>}
+            {update.body && (
+              <p className="mt-1.5 whitespace-pre-line break-words text-sm text-muted-foreground">{update.body}</p>
+            )}
+            {update.author_name && (
+              <p className="mt-2 text-xs text-muted-foreground">{update.author_name}</p>
+            )}
           </div>
         </li>
       ))}
     </ol>
-  );
-}
-
-function ApprovalsTab({ approvals, onDecision, decidingId }) {
-  if (approvals.length === 0) {
-    return <EmptyState icon={CheckSquare} title="No approvals" message="Items awaiting your approval will appear here." />;
-  }
-  return (
-    <ul className="space-y-3">
-      {approvals.map((a) => {
-        const status = String(a.status || "").toLowerCase();
-        const isPending = status === "pending" || status === "awaiting" || status === "open" || !status;
-        return (
-          <li key={a.id} className="rounded-xl border border-border bg-card p-4 shadow-card">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <p className="font-semibold text-foreground">{a.title || a.subject || "Approval request"}</p>
-                {a.description && <p className="mt-1 text-sm text-muted-foreground">{a.description}</p>}
-                {(a.created_at || a.requested_at) && (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Requested {formatDate(a.created_at || a.requested_at)}
-                  </p>
-                )}
-              </div>
-              <StatusBadge status={a.status || "pending"} />
-            </div>
-            {isPending && (
-              <div className="mt-4 flex gap-2">
-                <button
-                  onClick={() => onDecision(a, "approve")}
-                  disabled={decidingId === a.id}
-                  className="inline-flex items-center rounded-lg bg-success px-4 py-2 text-sm font-medium text-success-foreground transition-colors hover:bg-success/90 disabled:opacity-60"
-                >
-                  <Check className="mr-1.5 h-4 w-4" />
-                  Approve
-                </button>
-                <button
-                  onClick={() => onDecision(a, "reject")}
-                  disabled={decidingId === a.id}
-                  className="inline-flex items-center rounded-lg bg-destructive/10 px-4 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-60"
-                >
-                  <X className="mr-1.5 h-4 w-4" />
-                  Reject
-                </button>
-              </div>
-            )}
-          </li>
-        );
-      })}
-    </ul>
   );
 }
