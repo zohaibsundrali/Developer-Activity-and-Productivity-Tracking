@@ -58,13 +58,20 @@ comment on constraint developer_tasks_terminal_status_reviewed_check on public.d
 
 
 -- =====================================================================
---  STEP 3 - Notification columns
+--  STEP 3a - Notification columns
 --  Adds title / task_id / project_id, which seven writers already insert and no
 --  version of this table has ever had. Run this BEFORE step 4.
+--  RUN 3a AND 3b AS TWO SEPARATE QUERIES. The Supabase editor resolves every
+--  statement in a paste up front, so an index naming a column created earlier in
+--  the SAME paste fails with 42703. Plain psql does not behave this way.
 -- =====================================================================
 alter table public.notifications add column if not exists title text;
 alter table public.notifications add column if not exists task_id uuid;
 alter table public.notifications add column if not exists project_id uuid;
+
+-- =====================================================================
+--  STEP 3b - Notification dedupe index (SEPARATE QUERY, after 3a)
+-- =====================================================================
 create index if not exists idx_notifications_task_type_created on public.notifications (task_id, type, created_at desc);
 
 

@@ -33,11 +33,16 @@
 --  identifiers - the target SQL editor mangles both.
 -- =====================================================================
 
+-- --- 023a: run this on its own, and let it finish -------------------
 alter table public.notifications add column if not exists title text;
 alter table public.notifications add column if not exists task_id uuid;
 alter table public.notifications add column if not exists project_id uuid;
 
--- The cron dedupe probe reads (task_id, type, created_at) for today's window.
+-- --- 023b: run this as a SEPARATE query ------------------------------
+--  The Supabase SQL editor resolves every statement in a paste up front, so an
+--  index naming a column that an earlier statement in the same paste creates
+--  fails with 42703. Plain psql does not do this - the split is for that editor.
+--  The cron dedupe probe reads (task_id, type, created_at) for today's window.
 create index if not exists idx_notifications_task_type_created on public.notifications (task_id, type, created_at desc);
 
 -- =====================================================================
