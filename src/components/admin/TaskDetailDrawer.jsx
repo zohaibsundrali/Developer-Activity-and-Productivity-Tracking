@@ -17,6 +17,7 @@ import {
   updateTask,
   createTask,
   changeTaskStatus,
+  assignTask,
   allowedTransitions,
   loadTaskDetail,
   addComment,
@@ -27,7 +28,7 @@ import {
   uploadTaskAttachment,
   PRIORITIES,
 } from "@/utils/pmData";
-import { getOrgContext } from "@/utils/orgContext";
+import { getOrgContext, isMembershipActive } from "@/utils/orgContext";
 import { showError, showSuccess } from "@/utils/alerts";
 import TaskExtras from "@/components/admin/TaskExtras";
 import TaskTimer from "@/components/admin/TaskTimer";
@@ -206,15 +207,20 @@ export default function TaskDetailDrawer({
     [memberById, ctx]
   );
 
+  // developer_tasks.developer_id is a foreign key onto developers(id), and a
+  // membership's user_id is only a developers.id when its user_type is
+  // "developer" - for an admin-typed membership it is an admin_users.id. Offering
+  // anyone by ROLE therefore let a manager or team lead be picked whose id the
+  // foreign key then rejected, so the assignment silently failed to save.
+  //
+  // Deactivated people are excluded for the same reason work should not be
+  // routed to them at all: offboarding is meant to stop new work arriving.
   const assignableMembers = useMemo(
     () =>
       (members || []).filter((m) => {
         if (!m) return false;
-        const role = String(m.role || "").toLowerCase();
-        return (
-          m.userType === "developer" ||
-          ["developer", "manager", "team_lead"].includes(role)
-        );
+        if (m.userType !== "developer") return false;
+        return isMembershipActive(m.status);
       }),
     [members]
   );
@@ -264,6 +270,34 @@ export default function TaskDetailDrawer({
         }
       } catch (err) {
         showError("Could not save", err?.message || String(err));
+      } finally {
+        setSavingField(null);
+      }
+    },
+    [taskId, onChanged]
+  );
+
+  // Assignment is not a plain column write either: assignTask fires the
+  // "assigned" automation trigger and notifies the new assignee. Routing it
+  // through saveField is what left that trigger unreachable from the UI.
+  const handleAssign = useCallback(
+    async (developerId) => {
+      if (!taskId) return;
+      setSavingField("developer_id");
+      try {
+        const { error } = await assignTask(taskId, developerId || null);
+        if (error) {
+          showError("Could not assign", error.message || String(error));
+          return;
+        }
+        setForm((prev) => ({ ...(prev || {}), developer_id: developerId || null }));
+        try {
+          onChanged?.();
+        } catch {
+          /* noop */
+        }
+      } catch (err) {
+        showError("Could not assign", err?.message || String(err));
       } finally {
         setSavingField(null);
       }
@@ -633,7 +667,7 @@ export default function TaskDetailDrawer({
                 className={INPUT_CLASS}
                 value={form?.developer_id ?? ""}
                 onChange={(e) =>
-                  saveField("developer_id", e.target.value || null)
+                  handleAssign(e.target.value || null)
                 }
               >
                 <option value="">Unassigned</option>
