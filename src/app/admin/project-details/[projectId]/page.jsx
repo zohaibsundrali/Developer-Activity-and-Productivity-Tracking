@@ -6,7 +6,6 @@ import { showError, showWarning } from "@/utils/alerts";
 import { isSessionExpired, clearAdminSession } from "@/utils/sessionPolicy";
 import { authFetch } from "@/utils/authFetch";
 import {
-  Badge,
   Button,
   EmptyState,
   ErrorState,
@@ -15,18 +14,35 @@ import {
   Section,
   Skeleton,
   SkeletonCard,
+  StatusPill,
 } from "@/components/ui";
 import { ArrowLeft, Check, ClipboardList, X } from "lucide-react";
 
-// The plan/task status vocabulary here is wider than the board's, so it is
-// mapped to a Badge variant rather than reusing the board's StatusPill.
-const statusVariant = (status) => {
+// The plan/task status vocabulary here is wider than the board's. It maps onto
+// the seven StatusPill shapes, so the state carries a glyph as well as a colour
+// and survives greyscale — a plain Badge was colour-only.
+const statusPillKey = (status) => {
   const s = String(status || "").toLowerCase();
-  if (["completed", "done", "approved", "active", "reviewed"].includes(s)) return "success";
-  if (["in_progress", "in progress", "awaiting_approval", "pending_review"].includes(s)) return "info";
-  if (["pending", "assigned", "draft", "on_hold"].includes(s)) return "warning";
-  if (["rejected", "cancelled", "overdue"].includes(s)) return "destructive";
-  return "secondary";
+  if (["completed", "done", "approved", "reviewed"].includes(s)) return "success";
+  if (["active", "in_progress", "in progress"].includes(s)) return "active";
+  if (["awaiting_approval", "pending_review", "pending", "assigned", "on_hold"].includes(s)) return "pending";
+  if (["draft"].includes(s)) return "inactive";
+  if (["rejected", "cancelled", "overdue"].includes(s)) return "error";
+  return "unknown";
+};
+
+// "In Progress", never "in_progress".
+const statusLabel = (status) =>
+  String(status || "unknown")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+
+// `progress` is a nullable integer column; folded to a real 0–100 number before
+// it reaches a bar width or a label.
+const clampPercent = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, Math.round(n)));
 };
 
 const checkAdminAuth = () => {
@@ -215,9 +231,12 @@ export default function AdminProjectDetailsPage() {
     }
   };
 
+  // Guarded: an unparseable timestamp used to render as "Invalid Date".
   const formatDate = (dateString) => {
     if (!dateString) return "Not set";
-    return new Date(dateString).toLocaleDateString("en-US", {
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return "Not set";
+    return date.toLocaleDateString("en-US", {
       year: "numeric",
       month: "short",
       day: "numeric"
@@ -306,8 +325,10 @@ export default function AdminProjectDetailsPage() {
   return pageFrame(
     <>
       <PageHeader
-        title="Project details"
-        description={project?.name}
+        // The project name is the subject of this page, so it is the heading —
+        // it used to be demoted to the description under a generic title.
+        title={project?.name || "Untitled project"}
+        description="Task plan, progress and review for this project."
         breadcrumbs={[
           { label: "Projects", href: "/admin/dashboard?section=all-projects" },
           { label: project?.name || "Details" },
@@ -323,12 +344,47 @@ export default function AdminProjectDetailsPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-1">
           <Section title="Project info" className="rounded-xl border border-border bg-card p-5 shadow-card">
-            <dl className="grid grid-cols-1 gap-x-4 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-1">
-              <div>
+            {/* The plan's state, said once, at the top — not spread across a
+                badge, a Yes/No and two timestamps of equal weight. */}
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              <StatusPill
+                status={statusPillKey(taskPlanStatus)}
+                label={statusLabel(taskPlanStatus)}
+              />
+              <span className="text-sm text-muted-foreground">
+                {taskPlanSubmitted ? "Submitted by the developer" : "Not submitted yet"}
+              </span>
+            </div>
+
+            {/* One progress indicator — a labelled bar. */}
+            <div className="mb-5">
+              <div className="mb-1.5 flex items-baseline justify-between text-sm">
+                <span className="text-muted-foreground">Progress</span>
+                <span className="font-semibold tabular-nums text-foreground">
+                  {clampPercent(project?.progress)}%
+                </span>
+              </div>
+              <div
+                className="h-2 w-full overflow-hidden rounded-full bg-muted"
+                role="progressbar"
+                aria-valuenow={clampPercent(project?.progress)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label="Project progress"
+              >
+                <div
+                  className="h-full rounded-full bg-primary"
+                  style={{ width: `${clampPercent(project?.progress)}%` }}
+                />
+              </div>
+            </div>
+
+            <dl className="grid grid-cols-1 gap-x-4 gap-y-3 border-t border-border pt-4 text-sm sm:grid-cols-2 lg:grid-cols-1">
+              <div className="min-w-0">
                 <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Assigned to
                 </dt>
-                <dd className="text-foreground">
+                <dd className="mt-0.5 truncate text-foreground">
                   {project?.assigned_developer_name || "Not assigned"}
                 </dd>
               </div>
@@ -336,51 +392,35 @@ export default function AdminProjectDetailsPage() {
                 <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Email
                 </dt>
-                <dd className="truncate text-foreground">
-                  {project?.assigned_developer_email || "N/A"}
+                <dd className="mt-0.5 truncate text-foreground">
+                  {project?.assigned_developer_email || "Not set"}
                 </dd>
               </div>
               <div>
                 <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Deadline
                 </dt>
-                <dd className="tabular-nums text-foreground">{formatDate(project?.deadline)}</dd>
+                <dd className="mt-0.5 tabular-nums text-foreground">{formatDate(project?.deadline)}</dd>
               </div>
               <div>
                 <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Created
                 </dt>
-                <dd className="tabular-nums text-foreground">{formatDate(project?.created_at)}</dd>
+                <dd className="mt-0.5 tabular-nums text-foreground">{formatDate(project?.created_at)}</dd>
               </div>
               <div>
                 <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Plan status
+                  Plan submitted
                 </dt>
-                <dd>
-                  <Badge variant={statusVariant(taskPlanStatus)} size="sm">
-                    {taskPlanStatus}
-                  </Badge>
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Submitted
-                </dt>
-                <dd className="text-foreground">{taskPlanSubmitted ? "Yes" : "No"}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Submitted at
-                </dt>
-                <dd className="tabular-nums text-foreground">
+                <dd className="mt-0.5 tabular-nums text-foreground">
                   {formatDate(project?.task_plan_submitted_at)}
                 </dd>
               </div>
               <div>
                 <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Reviewed
+                  Plan reviewed
                 </dt>
-                <dd className="tabular-nums text-foreground">
+                <dd className="mt-0.5 tabular-nums text-foreground">
                   {formatDate(project?.task_plan_reviewed_at)}
                 </dd>
               </div>
@@ -455,30 +495,40 @@ export default function AdminProjectDetailsPage() {
               />
             ) : (
               <ol className="space-y-3">
-                {tasks.map((task, index) => (
-                  <li
-                    key={task.id}
-                    className="rounded-lg border border-border bg-muted/30 p-4"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-medium text-foreground">
-                          <span className="tabular-nums text-muted-foreground">{index + 1}.</span>{" "}
-                          {formatTaskTitle(task.task_title)}
-                        </p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {task.task_description || "No description"}
-                        </p>
-                        <p className="mt-2 text-xs tabular-nums text-muted-foreground">
-                          {formatDate(task.start_date)} – {formatDate(task.end_date)}
-                        </p>
+                {tasks.map((task, index) => {
+                  const status = task.status || "pending";
+                  const hasDates = Boolean(task.start_date || task.end_date);
+                  return (
+                    <li
+                      key={task.id}
+                      className="rounded-lg border border-border bg-muted/30 p-4"
+                    >
+                      {/* Same three lines, in the same order, on every task. */}
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-foreground">
+                            <span className="tabular-nums text-muted-foreground">{index + 1}.</span>{" "}
+                            {formatTaskTitle(task.task_title) || "Untitled task"}
+                          </p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {task.task_description || "No description"}
+                          </p>
+                          <p className="mt-2 text-sm tabular-nums text-muted-foreground">
+                            {hasDates
+                              ? `${formatDate(task.start_date)} – ${formatDate(task.end_date)}`
+                              : "No dates set"}
+                          </p>
+                        </div>
+                        <StatusPill
+                          status={statusPillKey(status)}
+                          label={statusLabel(status)}
+                          size="sm"
+                          className="shrink-0 self-start"
+                        />
                       </div>
-                      <Badge variant={statusVariant(task.status || "pending")} size="sm">
-                        {task.status || "pending"}
-                      </Badge>
-                    </div>
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ol>
             )}
           </Section>

@@ -88,21 +88,23 @@ export default function ClientProjects({ onViewProject }) {
                 className={`${surface} space-y-5 p-6 text-left transition-colors duration-150 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2`}
               >
                 <div className="flex items-start justify-between gap-3">
-                  <h3 className="line-clamp-2 text-lg font-semibold leading-snug text-foreground">
+                  <h3 className="line-clamp-2 min-h-[3.5rem] text-lg font-semibold leading-snug text-foreground">
                     {project.name || "Untitled Project"}
                   </h3>
                   <StatusBadge status={project.status} />
                 </div>
 
-                {project.description && (
-                  <p className="line-clamp-2 text-[15px] leading-relaxed text-muted-foreground">
-                    {project.description}
-                  </p>
-                )}
+                {/* Reserved whether or not there is a description: a card that
+                    has one must not sit taller than the card beside it. */}
+                <p className="line-clamp-2 min-h-[3rem] text-[15px] leading-relaxed text-muted-foreground">
+                  {project.description || "No description provided."}
+                </p>
 
                 <ProgressBar value={project.progress} />
 
-                <div className="border-t border-border pt-4">
+                {/* Fixed height so the deadline line sits at the same place on
+                    every card, dated or not. */}
+                <div className="min-h-[4.25rem] border-t border-border pt-4">
                   {project.deadline ? (
                     <div className="space-y-1.5">
                       <div className="flex items-center gap-2 text-[15px] text-foreground">

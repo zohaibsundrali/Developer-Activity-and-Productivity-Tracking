@@ -8,6 +8,7 @@ import {
   X,
 } from "lucide-react";
 import { supabase } from "@/utils/supabaseClient";
+import { authFetch } from "@/utils/authFetch";
 import { showPre } from "@/utils/alerts";
 import { Button, Field, Modal } from "@/components/ui";
 
@@ -203,8 +204,16 @@ export default function TaskCompletionModal({
         return;
       }
 
-      // Submit task via API
-      const response = await fetch("/api/task-submission", {
+      // Submit task via API.
+      //
+      // authFetch, not fetch: /api/task-submission authenticates the caller with
+      // getAuthedOrg(), which reads a Bearer token. A bare fetch() sent no
+      // Authorization header, so every submission was answered with 401 and the
+      // user saw "Failed to submit task" — AFTER uploadFile() had already put the
+      // proof of work in the task-submissions bucket. The retry then uploaded it
+      // again. The body is unchanged; `developerId` is still ignored for a
+      // developer caller, which the route resolves from the verified token.
+      const response = await authFetch("/api/task-submission", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

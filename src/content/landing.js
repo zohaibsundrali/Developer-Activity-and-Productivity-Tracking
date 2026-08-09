@@ -314,19 +314,34 @@ export const howItWorks = {
 // screenshots and tracking_history_days are catalogue values that nothing
 // currently enforces, so they are NOT listed as plan limits on the page.
 //
-// Of the seeded feature flags, only `automation` and `client_portal` are
-// enforced by checkFeatureAccess. `reports` and `api_access` are not enforced
-// anywhere, so `api_access` is not advertised and `reports` is not sold as a
-// paid-only feature.
+// Of the seeded feature flags, `reports` and `api_access` are not enforced
+// anywhere — there is no public API at all — so neither is sold here.
+//
+// `automation` and `client_portal` are the only flags checkFeatureAccess ever
+// consults, and NEITHER is a whole-feature gate:
+//   automation ...... only the `email` action reaches a gated route
+//                     (src/app/api/automation/notify/route.js). Rule CRUD and
+//                     the assign / set_status / set_priority / add_label /
+//                     notify actions all run client-side under RLS
+//                     (src/utils/automation.js), and the daily worker in
+//                     src/app/api/cron/route.js sends due-date reminders and
+//                     spawns recurring tasks for EVERY organization with no
+//                     plan check. So a Free org has working automation rules;
+//                     what it does not have is automation email.
+//   client_portal ... gated where a client seat is handed out
+//                     (src/app/api/invitations/route.js and .../accept), not
+//                     on the portal itself.
+// The copy below therefore sells the boundary that actually exists — automation
+// EMAIL and client invitations — rather than "automation" and "the portal".
 
 export const pricing = {
   id: "pricing",
   title: "Priced per organization, not per seat",
   subtitle:
-    "Every plan includes the whole product surface your role can reach. What changes is how many people, projects and open tasks you can have.",
+    "Every plan runs the same board, tracking and reports. What changes is how many people, projects and open tasks you can have — plus automation email and client logins, which need a paid plan.",
   currency: "USD",
   interval: "month",
-  note: "Prices are monthly per organization. Plan limits count everything in your organization, not per user.",
+  note: "Prices are monthly per organization. Plan limits count everything in your organization, not per user — your own owner account is one of the people on the plan.",
   // `trialDays` below is the seeded catalogue value (billing_plans.trial_days).
   // A trial clock only starts once a paid subscription is created through
   // Stripe Checkout. A fresh signup has no subscription row at all and is
@@ -356,8 +371,10 @@ export const pricing = {
         "Task review with file submissions",
         "Desktop activity tracking and the six-view activity dashboard",
         "Reports with CSV and PDF export",
+        "Workflow automation rules — assign, set status, set priority, label, notify",
+        "Daily due-date reminders and recurring tasks",
       ],
-      excludes: ["Automation rules", "Client portal"],
+      excludes: ["Email actions inside automation rules", "Client logins to the portal"],
     },
     {
       code: "professional",
@@ -377,8 +394,8 @@ export const pricing = {
       ],
       includes: [
         "Everything in Free",
-        "Automation rules and scheduled reminders",
-        "Client portal with approvals, invoices and support threads",
+        "Email actions in your automation rules, so a rule can mail the assignee",
+        "Client logins — invite clients into the portal for approvals, invoices and support threads",
       ],
       excludes: [],
     },

@@ -149,6 +149,51 @@ const LIMIT_LABELS = {
   tracking_history_days: "Tracking history",
 };
 
+/**
+ * Catalogue keys that are seeded in `billing_plans` but that NOTHING in the
+ * product actually enforces. Rendering them the same way as a live limit — a
+ * number in a plan card, a green tick next to a feature — tells a paying
+ * customer they are buying a boundary that does not exist, and tells a Free
+ * customer they are missing something they in fact have.
+ *
+ * Verified against every call site of src/utils/entitlements.js and against
+ * database/028_plan_limit_triggers.sql:
+ *   storage_mb ............. no byte accounting exists anywhere
+ *   screenshots ............ counted for display only; checkResourceLimit is
+ *                            never called for it and /api/upload-screenshot has
+ *                            no plan check
+ *   tracking_history_days .. nothing prunes history; the daily worker in
+ *                            /api/cron does reminders and recurring tasks only
+ *   reports ................ the Reports section is gated by ROLE, not by plan
+ *                            (src/components/shell/navConfig.js)
+ *   api_access ............. there is no public API to grant or withhold
+ *
+ * `automation` and `client_portal` are NOT listed here — both are consulted by
+ * checkFeatureAccess — but neither is a whole-feature gate either, so each
+ * carries its own note below.
+ *
+ * Remove a key from here the day it gains real enforcement, not before.
+ */
+const UNENFORCED = {
+  storage_mb: "Not enforced yet — nothing measures storage, so this number is a catalogue value.",
+  screenshots: "Not enforced yet — screenshots are counted here but never blocked.",
+  tracking_history_days: "Not enforced yet — no tracking history is pruned on any plan.",
+  reports: "Reports are available on every plan today — access follows your role, not your plan.",
+  api_access: "There is no public API yet, so this grants nothing.",
+};
+
+/**
+ * Gated features whose gate is narrower than the label suggests. Shown with the
+ * tick, because the gate is real — but with the scope spelled out, because the
+ * label alone overstates it.
+ */
+const PARTIAL_FEATURES = {
+  automation:
+    "Rules run on every plan. What a paid plan adds is the email action — the rest (assign, status, priority, label, notify) is not gated.",
+  client_portal:
+    "Checked when a client is invited or accepts. Clients who already have a login keep it if the plan lapses.",
+};
+
 function formatLimit(key, value) {
   if (value === UNLIMITED || value === null || value === undefined) return "Unlimited";
   const n = Number(value);
@@ -247,9 +292,15 @@ export default function BillingSubscription() {
     });
   }, [usage]);
 
-  const atLimitCount = useMemo(() => usageRows.filter((r) => r.exceeded).length, [usageRows]);
+  // "Resources at limit" has to mean "creation is actually refused". A meter
+  // nothing enforces — `screenshots` is counted but never blocked — would
+  // otherwise raise "Action needed" for a wall that does not exist.
+  const atLimitCount = useMemo(
+    () => usageRows.filter((r) => r.exceeded && !UNENFORCED[r.key]).length,
+    [usageRows]
+  );
   const nearLimitCount = useMemo(
-    () => usageRows.filter((r) => r.near && !r.exceeded).length,
+    () => usageRows.filter((r) => r.near && !r.exceeded && !UNENFORCED[r.key]).length,
     [usageRows]
   );
 
@@ -686,7 +737,7 @@ export default function BillingSubscription() {
       {/* Usage */}
       <Section
         title="Usage this period"
-        description="Counts and limits are reported by the server, which is the only authority on them."
+        description="Counts and limits are reported by the server, which is the only authority on them. Anything marked “not enforced” is counted for information — it will not block you."
       >
         <div className="rounded-xl border border-border bg-card p-5 shadow-card">
           {usageRows.length === 0 ? (
@@ -813,13 +864,18 @@ export default function BillingSubscription() {
  */
 function UsageBar({ row }) {
   const width = row.unlimited ? 100 : row.exceeded ? 100 : row.pct;
+  const unenforcedNote = UNENFORCED[row.key];
 
   return (
     <div>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <span className="flex items-center gap-2 text-sm font-medium text-foreground">
           {row.label}
-          {row.exceeded ? (
+          {unenforcedNote ? (
+            <Badge variant="warning" size="sm">
+              Not enforced
+            </Badge>
+          ) : row.exceeded ? (
             <Badge variant="destructive" size="sm">
               Over limit
             </Badge>
@@ -832,7 +888,13 @@ function UsageBar({ row }) {
         <span
           className={cn(
             "text-sm font-semibold tabular-nums",
-            row.exceeded ? "text-destructive" : row.near ? "text-warning" : "text-muted-foreground"
+            unenforcedNote
+              ? "text-muted-foreground"
+              : row.exceeded
+              ? "text-destructive"
+              : row.near
+              ? "text-warning"
+              : "text-muted-foreground"
           )}
         >
           {row.used.toLocaleString()}
@@ -860,7 +922,13 @@ function UsageBar({ row }) {
         <div
           className={cn(
             "h-full rounded-full transition-all duration-150 motion-reduce:transition-none",
-            row.exceeded ? "bg-destructive" : row.near ? "bg-warning" : "bg-primary"
+            unenforcedNote
+              ? "bg-muted-foreground/40"
+              : row.exceeded
+              ? "bg-destructive"
+              : row.near
+              ? "bg-warning"
+              : "bg-primary"
           )}
           style={{ width: `${width}%` }}
         />
@@ -875,16 +943,33 @@ function UsageBar({ row }) {
         )}
       </div>
 
-      {!row.unlimited && !row.exceeded && typeof row.remaining === "number" && (
-        <p className={cn("mt-1 text-xs", row.near ? "font-medium text-warning" : "text-muted-foreground")}>
-          {row.remaining.toLocaleString()} remaining
-          {row.near ? " — you're close to this plan's limit" : ""}
+      {/* Only say "blocked" about a meter that actually blocks. `screenshots` is
+          counted here for information but never enforced — checkResourceLimit is
+          never called for it and the ingest route has no plan check — so the
+          usual copy would announce a wall that isn't there. */}
+      {unenforcedNote ? (
+        <p className="mt-1 text-xs text-muted-foreground">
+          <span className="font-medium text-warning">Not enforced.</span> {unenforcedNote}
         </p>
-      )}
-      {row.exceeded && (
-        <p className="mt-1 text-xs font-medium text-destructive">
-          Upgrade to add more — new {row.label.toLowerCase()} are blocked at this limit.
-        </p>
+      ) : (
+        <>
+          {!row.unlimited && !row.exceeded && typeof row.remaining === "number" && (
+            <p
+              className={cn(
+                "mt-1 text-xs",
+                row.near ? "font-medium text-warning" : "text-muted-foreground"
+              )}
+            >
+              {row.remaining.toLocaleString()} remaining
+              {row.near ? " — you're close to this plan's limit" : ""}
+            </p>
+          )}
+          {row.exceeded && (
+            <p className="mt-1 text-xs font-medium text-destructive">
+              Upgrade to add more — new {row.label.toLowerCase()} are blocked at this limit.
+            </p>
+          )}
+        </>
       )}
     </div>
   );
@@ -936,36 +1021,81 @@ function PlanCard({ plan, current, currentAmount, disabled, busy, onSelect }) {
           {intervalSuffix(plan?.billing_interval)}
         </span>
       </div>
-      {Number(plan?.trial_days) > 0 && (
+      {/* The trial is real only for a plan that can actually be bought: Checkout
+          passes trial_period_days to Stripe. The Free plan is never checked out
+          — signup writes no subscription row at all — so its seeded trial_days
+          would promise a countdown that never starts. */}
+      {Number(plan?.trial_days) > 0 && !notPurchasable && (
         <p className="mt-1 text-xs font-medium text-info">{plan.trial_days}-day free trial</p>
       )}
 
       {limitRows.length > 0 && (
         <dl className="mt-4 space-y-1.5 border-t border-border pt-4">
-          {limitRows.map(([key, value]) => (
-            <div key={key} className="flex items-center justify-between gap-2 text-xs">
-              <dt className="text-muted-foreground">{LIMIT_LABELS[key] || prettyLabel(key)}</dt>
-              <dd className="font-semibold tabular-nums text-foreground">{formatLimit(key, value)}</dd>
-            </div>
-          ))}
+          {limitRows.map(([key, value]) => {
+            // An unenforced number still belongs on the card — it is what the
+            // catalogue says — but it must not read as a ceiling that bites.
+            const note = UNENFORCED[key];
+            return (
+              <div key={key} className="flex items-start justify-between gap-2 text-xs">
+                <dt className="text-muted-foreground">
+                  {LIMIT_LABELS[key] || prettyLabel(key)}
+                  {note && (
+                    <span className="ml-1 font-medium text-warning" title={note}>
+                      (not enforced)
+                    </span>
+                  )}
+                </dt>
+                <dd
+                  className={cn(
+                    "shrink-0 font-semibold tabular-nums",
+                    note ? "text-muted-foreground line-through" : "text-foreground"
+                  )}
+                >
+                  {formatLimit(key, value)}
+                </dd>
+                {note && <span className="sr-only">{note}</span>}
+              </div>
+            );
+          })}
         </dl>
       )}
 
       {featureRows.length > 0 && (
         <ul className="mt-4 space-y-1.5 border-t border-border pt-4">
-          {featureRows.map(([key, on]) => (
-            <li key={key} className="flex items-center gap-2 text-xs">
-              {on ? (
-                <Check className="h-3.5 w-3.5 shrink-0 text-success" aria-hidden="true" />
-              ) : (
-                <X className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-              )}
-              <span className={on ? "text-foreground" : "text-muted-foreground line-through"}>
-                {FEATURE_LABELS[key] || prettyLabel(key)}
-              </span>
-              <span className="sr-only">{on ? " included" : " not included"}</span>
-            </li>
-          ))}
+          {featureRows.map(([key, on]) => {
+            const label = FEATURE_LABELS[key] || prettyLabel(key);
+            const unenforced = UNENFORCED[key];
+            const partial = PARTIAL_FEATURES[key];
+
+            // A flag nothing checks is neither included nor withheld. Ticking
+            // it sells something that does not exist; striking it through
+            // withholds something the customer already has. Say so instead.
+            if (unenforced) {
+              return (
+                <li key={key} className="flex items-start gap-2 text-xs">
+                  <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <span className="text-muted-foreground">
+                    {label} — <span className="font-medium text-warning">not enforced</span>. {unenforced}
+                  </span>
+                </li>
+              );
+            }
+
+            return (
+              <li key={key} className="flex items-start gap-2 text-xs">
+                {on ? (
+                  <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" aria-hidden="true" />
+                ) : (
+                  <X className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                )}
+                <span className={on ? "text-foreground" : "text-muted-foreground"}>
+                  <span className={on ? undefined : "line-through"}>{label}</span>
+                  {partial && <span className="ml-1 text-muted-foreground">({partial})</span>}
+                </span>
+                <span className="sr-only">{on ? " included" : " not included"}</span>
+              </li>
+            );
+          })}
         </ul>
       )}
 

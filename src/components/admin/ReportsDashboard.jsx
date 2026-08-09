@@ -18,14 +18,23 @@ import { formatDuration } from "@/utils/pmData";
 import StatCard from "@/components/shell/StatCard";
 import EChart from "@/components/charts/EChart";
 import {
-  PALETTE,
+  PRIMARY,
   SEMANTIC,
-  baseGrid,
   baseTooltip,
   axisLabel,
-  splitLine,
+  valueAxis,
+  categoryAxis,
+  legendFor,
+  gridWithLegend,
+  donutCenter,
+  donutCenterEmphasis,
   FONT_FAMILY,
   roundedBar,
+  roundedBarH,
+  fmtInt,
+  fmtCompact,
+  fmtHours,
+  heightForRows,
 } from "@/components/charts/chartTheme";
 import { showError } from "@/utils/alerts";
 import { EmptyState, Skeleton, Tabs } from "@/components/ui";
@@ -287,116 +296,152 @@ export default function ReportsDashboard() {
   }, [bundle]);
 
   /* ---- charts ---- */
-  const trendOption = useMemo(() => {
-    const days = Array.isArray(trend?.days) ? trend.days : [];
-    return {
+
+  // The trend used to be ONE chart with two y-axes: task counts on the left,
+  // hours on the right. Two scales in one frame means the crossing point of the
+  // bar and the line is an artefact of the axis maxima, not a fact about the
+  // data — the reader cannot help but read a relationship that isn't there.
+  // Same numbers, same arrays, now two stacked panels over a shared date axis,
+  // so each measure is read against its own baseline.
+  const trendDays = useMemo(() => (Array.isArray(trend?.days) ? trend.days : []), [trend]);
+
+  // Shared date axis. A 30- or 90-day range printed every "Mar 4" on top of the
+  // next one; hideOverlap thins the ticks instead of stacking them.
+  const trendDateAxis = useMemo(
+    () => ({
+      ...categoryAxis,
+      data: trendDays,
+      boundaryGap: true,
+      axisLabel: {
+        ...axisLabel,
+        hideOverlap: true,
+        interval: "auto",
+        formatter: (v) => formatDayShort(v),
+      },
+    }),
+    [trendDays]
+  );
+
+  const tasksTrendOption = useMemo(
+    () => ({
       textStyle: { fontFamily: FONT_FAMILY },
-      tooltip: { ...baseTooltip, trigger: "axis" },
-      legend: {
-        top: 0,
-        icon: "roundRect",
-        itemWidth: 10,
-        itemHeight: 10,
-        textStyle: { color: SEMANTIC.muted, fontSize: 11, fontFamily: FONT_FAMILY },
+      tooltip: {
+        ...baseTooltip,
+        trigger: "axis",
+        axisPointer: { type: "shadow" },
+        valueFormatter: (v) => fmtInt(v),
       },
-      grid: { ...baseGrid, top: 40, bottom: 30 },
-      xAxis: {
-        type: "category",
-        name: "Date",
-        nameLocation: "middle",
-        nameGap: 30,
-        nameTextStyle: axisLabel,
-        data: days,
-        boundaryGap: true,
-        // A 30- or 90-day range printed every "Mar 4" on top of the next one.
-        // hideOverlap thins the ticks instead of stacking them.
-        axisLabel: {
-          ...axisLabel,
-          hideOverlap: true,
-          interval: "auto",
-          formatter: (v) => formatDayShort(v),
-        },
+      // One series — the panel heading names it, so a legend would only repeat
+      // itself. No legend means the plot can start higher up the panel.
+      legend: legendFor(1),
+      grid: gridWithLegend(1, { bottom: 8 }),
+      xAxis: trendDateAxis,
+      yAxis: {
+        ...valueAxis,
+        minInterval: 1,
+        axisLabel: { ...axisLabel, formatter: (v) => fmtCompact(v) },
       },
-      yAxis: [
-        {
-          type: "value",
-          name: "Tasks",
-          nameLocation: "middle",
-          nameGap: 34,
-          nameTextStyle: axisLabel,
-          axisLabel,
-          splitLine,
-          minInterval: 1,
-        },
-        {
-          type: "value",
-          name: "Hours",
-          nameLocation: "middle",
-          nameGap: 38,
-          nameTextStyle: axisLabel,
-          axisLabel,
-          splitLine: { show: false },
-        },
-      ],
       series: [
         {
           name: "Completed tasks",
           type: "bar",
-          yAxisIndex: 0,
           data: Array.isArray(trend?.completed) ? trend.completed : [],
           barMaxWidth: 18,
-          itemStyle: roundedBar(PALETTE[0]),
+          itemStyle: roundedBar(PRIMARY),
         },
+      ],
+    }),
+    [trend, trendDateAxis]
+  );
+
+  const hoursTrendOption = useMemo(
+    () => ({
+      textStyle: { fontFamily: FONT_FAMILY },
+      tooltip: {
+        ...baseTooltip,
+        trigger: "axis",
+        // Decimal hours are a storage format, not something to show a reader.
+        valueFormatter: (v) => fmtHours(v),
+      },
+      legend: legendFor(2),
+      grid: gridWithLegend(2, { bottom: 8 }),
+      xAxis: trendDateAxis,
+      yAxis: {
+        ...valueAxis,
+        axisLabel: { ...axisLabel, formatter: (v) => fmtHours(v) },
+      },
+      series: [
         {
           name: "Logged hours",
           type: "line",
-          yAxisIndex: 1,
           data: Array.isArray(trend?.loggedHours) ? trend.loggedHours : [],
-          color: PALETTE[1],
+          color: PRIMARY,
           smooth: true,
           symbol: "none",
-          areaStyle: { opacity: 0.08 },
+          lineStyle: { width: 2 },
+          areaStyle: { opacity: 0.06 },
         },
         {
+          // Tracked is the reference series the logged line is judged against,
+          // so it stays neutral and dashed rather than taking a second hue.
           name: "Tracked hours",
           type: "line",
-          yAxisIndex: 1,
           data: Array.isArray(trend?.trackedHours) ? trend.trackedHours : [],
           color: SEMANTIC.muted,
-          lineStyle: { type: "dashed" },
+          lineStyle: { type: "dashed", width: 2 },
           smooth: true,
           symbol: "none",
         },
       ],
-    };
-  }, [trend]);
+    }),
+    [trend, trendDateAxis]
+  );
 
-  const statusOption = useMemo(
-    () => ({
+  const statusOption = useMemo(() => {
+    // The four counts already on screen — no new aggregation, just the total so
+    // the ring has a number in the middle instead of a hole.
+    const total =
+      (dist?.pending || 0) +
+      (dist?.in_progress || 0) +
+      (dist?.awaiting_approval || 0) +
+      (dist?.completed || 0);
+    return {
       textStyle: { fontFamily: FONT_FAMILY },
-      tooltip: { ...baseTooltip, trigger: "item" },
+      tooltip: {
+        ...baseTooltip,
+        trigger: "item",
+        formatter: (p) => `${p.name}<br/><b>${fmtInt(p.value)}</b> tasks · ${p.percent.toFixed(0)}%`,
+      },
+      // Legend sits under the ring rather than above it: at 375px a top-right
+      // legend and a donut compete for the same corner.
       legend: {
-        top: 0,
-        icon: "roundRect",
-        itemWidth: 10,
-        itemHeight: 10,
-        textStyle: { color: SEMANTIC.muted, fontSize: 11, fontFamily: FONT_FAMILY },
+        ...legendFor(4),
+        top: "auto",
+        right: "auto",
+        bottom: 0,
+        left: "center",
       },
       series: [
         {
           name: "Task status",
           type: "pie",
-          radius: ["52%", "76%"],
-          center: ["50%", "58%"],
+          radius: ["58%", "78%"],
+          center: ["50%", "44%"],
           avoidLabelOverlap: true,
           minAngle: 3,
           // padAngle separates the slices without painting a literal white
           // ring, which broke the moment the card was not white.
           padAngle: 2,
-          label: { show: false },
+          label: donutCenter(total, fmtInt, "tasks"),
+          // The centre total is a fixed readout, not a hover response.
+          emphasis: donutCenterEmphasis,
+          labelLine: { show: false },
+          // Workflow order, coloured by state and not by six unrelated hues:
+          // not-started is inert, active work is brand indigo, review is
+          // warning, done is success. Same mapping as the Gantt status bars.
           data: [
-            { name: "To Do", value: dist?.pending || 0, itemStyle: { color: SEMANTIC.muted } },
-            { name: "In Progress", value: dist?.in_progress || 0, itemStyle: { color: SEMANTIC.info } },
+            { name: "To Do", value: dist?.pending || 0, itemStyle: { color: SEMANTIC.track } },
+            { name: "In Progress", value: dist?.in_progress || 0, itemStyle: { color: PRIMARY } },
             {
               name: "In Review",
               value: dist?.awaiting_approval || 0,
@@ -406,41 +451,38 @@ export default function ReportsDashboard() {
           ],
         },
       ],
-    }),
-    [dist]
+    };
+  }, [dist]);
+
+  const projectTop = useMemo(
+    () =>
+      [...projectRows]
+        .sort((a, b) => (b.total || 0) - (a.total || 0))
+        .slice(0, 10)
+        .reverse(), // echarts category axis draws bottom-up
+    [projectRows]
   );
 
-  const projectChartOption = useMemo(() => {
-    const top = [...projectRows]
-      .sort((a, b) => (b.total || 0) - (a.total || 0))
-      .slice(0, 10)
-      .reverse(); // echarts category axis draws bottom-up
-    return {
+  const projectChartOption = useMemo(
+    () => ({
       textStyle: { fontFamily: FONT_FAMILY },
       tooltip: { ...baseTooltip, trigger: "axis", axisPointer: { type: "shadow" } },
-      legend: {
-        top: 0,
-        icon: "roundRect",
-        itemWidth: 10,
-        itemHeight: 10,
-        textStyle: { color: SEMANTIC.muted, fontSize: 11, fontFamily: FONT_FAMILY },
-      },
-      grid: { ...baseGrid, top: 34, bottom: 30 },
+      legend: legendFor(2),
+      grid: gridWithLegend(2, { bottom: 30 }),
       xAxis: {
-        type: "value",
+        ...valueAxis,
         name: "Tasks",
         nameLocation: "middle",
         nameGap: 28,
-        nameTextStyle: axisLabel,
-        axisLabel,
-        splitLine,
         minInterval: 1,
+        axisLabel: { ...axisLabel, formatter: (v) => fmtCompact(v) },
       },
       yAxis: {
-        type: "category",
-        data: top.map((r) => r.project),
+        ...categoryAxis,
+        data: projectTop.map((r) => r.project),
         // Project names are free text: truncate at a fixed width and let
-        // hideOverlap drop any that still collide in a short panel.
+        // hideOverlap drop any that still collide in a short panel. Truncating
+        // beats rotating — the full name is in the tooltip either way.
         axisLabel: { ...axisLabel, width: 130, overflow: "truncate", hideOverlap: true },
       },
       series: [
@@ -448,73 +490,77 @@ export default function ReportsDashboard() {
           name: "Done",
           type: "bar",
           stack: "tasks",
-          data: top.map((r) => r.done || 0),
+          data: projectTop.map((r) => r.done || 0),
           barMaxWidth: 18,
-          itemStyle: { color: PALETTE[0], borderRadius: [4, 0, 0, 4] },
+          itemStyle: { color: PRIMARY, borderRadius: [4, 0, 0, 4] },
         },
         {
+          // The remainder is a backdrop, not a second subject: an inert track
+          // tint rather than a hue that competes with the completed portion.
           name: "Remaining",
           type: "bar",
           stack: "tasks",
-          data: top.map((r) => Math.max(0, (r.total || 0) - (r.done || 0))),
+          data: projectTop.map((r) => Math.max(0, (r.total || 0) - (r.done || 0))),
           barMaxWidth: 18,
-          itemStyle: { color: SEMANTIC.muted, borderRadius: [0, 4, 4, 0] },
+          itemStyle: { color: SEMANTIC.track, borderRadius: [0, 4, 4, 0] },
         },
       ],
-    };
-  }, [projectRows]);
+    }),
+    [projectTop]
+  );
 
-  const teamChartOption = useMemo(() => {
-    const top = [...teamRows].sort((a, b) => (b.done || 0) - (a.done || 0)).slice(0, 12);
-    return {
+  const teamTop = useMemo(
+    () =>
+      [...teamRows]
+        .sort((a, b) => (b.done || 0) - (a.done || 0))
+        .slice(0, 12)
+        .reverse(), // echarts category axis draws bottom-up; keep the leader on top
+    [teamRows]
+  );
+
+  const teamChartOption = useMemo(
+    () => ({
       textStyle: { fontFamily: FONT_FAMILY },
-      tooltip: { ...baseTooltip, trigger: "axis", axisPointer: { type: "shadow" } },
-      legend: {
-        top: 0,
-        icon: "roundRect",
-        itemWidth: 10,
-        itemHeight: 10,
-        textStyle: { color: SEMANTIC.muted, fontSize: 11, fontFamily: FONT_FAMILY },
+      tooltip: {
+        ...baseTooltip,
+        trigger: "axis",
+        axisPointer: { type: "shadow" },
+        valueFormatter: (v) => fmtInt(v),
       },
-      // Rotated names need the extra bottom gutter, otherwise the panel clips
-      // them rather than echarts simply crowding them.
-      grid: { ...baseGrid, top: 34, bottom: top.length > 6 ? 62 : 34 },
+      // Was a column chart whose twelve names had to be rotated 35° and
+      // truncated to 76px to stop them printing over each other — which made
+      // them unreadable on a phone and merely awkward on a desktop. Turning the
+      // chart on its side gives every name a full horizontal line at the same
+      // 11px as every other axis in the app, so the rotation is no longer
+      // needed at any width. Truncation and hideOverlap are kept as the guard
+      // for very long names.
+      legend: legendFor(1),
+      grid: gridWithLegend(1, { bottom: 30 }),
       xAxis: {
-        type: "category",
-        data: top.map((r) => r.name || "Unknown"),
-        // Twelve full names never fit side by side. One tick per person,
-        // rotated and truncated at a fixed width, with hideOverlap as the
-        // final guard on a narrow viewport.
-        axisLabel: {
-          ...axisLabel,
-          interval: 0,
-          rotate: top.length > 6 ? 35 : 0,
-          width: 76,
-          overflow: "truncate",
-          hideOverlap: true,
-        },
+        ...valueAxis,
+        name: "Completed tasks",
+        nameLocation: "middle",
+        nameGap: 28,
+        minInterval: 1,
+        axisLabel: { ...axisLabel, formatter: (v) => fmtCompact(v) },
       },
       yAxis: {
-        type: "value",
-        name: "Tasks",
-        nameLocation: "middle",
-        nameGap: 34,
-        nameTextStyle: axisLabel,
-        axisLabel,
-        splitLine,
-        minInterval: 1,
+        ...categoryAxis,
+        data: teamTop.map((r) => r.name || "Unknown"),
+        axisLabel: { ...axisLabel, width: 130, overflow: "truncate", hideOverlap: true },
       },
       series: [
         {
           name: "Completed tasks",
           type: "bar",
-          data: top.map((r) => r.done || 0),
-          barMaxWidth: 28,
-          itemStyle: roundedBar(PALETTE[0]),
+          data: teamTop.map((r) => r.done || 0),
+          barMaxWidth: 18,
+          itemStyle: roundedBarH(PRIMARY),
         },
       ],
-    };
-  }, [teamRows]);
+    }),
+    [teamTop]
+  );
 
   /* ---- exports (always follow the active tab) ---- */
   const activeExport = useMemo(() => {
@@ -677,20 +723,33 @@ export default function ReportsDashboard() {
               <div className={`${PANEL_CLASS} xl:col-span-2`}>
                 <h3 className="text-sm font-semibold text-foreground">Activity trend</h3>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Completed tasks against logged and tracked hours, per day.
+                  Completed tasks and time spent, per day.
                 </p>
-                <div className="mt-3">
-                  {hasTrend ? (
-                    <EChart option={trendOption} height={300} />
-                  ) : (
+                {hasTrend ? (
+                  /* Two panels over a shared date axis rather than one chart
+                     with a second y-axis on the right. Counts and hours are
+                     different units, so a single frame would have invented a
+                     crossing point between them. */
+                  <div className="mt-3 space-y-4">
+                    <div>
+                      <h4 className="text-xs font-medium text-muted-foreground">Completed tasks</h4>
+                      <EChart option={tasksTrendOption} height={168} />
+                    </div>
+                    <div className="border-t border-border pt-3">
+                      <h4 className="text-xs font-medium text-muted-foreground">Hours</h4>
+                      <EChart option={hoursTrendOption} height={168} />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3">
                     <EmptyState
-                      className="h-[300px] justify-center"
+                      className="h-[336px] justify-center"
                       icon={CalendarClock}
                       title="Nothing happened in this range"
                       description="Widen the date range, or wait for tasks to be completed and time to be logged."
                     />
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
 
               <div className={PANEL_CLASS}>
@@ -721,7 +780,12 @@ export default function ReportsDashboard() {
                 </p>
                 <div className="mt-3">
                   {projectRows.length > 0 ? (
-                    <EChart option={projectChartOption} height={300} />
+                    /* Height follows the row count: ten projects in a fixed
+                       300px box left each bar a sliver with its name clipped. */
+                    <EChart
+                      option={projectChartOption}
+                      height={heightForRows(projectTop.length, { perRow: 30, chrome: 96, min: 200 })}
+                    />
                   ) : (
                     <EmptyState
                       className="h-[300px] justify-center"
@@ -809,9 +873,15 @@ export default function ReportsDashboard() {
             <div className="space-y-4">
               <div className={PANEL_CLASS}>
                 <h3 className="text-sm font-semibold text-foreground">Completed tasks per person</h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">Top twelve, most completed first.</p>
                 <div className="mt-3">
                   {teamRows.length > 0 ? (
-                    <EChart option={teamChartOption} height={300} />
+                    /* One row per person at a readable band, rather than twelve
+                       columns squeezed under 35°-rotated names. */
+                    <EChart
+                      option={teamChartOption}
+                      height={heightForRows(teamTop.length, { perRow: 30, chrome: 84, min: 200 })}
+                    />
                   ) : (
                     <EmptyState
                       className="h-[300px] justify-center"

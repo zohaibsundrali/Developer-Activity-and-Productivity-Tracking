@@ -2,6 +2,8 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabaseClient';
+import { authFetch } from '@/utils/authFetch';
+import { taskIdsWithSubmissions } from '@/utils/replanGuard';
 import TaskCompletionModal from "@/components/developer/TaskCompletionModal";
 import { GanttChartSquare } from "lucide-react";
 // The only sanctioned source of concrete colour values — SweetAlert styles its
@@ -402,12 +404,26 @@ export default function ProjectDetailsPage() {
       let replaceableIds = untouched.map((t) => t.id);
 
       if (replaceableIds.length) {
-        const { data: submitted } = await supabase
-          .from('task_submissions')
-          .select('task_id')
-          .in('task_id', replaceableIds);
-        const hasSubmission = new Set((submitted || []).map((r) => r.task_id));
-        replaceableIds = replaceableIds.filter((id) => !hasSubmission.has(id));
+        // This guard must see EVERY submission standing against these tasks, not
+        // the subset the caller's own RLS view admits. It used to select
+        // task_submissions through the browser client; migration 047 narrowed
+        // that table to per-person, so for a manager or team_lead re-planning on
+        // someone else's behalf the query came back empty and the delete below
+        // removed tasks that DO have submissions — and developer_tasks cascades,
+        // so the submission went with the task. taskIdsWithSubmissions() asks the
+        // service-role route instead, which cannot be narrowed by any policy, and
+        // throws rather than returning an empty set if it cannot get an answer.
+        let hasSubmission;
+        try {
+          hasSubmission = await taskIdsWithSubmissions(project.id, replaceableIds);
+        } catch (guardError) {
+          // Fail closed: nothing is deleted and nothing is inserted, so the
+          // existing plan is left exactly as it stands.
+          throw new Error(
+            `Refusing to replace the previous plan — could not verify existing submissions: ${guardError.message}`
+          );
+        }
+        replaceableIds = replaceableIds.filter((id) => !hasSubmission.has(String(id)));
       }
 
       if (replaceableIds.length) {
@@ -483,7 +499,13 @@ export default function ProjectDetailsPage() {
         throw new Error('Developer ID not found. Please re-login and try again.');
       }
 
-      const submitRes = await fetch('/api/task-plan/submit', {
+      // authFetch, not fetch: /api/task-plan/submit authenticates the caller with
+      // getAuthedOrg(), which reads a Bearer token. A bare fetch() sent no
+      // Authorization header, so this threw "Failed to submit task plan" for
+      // every role — AFTER saveTasksToSupabase() had already deleted and
+      // re-inserted the plan rows, leaving the DB half-applied and the user
+      // retrying on top of it. The body is unchanged.
+      const submitRes = await authFetch('/api/task-plan/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId: project.id, developerId: developerIdForSubmit }),
