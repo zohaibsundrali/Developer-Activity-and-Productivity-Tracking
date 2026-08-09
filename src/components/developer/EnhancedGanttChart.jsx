@@ -135,7 +135,17 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
     const pending = tasks?.filter(t => ['pending', 'in_progress', 'awaiting_approval'].includes(t.status)).length || 0;
     const productivityPoints = onTime - late;
 
-    return { total, completed, onTime, late, pending, productivityPoints };
+    // The footer states the formula in words — each task carries 100/total
+    // percent of weight, on-time adds it and late subtracts it — but the number
+    // it printed divided by the COMPLETED count instead, so the sentence and the
+    // figure beside it disagreed whenever some tasks were still open (5 tasks, 2
+    // completed on time read "100.0%" under a sentence describing 40%). The
+    // percentage is computed once here, from the denominator the sentence names,
+    // and the footer's colour and value both read it.
+    const taskWeight = total > 0 ? 100 / total : 0;
+    const productivityPct = total > 0 ? ((onTime - late) / total) * 100 : 0;
+
+    return { total, completed, onTime, late, pending, productivityPoints, taskWeight, productivityPct };
   }, [tasks]);
 
   // ECharts horizontal stacked-bar Gantt option (offset placeholder + colored duration)
@@ -393,11 +403,11 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
       {/* Productivity Formula */}
       <div className="p-4 bg-muted/50 border-t border-border">
         <div className="text-sm text-muted-foreground">
-          <strong>Productivity Formula:</strong> Each task = {(100 / (tasks?.length || 1)).toFixed(1)}% weight.
+          <strong>Productivity Formula:</strong> Each task = {stats.taskWeight.toFixed(1)}% weight.
           On-time completion = +weight, Late completion = -weight.
-          Current: {stats.onTime} on-time × {(100 / (tasks?.length || 1)).toFixed(1)}% - {stats.late} late × {(100 / (tasks?.length || 1)).toFixed(1)}% =
-          <span className={`font-bold ml-1 ${((stats.onTime - stats.late) / (tasks?.length || 1) * 100) >= 0 ? 'text-success' : 'text-destructive'}`}>
-            {(((stats.onTime - stats.late) / (stats.completed || 1)) * 100).toFixed(1)}% productivity
+          Current: {stats.onTime} on-time × {stats.taskWeight.toFixed(1)}% - {stats.late} late × {stats.taskWeight.toFixed(1)}% =
+          <span className={`font-bold ml-1 ${stats.productivityPct >= 0 ? 'text-success' : 'text-destructive'}`}>
+            {stats.productivityPct.toFixed(1)}% productivity
           </span>
         </div>
       </div>

@@ -344,7 +344,6 @@ function DeveloperDashboardContent() {
   return (
     <AppShell
       role={effectiveRole}
-      brandName="DevTrack"
       navItems={staffNav(effectiveRole)}
       activeSection={activeSection}
       onNavigate={handleSectionChange}

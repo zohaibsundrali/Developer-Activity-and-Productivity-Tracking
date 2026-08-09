@@ -9,8 +9,9 @@ import { SESSION_MAX_AGE_DAYS } from "@/utils/sessionPolicy";
 import { authFetch } from "@/utils/authFetch";
 
 import { ArrowLeft } from "lucide-react";
+import { BRAND_NAME } from "@/components/brand";
 import { Button, Field, Input } from "@/components/ui";
-import AuthShell, { BrandLockup } from "@/components/auth/AuthShell";
+import AuthShell, { BrandLockup, enterDelay } from "@/components/auth/AuthShell";
 import {
   AUTH_INPUT,
   AuthCard,
@@ -22,6 +23,65 @@ import {
   SegmentedControl,
   SubmitButton,
 } from "@/components/auth/AuthParts";
+
+/**
+ * Terms consent. Both registration paths on this page need it — creating a new
+ * organization and joining an existing one with an invite code — and both
+ * servers refuse without it (src/app/api/auth/signup/route.js and
+ * src/app/api/invitations/accept/route.js).
+ *
+ * UNCHECKED BY DEFAULT, always. There is no `defaultChecked` and the caller's
+ * state starts `false`: a pre-ticked box is not valid consent in the EU and is
+ * weak everywhere else, so the user has to perform the act themselves.
+ *
+ * The error paragraph sits OUTSIDE Field on purpose. Field clones its single
+ * child to inject the id, so a wrapper element placed inside it would swallow
+ * that wiring; and Field's own `error` slot would be laid out as a third item
+ * in this row. The id/aria wiring is therefore done explicitly on the input.
+ */
+function TermsConsent({ id, checked, onChange, error, disabled }) {
+  return (
+    <div className="space-y-1.5">
+      <Field
+        htmlFor={id}
+        className="flex flex-row-reverse items-start justify-end gap-x-2.5 space-y-0"
+        labelClassName="flex-1 items-start text-sm font-normal leading-relaxed text-muted-foreground"
+        label={
+          <>
+            I have read and agree to the{" "}
+            <Link
+              href="/terms"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-primary underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              Terms of Service
+            </Link>
+            , including the responsibility to lawfully notify the people {BRAND_NAME} monitors
+            before any tracking is switched on.
+          </>
+        }
+      >
+        <input
+          id={id}
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          disabled={disabled}
+          aria-required="true"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${id}-error` : undefined}
+          className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        />
+      </Field>
+      {error && (
+        <p id={`${id}-error`} className="text-xs font-medium text-destructive">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
 
 export default function AdminRegistration() {
   const [formData, setFormData] = useState({
@@ -43,6 +103,12 @@ export default function AdminRegistration() {
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  // Terms acceptance, one flag per registration path. Both start FALSE and are
+  // never pre-set. They are separate so that ticking the box on one form can
+  // never carry over into the other — consent is given for the act in front of
+  // you, not inherited from a form you abandoned.
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [joinTermsAccepted, setJoinTermsAccepted] = useState(false);
   const router = useRouter();
 
   // "create" = start a new organization (owner). "join" = accept an emailed
@@ -79,6 +145,8 @@ export default function AdminRegistration() {
       return setErrors({ password: "Password does not meet requirements" });
     if (joinData.password !== joinData.confirmPassword)
       return setErrors({ confirmPassword: "Passwords do not match" });
+    if (!joinTermsAccepted)
+      return setErrors({ terms: "Please accept the Terms of Service to continue" });
 
     setJoinLoading(true);
     try {
@@ -92,6 +160,7 @@ export default function AdminRegistration() {
           token,
           fullName: joinData.fullName.trim(),
           password: joinData.password,
+          termsAccepted: joinTermsAccepted,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -197,6 +266,13 @@ export default function AdminRegistration() {
       newErrors.confirmPassword = "Please confirm your password";
     } else if (formData.password !== formData.confirmPassword) {
       newErrors.confirmPassword = "Passwords do not match";
+    }
+
+    // Checked at step 1, before the verification code is even sent: there is no
+    // point emailing a code for an account the server will refuse to create.
+    // The flag survives into step 2, which is where the signup POST happens.
+    if (!termsAccepted) {
+      newErrors.terms = "Please accept the Terms of Service to continue";
     }
 
     setErrors(newErrors);
@@ -331,6 +407,7 @@ export default function AdminRegistration() {
           email: formData.email,
           password: formData.password,
           timezone: (typeof Intl !== "undefined" && Intl.DateTimeFormat().resolvedOptions().timeZone) || "UTC",
+          termsAccepted,
         }),
       });
       const signupData = await signupRes.json().catch(() => ({}));
@@ -387,7 +464,10 @@ export default function AdminRegistration() {
 
   return (
     <AuthShell panelTitle="Set up the workspace your team will actually use.">
-      <div className="mb-8 flex items-center justify-between gap-4">
+      <div
+        className="auth-enter mb-8 flex items-center justify-between gap-4"
+        style={enterDelay(40)}
+      >
         <BrandLockup className="lg:invisible" />
         <Button
           type="button"
@@ -566,7 +646,23 @@ export default function AdminRegistration() {
                   />
                 </Field>
 
-                <SubmitButton loading={loading} loadingLabel="Processing…" disabled={loading}>
+                <TermsConsent
+                  id="reg-terms"
+                  checked={termsAccepted}
+                  onChange={(next) => {
+                    setTermsAccepted(next);
+                    if (errors.terms) setErrors((prev) => ({ ...prev, terms: "" }));
+                  }}
+                  error={errors.terms}
+                  disabled={loading}
+                />
+
+                <SubmitButton
+                  loading={loading}
+                  loadingLabel="Processing…"
+                  status={errors.general || errors.email ? "error" : "idle"}
+                  disabled={loading}
+                >
                   Create account
                 </SubmitButton>
               </form>
@@ -643,7 +739,23 @@ export default function AdminRegistration() {
                   />
                 </Field>
 
-                <SubmitButton loading={joinLoading} loadingLabel="Joining…" disabled={joinLoading}>
+                <TermsConsent
+                  id="join-terms"
+                  checked={joinTermsAccepted}
+                  onChange={(next) => {
+                    setJoinTermsAccepted(next);
+                    if (errors.terms) setErrors((prev) => ({ ...prev, terms: "" }));
+                  }}
+                  error={errors.terms}
+                  disabled={joinLoading}
+                />
+
+                <SubmitButton
+                  loading={joinLoading}
+                  loadingLabel="Joining…"
+                  status={errors.general ? "error" : "idle"}
+                  disabled={joinLoading}
+                >
                   Join organization
                 </SubmitButton>
               </form>
@@ -676,6 +788,7 @@ export default function AdminRegistration() {
             <SubmitButton
               loading={verificationLoading}
               loadingLabel="Verifying…"
+              status={errors.code || errors.general ? "error" : "idle"}
               disabled={verificationLoading}
             >
               Verify &amp; complete
@@ -695,7 +808,10 @@ export default function AdminRegistration() {
           </form>
         )}
 
-        <p className="mt-7 border-t border-border pt-5 text-center text-sm text-muted-foreground">
+        <p
+          className="auth-enter mt-7 border-t border-border pt-5 text-center text-sm text-muted-foreground"
+          style={enterDelay(220)}
+        >
           Already have an account?{" "}
           <Link
             href="/login"

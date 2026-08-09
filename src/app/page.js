@@ -1,124 +1,147 @@
-'use client';
+/**
+ * Marketing landing page.
+ *
+ * A server component: the whole page — headline, features, pricing, FAQ — is in
+ * the initial HTML. Only the pieces that genuinely need the client (the nav's
+ * scroll state, the reveal observers, the 3D scene) carry `"use client"`, and
+ * every one of them renders its finished state on the server first. Turn
+ * JavaScript off and the page is complete, just still.
+ *
+ * Section order: nav → hero → trust strip → two-halves → features → roles →
+ * monitoring → how it works → pricing → FAQ → final CTA → footer.
+ *
+ * Monitoring sits *after* the role stories on purpose. Read earlier it lands as
+ * a disclaimer before the reader knows what the product is; read after the
+ * three role stories it lands as a specification, which is what it is.
+ *
+ * Grounds alternate background / muted / background / muted / navy /
+ * background / muted / background / muted / indigo / navy, so no two adjacent
+ * bands share a colour and the page has a rhythm you can feel while scrolling
+ * past it at speed.
+ *
+ * Every section renders itself only if the content module gave it something to
+ * say, and the nav filters its own links to the sections that survived — so a
+ * content edit can never leave an anchor pointing at nothing.
+ */
 
-import { ArrowRight } from 'lucide-react';
+import SiteNav from "@/components/landing/SiteNav";
+import Hero from "@/components/landing/Hero";
+import TrustStrip from "@/components/landing/TrustStrip";
+import TwoHalves from "@/components/landing/TwoHalves";
+import Features from "@/components/landing/Features";
+import RoleStories from "@/components/landing/RoleStories";
+import Monitoring from "@/components/landing/Monitoring";
+import HowItWorks from "@/components/landing/HowItWorks";
+import Pricing from "@/components/landing/Pricing";
+import Faq from "@/components/landing/Faq";
+import FinalCta from "@/components/landing/FinalCta";
+import SiteFooter from "@/components/landing/SiteFooter";
 
-import Navbar from '@/components/Navbar';
-import HeroSection from '@/components/HeroSection';
-import PlatformCards from '@/components/PlatformCards';
-import TimeTrackingSection from '@/components/TimeTrackingSection';
-import EmployeeMonitoringSection from '@/components/EmployeeMonitoringSection';
-import ProjectManagementSection from '@/components/ProjectManagementSection';
+import {
+  extras,
+  faq,
+  features,
+  howItWorks,
+  items,
+  monitoring,
+  pricing,
+  roleSections,
+  str,
+} from "@/components/landing/content";
 
-import Footer from '@/components/Footer';
+/**
+ * Ids of the anchors that will actually exist once the page has rendered, for
+ * the nav to filter its links against. Includes the per-role ids, which the
+ * footer links to directly.
+ */
+function presentSections() {
+  const present = new Set(["top"]);
 
-function SectionIntro({ eyebrow, title, description }) {
-  return (
-    <div className="mx-auto mb-14 max-w-2xl text-center">
-      {eyebrow ? (
-        <p className="mb-3 text-xs font-medium uppercase tracking-[0.14em] text-primary">
-          {eyebrow}
-        </p>
-      ) : null}
-      <h2 className="text-3xl font-semibold leading-tight tracking-tight text-foreground sm:text-4xl">
-        {title}
-      </h2>
-      {description ? (
-        <p className="mt-4 text-base leading-relaxed text-muted-foreground sm:text-lg">
-          {description}
-        </p>
-      ) : null}
-    </div>
-  );
+  if (items(features, "items", "list", "cards", "features").length > 0) present.add("features");
+
+  const roles = items(roleSections, "items", "roles", "list", "sections");
+  if (roles.length > 0) {
+    present.add("roles");
+    roles.forEach((role) => {
+      const id = str(role?.id ?? role?.anchor ?? role?.slug);
+      if (id) present.add(id);
+    });
+  }
+
+  if (extras.twoHalves) present.add(str(extras.twoHalves.id) ?? "one-system");
+  if (monitoring) present.add(str(monitoring.id) ?? "monitoring");
+  if (items(howItWorks, "steps", "items", "list").length > 0) present.add("how-it-works");
+  if (items(pricing, "plans", "tiers", "items", "list").length > 0) present.add("pricing");
+  if (items(faq, "items", "questions", "list", "faqs").length > 0) present.add("faq");
+
+  return present;
 }
 
-export default function ProductTourPage() {
+/*
+ * No `generateMetadata` here on purpose.
+ *
+ * `src/app/layout.js` already owns the site metadata — title (with a
+ * `%s · <brand>` template), description, canonical, Open Graph and Twitter
+ * cards — and it is the file that carries the product name. A page-level
+ * override would have to build its title from `BRAND_NAME`, which is behind a
+ * `"use client"` boundary and cannot be read from a Server Component (verified:
+ * interpolating it in a server component throws `Cannot convert a Symbol value
+ * to a string`). Overriding with a brand-less headline would strip the product
+ * name out of the tab and desynchronise it from the OG card, which is worse
+ * than inheriting. Left to the layout deliberately.
+ */
+
+export default function LandingPage() {
+  const sections = presentSections();
+
   return (
     <div className="min-h-screen bg-background font-sans text-foreground">
-      <Navbar />
+      {/*
+        The app-wide stylesheet sets `body { overflow-x: hidden }`. That makes
+        the body a scroll container, which quietly disables *every*
+        `position: sticky` on the page — the header stops pinning and the role
+        section's pinned panel scrolls away with the text. Measured, not
+        guessed: with the rule in place the header's top edge reads -4500px at
+        4500px of scroll; with it replaced the header reads 0.
+        `overflow-x: clip` clips exactly the same horizontal overflow but does
+        not create a scroll container, so both behaviours survive. Guarded by
+        `@supports`, so a browser without `clip` simply keeps the original
+        rule and loses only the pinning.
+        Scoped here rather than in globals.css, which this page does not own.
+        The `body[class]` selector is deliberate: a bare `body` selector loses
+        to the `.overflow-x-hidden` utility class on specificity.
+      */}
+      <style>
+        {"@supports (overflow: clip) { body[class] { overflow-x: clip; } }"}
+      </style>
 
-      <main id="main" className="pt-16">
-        <HeroSection />
+      {/*
+        Skip link. Hidden until focused, then pinned over the nav — the first
+        stop for a keyboard user and the only way past a header full of links.
+      */}
+      <a
+        href="#main"
+        className="sr-only z-[60] focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:inline-flex focus:h-11 focus:items-center focus:rounded-lg focus:border focus:border-border focus:bg-card focus:px-4 focus:text-sm focus:font-semibold focus:text-foreground focus:shadow-elevated focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
+      >
+        Skip to content
+      </a>
 
-        {/* Platforms */}
-        <section id="platforms" className="border-t border-border bg-background py-20 lg:py-28">
-          <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
-            <SectionIntro
-              eyebrow="Platforms"
-              title="Website and desktop app"
-              description="One account, two surfaces. Track from the desktop agent, review and report from the browser."
-            />
-            <PlatformCards />
-          </div>
-        </section>
+      <SiteNav sections={sections} />
 
-        {/* Automated time tracking */}
-        <section id="time-tracking" className="border-t border-border bg-muted/30 py-20 lg:py-28">
-          <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
-            <SectionIntro
-              eyebrow="Time tracking"
-              title="Automated time tracking"
-              description="Hours are captured as work happens, so nobody spends Friday afternoon reconstructing a timesheet."
-            />
-            <TimeTrackingSection />
-          </div>
-        </section>
-
-        {/* Employee monitoring */}
-        <section id="monitoring" className="border-t border-border bg-background py-20 lg:py-28">
-          <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
-            <SectionIntro
-              eyebrow="Monitoring"
-              title="Employee monitoring"
-              description="Activity, applications and screenshots collected into insights you can act on."
-            />
-            <EmployeeMonitoringSection />
-          </div>
-        </section>
-
-        {/* Project management & reports */}
-        <section id="projects" className="border-t border-border bg-muted/30 py-20 lg:py-28">
-          <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
-            <SectionIntro
-              eyebrow="Delivery"
-              title="Project management &amp; reports"
-              description="Plan the work, estimate it, then compare estimates against what actually happened."
-            />
-            <ProjectManagementSection />
-          </div>
-        </section>
-
-        {/* Closing call to action */}
-        <section className="border-t border-border bg-background py-20 lg:py-28">
-          <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
-            <div className="rounded-xl border border-border bg-card px-6 py-14 text-center shadow-card sm:px-12">
-              <h2 className="mx-auto max-w-2xl text-3xl font-semibold leading-tight tracking-tight text-foreground sm:text-4xl">
-                Start tracking in an afternoon
-              </h2>
-              <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-                Create your workspace, invite the team, and have your first productivity report by
-                the end of the week.
-              </p>
-              <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                <a
-                  href="/admin/registration"
-                  className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-7 text-sm font-semibold text-primary-foreground transition-colors duration-150 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:w-auto"
-                >
-                  Create your workspace
-                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                </a>
-                <a
-                  href="/login"
-                  className="inline-flex h-11 w-full items-center justify-center rounded-lg border border-border bg-background px-7 text-sm font-medium text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:w-auto"
-                >
-                  Sign in
-                </a>
-              </div>
-            </div>
-          </div>
-        </section>
+      <main id="main">
+        <Hero />
+        <TrustStrip />
+        <TwoHalves />
+        <Features />
+        <RoleStories />
+        <Monitoring />
+        <HowItWorks />
+        <Pricing />
+        <Faq />
+        <FinalCta />
       </main>
 
-      <Footer />
+      <SiteFooter />
     </div>
   );
 }

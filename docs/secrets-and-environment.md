@@ -21,7 +21,8 @@ were never read or printed — only key names were enumerated.
 |---|---|---|---|---|
 | `SUPABASE_SERVICE_ROLE_KEY` | `src/utils/serverAuth.js:12`, `src/utils/sessionCookie.js:31`, and 12 `/api` routes | **Yes** | Newer routes return HTTP 500 `Server misconfigured`; older routes silently fall back to the anon key and then fail on RLS | Yes |
 | `SESSION_COOKIE_SECRET` | `src/utils/sessionCookie.js:30` | **Yes in prod** | Falls back to `SUPABASE_SERVICE_ROLE_KEY` as HMAC material. If both are absent, `hmac()` returns null and every session fails to sign/verify (fail-closed) | **No** |
-| `DESKTOP_INGEST_SECRET` | `src/app/api/track-activity/route.js:46`, `src/app/api/upload-screenshot/route.js:46` | **Yes in prod** | **Fails OPEN** — `if (!secret) return true`. Both ingest endpoints accept unauthenticated writes | **No** |
+| `DESKTOP_INGEST_SECRET` | `src/app/api/track-activity/route.js`, `src/app/api/upload-screenshot/route.js` | **Yes in prod** | Unauthenticated ingest still accepted, but now warned about at startup and recorded once the secret is set. See `docs/desktop-ingest-auth.md` | **No** |
+| `DESKTOP_INGEST_ENFORCE` | same two routes | Only after the desktop rollout | Ingest gate stays open. Setting this **without** the secret fails closed (401) | **No** |
 | `CRON_SECRET` | `src/app/api/cron/route.js:50` | For cron | Fails closed; scheduled jobs never run | **No** |
 | `STRIPE_SECRET_KEY` | `src/utils/stripeServer.js:19,33,43` | Optional | `billingConfigured()` false; billing endpoints refuse cleanly | **No** |
 | `STRIPE_WEBHOOK_SECRET` | `src/utils/stripeServer.js:79` | Optional | Webhook signature verification unavailable | **No** |
@@ -133,10 +134,25 @@ change. Cached bundles carry the old key until they expire.
 `openssl rand -base64 48`. Rotating it logs everyone out by design. No external
 provider involved — change the env var and redeploy.
 
-### `DESKTOP_INGEST_SECRET`
-`openssl rand -hex 32`. Must be rotated in the web app **and** the desktop
-tracker simultaneously, or agents stop reporting. Note this gate fails open, so
-an unset value is worse than a stale one.
+### `DESKTOP_INGEST_SECRET` / `DESKTOP_INGEST_ENFORCE`
+`openssl rand -hex 32`. **Full rollout procedure and the header contract for the
+desktop tracker: `docs/desktop-ingest-auth.md`.** Read that before setting either
+variable — the order matters and getting it wrong stops ingest.
+
+Two variables, deliberately independent, so the hole can be closed without an
+outage while old desktop agents are still in the field:
+
+| `SECRET` | `ENFORCE` | Unauthenticated ingest |
+|---|---|---|
+| unset | unset | accepted — today's default, plus a startup warning |
+| set | unset | accepted **and recorded**, so the legacy population is a number |
+| set | set | `401` — hole closed |
+| unset | set | `401` — fails closed; enforcement without a credential must not silently revert to open |
+
+Rotation is therefore not simultaneous: ship the new desktop build first, set
+`SECRET` (stage *observe*), watch Admin → System Health until
+`api.ingest_unauthenticated_accepted` reads zero for a full week, then set
+`ENFORCE`. Rollback is unsetting `ENFORCE` alone — no secret rotation.
 
 ### `CRON_SECRET`
 `openssl rand -hex 32`. Update in the env and in whatever scheduler calls

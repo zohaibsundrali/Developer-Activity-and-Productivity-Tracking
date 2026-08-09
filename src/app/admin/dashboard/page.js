@@ -331,7 +331,6 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
   return (
     <AppShell
       role="admin"
-      brandName="DevTrack"
       navItems={withNavGroups(adminNavFor(role))}
       activeSection={activeSection}
       onNavigate={handleNavigate}

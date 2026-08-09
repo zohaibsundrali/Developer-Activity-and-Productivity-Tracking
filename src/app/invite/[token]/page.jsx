@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
 import { ArrowRight, BadgeCheck, Ban, Clock3, SearchX } from "lucide-react";
+import { BRAND_NAME } from "@/components/brand";
 import { Field, Input, Skeleton } from "@/components/ui";
 import AuthShell, { BrandLockup } from "@/components/auth/AuthShell";
 import {
@@ -23,6 +24,62 @@ const GUARD_ICONS = {
   expired: Clock3,
 };
 
+/**
+ * Terms consent for the invitation path. Someone invited into an organization
+ * is bound by exactly the same Terms as the person who created it, and until
+ * now was equally unrecorded.
+ *
+ * UNCHECKED BY DEFAULT: no `defaultChecked`, and the state below starts false.
+ * A pre-ticked box is not valid consent in the EU and is weak everywhere else.
+ * /api/invitations/accept refuses without it regardless of what this renders.
+ *
+ * The error paragraph sits outside Field deliberately — Field clones its single
+ * child to inject the id, so the aria wiring is done explicitly on the input.
+ */
+function TermsConsent({ id, checked, onChange, error, disabled }) {
+  return (
+    <div className="space-y-1.5">
+      <Field
+        htmlFor={id}
+        className="flex flex-row-reverse items-start justify-end gap-x-2.5 space-y-0"
+        labelClassName="flex-1 items-start text-sm font-normal leading-relaxed text-muted-foreground"
+        label={
+          <>
+            I have read and agree to the{" "}
+            <Link
+              href="/terms"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-primary underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              Terms of Service
+            </Link>
+            , including the responsibility to lawfully notify the people {BRAND_NAME} monitors
+            before any tracking is switched on.
+          </>
+        }
+      >
+        <input
+          id={id}
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          disabled={disabled}
+          aria-required="true"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${id}-error` : undefined}
+          className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        />
+      </Field>
+      {error && (
+        <p id={`${id}-error`} className="text-xs font-medium text-destructive">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function AcceptInvitePage() {
   const params = useParams();
   const router = useRouter();
@@ -38,6 +95,9 @@ export default function AcceptInvitePage() {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  // Starts false and is never pre-set: the user has to tick it themselves.
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [termsError, setTermsError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -105,6 +165,11 @@ export default function AcceptInvitePage() {
     e.preventDefault();
     if (!invitation) return;
 
+    if (!termsAccepted) {
+      setTermsError("Please accept the Terms of Service to continue");
+      return;
+    }
+
     setSubmitting(true);
     setError("");
 
@@ -114,7 +179,7 @@ export default function AcceptInvitePage() {
       const res = await fetch("/api/invitations/accept", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, fullName, password }),
+        body: JSON.stringify({ token, fullName, password, termsAccepted }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
@@ -260,6 +325,17 @@ export default function AcceptInvitePage() {
                   onToggle={() => setShowPassword((v) => !v)}
                 />
               </Field>
+
+              <TermsConsent
+                id="invite-terms"
+                checked={termsAccepted}
+                onChange={(next) => {
+                  setTermsAccepted(next);
+                  if (termsError) setTermsError("");
+                }}
+                error={termsError}
+                disabled={submitting}
+              />
 
               {error && <AuthError message={error} />}
 

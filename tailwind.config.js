@@ -8,9 +8,33 @@ module.exports = {
   ],
   theme: {
     extend: {
+      // Both faces are self-hosted by next/font (see src/app/layout.js), which
+      // exposes them as CSS variables on <html>. The literal family names stay
+      // in the stack as a fallback for any surface rendered outside the root
+      // layout. `font-sans` = UI + data; `font-display` = headings + wordmark.
       fontFamily: {
-        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: [
+          'var(--font-inter)',
+          'Inter',
+          'ui-sans-serif',
+          'system-ui',
+          '-apple-system',
+          'Segoe UI',
+          'sans-serif',
+        ],
+        display: [
+          'var(--font-space-grotesk)',
+          'Space Grotesk',
+          'var(--font-inter)',
+          'ui-sans-serif',
+          'system-ui',
+          'sans-serif',
+        ],
       },
+      // Durations, counts and money live in columns all over this product, so
+      // `tabular-nums` (Tailwind core, font-variant-numeric) must resolve on
+      // both faces. Inter ships `tnum`; Space Grotesk is monospaced-figure by
+      // design, so numerals align in either family.
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

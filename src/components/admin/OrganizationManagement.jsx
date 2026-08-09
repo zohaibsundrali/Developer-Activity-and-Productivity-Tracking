@@ -62,6 +62,82 @@ const CONTROL = `w-full rounded-lg border border-input bg-background px-3 py-2 t
 const CONTROL_SM = `rounded-lg border border-input bg-background px-2 py-1 text-xs text-foreground transition-colors duration-150 ${FOCUS_RING}`;
 const DANGER_ICON_BTN = `text-muted-foreground hover:bg-destructive/10 hover:text-destructive ${FOCUS_RING}`;
 
+/**
+ * supabase-js RESOLVES with `{ data, error }` — it does not reject — so a
+ * try/catch around a query never fires, and reading only `.data` renders an
+ * RLS denial, a 4xx and a 5xx as "no rows". Read the error that is already
+ * being returned and throw it, so the catch (and the ErrorState it feeds)
+ * becomes reachable.
+ */
+function unwrap(result, label) {
+  if (result?.error) throw new Error(result.error.message || `Could not load ${label}.`);
+  return result?.data ?? [];
+}
+
+/**
+ * Load every section of this organization. Throws if ANY of the four queries
+ * failed, so a partial answer is never shown as a complete one.
+ */
+export async function fetchOrganizationSections(orgId) {
+  const [dep, tm, mem, inv] = await Promise.all([
+    supabase.from("departments").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }),
+    supabase.from("teams").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }),
+    supabase.from("memberships").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }),
+    supabase.from("invitations").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }),
+  ]);
+  // Evaluated in order, so the first failure throws before anything is stored.
+  return {
+    departments: unwrap(dep, "departments"),
+    teams: unwrap(tm, "teams"),
+    members: unwrap(mem, "members"),
+    invitations: unwrap(inv, "invitations"),
+  };
+}
+
+/**
+ * Copy text and report what actually happened.
+ *
+ * `navigator.clipboard` is undefined outside a secure context (the optional
+ * chain then swallowed the whole call), and `writeText` rejects with
+ * NotAllowedError when the permission is refused. Both used to end with a
+ * "Link copied" toast for a clipboard that was never written.
+ */
+export async function copyToClipboard(text) {
+  try {
+    if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+      throw new Error("This browser blocked clipboard access.");
+    }
+    await navigator.clipboard.writeText(text);
+    showSuccess("Link copied", text);
+    return true;
+  } catch (err) {
+    showError("Couldn't copy the link", `${err?.message || "Copying was blocked."} Copy it manually: ${text}`);
+    return false;
+  }
+}
+
+/**
+ * Delete a team, detaching its members first.
+ *
+ * Two statements over two round-trips cannot be made atomic from the browser:
+ * if the delete fails after the detach has landed, the members are already
+ * orphaned. Ordering it detach-then-delete keeps the recoverable failure first
+ * (nothing has changed yet), and the caller is told exactly which half landed
+ * so the damage is never silent. A single transaction needs a server route or
+ * a Postgres function — see the note in the delete-failure branch.
+ */
+export async function deleteTeamWithMembers(team) {
+  const { error: detachError } = await supabase.from("memberships").update({ team_id: null }).eq("team_id", team.id);
+  if (detachError) {
+    return { ok: false, detached: false, message: detachError.message || "Could not detach the team's members." };
+  }
+  const { error: deleteError } = await supabase.from("teams").delete().eq("id", team.id);
+  if (deleteError) {
+    return { ok: false, detached: true, message: deleteError.message || "Could not delete the team." };
+  }
+  return { ok: true, detached: true, message: null };
+}
+
 export default function OrganizationManagement() {
   // Read org context after mount only — reading window/sessionStorage during
   // render causes a server/client hydration mismatch.
@@ -73,7 +149,9 @@ export default function OrganizationManagement() {
   const [teams, setTeams] = useState([]);
   const [members, setMembers] = useState([]);
   const [invitations, setInvitations] = useState([]);
-  const [loading, setLoading] = useState(false);
+  // Starts true: the first fetch has not run yet, and "no departments yet" is a
+  // claim about the database that nothing has checked.
+  const [loading, setLoading] = useState(true);
   // Presentation-only: surfaces the failure the loader already caught so the
   // screen can offer a retry instead of an empty table.
   const [error, setError] = useState(null);
@@ -89,16 +167,11 @@ export default function OrganizationManagement() {
     setLoading(true);
     setError(null);
     try {
-      const [dep, tm, mem, inv] = await Promise.all([
-        supabase.from("departments").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }),
-        supabase.from("teams").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }),
-        supabase.from("memberships").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }),
-        supabase.from("invitations").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }),
-      ]);
-      setDepartments(dep.data || []);
-      setTeams(tm.data || []);
-      setMembers(mem.data || []);
-      setInvitations(inv.data || []);
+      const rows = await fetchOrganizationSections(orgId);
+      setDepartments(rows.departments);
+      setTeams(rows.teams);
+      setMembers(rows.members);
+      setInvitations(rows.invitations);
     } catch (err) {
       setError(err?.message || "Something went wrong while loading this organization.");
     } finally {
@@ -146,7 +219,9 @@ export default function OrganizationManagement() {
   const tabItems = TABS.map((t) => ({
     id: t.id,
     label: t.label,
-    count: loading ? undefined : counts[t.id],
+    // No badge while loading, and none after a failure either — a count is a
+    // fact about the data, and after a failed load there is no fact to state.
+    count: loading || error ? undefined : counts[t.id],
   }));
 
   return (
@@ -207,7 +282,14 @@ function DepartmentsTab({ orgId, departments, reload, loading, loadError }) {
   const remove = async (d) => {
     const ok = await showConfirm("Delete department?", `Remove "${d.name}"? Teams keep working but lose this department link.`);
     if (!ok) return;
-    await supabase.from("departments").delete().eq("id", d.id);
+    // The delete resolves with { error } rather than rejecting: unread, a
+    // refused delete left the row on screen with no feedback at all.
+    const { error } = await supabase.from("departments").delete().eq("id", d.id);
+    if (error) {
+      showError("Delete failed", error.message || `Could not delete "${d.name}".`);
+      return;
+    }
+    showSuccess("Department deleted", `"${d.name}" removed.`);
     reload();
   };
 
@@ -305,8 +387,23 @@ function TeamsTab({ orgId, teams, departments, members, reload, loading, loadErr
   const remove = async (t) => {
     const ok = await showConfirm("Delete team?", `Remove "${t.name}"? Members stay in the org but leave this team.`);
     if (!ok) return;
-    await supabase.from("memberships").update({ team_id: null }).eq("team_id", t.id);
-    await supabase.from("teams").delete().eq("id", t.id);
+    const res = await deleteTeamWithMembers(t);
+    if (!res.ok) {
+      showError(
+        res.detached ? "Team not deleted" : "Delete failed",
+        res.detached
+          // The detach landed and cannot be undone from here — say so, rather
+          // than leaving the members silently orphaned. A truly atomic delete
+          // needs a server route/RPC that runs both statements in one
+          // transaction.
+          ? `Members were removed from "${t.name}", but the team could not be deleted: ${res.message} Re-assign them from the Members tab, or try again.`
+          : `${res.message} Nothing was changed.`
+      );
+      // Either way the rows on screen are now stale — pull the real state back.
+      reload();
+      return;
+    }
+    showSuccess("Team deleted", `"${t.name}" removed. Its members stay in the organization.`);
     reload();
   };
 
@@ -547,16 +644,23 @@ function InvitationsTab({ orgId, invitations, teams, departments, reload, loadin
     } finally { setSending(false); }
   };
 
-  const copyLink = (inv) => {
+  // `navigator.clipboard?.writeText(link)` is a silent no-op outside a secure
+  // context, and its promise rejects with NotAllowedError when permission is
+  // refused — neither of which stopped the "Link copied" toast from firing.
+  const copyLink = async (inv) => {
     const link = `${window.location.origin}/invite/${inv.token}`;
-    navigator.clipboard?.writeText(link);
-    showSuccess("Link copied", link);
+    await copyToClipboard(link);
   };
 
   const revoke = async (inv) => {
     const ok = await showConfirm("Revoke invitation?", `Revoke invite for ${inv.email}?`);
     if (!ok) return;
-    await supabase.from("invitations").update({ status: "revoked" }).eq("id", inv.id);
+    const { error } = await supabase.from("invitations").update({ status: "revoked" }).eq("id", inv.id);
+    if (error) {
+      showError("Revoke failed", error.message || `Could not revoke the invitation for ${inv.email}.`);
+      return;
+    }
+    showSuccess("Invitation revoked", `The invite for ${inv.email} can no longer be used.`);
     reload();
   };
 

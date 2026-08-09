@@ -54,6 +54,22 @@ const statusLabel = (status) =>
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
 
+/**
+ * How many developers a project has — derived from the assignment that exists,
+ * not read from a stored counter.
+ *
+ * `projects.developers_count` is written once as the literal `1` by this form's
+ * insert and is never read, incremented or recomputed by anything, and no trigger
+ * maintains it. So it was right only for projects created through this form, and
+ * a project created anywhere else rendered a stale number or a blank (the column
+ * defaults to 0). The schema carries one `assigned_developer_email` per project,
+ * so the real count is simply whether that assignment is filled in. The stored
+ * column is now read by nothing; it is left in place because dropping it is a
+ * migration, which this fix deliberately does not make.
+ */
+const assignedDeveloperCount = (project) =>
+  project?.assigned_developer_email || project?.assigned_developer_id ? 1 : 0;
+
 // Native controls the kit has no primitive for (select / textarea / file).
 const CONTROL_CLASS =
   "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
@@ -1035,7 +1051,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
 
                     <div className="space-y-1">
                       <p className="text-sm text-muted-foreground">
-                        <span className="font-medium text-foreground">Developers:</span> {project.developers_count}
+                        <span className="font-medium text-foreground">Developers:</span> {assignedDeveloperCount(project)}
                       </p>
 
                       {project.assigned_developer_name && (

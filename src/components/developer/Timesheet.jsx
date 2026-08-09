@@ -21,6 +21,21 @@ const DEADLINE_TONE = {
   late: "error",
 };
 
+/**
+ * Productivity score, as the footer describes it:
+ * (on-time − late) ÷ total tasks × 100 + 50, expressed as a percentage.
+ *
+ * The +50 baseline means an all-on-time developer scores 150 before clamping,
+ * so the card used to show "150%" — a percentage that cannot exist. The bottom
+ * was already clamped at 0; the top is now clamped at 100 to match, so the
+ * number stays inside the range the label claims for it.
+ */
+export function productivityPercent(onTimeTasks, lateTasks, totalTasks) {
+  if (!(totalTasks > 0)) return 0;
+  const raw = ((onTimeTasks - lateTasks) / totalTasks) * 100 + 50;
+  return Math.min(100, Math.max(0, Math.round(raw)));
+}
+
 const STATUS_PILL = {
   pending: { status: "pending", label: "Pending" },
   in_progress: { status: "active", label: "In progress" },
@@ -126,10 +141,7 @@ export default function Timesheet({ user }) {
   const onTimeTasks = completedTasks.filter((t) => t.is_on_time === true).length;
   const lateTasks = completedTasks.filter((t) => t.is_on_time === false).length;
   const totalTasks = tasks.length;
-  const productivityPct =
-    totalTasks > 0
-      ? Math.max(0, Math.round(((onTimeTasks - lateTasks) / totalTasks) * 100 + 50))
-      : 0;
+  const productivityPct = productivityPercent(onTimeTasks, lateTasks, totalTasks);
   const totalPoints = onTimeTasks - lateTasks;
 
   // Written out in full — Tailwind only ships classes it can see as literals.
@@ -300,7 +312,7 @@ export default function Timesheet({ user }) {
       {/* How the score is calculated — quiet, not another alert box. */}
       <p className="text-xs text-muted-foreground">
         <span className="font-medium text-foreground">Productivity formula:</span>{" "}
-        (on-time tasks − late tasks) ÷ total tasks × 100 + 50%. On-time completion is{" "}
+        (on-time tasks − late tasks) ÷ total tasks × 100 + 50%, held within 0–100%. On-time completion is{" "}
         <Badge variant="success" size="sm">+1</Badge> point, late completion is{" "}
         <Badge variant="destructive" size="sm">−1</Badge>.
       </p>

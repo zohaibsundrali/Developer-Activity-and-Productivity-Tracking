@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { checkSeatLimitForRole, checkFeatureAccess } from "@/utils/entitlements";
+import { meta as termsMeta } from "@/content/legal/terms";
 
 // Server-side invite acceptance (service_role): validates the token, creates the
 // user + membership + Supabase Auth account, and marks the invite accepted.
@@ -13,11 +14,47 @@ const admin = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
+// Same source and the same reasoning as src/app/api/auth/signup/route.js: the
+// Terms module has no `version` field, so its last-updated date is the version,
+// it is resolved on the server, and it is never taken from the request.
+const TERMS_DOCUMENT = "terms_of_service";
+const TERMS_VERSION = termsMeta.version || termsMeta.lastUpdated;
+
+// Reads the address off the request we already have; no new plumbing. Returns
+// null for anything that is not a valid address, because the column is `inet`
+// and a malformed value would abort the insert.
+function acceptanceIp(request) {
+  const raw =
+    request.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
+    request.headers.get("x-real-ip") ||
+    "";
+  const value = raw.trim();
+  if (!value) return null;
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(value);
+  if (v4) return v4.slice(1).every((octet) => Number(octet) <= 255) ? value : null;
+  const compressions = (value.match(/::/g) || []).length;
+  if (compressions <= 1 && /^[0-9a-fA-F]{0,4}(:[0-9a-fA-F]{0,4}){2,7}$/.test(value)) return value;
+  return null;
+}
+
 export async function POST(request) {
   try {
-    const { token, fullName, password } = await request.json();
+    const { token, fullName, password, termsAccepted } = await request.json();
     if (!token || !password) {
       return NextResponse.json({ error: "token and password are required" }, { status: 400 });
+    }
+
+    // THE GATE, the invitation half. Someone invited into an existing
+    // organization is bound by the same Terms as the person who created it —
+    // including the notification obligation in Section 3 — and until now was
+    // equally unrecorded. Refused before the token is even looked up, so a
+    // consent-less request cannot consume an invitation, a seat, or a profile
+    // row. `!== true` for the same reason as signup: only a real boolean counts.
+    if (termsAccepted !== true) {
+      return NextResponse.json(
+        { error: "You must accept the Terms of Service to accept this invitation." },
+        { status: 400 }
+      );
     }
 
     // 1) validate the invitation
@@ -116,6 +153,27 @@ export async function POST(request) {
       email, role: invite.role, team_id: invite.team_id || null,
       department_id: invite.department_id || null, status: "active",
     }]);
+
+    // 3b) record the acceptance — see database/039_terms_acceptance.sql.
+    // entry_point 'invitation' distinguishes this from the person who created
+    // the organization: materially different acts of assent, worth being able
+    // to tell apart afterwards. Non-fatal for the same reason as signup — the
+    // account already exists by this point, and the refusal above is the half
+    // of this feature that has to be absolute.
+    const { error: termsErr } = await admin.from("terms_acceptances").insert([{
+      organization_id: invite.organization_id,
+      user_id: newUser.id,
+      user_type: userType,
+      email,
+      document: TERMS_DOCUMENT,
+      document_version: TERMS_VERSION,
+      entry_point: "invitation",
+      accepted_at: new Date().toISOString(),
+      ip: acceptanceIp(request),
+    }]);
+    if (termsErr) {
+      console.error("[invite-accept] terms acceptance not recorded", newUser.id, termsErr.message);
+    }
 
     // 4) Supabase Auth account (with org claim)
     const { data: au } = await admin.auth.admin.createUser({

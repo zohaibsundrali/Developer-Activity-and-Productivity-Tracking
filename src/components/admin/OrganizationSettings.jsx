@@ -25,6 +25,87 @@ const FOCUS_RING =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 const CONTROL = `w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors duration-150 ${FOCUS_RING}`;
 
+/** Refusal shown when a save is attempted on a form that never held real data. */
+export const NOT_LOADED_MESSAGE =
+  "These settings never finished loading, so saving now would overwrite your organization with blank defaults. Reload and try again.";
+
+/**
+ * supabase-js RESOLVES with `{ data, error }` — it does not reject — so a
+ * try/catch around a query never fires, and code that reads only `.data`
+ * cannot tell an RLS denial, a 4xx or a 5xx apart from "no rows". Read the
+ * error that is already being returned and throw it, so the catch (and the
+ * ErrorState it feeds) becomes reachable.
+ */
+function unwrap(result, fallback) {
+  if (result?.error) throw new Error(result.error.message || fallback);
+  return result?.data ?? null;
+}
+
+/**
+ * Merge one stored settings section over its defaults, ignoring stored nulls.
+ * A plain spread let a stored `{"days": null}` beat the default, and
+ * `settings.working_hours.days.includes(...)` then threw a TypeError during
+ * render and took the whole tab down.
+ */
+function mergeSection(defaults, stored) {
+  const out = { ...defaults };
+  if (stored && typeof stored === "object" && !Array.isArray(stored)) {
+    for (const [k, v] of Object.entries(stored)) {
+      if (v !== null && v !== undefined) out[k] = v;
+    }
+  }
+  return out;
+}
+
+/** Normalize the `settings` jsonb into a shape every control can render. */
+export function mergeOrgSettings(stored) {
+  const workingHours = mergeSection(DEFAULTS.working_hours, stored?.working_hours);
+  return {
+    working_hours: {
+      ...workingHours,
+      // `days` is dereferenced with .includes()/.filter() on every render.
+      days: Array.isArray(workingHours.days) ? workingHours.days : DEFAULTS.working_hours.days,
+    },
+    notifications: mergeSection(DEFAULTS.notifications, stored?.notifications),
+    security: mergeSection(DEFAULTS.security, stored?.security),
+  };
+}
+
+/**
+ * Read the organization row.
+ * Throws on failure; returns null only when the read succeeded and no row is
+ * visible. Failed and empty are different answers and must not be conflated.
+ */
+export async function fetchOrganization(orgId) {
+  const res = await supabase.from("organizations").select("*").eq("id", orgId).maybeSingle();
+  return unwrap(res, "Could not load your organization settings.");
+}
+
+/**
+ * Write the form back to the organization row.
+ *
+ * `hydrated` is the guard on the destructive path: the form starts on
+ * DEFAULTS, and every one of `logo_url` / `industry` / `company_size` /
+ * `country` evaluates `"" || null` -> null while `timezone` forces "UTC", so
+ * one save from a never-loaded form blanks five columns plus the `settings`
+ * jsonb. A form that has never held real data must not be able to overwrite
+ * real data, so the write is refused before it is issued.
+ */
+export async function saveOrganization({ orgId, hydrated, form, settings, org }) {
+  if (!orgId || !hydrated) throw new Error(NOT_LOADED_MESSAGE);
+  const { error } = await supabase.from("organizations").update({
+    name: form.name.trim() || org?.name,
+    logo_url: form.logo_url || null,
+    industry: form.industry || null,
+    company_size: form.company_size || null,
+    country: form.country.trim() || null,
+    timezone: form.timezone || "UTC",
+    settings,
+    updated_at: new Date().toISOString(),
+  }).eq("id", orgId);
+  if (error) throw new Error(error.message || "Could not save settings.");
+}
+
 /** A skeleton shaped like the settings form, not a spinner on a blank page. */
 function SettingsFormSkeleton() {
   return (
@@ -97,19 +178,18 @@ export default function OrganizationSettings({ readOnly = false }) {
     if (!orgId) { setLoading(false); return; }
     setLoading(true);
     setLoadError(null);
+    // Drop any previously loaded record first: `org` is what marks the form as
+    // holding real data, and a failed reload must not leave that mark behind.
+    setOrg(null);
     try {
-      const { data } = await supabase.from("organizations").select("*").eq("id", orgId).maybeSingle();
+      const data = await fetchOrganization(orgId);
       if (data) {
         setOrg(data);
         setForm({
           name: data.name || "", logo_url: data.logo_url || "", industry: data.industry || "",
           company_size: data.company_size || "", country: data.country || "", timezone: data.timezone || "UTC",
         });
-        setSettings({
-          working_hours: { ...DEFAULTS.working_hours, ...(data.settings?.working_hours || {}) },
-          notifications: { ...DEFAULTS.notifications, ...(data.settings?.notifications || {}) },
-          security: { ...DEFAULTS.security, ...(data.settings?.security || {}) },
-        });
+        setSettings(mergeOrgSettings(data.settings));
       }
     } catch (err) {
       setLoadError(err?.message || "Could not load your organization settings.");
@@ -121,7 +201,8 @@ export default function OrganizationSettings({ readOnly = false }) {
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setWH = (k, v) => setSettings((s) => ({ ...s, working_hours: { ...s.working_hours, [k]: v } }));
   const toggleDay = (d) => setSettings((s) => {
-    const days = s.working_hours.days.includes(d) ? s.working_hours.days.filter((x) => x !== d) : [...s.working_hours.days, d];
+    const current = Array.isArray(s.working_hours.days) ? s.working_hours.days : DEFAULTS.working_hours.days;
+    const days = current.includes(d) ? current.filter((x) => x !== d) : [...current, d];
     return { ...s, working_hours: { ...s.working_hours, days } };
   });
   const setNotif = (k, v) => setSettings((s) => ({ ...s, notifications: { ...s.notifications, [k]: v } }));
@@ -143,21 +224,15 @@ export default function OrganizationSettings({ readOnly = false }) {
     } finally { setUploading(false); }
   };
 
+  // Only a successful read of a real row marks the form as safe to save from.
+  const hydrated = Boolean(org);
+
   const save = async () => {
-    if (!orgId || readOnly) return;
+    if (readOnly) return;
+    if (!hydrated) { showError("Nothing to save", NOT_LOADED_MESSAGE); return; }
     setSaving(true);
     try {
-      const { error } = await supabase.from("organizations").update({
-        name: form.name.trim() || org?.name,
-        logo_url: form.logo_url || null,
-        industry: form.industry || null,
-        company_size: form.company_size || null,
-        country: form.country.trim() || null,
-        timezone: form.timezone || "UTC",
-        settings,
-        updated_at: new Date().toISOString(),
-      }).eq("id", orgId);
-      if (error) throw error;
+      await saveOrganization({ orgId, hydrated, form, settings, org });
       showSuccess("Settings saved", "Your organization settings have been updated.");
     } catch (err) {
       showError("Save failed", err.message || "Could not save settings.");
@@ -174,6 +249,16 @@ export default function OrganizationSettings({ readOnly = false }) {
   );
   if (loadError) return (
     <ErrorState title="Couldn't load organization settings" description={loadError} onRetry={load} />
+  );
+  // Read succeeded, no row came back: genuinely empty, not failed. The form
+  // stays off the screen either way, because saving it would write defaults
+  // over whatever the row actually holds.
+  if (!hydrated) return (
+    <EmptyState
+      icon={Building2}
+      title="Organization not found"
+      description="This workspace no longer exists, or your account can't see it. Sign in again, or ask an owner for access."
+    />
   );
 
   return (
@@ -316,7 +401,7 @@ export default function OrganizationSettings({ readOnly = false }) {
 
       {!readOnly && (
         <div className="flex justify-end">
-          <Button type="button" onClick={save} disabled={saving}>
+          <Button type="button" onClick={save} disabled={saving || !hydrated}>
             {saving
               ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin motion-reduce:animate-none" />
               : <Save aria-hidden="true" className="h-4 w-4" />}

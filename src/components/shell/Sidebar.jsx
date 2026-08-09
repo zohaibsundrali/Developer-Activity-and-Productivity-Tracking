@@ -2,12 +2,14 @@
 
 import { useMemo, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { LogOut, ChevronLeft, X, ShieldCheck } from "lucide-react";
+import { LogOut, ChevronLeft, X } from "lucide-react";
 // The same hook Modal/Drawer use: focus trap, Escape, focus restore and body
 // scroll lock. The rail can't be a <Drawer> — its panel is a padded bg-card
 // box and this is flush dark chrome — but the dialog behaviour must not be a
 // second implementation.
 import { useDialog } from "@/components/ui/use-dialog";
+import { BRAND_NAME } from "@/components/brand/brand";
+import { LogoMark } from "@/components/brand/Logo";
 
 /**
  * Group the flat nav list into labelled sections. An item may carry an
@@ -33,7 +35,7 @@ function groupNavItems(navItems) {
  */
 export default function Sidebar({
   role = "developer",
-  brandName = "DevTrack",
+  brandName = BRAND_NAME,
   navItems = [],
   activeSection,
   onNavigate,
@@ -112,12 +114,13 @@ export default function Sidebar({
             isRail && "justify-center px-0"
           )}
         >
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground shadow-card">
-            <ShieldCheck className="h-5 w-5" aria-hidden="true" />
-          </div>
+          {/* The mark is its own tile — no wrapper box. `text-sidebar-primary`
+              is the indigo lightened for dark ground, and the check is a true
+              knockout, so the navy sidebar shows straight through it. */}
+          <LogoMark className="h-9 w-9 shrink-0 text-sidebar-primary" />
           {!isRail && (
             <div className="min-w-0">
-              <p className="truncate text-sm font-bold text-sidebar-primary-foreground">
+              <p className="truncate font-display text-sm font-bold tracking-[-0.015em] text-sidebar-primary-foreground">
                 {brandName}
               </p>
               <p className="truncate text-[11px] font-medium text-sidebar-muted">{roleLabel}</p>
