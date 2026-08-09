@@ -29,7 +29,6 @@ import {
   BarChart3,
   Calendar,
   Camera,
-  CheckCircle2,
   Clock,
   Clock1,
   Clock2,
@@ -49,7 +48,6 @@ import {
   TrendingUp,
   Type,
   User,
-  XCircle,
 } from "lucide-react";
 
 // One categorical palette for the whole app — this file used to carry its own
@@ -1040,9 +1038,13 @@ export default function DeveloperActivity() {
   const secondLoginRow = loginChrono[1]?.row || null;
   const firstLoginTime = firstLoginRow ? fmtPkTime12(getLoginDisplayValue(firstLoginRow)) : "—";
   const secondLoginTime = secondLoginRow ? fmtPkTime12(getLoginDisplayValue(secondLoginRow)) : "—";
-  // Dashboard status rule (display-only): 0-1 logins => Allowed, 2+ logins => Blocked.
-  // A developer is allowed a maximum of 2 logins per day.
-  const dailyLoginStatus = todaysLoginCount >= 2 ? "Blocked" : "Allowed";
+  // A "Login Status: Blocked / Allowed" card used to be derived here from
+  // `todaysLoginCount >= 2`. Nothing in the product blocks anything on that
+  // basis — no login path consults it — so the card told admins an account was
+  // restricted when it was not, and they could act on that. It is gone rather
+  // than relabelled: the only real fact behind it was the login count, and the
+  // "Today's Login Count" card next to it already states that plainly.
+  // Enforcing a daily login cap is a product decision, not a display fix.
 
   // Screenshots: show time exactly as stored (no timezone conversion).
   // Example input: "2026-04-24 05:53:04.978197+00" -> "05:53:04"
@@ -1588,25 +1590,10 @@ export default function DeveloperActivity() {
           {/* ==================== LOGIN ACTIVITY ==================== */}
           {viewMode === "logins" && (
             <div className="space-y-6">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <StatCard icon={<LockKeyhole className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Today's Login Count" value={todaysLoginCount} bg="bg-success/10" />
                 <StatCard icon={<Clock1 className="h-5 w-5 text-foreground" aria-hidden="true" />} label="First Login" value={firstLoginTime} bg="bg-info/10" />
                 <StatCard icon={<Clock2 className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Second Login" value={secondLoginTime} bg="bg-primary/10" />
-                <div className="bg-card p-4 rounded-xl border border-border shadow-card">
-                  <div className="flex items-center">
-                    <div className={`${dailyLoginStatus === "Blocked" ? "bg-destructive/10" : "bg-success/10"} p-3 rounded-lg mr-3`}>
-                      {dailyLoginStatus === "Blocked" ? (
-                        <XCircle className="h-5 w-5 text-foreground" aria-hidden="true" />
-                      ) : (
-                        <CheckCircle2 className="h-5 w-5 text-foreground" aria-hidden="true" />
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Login Status</p>
-                      <p className={`text-lg font-bold ${dailyLoginStatus === "Blocked" ? "text-destructive" : "text-success"}`}>{dailyLoginStatus}</p>
-                    </div>
-                  </div>
-                </div>
               </div>
 
               <div className="rounded-xl border border-border bg-card p-6 shadow-card">

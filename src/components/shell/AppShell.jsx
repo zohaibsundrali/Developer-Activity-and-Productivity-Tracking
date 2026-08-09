@@ -6,7 +6,12 @@ import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 import CommandPalette from "./CommandPalette";
 import GlobalSearchButton from "./GlobalSearchButton";
+import { BRAND_NAME } from "@/components/brand/brand";
 
+// Deliberately still "devtrack.*" after the rename to Verisade. This key names a
+// slot in a real user's browser, not the product — changing it would silently
+// reset the sidebar preference of everyone already using the app, which is a
+// worse outcome than an out-of-date string nobody sees.
 const COLLAPSE_KEY = "devtrack.sidebarCollapsed";
 
 /**
@@ -16,7 +21,7 @@ const COLLAPSE_KEY = "devtrack.sidebarCollapsed";
  */
 export default function AppShell({
   role = "developer",
-  brandName = "DevTrack",
+  brandName = BRAND_NAME,
   navItems = [],
   activeSection,
   onNavigate,

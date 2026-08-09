@@ -183,7 +183,6 @@ export default function NotificationsPage() {
   return (
     <AppShell
       role={role}
-      brandName="DevTrack"
       navItems={navItems}
       // Deliberately unset: no sidebar item corresponds to this page, and
       // highlighting the nearest one would claim you are somewhere you are not.

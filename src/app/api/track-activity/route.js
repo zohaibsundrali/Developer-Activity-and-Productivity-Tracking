@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import crypto from 'crypto';
+import { recordEvent } from '@/utils/systemEvents';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -16,10 +18,7 @@ const supabase = createClient(
  * outright would break every installed agent. The hardening here is therefore
  * layered so it is safe to deploy today:
  *
- *   1. An OPTIONAL shared secret. Set DESKTOP_INGEST_SECRET and the route
- *      requires `X-Ingest-Secret` (or a Bearer token) to match. Leave it unset
- *      and behaviour is unchanged — so you can deploy now, roll the secret out
- *      to the desktop app, then set the env var to switch enforcement on.
+ *   1. A STAGED shared-secret gate — see "INGEST AUTHENTICATION" below.
  *   2. Column allow-listing. Only known columns are inserted, so a caller can
  *      no longer set organization_id or any other column by mass assignment.
  *   3. Identity validation. developer_id must reference a real developer, and
@@ -42,18 +41,158 @@ const ALLOWED_FIELDS = [
   'timestamp',
 ];
 
-function ingestAuthorized(request) {
+/* ─────────────────────────── INGEST AUTHENTICATION ─────────────────────────
+ *
+ * The desktop tracker is a separate program already installed on customer
+ * machines and cannot be updated from this repository, so this gate CANNOT be
+ * flipped closed in one step without stopping tracking for every existing
+ * customer. It is therefore staged, driven by two independent env vars:
+ *
+ *   DESKTOP_INGEST_SECRET   the shared secret agents must present
+ *   DESKTOP_INGEST_ENFORCE  1/true/yes/on to reject unauthenticated requests
+ *
+ *   ┌ secret ┬ enforce ┬ stage ────────┬ unauthenticated request ─────────────┐
+ *   │  unset │  unset  │ open          │ ACCEPTED (today's behaviour) + loud  │
+ *   │        │         │ (default)     │ warning at import and telemetry      │
+ *   │  set   │  unset  │ observe       │ ACCEPTED + recorded, so the owner can│
+ *   │        │         │               │ see how many agents are still legacy │
+ *   │  set   │  set    │ enforce       │ 401                                  │
+ *   │  unset │  set    │ misconfigured │ 401 — enforcement was asked for and  │
+ *   │        │         │               │ nothing can authenticate; fails      │
+ *   │        │         │               │ CLOSED like /api/cron rather than    │
+ *   │        │         │               │ silently reopening the hole          │
+ *   └────────┴─────────┴───────────────┴──────────────────────────────────────┘
+ *
+ * Nothing changes until the owner sets a variable. See docs/desktop-ingest-auth.md
+ * for the contract the desktop agent must implement.
+ *
+ * This block is deliberately identical in src/app/api/upload-screenshot/route.js
+ * (only ROUTE_NAME differs) — the two ingest endpoints share one contract and
+ * must never drift apart.
+ */
+
+const ROUTE_NAME = '/api/track-activity';
+
+// Telemetry must not turn one chatty legacy agent into thousands of rows in
+// system_events, so unauthenticated requests are counted and reported at most
+// once per window, carrying the suppressed count.
+const UNAUTH_REPORT_INTERVAL_MS = 10 * 60 * 1000;
+let unauthSinceReport = 0;
+let unauthReportedAt = 0;
+
+function ingestSecret() {
   const secret = process.env.DESKTOP_INGEST_SECRET;
-  if (!secret) return true; // enforcement not enabled yet
-  const header =
-    request.headers.get('x-ingest-secret') ||
-    (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
-  return header === secret;
+  return typeof secret === 'string' && secret.length > 0 ? secret : null;
+}
+
+function enforcementEnabled() {
+  const flag = String(process.env.DESKTOP_INGEST_ENFORCE || '').trim().toLowerCase();
+  return flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on';
+}
+
+function presentedCredential(request) {
+  const header = request.headers.get('x-ingest-secret');
+  if (header) return header;
+  const bearer = /^Bearer\s+(.+)$/i.exec(request.headers.get('authorization') || '');
+  return bearer ? bearer[1].trim() : '';
+}
+
+/**
+ * Constant-time comparison. Both sides are hashed first so the buffers handed
+ * to timingSafeEqual are always 32 bytes: that removes the length leak (and the
+ * throw on unequal lengths) that a naive `===` or a raw buffer compare has.
+ */
+function credentialMatches(presented, secret) {
+  const a = crypto.createHash('sha256').update(String(presented), 'utf8').digest();
+  const b = crypto.createHash('sha256').update(secret, 'utf8').digest();
+  return crypto.timingSafeEqual(a, b);
+}
+
+/** @returns {{allow: boolean, authenticated: boolean, stage: string, reason: string}} */
+function authorizeIngest(request) {
+  const secret = ingestSecret();
+  const enforce = enforcementEnabled();
+
+  if (secret && credentialMatches(presentedCredential(request), secret)) {
+    return { allow: true, authenticated: true, stage: enforce ? 'enforce' : 'observe', reason: 'authenticated' };
+  }
+  if (!secret) {
+    return enforce
+      ? { allow: false, authenticated: false, stage: 'misconfigured', reason: 'enforce_without_secret' }
+      : { allow: true, authenticated: false, stage: 'open', reason: 'no_secret_configured' };
+  }
+  return {
+    allow: !enforce,
+    authenticated: false,
+    stage: enforce ? 'enforce' : 'observe',
+    reason: presentedCredential(request) ? 'invalid_credential' : 'missing_credential',
+  };
+}
+
+/**
+ * Best effort, throttled, and never allowed to affect the response — recordEvent
+ * already swallows every failure (see src/utils/systemEvents.js); the try/catch
+ * is belt-and-braces so a future change there cannot throw into an ingest call.
+ * The secret is never included: only a stage, a machine-readable reason and a
+ * count are recorded.
+ */
+async function reportUnauthenticated(decision) {
+  unauthSinceReport += 1;
+  const now = Date.now();
+  if (unauthReportedAt && now - unauthReportedAt < UNAUTH_REPORT_INTERVAL_MS) return;
+
+  const count = unauthSinceReport;
+  unauthSinceReport = 0;
+  unauthReportedAt = now;
+
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[ingest] ${ROUTE_NAME}: ${count} unauthenticated request(s) (${decision.reason}); ` +
+      `stage=${decision.stage}, ${decision.allow ? 'ACCEPTED — this endpoint is still open' : 'rejected with 401'}. ` +
+      'See docs/desktop-ingest-auth.md.'
+  );
+
+  try {
+    await recordEvent({
+      orgId: null,
+      type: decision.allow ? 'api.ingest_unauthenticated_accepted' : 'api.ingest_unauthenticated_rejected',
+      severity: 'warning',
+      source: 'api',
+      message: decision.allow
+        ? `${ROUTE_NAME} accepted ${count} unauthenticated desktop ingest request(s) — legacy agents are still reporting without a secret.`
+        : `${ROUTE_NAME} rejected ${count} unauthenticated desktop ingest request(s).`,
+      context: {
+        route: ROUTE_NAME,
+        reason: decision.reason,
+        status: decision.stage,
+        statusCode: decision.allow ? 200 : 401,
+        count,
+      },
+    });
+  } catch {
+    /* monitoring must never break ingest */
+  }
+}
+
+// Loud on boot: an unset secret means this endpoint is writable by anyone who
+// knows a developer id, and that must not be able to stay quiet for another year.
+if (!ingestSecret()) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    enforcementEnabled()
+      ? `[ingest] ${ROUTE_NAME}: DESKTOP_INGEST_ENFORCE is on but DESKTOP_INGEST_SECRET is unset — ` +
+          'every ingest request will be rejected with 401 (fail closed). Set the secret.'
+      : `[ingest] ${ROUTE_NAME}: DESKTOP_INGEST_SECRET is NOT set — this endpoint accepts ` +
+          'UNAUTHENTICATED writes from anyone who knows a developer id. Activity timelines can be ' +
+          'forged. Set DESKTOP_INGEST_SECRET, then DESKTOP_INGEST_ENFORCE=1. See docs/desktop-ingest-auth.md.'
+  );
 }
 
 export async function POST(request) {
   try {
-    if (!ingestAuthorized(request)) {
+    const auth = authorizeIngest(request);
+    if (!auth.authenticated) await reportUnauthenticated(auth);
+    if (!auth.allow) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

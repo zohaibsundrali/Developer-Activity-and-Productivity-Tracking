@@ -1,0 +1,210 @@
+-- =====================================================================
+--  041 - Password hardening: measure the legacy population, design its removal
+-- =====================================================================
+--  ADDITIVE ONLY. This migration creates three partial indexes and nothing
+--  else. It alters no column, drops no column, rewrites no row, changes no
+--  policy and changes no behaviour of any existing query. Applying it cannot
+--  sign anybody out.
+--
+--  IT DELIBERATELY DOES NOT DROP THE PASSWORD COLUMNS. The sequence that ends
+--  with dropping them is written out in full at the bottom of this file, as
+--  comments, together with the condition each stage is blocked on. Running any
+--  of it today would lock people out.
+--
+--  ---------------------------------------------------------------------
+--  WHAT THE PROBLEM ACTUALLY IS
+--  ---------------------------------------------------------------------
+--  Three tables carry a cleartext `password` column left over from the
+--  pre-Supabase-Auth login: public.developers, public.admin_users and
+--  public.clients. Each also carries `auth_user_id`, the link to the real
+--  credential in auth.users (012 for the first two, 014 for clients).
+--
+--  Supabase Auth is the authoritative credential. src/app/login/page.js signs
+--  in with supabase.auth.signInWithPassword() and only consults the cleartext
+--  column in a fallback branch that runs when that sign-in fails.
+--
+--  Two consequences, both load-bearing for everything below:
+--
+--   1. THE CLEARTEXT COLUMN IS READABLE BY EVERY COLLEAGUE. Migrations 013 and
+--      014 put `for all TO AUTHENTICATED using (organization_id = auth_org())`
+--      on these tables. Any authenticated member of an organization can
+--      `select *` and read every colleague's password through PostgREST. That
+--      is the exposure, and it is not theoretical.
+--
+--   2. THE FALLBACK BRANCH CANNOT REACH THOSE ROWS UNDER CURRENT RLS. The
+--      fallback only runs when Supabase Auth sign-in FAILED, which means the
+--      browser is still the `anon` role at that moment. No policy on any of the
+--      three tables grants anything to `anon` - 013 and 014 grant only to
+--      `authenticated`, and 018 did not add one. So the profile SELECT returns
+--      zero rows, `profile` is null, and the fallback comparison is never
+--      reached. On paper the legacy path is already dead.
+--
+--      "On paper" is doing real work in that sentence. The header of 018
+--      records that several permissive policies existed in the live database
+--      and appeared in no migration file, so a hand-made anon-readable policy
+--      cannot be ruled out from the repository alone. Verify query 4 below
+--      settles it against the actual database. Until it has been run, every
+--      change shipped alongside this migration assumes the fallback IS live and
+--      keeps it working.
+--
+--  ---------------------------------------------------------------------
+--  WHAT SHIPPED WITH THIS MIGRATION (code, not SQL)
+--  ---------------------------------------------------------------------
+--   * src/app/api/developer/change-password/route.js now changes the REAL
+--     credential via auth.admin.updateUserById(). Before, it compared and
+--     rewrote the cleartext column only, so a password change changed nothing
+--     that anybody signs in with.
+--   * That route now writes a PBKDF2 hash into the legacy column instead of
+--     cleartext, so a freshly rotated password is not re-exposed to every
+--     colleague on its way out.
+--   * src/app/login/page.js verifies the legacy column as hash-OR-cleartext, so
+--     rewritten rows and untouched rows both still authenticate.
+--   * GET /api/admin/legacy-auth-audit reports the counts below per tenant.
+--
+--  ---------------------------------------------------------------------
+--  FORMAT NOTE
+--  ---------------------------------------------------------------------
+--  One statement per physical line, no DO blocks, no dollar quoting, no
+--  double-quoted identifiers - the target SQL editor mangles all three. It
+--  resolves an entire paste before running it, so each PART is written to be
+--  runnable on its own, and it shows only the LAST statement's result, so the
+--  verification queries in PART 2 must be run ONE AT A TIME.
+--
+--  Depends on: 012 (developers.auth_user_id, admin_users.auth_user_id) and
+--  014 (public.clients). Re-runnable: every statement is IF NOT EXISTS.
+-- =====================================================================
+
+
+-- ---------------------------------------------------------------------
+--  PART 1 - Indexes behind the audit counts
+-- ---------------------------------------------------------------------
+--  The audit asks one question per table: how many rows have no linked auth
+--  user? These partial indexes make that an index-only count instead of a
+--  sequential scan, and they stay small because they only contain the rows that
+--  are still a problem - an empty index once the migration is finished.
+--
+--  Partial indexes only. No unique constraint, no index on the password column
+--  itself: an index on a credential is one more place the credential lives.
+-- ---------------------------------------------------------------------
+
+create index if not exists idx_developers_no_auth_user on public.developers (organization_id) where auth_user_id is null;
+create index if not exists idx_admin_users_no_auth_user on public.admin_users (organization_id) where auth_user_id is null;
+create index if not exists idx_clients_no_auth_user on public.clients (organization_id) where auth_user_id is null;
+
+
+-- ---------------------------------------------------------------------
+--  PART 2 - Verification. Read-only. Run each query ON ITS OWN.
+-- ---------------------------------------------------------------------
+--  These are the platform-wide numbers. GET /api/admin/legacy-auth-audit gives
+--  the same counts scoped to a single tenant; a figure that spans tenants is
+--  deliberately not exposed through the API, so it is produced here by the
+--  project owner on the service role.
+-- ---------------------------------------------------------------------
+
+-- 1) THE HEADLINE NUMBER. Accounts with no Supabase Auth user at all. These
+--    cannot sign in through the authoritative credential, cannot reset their
+--    own password, and cannot be fixed by the account holder. Every one of them
+--    needs an administrator to provision sign-in. This number must be 0 before
+--    stage 3 below can start.
+select 'developers' as source, count(*) as legacy_only from public.developers where auth_user_id is null union all select 'admin_users', count(*) from public.admin_users where auth_user_id is null union all select 'clients', count(*) from public.clients where auth_user_id is null;
+
+-- 2) THE DRAIN. Rows whose password column still holds something that is not a
+--    PBKDF2 hash, i.e. still holds a readable credential. This number must be 0
+--    before the cleartext branch of the login fallback can be deleted.
+select 'developers' as source, count(*) as cleartext from public.developers where password is not null and password not like 'pbkdf2$%' union all select 'admin_users', count(*) from public.admin_users where password is not null and password not like 'pbkdf2$%' union all select 'clients', count(*) from public.clients where password is not null and password not like 'pbkdf2$%';
+
+-- 3) Full breakdown per table, for tracking progress over time.
+select 'developers' as source, count(*) as total, count(*) filter (where auth_user_id is null) as legacy_only, count(*) filter (where password is not null and password not like 'pbkdf2$%') as cleartext, count(*) filter (where password like 'pbkdf2$%') as hashed, count(*) filter (where password is null) as no_password from public.developers union all select 'admin_users', count(*), count(*) filter (where auth_user_id is null), count(*) filter (where password is not null and password not like 'pbkdf2$%'), count(*) filter (where password like 'pbkdf2$%'), count(*) filter (where password is null) from public.admin_users union all select 'clients', count(*), count(*) filter (where auth_user_id is null), count(*) filter (where password is not null and password not like 'pbkdf2$%'), count(*) filter (where password like 'pbkdf2$%'), count(*) filter (where password is null) from public.clients;
+
+-- 4) IS THE LEGACY LOGIN FALLBACK ACTUALLY REACHABLE? Every policy on the three
+--    tables, with the roles it applies to. If no row lists anon or public in
+--    `roles`, an unauthenticated browser reads nothing from these tables, the
+--    fallback branch in src/app/login/page.js can never fire, and stage 3 is
+--    only a code deletion rather than a user-facing change. Run this before
+--    planning stage 3 - it decides how risky stage 3 is.
+select tablename, policyname, roles, cmd from pg_policies where schemaname = 'public' and tablename in ('developers','admin_users','clients') order by tablename, policyname;
+
+
+-- =====================================================================
+--  NOT EXECUTED - the staged decommissioning of the cleartext columns
+-- =====================================================================
+--  Each stage states what it is blocked on. Nothing below runs today.
+--
+--  STAGE 1 - DONE (shipped as code with this migration)
+--    Change-password writes the real Supabase Auth credential, and syncs the
+--    legacy column as a hash rather than cleartext.
+--    Blocked on: nothing. Already live.
+--
+--  STAGE 2 - DONE (shipped as code with this migration)
+--    The legacy population is a number: verify queries 1-3 above, and
+--    GET /api/admin/legacy-auth-audit per tenant.
+--    Blocked on: nothing. Already live.
+--
+--  STAGE 3 - PROVISION THE ACCOUNTS THAT HAVE NO CREDENTIAL
+--    For every row returned by verify query 1, create a Supabase Auth user via
+--    the Auth Admin API with app_metadata = { organization_id, role, user_type,
+--    app_user_id } - exactly as 012 did - and write auth_user_id back. Where a
+--    usable cleartext password still exists it can be carried over verbatim, so
+--    the account holder notices nothing; where it does not, send a password
+--    reset instead. This is data work through the Auth Admin API, not SQL.
+--    Blocked on: nothing, but it needs an owner with the service role. It is
+--    the long pole - until it is finished the legacy column is load-bearing for
+--    somebody.
+--    Done when: verify query 1 returns 0 for all three tables.
+--
+--  STAGE 4 - STOP CREATING NEW CLEARTEXT ROWS
+--    Five writers still insert a cleartext password and must each be changed to
+--    provision a Supabase Auth user and write no password column at all:
+--      src/app/api/auth/signup/route.js
+--      src/app/api/invitations/accept/route.js
+--      src/app/admin/registration/page.js
+--      src/components/admin/AddDeveloper.jsx
+--      src/components/admin/ClientManagement.jsx
+--    Until this lands, the exposure keeps being recreated for every new account
+--    no matter how many old rows are cleaned up.
+--    Blocked on: nothing technical. This is the change that makes stage 5 hold.
+--
+--  STAGE 5 - RETIRE THE REMAINING CLEARTEXT VALUES
+--    One pass over the three tables replacing each remaining cleartext value
+--    with a PBKDF2 hash of itself, in the format written by
+--    src/app/api/developer/change-password/legacyPassword.js
+--    (pbkdf2$sha256$210000$<salt-b64>$<derived-b64>). This cannot be done in
+--    SQL - pgcrypto has no PBKDF2-HMAC-SHA256 in the shape this format needs -
+--    so it is a one-off service-role script that reads, derives and writes back.
+--    Alternatively, if verify query 4 proves the fallback is unreachable, skip
+--    the hashing and null the column instead - strictly better, and no user can
+--    notice, because nothing reads it.
+--    Blocked on: stage 4. Hashing rows while a writer keeps inserting new
+--    cleartext ones never converges.
+--    Done when: verify query 2 returns 0 for all three tables.
+--
+--  STAGE 6 - DELETE THE FALLBACK FROM THE LOGIN PAGE
+--    Remove the `else if (profile && await verifyLegacyPassword(...))` branch
+--    from src/app/login/page.js, and the legacy re-sync block from
+--    src/app/api/developer/change-password/route.js (it is marked in a comment
+--    there). After this, nothing in the product reads the password column.
+--    Blocked on: stage 3. Deleting the fallback before every account has a
+--    Supabase Auth user locks those accounts out with no recovery path, which
+--    is the one outcome this whole plan exists to avoid.
+--    Verify before shipping: verify query 1 returns 0, and no code references
+--    the column - grep for `\.password` and `password:` under src/.
+--
+--  STAGE 7 - DROP THE COLUMNS (a separate migration, not this one)
+--    Ship one release with the columns unread but still present, so a rollback
+--    of stage 6 is possible without data loss. Then, in its own migration:
+--
+--      alter table public.developers drop column if exists password;
+--      alter table public.admin_users drop column if exists password;
+--      alter table public.clients drop column if exists password;
+--      drop index if exists idx_developers_no_auth_user;
+--      drop index if exists idx_admin_users_no_auth_user;
+--      drop index if exists idx_clients_no_auth_user;
+--
+--    Blocked on: stage 6, plus one full release of soak time. A dropped column
+--    is not recoverable from the running database, so the soak release is what
+--    makes the drop reversible in practice.
+--    Also at this stage: section 12 of src/content/legal/privacy.js carries an
+--    explicit disclosure that these columns exist and that change-password
+--    rewrites them. That paragraph is now partly out of date - the endpoint no
+--    longer writes cleartext - and comes out entirely once the columns are gone.
+-- =====================================================================

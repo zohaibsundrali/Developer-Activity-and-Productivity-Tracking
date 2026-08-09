@@ -6,10 +6,11 @@ import { useRouter } from "next/navigation";
 import { SESSION_MAX_AGE_DAYS } from "@/utils/sessionPolicy";
 import { loadOrgContext, isMembershipActive } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
+import { verifyLegacyPassword } from "@/app/api/developer/change-password/legacyPassword";
 
 import { ArrowLeft } from "lucide-react";
 import { Button, Field, Input } from "@/components/ui";
-import AuthShell, { BrandLockup } from "@/components/auth/AuthShell";
+import AuthShell, { BrandLockup, enterDelay } from "@/components/auth/AuthShell";
 import {
   AUTH_INPUT,
   AuthCard,
@@ -20,10 +21,20 @@ import {
   SubmitButton,
 } from "@/components/auth/AuthParts";
 
-const verifyPassword = (inputPassword, storedPassword) => {
-  if (typeof storedPassword !== "string") return false;
-  return storedPassword === inputPassword;
-};
+// The legacy fallback below used to be a bare `storedPassword === inputPassword`
+// against a cleartext column. /api/developer/change-password no longer writes
+// cleartext there — it writes a PBKDF2 hash, because RLS on developers /
+// admin_users / clients is `for all to authenticated`, so every logged-in
+// colleague can read that column and a cleartext copy of a just-rotated
+// password is a live exposure.
+//
+// This import is what keeps that safe: verifyLegacyPassword accepts EITHER a
+// hash or an untouched cleartext row, so rows written by the new route and rows
+// written by every other (unchanged) writer both still authenticate. Without
+// this one change, anyone who successfully changed their password would be
+// locked out of the fallback path, and this is the population that has no
+// recovery route. Single shared implementation, deliberately — two copies of a
+// password check are two chances for them to disagree.
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -62,8 +73,8 @@ export default function LoginPage() {
 
       if (authData?.user && profile) {
         loggedInData = profile;                       // authenticated via Supabase Auth
-      } else if (profile && verifyPassword(password, profile.password)) {
-        loggedInData = profile;                       // legacy plaintext fallback
+      } else if (profile && (await verifyLegacyPassword(password, profile.password))) {
+        loggedInData = profile;                       // legacy fallback (hash or cleartext)
       } else {
         if (authData?.user) { try { await supabase.auth.signOut(); } catch {} }
         throw new Error(`Invalid ${role} credentials`);
@@ -147,7 +158,10 @@ export default function LoginPage() {
 
   return (
     <AuthShell panelTitle="Sign in to the workspace your team already works in.">
-      <div className="mb-8 flex items-center justify-between gap-4">
+      <div
+        className="auth-enter mb-8 flex items-center justify-between gap-4"
+        style={enterDelay(40)}
+      >
         <BrandLockup className="lg:invisible" />
         <Button
           type="button"
@@ -216,12 +230,20 @@ export default function LoginPage() {
 
           {error && <AuthError message={error} />}
 
-          <SubmitButton loading={loading} loadingLabel="Signing in…" disabled={loading}>
+          <SubmitButton
+            loading={loading}
+            loadingLabel="Signing in…"
+            status={error ? "error" : "idle"}
+            disabled={loading}
+          >
             {`Sign in as ${role === "developer" ? "Team Member" : role.charAt(0).toUpperCase() + role.slice(1)}`}
           </SubmitButton>
         </form>
 
-        <p className="mt-7 border-t border-border pt-5 text-center text-sm text-muted-foreground">
+        <p
+          className="auth-enter mt-7 border-t border-border pt-5 text-center text-sm text-muted-foreground"
+          style={enterDelay(220)}
+        >
           Don&apos;t have an account?{" "}
           <Link
             href="/admin/registration"

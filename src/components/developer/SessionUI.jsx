@@ -110,6 +110,28 @@ function statusToPill(status) {
   return SESSION_STATUS[key] || "unknown";
 }
 
+/**
+ * `productivity_sessions.total_duration` is stored in SECONDS.
+ *
+ * The desktop tracker writes it as the elapsed seconds of the session: sampled
+ * rows match `end_time - start_time` in seconds exactly (e.g. 1141 for a 19-min
+ * session, 2 for a 2-second one), and some rows carry fractional values such as
+ * 359.57 — neither is possible if the column were minutes. Every other reader
+ * already treats it as seconds (DashboardOverview.loadTodayTrackedTime,
+ * DeveloperActivity's day/range totals, reportsData.js). This card was the only
+ * place labelling it "min", which rendered a 19-minute session as "1141 min".
+ *
+ * Formatted as HH:MM:SS to match the other two screens, so the same session
+ * reads the same everywhere.
+ */
+export function formatSessionDuration(totalSeconds) {
+  const secs = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
 export function SessionCard({ session, onClick }) {
   if (!session) return null;
 
@@ -155,7 +177,7 @@ export function SessionCard({ session, onClick }) {
         </div>
         <div className="flex items-baseline justify-between gap-3">
           <dt className="text-muted-foreground">Total duration</dt>
-          <dd className="tabular-nums text-foreground">{session.total_duration ?? 0} min</dd>
+          <dd className="tabular-nums text-foreground">{formatSessionDuration(session.total_duration)}</dd>
         </div>
         <div className="flex items-baseline justify-between gap-3">
           <dt className="text-muted-foreground">Productivity score</dt>

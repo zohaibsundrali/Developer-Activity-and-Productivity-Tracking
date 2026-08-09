@@ -1,25 +1,37 @@
 "use client";
 
-import { AlertCircle, Eye, EyeOff, Info, Loader2 } from "lucide-react";
+import { AlertCircle, Check, Eye, EyeOff, Info, Loader2 } from "lucide-react";
 import { Button, Input } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import "@/styles/auth-motion.css";
 
 /**
  * Small presentational pieces shared by login / registration / invite.
  * None of these touch auth state — they render what they are handed.
+ *
+ * Motion is CSS-only and lives in src/styles/auth-motion.css; each piece here
+ * just hands it a class or a data-attribute. Everything degrades to its static
+ * end state under `prefers-reduced-motion: reduce`.
  */
 
 /** Shared input sizing: 44px tall so the touch target passes on mobile. */
 export const AUTH_INPUT = "h-11 rounded-lg text-base sm:text-sm";
 
-/** Card that holds the form. Full-bleed on mobile, a real card from sm up. */
-export function AuthCard({ className, children, ...props }) {
+/**
+ * Card that holds the form. Full-bleed on mobile, a real card from sm up.
+ *
+ * `auth-card` scopes the field-focus transitions; `auth-enter` gives it the
+ * 400ms fade-and-rise, and the stylesheet blooms a soft shadow underneath it
+ * on a pseudo-element (opacity only) as it settles.
+ */
+export function AuthCard({ className, style, enterDelay = 100, children, ...props }) {
   return (
     <div
       className={cn(
-        "animate-fade-in sm:rounded-xl sm:border sm:border-border sm:bg-card sm:p-8 sm:shadow-card",
+        "auth-card auth-enter sm:rounded-xl sm:border sm:border-border sm:bg-card sm:p-8 sm:shadow-card",
         className
       )}
+      style={{ "--auth-enter-delay": `${enterDelay}ms`, ...style }}
       {...props}
     >
       {children}
@@ -43,8 +55,10 @@ export function AuthHeading({ title, description, className }) {
 /** A designed error surface — announced to screen readers, not a red string. */
 export function AuthError({ message, className }) {
   if (!message) return null;
-  // `auth-error-box` carries no styles — it is the hook e2e/fixtures/auth.js
-  // uses to read back the message when a login never lands. Keep it.
+  // `auth-error-box` is the hook e2e/fixtures/auth.js uses to read back the
+  // message when a login never lands — keep the class name exactly as is.
+  // It also carries the 260ms fade-and-drop from auth-motion.css. No shake:
+  // that was removed on purpose and is not coming back.
   return (
     <div
       role="alert"
@@ -110,39 +124,113 @@ export function PasswordInput({ visible, onToggle, className, ...props }) {
   );
 }
 
-/** Full-width primary submit with a real progress state. */
-export function SubmitButton({ loading, loadingLabel, children, className, ...props }) {
+/**
+ * Full-width primary submit with a real progress state.
+ *
+ * Idle / loading / success / error are stacked in a single CSS grid cell and
+ * cross-faded, so the button is sized by its widest state and its width never
+ * changes as it moves between them.
+ *
+ * Only the active layer is exposed to the accessibility tree — the others are
+ * `aria-hidden`, so the accessible name stays exactly the idle label (the e2e
+ * fixture matches the submit by /^Sign in as/).
+ *
+ * `status` is presentational and optional: pass "error" to get a single tint
+ * pulse (no shake — that was removed deliberately) or "success" for the
+ * checkmark. Callers that pass nothing keep the old idle/loading behaviour.
+ */
+export function SubmitButton({
+  loading,
+  loadingLabel,
+  status = "idle",
+  successLabel = "Done",
+  children,
+  className,
+  ...props
+}) {
+  const state = loading
+    ? "loading"
+    : status === "success" || status === "error"
+    ? status
+    : "idle";
+  // Error keeps the idle label on screen so the button still says what it does.
+  const activeLayer = state === "error" ? "idle" : state;
+
   return (
     <Button
       type="submit"
       size="lg"
       aria-busy={loading || undefined}
-      className={cn("h-11 w-full text-sm font-semibold", className)}
+      data-state={state}
+      className={cn("auth-submit h-11 w-full text-sm font-semibold", className)}
       {...props}
     >
-      {loading ? (
-        <>
+      <span className="auth-submit__stack">
+        <span
+          className="auth-submit__layer"
+          data-layer="idle"
+          data-active={activeLayer === "idle"}
+          aria-hidden={activeLayer === "idle" ? undefined : "true"}
+        >
+          {children}
+        </span>
+
+        <span
+          className="auth-submit__layer"
+          data-layer="loading"
+          data-active={activeLayer === "loading"}
+          aria-hidden={activeLayer === "loading" ? undefined : "true"}
+        >
           <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
           {loadingLabel}
-        </>
-      ) : (
-        children
-      )}
+        </span>
+
+        <span
+          className="auth-submit__layer"
+          data-layer="success"
+          data-active={activeLayer === "success"}
+          aria-hidden={activeLayer === "success" ? undefined : "true"}
+        >
+          <Check className="h-4 w-4" aria-hidden="true" />
+          {successLabel}
+        </span>
+      </span>
     </Button>
   );
 }
 
-/** Segmented control used for role / mode selection. */
+/**
+ * Segmented control used for role / mode selection.
+ *
+ * The selected pill is a separate absolutely-positioned element that slides
+ * between options on `transform` alone — its width is a static calc over the
+ * option count (options are equal-width `flex-1` children), so nothing
+ * animates a layout property. If the value is unknown the indicator is simply
+ * not rendered.
+ */
 export function SegmentedControl({ label, options, value, onChange, className }) {
+  const activeIndex = options.findIndex((option) => option.value === value);
+
   return (
     <div
       role="group"
       aria-label={label}
       className={cn(
-        "flex gap-1 rounded-lg border border-border bg-muted/50 p-1",
+        "auth-segmented flex gap-1 rounded-lg border border-border bg-muted/50 p-1",
         className
       )}
+      style={{
+        "--auth-seg-count": String(options.length),
+        "--auth-seg-index": String(Math.max(activeIndex, 0)),
+      }}
     >
+      {activeIndex >= 0 && (
+        <span
+          aria-hidden="true"
+          className="auth-segmented__indicator rounded-md bg-card shadow-card"
+        />
+      )}
+
       {options.map((option) => {
         const active = value === option.value;
         return (
@@ -153,10 +241,8 @@ export function SegmentedControl({ label, options, value, onChange, className })
             aria-pressed={active}
             title={option.title}
             className={cn(
-              "min-h-[44px] min-w-0 flex-1 truncate rounded-md px-1.5 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background sm:px-2",
-              active
-                ? "bg-card text-foreground shadow-card"
-                : "text-muted-foreground hover:text-foreground"
+              "relative z-10 min-h-[44px] min-w-0 flex-1 truncate rounded-md px-1.5 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background sm:px-2",
+              active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
             )}
           >
             {option.label}
@@ -185,19 +271,18 @@ export function PasswordChecklist({ requirements, id }) {
       {items.map(({ key, label }) => {
         const met = Boolean(requirements?.[key]);
         return (
-          <li key={key} className="flex items-center gap-2 text-xs">
+          <li key={key} className="auth-check flex items-center gap-2 text-xs" data-met={met}>
             <span
               aria-hidden="true"
               className={cn(
-                "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold leading-none",
-                met
-                  ? "border-success bg-success text-success-foreground"
-                  : "border-border text-transparent"
+                "auth-check__dot flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold leading-none",
+                met ? "border-success bg-success text-success-foreground" : "border-border"
               )}
             >
-              &#10003;
+              {/* The mark scales/fades in; the dot's colours cross-fade under it. */}
+              <span className="auth-check__mark">&#10003;</span>
             </span>
-            <span className={met ? "text-foreground" : "text-muted-foreground"}>
+            <span className={cn("auth-check__label", met ? "text-foreground" : "text-muted-foreground")}>
               {label}
               <span className="sr-only">{met ? " — met" : " — not met"}</span>
             </span>

@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { BRAND_NAME } from "@/components/brand/brand";
 
 /**
  * Server-only Stripe access.
@@ -23,7 +24,11 @@ export function stripeClient() {
     // Pinned so a Stripe-side API default change cannot alter behaviour silently.
     apiVersion: "2024-06-20",
     typescript: false,
-    appInfo: { name: "DevTrack Billing" },
+    // Stripe `appInfo.name` — an integration label shown in Stripe's own
+    // dashboards and request logs. NOT the card statement descriptor (that is
+    // set on the Stripe product/account and is limited to 22 characters), so
+    // renaming it here cannot change what a customer sees on a bank statement.
+    appInfo: { name: `${BRAND_NAME} Billing` },
   });
   return cached;
 }

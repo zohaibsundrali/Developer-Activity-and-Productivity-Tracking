@@ -32,6 +32,8 @@ export const SEARCH_DEBOUNCE_MS = 250;
 // Per-type row cap sent as `limit`. `totals` tells us what was left behind.
 export const SEARCH_LIMIT = 6;
 
+// Deliberately still "devtrack.*" after the rename to Verisade — see AppShell.
+// Renaming it would wipe every existing user's recent searches for no gain.
 export const RECENT_SEARCHES_KEY = "devtrack.recentSearches.v1";
 export const RECENT_SEARCHES_LIMIT = 6;
 

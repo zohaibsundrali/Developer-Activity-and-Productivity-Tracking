@@ -53,6 +53,94 @@ const FOCUS_RING =
 const CONTROL = `w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors duration-150 ${FOCUS_RING}`;
 const DANGER_ICON_BTN = `text-muted-foreground hover:bg-destructive/10 hover:text-destructive ${FOCUS_RING}`;
 
+/**
+ * supabase-js RESOLVES with `{ data, error }` — it does not reject — so a
+ * try/catch around a query never fires, and reading only `.data` renders an
+ * RLS denial, a 4xx and a 5xx as "no rows". Read the error that is already
+ * being returned and throw it, so the catch (and the ErrorState it feeds)
+ * becomes reachable.
+ */
+function unwrap(result, label) {
+  if (result?.error) throw new Error(result.error.message || `Could not load ${label}.`);
+  return result?.data ?? [];
+}
+
+/**
+ * Copy text and report what actually happened.
+ *
+ * `navigator.clipboard` is undefined outside a secure context (the optional
+ * chain then swallowed the whole call), and `writeText` rejects with
+ * NotAllowedError when the permission is refused. Both used to end with a
+ * "Link copied" toast for a clipboard that was never written.
+ */
+export async function copyToClipboard(text) {
+  try {
+    if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+      throw new Error("This browser blocked clipboard access.");
+    }
+    await navigator.clipboard.writeText(text);
+    showSuccess("Link copied", text);
+    return true;
+  } catch (err) {
+    showError("Couldn't copy the link", `${err?.message || "Copying was blocked."} Copy it manually: ${text}`);
+    return false;
+  }
+}
+
+/**
+ * Load every section of the client workspace. Throws if ANY of the seven
+ * queries failed, so a partial answer is never presented as a complete one.
+ */
+export async function fetchClientWorkspace(orgId) {
+  const [cl, pc, prj, ann, inv, apr, thr] = await Promise.all([
+    // Never select("*") here: clients carries a legacy plaintext `password`
+    // column, and a wildcard shipped every client's credential into the
+    // admin's browser on each load of this screen. The UI reads only these.
+    supabase.from("clients").select("id, name, email, company, status, created_at").eq("organization_id", orgId).order("created_at", { ascending: false }).limit(2000),
+    supabase.from("project_clients").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }).limit(2000),
+    supabase.from("projects").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }).limit(2000),
+    supabase.from("announcements").select("*").eq("organization_id", orgId).order("published_at", { ascending: false }).limit(2000),
+    supabase.from("invoices").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }).limit(2000),
+    supabase.from("approvals").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }).limit(2000),
+    supabase.from("support_threads").select("*").eq("organization_id", orgId).order("last_message_at", { ascending: false }).limit(2000),
+  ]);
+  // Evaluated in order, so the first failure throws before anything is stored.
+  return {
+    clients: unwrap(cl, "clients"),
+    projectClients: unwrap(pc, "project links"),
+    projects: unwrap(prj, "projects"),
+    announcements: unwrap(ann, "announcements"),
+    invoices: unwrap(inv, "invoices"),
+    approvals: unwrap(apr, "approvals"),
+    threads: unwrap(thr, "support threads"),
+  };
+}
+
+/**
+ * Pending client invitations, from the authenticated invitations API.
+ * Throws on a failed request: an empty list here is rendered as "every
+ * invitation you've sent has been accepted or revoked", which is a factual
+ * claim that a 500 does not support.
+ */
+export async function fetchClientInvitations() {
+  const res = await authFetch("/api/invitations");
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.success) {
+    throw new Error(data?.error || `Could not load client invitations (HTTP ${res.status}).`);
+  }
+  return (data.invitations || []).filter((i) => i.role === "client");
+}
+
+/** Messages in one support thread. Throws on failure; [] only when empty. */
+export async function fetchThreadMessages(threadId) {
+  const res = await supabase
+    .from("support_messages")
+    .select("*")
+    .eq("thread_id", threadId)
+    .order("created_at", { ascending: true });
+  return unwrap(res, "this conversation");
+}
+
 // Read the logged-in admin identity (id + display name) for author/sender stamps.
 function readAdmin() {
   if (typeof window === "undefined") return null;
@@ -94,10 +182,14 @@ export default function ClientManagement() {
   const [admin, setAdmin] = useState(null);
   const [orgReady, setOrgReady] = useState(false);
   const [tab, setTab] = useState("clients");
-  const [loading, setLoading] = useState(false);
+  // Starts true: the first fetch has not run yet, so "No clients yet" and the
+  // zeroed tab badges would be claims about data nothing has looked at.
+  const [loading, setLoading] = useState(true);
   // Presentation-only: surfaces the failure the loader already caught so the
   // screen can offer a retry instead of an empty table.
   const [error, setError] = useState(null);
+  // Pending invitations come from a separate endpoint, so they fail separately.
+  const [invitesError, setInvitesError] = useState(null);
 
   const [clients, setClients] = useState([]);
   const [clientInvites, setClientInvites] = useState([]);
@@ -119,38 +211,25 @@ export default function ClientManagement() {
     if (!orgId) return;
     setLoading(true);
     setError(null);
+    setInvitesError(null);
     try {
-      const [cl, pc, prj, ann, inv, apr, thr] = await Promise.all([
-        // Never select("*") here: clients carries a legacy plaintext `password`
-        // column, and a wildcard shipped every client's credential into the
-        // admin's browser on each load of this screen. The UI reads only these.
-        supabase.from("clients").select("id, name, email, company, status, created_at").eq("organization_id", orgId).order("created_at", { ascending: false }).limit(2000),
-        supabase.from("project_clients").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }).limit(2000),
-        supabase.from("projects").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }).limit(2000),
-        supabase.from("announcements").select("*").eq("organization_id", orgId).order("published_at", { ascending: false }).limit(2000),
-        supabase.from("invoices").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }).limit(2000),
-        supabase.from("approvals").select("*").eq("organization_id", orgId).order("created_at", { ascending: false }).limit(2000),
-        supabase.from("support_threads").select("*").eq("organization_id", orgId).order("last_message_at", { ascending: false }).limit(2000),
-      ]);
-      setClients(cl.data || []);
-      setProjectClients(pc.data || []);
-      setProjects(prj.data || []);
-      setAnnouncements(ann.data || []);
-      setInvoices(inv.data || []);
-      setApprovals(apr.data || []);
-      setThreads(thr.data || []);
+      const rows = await fetchClientWorkspace(orgId);
+      setClients(rows.clients);
+      setProjectClients(rows.projectClients);
+      setProjects(rows.projects);
+      setAnnouncements(rows.announcements);
+      setInvoices(rows.invoices);
+      setApprovals(rows.approvals);
+      setThreads(rows.threads);
 
       // Pending client invitations come from the authenticated invitations API.
+      // It fails on its own, so it gets its own error state rather than being
+      // reported as "no pending invitations".
       try {
-        const res = await authFetch("/api/invitations");
-        const data = await res.json().catch(() => ({}));
-        if (res.ok && data.success) {
-          setClientInvites((data.invitations || []).filter((i) => i.role === "client"));
-        } else {
-          setClientInvites([]);
-        }
-      } catch {
+        setClientInvites(await fetchClientInvitations());
+      } catch (err) {
         setClientInvites([]);
+        setInvitesError(err?.message || "Could not load client invitations.");
       }
     } catch (err) {
       setError(err?.message || "Something went wrong while loading this workspace.");
@@ -194,7 +273,9 @@ export default function ClientManagement() {
     approvals: approvals.length,
     support: threads.length,
   };
-  const tabItems = TABS.map((t) => ({ ...t, count: loading ? undefined : counts[t.id] }));
+  // No badge while loading, and none after a failure either — a count is a fact
+  // about the data, and after a failed load there is no fact to state.
+  const tabItems = TABS.map((t) => ({ ...t, count: loading || error ? undefined : counts[t.id] }));
 
   return (
     <div className="space-y-6">
@@ -213,7 +294,8 @@ export default function ClientManagement() {
 
       <div key={tab} className="animate-fade-in motion-reduce:animate-none">
         {tab === "clients" && (
-          <ClientsTab clients={clients} invites={clientInvites} projects={projects} reload={loadAll} loading={loading} loadError={error} />
+          <ClientsTab clients={clients} invites={clientInvites} projects={projects} reload={loadAll}
+            loading={loading} loadError={error} invitesError={invitesError} />
         )}
         {tab === "links" && (
           <ClientLinksTab orgId={orgId} clients={clients} projects={projects} links={projectClients} reload={loadAll} loading={loading} loadError={error} />
@@ -236,7 +318,7 @@ export default function ClientManagement() {
 }
 
 /* ---------------- Clients ---------------- */
-function ClientsTab({ clients, invites, projects, reload, loading, loadError }) {
+function ClientsTab({ clients, invites, projects, reload, loading, loadError, invitesError }) {
   const [email, setEmail] = useState("");
   const [selected, setSelected] = useState([]); // project ids to link on accept
   const [sending, setSending] = useState(false);
@@ -292,16 +374,20 @@ function ClientsTab({ clients, invites, projects, reload, loading, loadError }) 
     } finally { setSending(false); }
   };
 
-  const copyLink = (inv) => {
+  const copyLink = async (inv) => {
     const link = `${window.location.origin}/invite/${inv.token}`;
-    navigator.clipboard?.writeText(link);
-    showSuccess("Link copied", link);
+    await copyToClipboard(link);
   };
 
   const revoke = async (inv) => {
     const ok = await showConfirm("Revoke invitation?", `Revoke client invite for ${inv.email}?`);
     if (!ok) return;
-    await supabase.from("invitations").update({ status: "revoked" }).eq("id", inv.id);
+    const { error } = await supabase.from("invitations").update({ status: "revoked" }).eq("id", inv.id);
+    if (error) {
+      showError("Revoke failed", error.message || `Could not revoke the invitation for ${inv.email}.`);
+      return;
+    }
+    showSuccess("Invitation revoked", `The invite for ${inv.email} can no longer be used.`);
     reload();
   };
 
@@ -390,8 +476,11 @@ function ClientsTab({ clients, invites, projects, reload, loading, loadError }) 
 
         {/* Pending client invitations */}
         <Section title="Pending invitations" description="Invites that have been sent but not accepted yet.">
-          {loadError ? (
-            <ErrorState title="Couldn't load invitations" description={loadError} onRetry={reload} />
+          {/* `invitesError` is the invitations endpoint failing on its own. The
+              empty state below asserts that every invite was accepted or
+              revoked, which a failed request cannot support. */}
+          {loadError || invitesError ? (
+            <ErrorState title="Couldn't load invitations" description={loadError || invitesError} onRetry={reload} />
           ) : loading ? (
             <div className={TABLE_SHELL}><SkeletonTable rows={3} cols={4} /></div>
           ) : pendingInvites.length === 0 ? (
@@ -480,7 +569,12 @@ function ClientLinksTab({ orgId, clients, projects, links, reload, loading, load
   const unlink = async (l) => {
     const ok = await showConfirm("Remove link?", `Unlink ${clientName(l.client_id)} from ${projName(l.project_id)}?`);
     if (!ok) return;
-    await supabase.from("project_clients").delete().eq("id", l.id);
+    const { error } = await supabase.from("project_clients").delete().eq("id", l.id);
+    if (error) {
+      showError("Unlink failed", error.message || "Could not remove this link. The client can still see the project.");
+      return;
+    }
+    showSuccess("Link removed", `${clientName(l.client_id)} no longer sees ${projName(l.project_id)}.`);
     reload();
   };
 
@@ -598,7 +692,12 @@ function ClientAnnouncementsTab({ orgId, admin, projects, announcements, reload,
   const remove = async (a) => {
     const ok = await showConfirm("Delete announcement?", `Remove "${a.title}"?`);
     if (!ok) return;
-    await supabase.from("announcements").delete().eq("id", a.id);
+    const { error } = await supabase.from("announcements").delete().eq("id", a.id);
+    if (error) {
+      showError("Delete failed", error.message || `Could not delete "${a.title}". Clients can still see it.`);
+      return;
+    }
+    showSuccess("Announcement deleted", `"${a.title}" is no longer visible to clients.`);
     reload();
   };
 
@@ -957,11 +1056,13 @@ function ClientApprovalsTab({ orgId, admin, clients, projects, links, approvals,
   // to them anyway.
   const [taskOptions, setTaskOptions] = useState([]);
   const [tasksLoading, setTasksLoading] = useState(false);
+  const [tasksError, setTasksError] = useState(null);
   useEffect(() => {
     let cancelled = false;
     // Clearing the reference here is what stops a task id chosen for one
     // project being submitted against another after the project is switched.
     setItemRef("");
+    setTasksError(null);
     if (itemType !== "task" || !projectId) { setTaskOptions([]); return undefined; }
     setTasksLoading(true);
     supabase
@@ -972,9 +1073,16 @@ function ClientApprovalsTab({ orgId, admin, clients, projects, links, approvals,
       .eq("client_visible", true)
       .order("task_order", { ascending: true })
       .limit(500)
-      .then(({ data }) => {
+      .then(({ data, error }) => {
         if (cancelled) return;
-        setTaskOptions(data || []);
+        // Reading only `data` told the admin "this project has no
+        // client-visible tasks yet" whenever the query failed.
+        if (error) {
+          setTaskOptions([]);
+          setTasksError(error.message || "Could not load this project's tasks.");
+        } else {
+          setTaskOptions(data || []);
+        }
         setTasksLoading(false);
       });
     return () => { cancelled = true; };
@@ -1024,7 +1132,12 @@ function ClientApprovalsTab({ orgId, admin, clients, projects, links, approvals,
   const remove = async (a) => {
     const ok = await showConfirm("Delete approval?", `Remove "${a.title}"?`);
     if (!ok) return;
-    await supabase.from("approvals").delete().eq("id", a.id);
+    const { error } = await supabase.from("approvals").delete().eq("id", a.id);
+    if (error) {
+      showError("Delete failed", error.message || `Could not delete "${a.title}". The client is still being asked to sign it off.`);
+      return;
+    }
+    showSuccess("Approval deleted", `"${a.title}" withdrawn.`);
     reload();
   };
 
@@ -1066,12 +1179,14 @@ function ClientApprovalsTab({ orgId, admin, clients, projects, links, approvals,
             </Field>
             {itemType === "task" ? (
               <Field label="Task" htmlFor="apr-task"
-                hint={projectId && !tasksLoading && taskOptions.length === 0
-                  ? "This project has no client-visible tasks yet. Turn on \"Visible to client\" on a task first — a client cannot approve work they cannot open."
-                  : "The client's decision is stamped back onto this task, so the team sees it on the board."}>
+                hint={tasksError
+                  ? `Couldn't load this project's tasks: ${tasksError}`
+                  : projectId && !tasksLoading && taskOptions.length === 0
+                    ? "This project has no client-visible tasks yet. Turn on \"Visible to client\" on a task first — a client cannot approve work they cannot open."
+                    : "The client's decision is stamped back onto this task, so the team sees it on the board."}>
                 <select id="apr-task" value={itemRef} onChange={(e) => setItemRef(e.target.value)}
                   disabled={!projectId || tasksLoading} className={`${CONTROL} disabled:opacity-50`}>
-                  <option value="">{!projectId ? "Pick a project first" : tasksLoading ? "Loading tasks…" : "Select a task"}</option>
+                  <option value="">{!projectId ? "Pick a project first" : tasksLoading ? "Loading tasks…" : tasksError ? "Tasks unavailable" : "Select a task"}</option>
                   {taskOptions.map((t) => <option key={t.id} value={t.id}>{t.task_title}</option>)}
                 </select>
               </Field>
@@ -1157,12 +1272,7 @@ function ClientSupportTab({ orgId, admin, clients, threads, reload, loading, loa
     setLoadingMsgs(true);
     setMsgError(null);
     try {
-      const { data } = await supabase
-        .from("support_messages")
-        .select("*")
-        .eq("thread_id", t.id)
-        .order("created_at", { ascending: true });
-      setMessages(data || []);
+      setMessages(await fetchThreadMessages(t.id));
     } catch (err) {
       setMessages([]);
       setMsgError(err?.message || "Could not load this conversation.");
@@ -1186,7 +1296,14 @@ function ClientSupportTab({ orgId, admin, clients, threads, reload, loading, loa
         body: reply.trim(),
       }]).select("*").single();
       if (error) throw error;
-      await supabase.from("support_threads").update({ last_message_at: nowIso }).eq("id", activeThread.id);
+      // Secondary write: the reply is already saved, so a failure here is not
+      // fatal — but it must not be silent, or the thread quietly stops sorting
+      // to the top of the list.
+      const { error: stampError } = await supabase.from("support_threads")
+        .update({ last_message_at: nowIso }).eq("id", activeThread.id);
+      if (stampError) {
+        showError("Reply sent", `The reply was saved, but this thread's "last message" time didn't update: ${stampError.message || "unknown error"}`);
+      }
       setMessages((prev) => [...prev, msg]);
       setReply("");
       reload();

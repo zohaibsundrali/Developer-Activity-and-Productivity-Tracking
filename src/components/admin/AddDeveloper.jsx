@@ -244,10 +244,17 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
         // Fetch dynamic project counts for each developer
         const developersWithCounts = await Promise.all(
           fetchedDevelopers.map(async (developer) => {
-            const { count, error: countError } = await supabase
+            // Org-scoped like every sibling query here (and like the identical
+            // count in ViewDevelopers). RLS already keeps other tenants' projects
+            // out of this result, so the filter is defence in depth rather than a
+            // fix for a live leak — but it is what stops the count going wrong the
+            // moment this runs under the service role or moves to an API route.
+            let countQuery = supabase
               .from('projects')
               .select('*', { count: 'exact', head: true })
               .eq('assigned_developer_email', developer.email);
+            if (orgId) countQuery = countQuery.eq('organization_id', orgId);
+            const { count, error: countError } = await countQuery;
 
             return {
               ...developer,

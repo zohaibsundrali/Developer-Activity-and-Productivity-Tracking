@@ -15,6 +15,7 @@ import {
   Label,
 } from "@/components/ui";
 import { User, Mail, ShieldCheck, Eye, EyeOff, CheckCircle, AlertTriangle, LockKeyhole } from "lucide-react";
+import { authFetch } from "@/utils/authFetch";
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -83,7 +84,13 @@ export default function Account({ user }) {
     try {
       setIsSubmitting(true);
 
-      const res = await fetch("/api/developer/change-password", {
+      // authFetch, not fetch: /api/developer/change-password authenticates the
+      // caller with getAuthedOrg(), which reads a Bearer token. A bare fetch()
+      // sends no Authorization header, so every submit from this form was
+      // answered with 401 Unauthorized and the change-password feature could
+      // not be exercised at all. `developerId` below is ignored by the route —
+      // the target is always the verified caller, never a body field.
+      const res = await authFetch("/api/developer/change-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

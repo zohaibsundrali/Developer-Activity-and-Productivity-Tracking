@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 /* Tailwind v3 project: avoid Tailwind v4-only CSS imports */
 
 @tailwind base;
@@ -21,7 +20,7 @@
     --popover-foreground: 200 25% 12%;
 
     /* Brand — refined teal (evolved from #009578) */
-    --primary: 168 84% 30%;
+    --primary: 243 70% 56%;
     --primary-foreground: 0 0% 100%;
 
     /* Neutrals */
@@ -29,23 +28,23 @@
     --secondary-foreground: 200 20% 22%;
     --muted: 210 20% 96%;
     --muted-foreground: 210 12% 46%;
-    --accent: 168 55% 95%;
-    --accent-foreground: 168 84% 22%;
+    --accent: 243 60% 96%;
+    --accent-foreground: 243 70% 42%;
 
     /* Semantic */
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --success: 160 84% 32%;
+    --success: 142 71% 30%;
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 48%;
-    --warning-foreground: 0 0% 100%;
+    --warning-foreground: 38 95% 12%;
     --info: 199 89% 48%;
     --info-foreground: 0 0% 100%;
 
     /* Lines & focus */
     --border: 214 22% 90%;
     --input: 214 22% 90%;
-    --ring: 168 84% 30%;
+    --ring: 243 70% 56%;
     --radius: 0.75rem;
 
     /* Premium dark sidebar */
@@ -54,7 +53,7 @@
     --sidebar-muted: 205 14% 55%;
     --sidebar-border: 200 30% 17%;
     --sidebar-accent: 200 34% 14%;
-    --sidebar-primary: 168 74% 40%;
+    --sidebar-primary: 243 75% 68%;
     --sidebar-primary-foreground: 0 0% 100%;
   }
 
@@ -66,17 +65,17 @@
     --card-foreground: 210 20% 96%;
     --popover: 200 28% 11%;
     --popover-foreground: 210 20% 96%;
-    --primary: 168 74% 42%;
-    --primary-foreground: 200 45% 9%;
+    --primary: 243 75% 68%;
+    --primary-foreground: 243 60% 12%;
     --secondary: 200 20% 18%;
     --secondary-foreground: 210 20% 96%;
     --muted: 200 20% 18%;
     --muted-foreground: 210 14% 64%;
     --accent: 200 24% 18%;
-    --accent-foreground: 168 74% 60%;
+    --accent-foreground: 243 75% 76%;
     --destructive: 0 72% 55%;
     --destructive-foreground: 0 0% 100%;
-    --success: 160 74% 42%;
+    --success: 142 65% 48%;
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 55%;
     --warning-foreground: 200 45% 9%;
@@ -84,14 +83,14 @@
     --info-foreground: 200 45% 9%;
     --border: 200 22% 20%;
     --input: 200 22% 20%;
-    --ring: 168 74% 42%;
+    --ring: 243 75% 68%;
     /* Sidebar stays dark chrome in both themes */
     --sidebar: 200 45% 7%;
     --sidebar-foreground: 205 20% 74%;
     --sidebar-muted: 205 14% 55%;
     --sidebar-border: 200 30% 15%;
     --sidebar-accent: 200 34% 13%;
-    --sidebar-primary: 168 74% 40%;
+    --sidebar-primary: 243 75% 68%;
     --sidebar-primary-foreground: 0 0% 100%;
   }
 }
@@ -108,16 +107,36 @@
     text-rendering: optimizeLegibility;
   }
 
+  /* `overflow-x: hidden` on html/body silently breaks EVERY `position: sticky`
+     on the site. Hiding overflow makes the element a scroll container, and a
+     sticky child sticks to its nearest scroll container rather than the
+     viewport — so it scrolls away instead of holding. Measured on the landing
+     page before this fix: the sticky header's top read -4500px at 4500px of
+     scroll. It affects the app shell's Topbar and sidebar, the legal-page
+     tables of contents, Reports, Developer Activity and Notification History
+     equally; none of them ever stuck.
+
+     `overflow: clip` clips the same overflow WITHOUT establishing a scroll
+     container, which is exactly what was wanted here. The @supports guard
+     keeps the old behaviour on browsers without it — a stray horizontal
+     scrollbar is a far smaller defect than a header that does not stick. */
   html,
   body {
     width: 100%;
     overflow-x: hidden;
   }
 
+  @supports (overflow: clip) {
+    html,
+    body {
+      overflow-x: clip;
+    }
+  }
+
   body {
     background: hsl(var(--background));
     color: hsl(var(--foreground));
-    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 
@@ -184,6 +203,6 @@
   margin: 0;
   text-align: left;
   white-space: pre-wrap;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   line-height: 1.4;
 }
