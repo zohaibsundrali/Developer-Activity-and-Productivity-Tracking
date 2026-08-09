@@ -1,0 +1,459 @@
+-- =====================================================================
+--  045 - admin_reviews: the same per-person rule 040 installed on the
+--        seven desktop-tracking tables and 044 installed on activity_logs
+-- =====================================================================
+--  WHY THIS IS A SEPARATE FILE FROM 044
+--
+--  044 closed activity_logs and listed admin_reviews at the bottom, under
+--  "STILL OPEN AFTER THIS FILE", on purpose. It was not an oversight and it
+--  was not laziness: activity_logs carries ONE identity column, so "whose row
+--  is this?" has one answer. admin_reviews carries FOUR person-or-thing
+--  columns - admin_id, admin_email, developer_id, project_id - and the answer
+--  is genuinely ambiguous. Getting it wrong here leaks. So the decision came
+--  first and this file is only its implementation.
+--
+--  018 gave this table its first and only policy, on the line immediately
+--  after activity_logs':
+--
+--    -- 018, lines 66-69
+--    alter table public.admin_reviews enable row level security;
+--    drop policy if exists org_isolation on public.admin_reviews;
+--    drop policy if exists admin_reviews_read on public.admin_reviews;
+--    create policy admin_reviews_read on public.admin_reviews for select
+--      to authenticated
+--      using (organization_id = public.auth_org() and not public.auth_is_client());
+--
+--  Note the name: admin_reviews_read. NOT org_isolation and NOT track_read.
+--  018's `drop policy if exists org_isolation` on the line above it is
+--  defensive only - 018 line 58 says in its own comment that this table
+--  "never had an org policy at all". This is exactly the trap 044 documented:
+--  drop the wrong name and the drop succeeds silently having removed nothing,
+--  the create then adds a SECOND permissive select policy, PostgreSQL ORs
+--  permissive policies together, 018's org-wide one still admits every row,
+--  and the migration looks like it worked while changing nobody's access.
+--  PART 1 below drops and recreates admin_reviews_read BY NAME. PART 0c is
+--  what proves that is the only select policy on YOUR database.
+--
+--  WHAT WAS ACTUALLY LEAKING
+--
+--  admin_reviews is the reviewer's verdict history: for every submission,
+--  which admin approved or rejected it, their free-text review_comments and
+--  rejection_reason, the task title, the submission file URL, the deadline and
+--  whether it was met. Under 018's policy every non-client member of the
+--  organisation could read every colleague's rejection history - the exact
+--  words an admin used about them - through PostgREST, with the anon key that
+--  ships in the browser bundle, from their own ordinary session. Same shape as
+--  the leak 040 closed and 044 closed, one table further out, and with worse
+--  free text in it than either.
+--
+--  THE MODEL INSTALLED HERE - identical to 040 and 044, deliberately
+--
+--    owner, admin, hr          -> all admin_reviews rows in the organisation
+--    manager, team_lead        -> their own, plus their reporting subtree
+--                                 via memberships.reports_to, transitively
+--    developer, employee       -> their own record only
+--    anything else / no role   -> their own record only  (fail closed)
+--    client                    -> nothing  (unchanged; 018 already denies it)
+--
+--  Every clause of 018's policy is kept and one conjunct is added. Nothing
+--  widens: owner/admin/hr keep exactly what they had, everyone else loses
+--  rows, clients were denied before and are denied after. There is no role for
+--  which 018 was narrower than this, so there is nothing to preserve.
+--
+--  This file adds NO insert, update or delete policy. admin_reviews has none
+--  and therefore denies all three to every authenticated caller; the writers
+--  (see below) are service-role and unaffected. Adding one here would be a
+--  widening, so none is added.
+--
+--  =====================================================================
+--  THE DECISION - THE MOST IMPORTANT LINES IN THIS FILE
+--  =====================================================================
+--
+--    SCOPE ON developer_id ONLY. The subject of a review is the person
+--    REVIEWED, not the reviewer.
+--
+--  A review row names two people. admin_id / admin_email is the ACTOR - the
+--  admin who pressed approve or reject. developer_id is the SUBJECT - the
+--  person the verdict is about. The rule in 040 is a rule about whose data
+--  you may read, and the data in this row is about the developer.
+--
+--  Why not match the actor as well, "so reviewers can see their own work"?
+--  Because that has an edge and this does not. Consider a manager who has an
+--  admin somewhere in their reporting subtree - an entirely ordinary org
+--  chart, and one this product's reports_to tree permits. If the policy
+--  matched admin_id, that manager's subject set would contain the admin's
+--  user_id, and the manager would therefore read EVERY review that admin ever
+--  wrote - including reviews of developers in other parts of the company,
+--  outside that manager's subtree entirely. One line of the org chart would
+--  quietly hand a manager the review history of people they do not manage.
+--  Scoping on the subject alone has no such edge: a row is visible if and only
+--  if the person it is ABOUT is someone you may already see.
+--
+--  And nobody loses sight of their own work by this. Reviewers are by
+--  definition admins - the writer is api/admin-review, which requires an admin
+--  session - and admins are in the sees_all branch. An admin sees every review
+--  in the organisation, including all of their own, through the FIRST
+--  disjunct, before the row predicate is ever reached. The actor branch would
+--  buy an admin nothing they do not already have, and would cost a manager's
+--  reports their privacy.
+--
+--  WHY THE PREDICATE IS NOT HANDED THE WHOLE ROW
+--
+--  This is the concrete half of the same decision, and it is the line most
+--  likely to be "simplified" by the next person, so it is spelled out.
+--
+--  040's monitoring_row_visible(r jsonb, ids uuid[], emails text[]) checks TEN
+--  keys: developer_id, user_id, employee_id, member_id, dev_id as uuids, and
+--  developer_email, user_email, email, user_login, login_email as emails. That
+--  is exactly right for 040's seven tables and for 044's activity_logs, where
+--  every identity column present names the subject and there is no actor
+--  column at all. It is the wrong instrument for this table.
+--
+--  BE PRECISE ABOUT WHY, because the obvious overstatement is false and a
+--  future reader who catches it will throw out the true reason with it:
+--
+--  On a copy of this table that matches schema.sql exactly, handing it
+--  to_jsonb(admin_reviews) would behave IDENTICALLY to the object built below.
+--  The actor columns are named admin_id and admin_email, and NEITHER name is
+--  in either of 040's two lists. They would not match. This was verified on
+--  postgres 16 with an admin placed inside a manager's reporting subtree: the
+--  whole-row form leaked nothing. Today, on this schema, the two forms agree.
+--
+--  The subject-only object is not defending against today. It is defending
+--  against the two ways that coincidence ends, both of which are live:
+--
+--   1. THE COLUMN NAMES. 040's own header documents that these pre-SaaS tables
+--      have inconsistent shapes and that nobody has confirmed every
+--      deployment's copy matches schema.sql - that is the entire reason 040 is
+--      column-agnostic and the reason 044 wrote a PART 0b instead of trusting
+--      the file. A copy of admin_reviews that records its actor in a generic
+--      user_id or email column - not an exotic hypothesis for a table whose
+--      siblings use user_id, dev_id, member_id and plain email for the same
+--      job - is matched by the whole-row form instantly. Verified: adding a
+--      user_id column holding admin_id and re-running the same manager query
+--      returned ALL FOUR rows under the whole-row form, including the review
+--      of the unrelated developer and the null-subject row, and still returned
+--      only the correct two under the object below.
+--
+--   2. THE KEY LIST. 040's PART 6 says, in its own comment, "Add to either
+--      list if PART 0b shows an identity column that is not here." An author
+--      extending this rule to another table, seeing admin_id go unmatched on
+--      admin_reviews, is being actively invited by that sentence to add
+--      admin_id to the list. That is a one-word edit in a different file that
+--      would silently re-open this table, with nothing in 040 to warn them.
+--
+--  So: naming the two keys here converts a property that is currently true by
+--  luck into one that is true by construction, and puts the reason in the file
+--  that would be blamed for the leak. Do not replace it with to_jsonb(row) on
+--  the grounds that it "makes no difference" - it makes no difference today,
+--  which is not the same claim.
+--
+--  So PART 1 builds a jsonb object carrying ONLY the subject fields and passes
+--  that. Concretely:
+--
+--    jsonb_build_object('developer_id',    to_jsonb(admin_reviews) ->> 'developer_id',
+--                       'developer_email', to_jsonb(admin_reviews) ->> 'developer_email')
+--
+--  admin_id, admin_email, admin_name and project_id are not in that object, so
+--  no branch of monitoring_row_visible can ever see them. developer_email is
+--  included because 040's PART 5 exists precisely because half these legacy
+--  tables identify a person by address rather than id, and if a deployment's
+--  copy carries one it is a SUBJECT column and belongs in the match.
+--  schema.sql's copy (line 240) does not have one - see PART 0b - in which
+--  case the key is present with a null value and matches nothing. That is the
+--  correct behaviour, not a bug.
+--
+--  WHY IT READS to_jsonb(admin_reviews) ->> 'x' AND NOT THE BARE COLUMN
+--
+--  Because `jsonb_build_object('developer_id', developer_id)` names a column,
+--  and 040 and 044 both explain at length what naming a column costs on these
+--  pre-SaaS tables. The `drop policy if exists` on the line above has already
+--  succeeded when the create runs. If the create names a column the table does
+--  not have, it fails, and admin_reviews is left with RLS enabled and NO
+--  select policy at all - deny everything, for everyone, including the owner.
+--  That is a worse outage than the leak being fixed. 022 and 025 already
+--  burned this repository on exactly that assumption, twice, in writing.
+--
+--  Going through to_jsonb keeps 040's column-agnosticism - `to_jsonb(t) ->>
+--  'absent_key'` is null, never an error - while still restricting the match
+--  to two named keys. This file therefore gets BOTH properties: it cannot fail
+--  on a missing column, and it cannot match the actor. That is the whole
+--  design in one expression.
+--
+--  monitoring_row_visible recognises developer_id in its uuid list, and
+--  developer_id is a uuid FK to developers(id) (schema.sql line 250).
+--  auth_monitoring_subjects() returns memberships.user_id values, and 011
+--  populates memberships.user_id from developers.id and admin_users.id (lines
+--  36 and 53). Same id space, so the match is real and not a coincidence of
+--  both being uuids.
+--
+--  WHAT THIS MEANS PER ROW, IN PLAIN TERMS
+--
+--  A developer sees the approvals and rejections of their OWN submissions,
+--  including the admin's comments on them, and nobody else's. A manager or
+--  team_lead sees their own plus their reports' - so a team lead can see that
+--  a report was rejected twice this sprint, which is the review conversation
+--  they are in anyway. owner, admin and hr see everything, as before. A client
+--  sees nothing, as before. And a manager who happens to line-manage an admin
+--  does NOT thereby inherit that admin's whole review output - which is the
+--  case this entire design turns on.
+--
+--  A row whose developer_id is null carries no identity this rule recognises,
+--  so it becomes visible to OWNER, ADMIN AND HR ONLY. developer_id is nullable
+--  (schema.sql line 250: no NOT NULL) and api/admin-review takes it from
+--  task.developer_id, which could in principle be null on an unassigned task.
+--  Fail closed is the right default, but it means a review of your own work
+--  can become invisible to you if the writer did not record who it was about.
+--  PART 0d counts those rows. If the count is not 0, decide before running
+--  PART 1 - the fix is to backfill developer_id from the task, in its own
+--  migration, not to loosen this one.
+--
+--  WHO READS THIS TABLE - grepped, not assumed
+--
+--  Every reference to admin_reviews anywhere in src/ is one of these three,
+--  and all three are in server-side API routes holding
+--  SUPABASE_SERVICE_ROLE_KEY, which bypasses RLS entirely:
+--
+--    READS
+--    (none)
+--
+--    WRITES
+--    api/admin-review/route.js:216      insert  one row per approve/reject
+--    api/developer/delete/route.js:203  delete  by project_id
+--    api/developer/delete/route.js:213  delete  by developer_id
+--
+--  There is NO select against admin_reviews anywhere in the application -
+--  not in an API route, not in a component, not in a hook, not through rpc,
+--  not through a view. TaskReviewPanel.jsx, AllProjects.jsx, Timesheet.jsx and
+--  the project-details pages read review_status / review_comments off
+--  task_submissions, which is a different table with its own policy and is not
+--  touched here. The verdict history is written and never read back.
+--
+--  So: THIS POLICY CHANGE IS INVISIBLE TO THE RUNNING APPLICATION. No screen
+--  loses a row; no screen even queries this table. What changes is what a
+--  member can fetch directly from PostgREST with their own session, which is
+--  the entire point, and the risk of the migration is close to zero - lower
+--  even than 044's, which at least had two service-role readers to reason
+--  about. Contrast 040, whose hr amendment had to be written after
+--  TeamStats.jsx went blank.
+--
+--  One caveat on those routes, inherited verbatim from 044: both construct
+--  their client as `SUPABASE_SERVICE_ROLE_KEY || NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+--  On a deployment where the service-role variable is unset they fall back to
+--  the anon key, which is not `authenticated`, so auth_org() is null and 018's
+--  policy already returns nothing. That path is broken today and is neither
+--  fixed nor worsened here.
+--
+--  THE THING TO KNOW BEFORE YOU EXPECT THIS TO DO ANYTHING - READ PART 0d
+--
+--  admin_reviews.organization_id was added by 010 (lines 119-120, guarded with
+--  to_regclass) and is populated by NOTHING. 013's two trg_stamp_org loops do
+--  not list it; neither do 016_017's. 011 does not backfill it. The only
+--  insert site in src/ - api/admin-review/route.js:216 - does not set it; the
+--  field list runs admin_id through reviewed_at with no organization_id in it.
+--  So on a deployment that has run 010-044 in order, every admin_reviews row
+--  has organization_id = NULL, 018's `organization_id = public.auth_org()`
+--  clause is false for every row and every caller, and the table is ALREADY
+--  unreadable by every authenticated user - reachable only by the service
+--  role. This is the identical situation 044 found on activity_logs, for the
+--  identical reason.
+--
+--  That does not make this migration pointless. The clause is one trigger away
+--  from switching on, and when it does, the correct policy needs to be the one
+--  already in place rather than 018's org-wide one. It does mean PART 0d is
+--  the query that tells you which situation your database is in.
+--
+--  What this file deliberately does NOT do is add that trigger. Stamping
+--  organization_id would make rows visible that are invisible today - a
+--  widening - and this migration only narrows.
+--
+--  WHY THE SET-RETURNING HELPERS ARE WRAPPED IN (select ...)
+--
+--  040's point and 044's, unchanged. A bare stable function call in a policy
+--  qual is re-evaluated for every row, so the recursive walk down
+--  memberships.reports_to would run once per review row. Wrapped in a scalar
+--  subquery with no outer reference, the planner hoists it to an InitPlan and
+--  runs it once per query. Both helpers are wrapped below.
+--
+--  auth_monitoring_subject_emails() is passed even though schema.sql's copy of
+--  this table has no developer_email column. It costs one InitPlan per query
+--  and keeps the predicate's shape identical to 040's seven and 044's one,
+--  which is the property that makes the rule auditable in one grep. Do not
+--  "optimise" it to array[]::text[] - that is the edit that silently stops
+--  working the day a deployment's table grows a developer_email.
+--
+--  Depends on: 010 (admin_reviews.organization_id), 012 (auth_org),
+--  014 (auth_role, auth_is_client, auth_app_user_id), 015 (reports_to,
+--  team_lead + hr), 018 (admin_reviews_read, the policy replaced here),
+--  040 (auth_monitoring_sees_all, auth_monitoring_subjects,
+--       auth_monitoring_subject_emails, monitoring_row_visible, try_uuid,
+--       idx_memberships_org_reports_to).
+--  Defines no function - every function it calls belongs to 040 and is not
+--  redefined here, so this file cannot drift from 040's rule. Creates no
+--  table, drops no column, rewrites no row, adds no index.
+--
+--  Idempotent: PART 1 is drop-if-exists + create, so it may be re-run.
+--
+--  FORMAT NOTE: one statement per physical line, no DO blocks, no dollar
+--  quoting, no double-quoted identifiers. 018's legacy policy name
+--  "Allow all access to admin_reviews" (schema.sql line 474) is the one thing
+--  on this table that would need double quotes; 018 line 47 already dropped
+--  it, so it is not repeated here. PART 0c is what proves it is gone on YOUR
+--  database. The editor shows only the LAST statement's result, so run each
+--  PART as its own query, in order.
+-- =====================================================================
+
+
+-- ---------------------------------------------------------------------
+--  PART 0 - READ-ONLY pre-flight. Run these four FIRST, one at a time.
+--           Nothing here changes anything.
+-- ---------------------------------------------------------------------
+--  0a. Does the table exist, and what is its FULL column list? 010 guarded its
+--      own ALTER with to_regclass because this table is not created by any
+--      migration - it comes from schema.sql, which predates the SaaS work. If
+--      this returns nothing, stop: there is nothing to police. What you are
+--      looking for is confirmation of the two columns PART 1 names by key -
+--      developer_id, and developer_email if it exists - plus the actor columns
+--      PART 1 deliberately ignores: admin_id, admin_email, admin_name.
+
+-- select column_name, data_type, is_nullable from information_schema.columns where table_schema = 'public' and table_name = 'admin_reviews' order by ordinal_position;
+
+--  0b. Which identity columns does it actually carry, and which of them are
+--      SUBJECT columns rather than ACTOR columns? This is the query that the
+--      decision in the header rests on. Expect admin_id, admin_email,
+--      admin_name (ACTOR - not matched), developer_id and developer_name
+--      (SUBJECT - developer_id is matched, developer_name is a cached display
+--      string and identifies nobody reliably), and no developer_email on a
+--      copy that matches schema.sql.
+--
+--      If this lists a SUBJECT column that identifies a person and is not
+--      developer_id or developer_email, add it to the jsonb_build_object in
+--      PART 1 - and only if 040's PART 6 already recognises the key name,
+--      otherwise 040 must be amended first, in its own migration.
+--
+--      If this lists a new ACTOR column, do nothing: PART 1 names its keys, so
+--      an actor column that did not exist when this was written still cannot
+--      leak through it. That is the second reason the predicate is built by
+--      hand instead of from to_jsonb(row).
+
+-- select column_name, data_type from information_schema.columns where table_schema = 'public' and table_name = 'admin_reviews' and (column_name like '%user%' or column_name like '%dev%' or column_name like '%email%' or column_name like '%member%' or column_name like '%employee%' or column_name like '%login%' or column_name like '%admin%' or column_name like '%actor%' or column_name like '%author%' or column_name like '%review%') order by column_name;
+
+--  0c. What policies are on it right now? Expect exactly one: admin_reviews_read,
+--      SELECT, {authenticated}, with 018's qual. If you see a second permissive
+--      SELECT policy - a dashboard-created one, or a track_read someone copied
+--      over from 040 - PART 1 will NOT narrow anything, because permissive
+--      policies are OR-ed. Drop the extra one first, deliberately, in a
+--      migration of its own. This is the check 044's header exists to insist on.
+
+-- select policyname, cmd, permissive, roles, qual as using_expr, with_check from pg_policies where schemaname = 'public' and tablename = 'admin_reviews' order by policyname;
+
+--  0d. THE ONE THAT DECIDES WHETHER THIS DOES ANYTHING TODAY. See the header.
+--      org_null_rows counts rows the org clause already hides from every
+--      authenticated caller because nothing ever stamped organization_id; if
+--      that equals total_rows, this table is currently service-role-only and
+--      PART 1 is a correctness fix for later rather than a live change.
+--      unattributable_rows counts rows with a null developer_id - the rows
+--      PART 1 will restrict to OWNER, ADMIN AND HR ONLY, because they name no
+--      subject. Expect 0. If it is not 0, those reviews become invisible to
+--      the developer they are about; backfill developer_id from task_id in its
+--      own migration before running PART 1.
+
+-- select count(*) as total_rows, count(*) filter (where organization_id is null) as org_null_rows, count(*) filter (where developer_id is null) as unattributable_rows, count(*) filter (where organization_id is not null and developer_id is not null) as rows_this_policy_will_actually_filter from public.admin_reviews;
+
+
+-- ---------------------------------------------------------------------
+--  PART 1 - The policy (AFTER 040 has created every function it calls)
+-- ---------------------------------------------------------------------
+--  Read the clauses left to right, because that is the order they cost
+--  anything in:
+--
+--    organization_id = public.auth_org()   unchanged from 018. Still first.
+--    not public.auth_is_client()           unchanged from 018. Clients stay out.
+--    (select ...sees_all())                owner/admin/hr stop here.
+--    monitoring_row_visible(subject-only)  everyone else.
+--
+--  The jsonb argument is built by hand and carries the SUBJECT fields and
+--  nothing else. admin_id and admin_email are absent from it on purpose; see
+--  "THE DECISION" in the header. Do not replace it with to_jsonb(admin_reviews).
+--
+--  Replaced BY NAME - admin_reviews_read, 018's name - so 018's policy is gone
+--  rather than sitting beside this one OR-ing every row back in. If this
+--  statement fails, the table is left with no select policy at all - deny
+--  everything - so re-run it before anyone uses the app, and read PART 0a/0b
+--  for why it failed.
+
+drop policy if exists admin_reviews_read on public.admin_reviews;
+create policy admin_reviews_read on public.admin_reviews for select to authenticated using (organization_id = public.auth_org() and not public.auth_is_client() and ((select public.auth_monitoring_sees_all()) or public.monitoring_row_visible(jsonb_build_object('developer_id', to_jsonb(admin_reviews) ->> 'developer_id', 'developer_email', to_jsonb(admin_reviews) ->> 'developer_email'), (select public.auth_monitoring_subjects()), (select public.auth_monitoring_subject_emails()))));
+
+
+-- =====================================================================
+--  VERIFY (read-only). Run each on its own - the editor shows only the last.
+-- =====================================================================
+--  1. Exactly one select policy on the table, and it is the new one. The
+--     using_expr must contain auth_monitoring_sees_all, and must NOT contain
+--     admin_id or admin_email anywhere.
+-- select policyname, cmd, roles, qual as using_expr from pg_policies where schemaname = 'public' and tablename = 'admin_reviews' order by policyname;
+
+--  2. The predicate really is subject-only. Expect has_developer_id = true and
+--     BOTH mentions_admin_id and mentions_admin_email = false. If either is
+--     true, someone reverted the jsonb_build_object to to_jsonb(row). On
+--     schema.sql's column names that is not yet a leak - see the header - but
+--     it is one column rename or one edit to 040's PART 6 key list away from
+--     being one, and this check is what catches it while it is still cheap.
+-- select policyname, qual like '%developer_id%' as has_developer_id, qual like '%admin_id%' as mentions_admin_id, qual like '%admin_email%' as mentions_admin_email from pg_policies where schemaname = 'public' and tablename = 'admin_reviews' and cmd = 'SELECT';
+
+--  3. The six functions this policy leans on all exist and are 040's. If this
+--     returns fewer than six rows, 040 has not been applied and PART 1 could
+--     not have been created.
+-- select proname, prosecdef, proconfig from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and proname in ('auth_monitoring_sees_all','auth_monitoring_subjects','auth_monitoring_subject_emails','monitoring_row_visible','auth_can_read_member','try_uuid') order by proname;
+
+--  4. The same rule now covers nine tables, not eight. Expect seven track_read
+--     rows, plus activity_logs_read, plus this one.
+-- select tablename, policyname from pg_policies where schemaname = 'public' and policyname in ('track_read','activity_logs_read','admin_reviews_read') order by tablename;
+
+--  5. Spot-check what a given member would see, without logging in as them.
+--     Replace the uuid with a real memberships.user_id. This runs as YOU, so it
+--     reports the SUBTREE, not the row count - to check row visibility you must
+--     impersonate, because the policy reads auth.jwt().
+-- with recursive sub as (select 'REPLACE-WITH-A-MEMBER-USER-ID'::uuid as user_id, 0 as depth union all select c.user_id, s.depth + 1 from public.memberships c join sub s on c.reports_to = s.user_id where c.user_id is not null and c.user_id <> s.user_id and s.depth < 64) select distinct sub.user_id, sub.depth from sub order by sub.depth, sub.user_id;
+
+--  6. Rows that PART 1 hid from everyone below owner/admin/hr. Re-run of 0d,
+--     for the record, after the change.
+-- select count(*) as unattributable_rows from public.admin_reviews where developer_id is null;
+
+--  7. The case the design turns on, checked against YOUR org chart: admins who
+--     sit inside somebody's reporting subtree. Every row this returns is a
+--     manager who WOULD have inherited that admin's entire review output had
+--     the policy matched admin_id. Empty result does not mean the design was
+--     unnecessary - it means the org chart has not grown that shape YET.
+-- select mgr.user_id as manager_user_id, mgr.role as manager_role, adm.user_id as admin_in_their_subtree from public.memberships mgr join public.memberships adm on adm.organization_id = mgr.organization_id and adm.reports_to = mgr.user_id where mgr.role in ('manager','team_lead') and adm.role in ('admin','owner') order by mgr.user_id;
+
+
+-- =====================================================================
+--  STILL OPEN AFTER THIS FILE - not fixed here, listed so it is not lost
+-- =====================================================================
+--  a. admin_reviews.organization_id is stamped by nothing - 013's and 016_017's
+--     trg_stamp_org loops skip it, 011 does not backfill it, and
+--     api/admin-review/route.js:216 does not set it. Until that is fixed the
+--     table is service-role-only and this policy is dormant. Fixing it is a
+--     widening and belongs in its own migration. Identical to 044's item (b)
+--     for activity_logs.
+--
+--  b. There is no reader for this table in src/ at all - the verdict history is
+--     written and never read back. If a "review history" screen is ever built,
+--     it must run under a user session for this policy to mean anything; built
+--     on a service-role route it would bypass RLS and re-open the leak in
+--     application code, which no migration can close.
+--
+--  c. task_time_logs (018 lines 147-155) and pm_activity (018 lines 123-127)
+--     are still org-wide reads that expose per-person working patterns. Same
+--     shape, same helpers would apply, different judgement call about whether
+--     billable hours are meant to be visible team-wide. Carried over from
+--     044's item (c), still open.
+--
+--  d. task_submissions carries review_status and review_comments - the same
+--     verdict text as this table, denormalised onto the submission - and is
+--     the copy the UI actually reads. Whatever policy governs it governs the
+--     comments in practice; this file narrows the history table only. Worth a
+--     look before anyone concludes the review text is now per-person.
+-- =====================================================================
