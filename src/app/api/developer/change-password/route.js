@@ -32,8 +32,22 @@ import { recordEvent } from '@/utils/systemEvents';
  *  3. Changes the real credential with auth.admin.updateUserById(). That is the
  *     whole of the write: no profile-table column is touched at all.
  *
+ * WHOSE ACCOUNT IT CHANGES
+ *  Always the verified caller's own, never an id from the body. The profile row
+ *  used to be looked up in `developers` unconditionally, which meant an admin
+ *  calling this route was told "Developer not found." — there was no way for an
+ *  admin to change their own password anywhere in the product. The table is now
+ *  resolved from the caller's own JWT claims (`user_type` / `app_user_id`, both
+ *  verified by getAuthedOrg), so an admin resolves to `admin_users` and everyone
+ *  else keeps resolving to `developers` exactly as before. Nothing about the
+ *  developer path changed: same table, same messages, same events.
+ *
+ *  The table is chosen by the token, not by anything the request can say. A body
+ *  field naming a table or an account would be a way to point the change at
+ *  somebody else's row.
+ *
  * LEGACY-ONLY ACCOUNTS
- *  A developer row with auth_user_id null (or pointing at a deleted auth user)
+ *  A profile row with auth_user_id null (or pointing at a deleted auth user)
  *  predates the Auth migration or was created by a writer that never
  *  provisioned one. There is no credential this route can legitimately change
  *  for them, and writing the legacy column alone would reproduce exactly the
@@ -64,6 +78,40 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 const normalizeString = (value) => (typeof value === 'string' ? value.trim() : '');
+
+/**
+ * Where a caller's profile row lives, keyed by the `user_type` claim on their
+ * verified JWT. `admin_users` and `developers` carry the same three columns this
+ * route needs (id, email, auth_user_id) and both are organization-scoped.
+ *
+ * `notFound` and `label` differ only so the messages and the audit trail name
+ * the right kind of account; every rule below is identical for both.
+ */
+const PROFILE_SOURCES = {
+  admin: {
+    table: 'admin_users',
+    userType: 'admin',
+    notFound: 'Account not found.',
+    label: 'An admin',
+  },
+  developer: {
+    table: 'developers',
+    userType: 'developer',
+    notFound: 'Developer not found.',
+    label: 'A developer',
+  },
+};
+
+/**
+ * Anything that is not an admin resolves to `developers` — which is where
+ * developers, managers, team leads and employees all live, and is exactly what
+ * this route did for every caller before admins were added. A client lands here
+ * too and gets the same 404 it always did: there is no clients branch, so this
+ * opens nothing that was closed.
+ */
+function profileSourceFor(userType) {
+  return userType === 'admin' ? PROFILE_SOURCES.admin : PROFILE_SOURCES.developer;
+}
 
 function jsonError(message, status = 400, extra = {}) {
   return NextResponse.json({ success: false, error: message, ...extra }, { status });
@@ -113,13 +161,17 @@ export async function POST(request) {
     if (!auth) {
       return jsonError('Unauthorized.', 401);
     }
-    // Never trust a developer id from the body or a cookie — the target is
+    // Never trust an account id from the body or a cookie — the target is
     // always the caller themselves.
-    const developerId = auth.appUserId;
-    if (!developerId) {
+    const accountId = auth.appUserId;
+    if (!accountId) {
       return jsonError('Unauthorized.', 401);
     }
     orgIdForEvents = auth.orgId;
+
+    // Which profile table this caller's row is in. Read off the verified token,
+    // never off the request body.
+    const profile = profileSourceFor(auth.userType);
 
     const body = await request.json().catch(() => ({}));
     const currentPassword = normalizeString(body?.currentPassword);
@@ -148,10 +200,10 @@ export async function POST(request) {
 
     const supabase = serviceClient();
 
-    const { data: developer, error: fetchError } = await supabase
-      .from('developers')
+    const { data: account, error: fetchError } = await supabase
+      .from(profile.table)
       .select('id, email, auth_user_id')
-      .eq('id', developerId)
+      .eq('id', accountId)
       .eq('organization_id', auth.orgId)
       .maybeSingle();
 
@@ -159,18 +211,18 @@ export async function POST(request) {
       return jsonError(`Failed to load your account: ${fetchError.message}`, 500);
     }
 
-    if (!developer) {
-      return jsonError('Developer not found.', 404);
+    if (!account) {
+      return jsonError(profile.notFound, 404);
     }
 
     // ── 1. Resolve the authoritative auth user ───────────────────────────
-    // Two sources: developers.auth_user_id (the stored link, which several
-    // writers never back-filled) and auth.userId (the subject of the caller's
+    // Two sources: the profile row's auth_user_id (the stored link, which
+    // several writers never back-filled) and auth.userId (the subject of the caller's
     // own verified JWT, which cannot be forged). If both are present they must
     // agree — a row linked to a DIFFERENT auth user than the token belongs to
     // is corrupt, and acting on it would change a third party's credential
     // using a password this caller typed.
-    const linkedAuthUserId = developer.auth_user_id || null;
+    const linkedAuthUserId = account.auth_user_id || null;
     if (linkedAuthUserId && auth.userId && linkedAuthUserId !== auth.userId) {
       await recordEvent({
         orgId: auth.orgId,
@@ -179,8 +231,8 @@ export async function POST(request) {
         source: 'auth',
         message: 'A password change was refused: the profile row is linked to a different auth user than the caller.',
         context: {
-          userId: developerId,
-          userType: 'developer',
+          userId: accountId,
+          userType: profile.userType,
           route: '/api/developer/change-password',
           reason: 'auth_link_mismatch',
           statusCode: 409,
@@ -208,7 +260,7 @@ export async function POST(request) {
     if (!authUser) {
       // LEGACY-ONLY / DANGLING LINK. Say so; write nothing, report no success.
       //
-      // Note on reachability: a developer with no auth user at ALL cannot get
+      // Note on reachability: an account with no auth user at ALL cannot get
       // this far, because they cannot obtain the JWT this route requires — they
       // are turned away at the 401 above, which is itself a symptom nobody can
       // read. That population is counted by GET /api/admin/legacy-auth-audit,
@@ -222,8 +274,8 @@ export async function POST(request) {
         source: 'auth',
         message: 'A password change was refused: the account has no linked Supabase Auth user.',
         context: {
-          userId: developerId,
-          userType: 'developer',
+          userId: accountId,
+          userType: profile.userType,
           route: '/api/developer/change-password',
           reason: 'legacy_only_account',
           statusCode: 409,
@@ -237,7 +289,7 @@ export async function POST(request) {
       );
     }
 
-    const authEmail = authUser.email || developer.email || auth.email || null;
+    const authEmail = authUser.email || account.email || auth.email || null;
     if (!authEmail) {
       return jsonError(
         'This account has no email address on its sign-in record, so the current password cannot be verified. Nothing was changed.',
@@ -305,8 +357,8 @@ export async function POST(request) {
         source: 'auth',
         message: `Updating the Supabase Auth credential failed: ${authUpdateError.message}`,
         context: {
-          userId: developerId,
-          userType: 'developer',
+          userId: accountId,
+          userType: profile.userType,
           route: '/api/developer/change-password',
           reason: 'auth_update_failed',
           statusCode: 500,
@@ -316,7 +368,7 @@ export async function POST(request) {
     }
 
     // ── 4. Nothing else is written ───────────────────────────────────────
-    // The legacy `developers.password` re-sync that used to sit here is gone
+    // The legacy password-column re-sync that used to sit here is gone
     // with the login fallback it existed for — see the header block. The
     // credential change above is the entire effect of this route.
 
@@ -325,10 +377,10 @@ export async function POST(request) {
       type: 'auth.password_changed',
       severity: 'info',
       source: 'auth',
-      message: 'A developer changed their own password.',
+      message: `${profile.label} changed their own password.`,
       context: {
-        userId: developerId,
-        userType: 'developer',
+        userId: accountId,
+        userType: profile.userType,
         route: '/api/developer/change-password',
       },
     });

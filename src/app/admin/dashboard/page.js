@@ -24,6 +24,7 @@ import ReportsDashboard from "@/components/admin/ReportsDashboard";
 import AutomationRules from "@/components/admin/AutomationRules";
 import BillingSubscription from "@/components/admin/BillingSubscription";
 import SystemHealth from "@/components/admin/SystemHealth";
+import AdminAccount from "@/components/admin/AdminAccount";
 import { isSessionExpired, clearAdminSession } from "@/utils/sessionPolicy";
 import { Skeleton } from "@/components/ui";
 
@@ -325,6 +326,8 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
         return <BillingSubscription />;
       case "system-health":
         return <SystemHealth />;
+      case "account":
+        return <AdminAccount user={user} />;
       case "productivity":
         return <ProductivityDashboard currentAdmin={user} />;
       default:

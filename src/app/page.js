@@ -96,25 +96,7 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-background font-sans text-foreground">
-      {/*
-        The app-wide stylesheet sets `body { overflow-x: hidden }`. That makes
-        the body a scroll container, which quietly disables *every*
-        `position: sticky` on the page — the header stops pinning and the role
-        section's pinned panel scrolls away with the text. Measured, not
-        guessed: with the rule in place the header's top edge reads -4500px at
-        4500px of scroll; with it replaced the header reads 0.
-        `overflow-x: clip` clips exactly the same horizontal overflow but does
-        not create a scroll container, so both behaviours survive. Guarded by
-        `@supports`, so a browser without `clip` simply keeps the original
-        rule and loses only the pinning.
-        Scoped here rather than in globals.css, which this page does not own.
-        The `body[class]` selector is deliberate: a bare `body` selector loses
-        to the `.overflow-x-hidden` utility class on specificity.
-      */}
-      <style>
-        {"@supports (overflow: clip) { body[class] { overflow-x: clip; } }"}
-      </style>
-
+      
       {/*
         Skip link. Hidden until focused, then pinned over the nav — the first
         stop for a keyboard user and the only way past a header full of links.

@@ -45,6 +45,9 @@ export const ADMIN_NAV = [
   { id: "clients", label: "Clients", icon: Handshake },
   { id: "billing", label: "Billing", icon: CreditCard },
   { id: "system-health", label: "System Health", icon: HeartPulse },
+  // Personal, not workspace: the signed-in person's own name, email and
+  // password. Every admin-dashboard user has one, so it is never filtered out.
+  { id: "account", label: "Account", icon: UserCircle },
   // { id: "productivity", label: "Productivity", icon: BarChart3 },
 ];
 
@@ -94,6 +97,11 @@ export const ADMIN_SECTION_ROLES = {
   // Infrastructure failure detail — same two roles the RLS policy on
   // system_events admits (migration 038).
   "system-health": ["owner", "admin"],
+  // null, like `overview`: this shows the caller their OWN details and changes
+  // their OWN password. There is no role that should be denied its own account,
+  // and the route behind it always targets the verified caller, never an id
+  // from the page.
+  account: null,
 };
 
 export function canAccessAdminSection(section, role) {
@@ -149,7 +157,7 @@ export const SECTION_TITLES = {
   "system-health": { admin: "System Health" },
   productivity: { admin: "Productivity" },
   projects: { developer: "My Projects", client: "My Projects" },
-  account: { developer: "Account", client: "Account" },
+  account: { admin: "Account", developer: "Account", client: "Account" },
   team: { developer: "Team" },
   announcements: { client: "Announcements" },
   approvals: { client: "Approvals" },

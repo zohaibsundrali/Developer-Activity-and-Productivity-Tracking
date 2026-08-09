@@ -120,7 +120,26 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable}`}>
-      <body className="min-h-screen overflow-x-hidden font-sans">
+      {/*
+        No `overflow-x-hidden` here, deliberately.
+
+        `overflow-x: hidden` on body makes body a scroll container, and a
+        `position: sticky` child sticks to its nearest scroll container rather
+        than the viewport — so it scrolls away instead of holding. Measured
+        before this was removed: the app-shell topbar read top=-394 after a
+        394px scroll, and the legal pages' tables of contents left a 480px
+        empty column behind them on a 32,000px page.
+
+        globals.css handles the clipping with `overflow-x: clip`, which clips
+        without creating a scroll container. That rule was already there and
+        was losing to THIS utility class on specificity, which is why an
+        earlier attempt at the fix appeared to do nothing outside the landing
+        page (which had patched itself locally).
+
+        Do not add it back. If horizontal overflow appears, the fix is the
+        element that overflows, not a clip on the whole document.
+      */}
+      <body className="min-h-screen font-sans">
         <AuthProvider>
           {children}
         </AuthProvider>
