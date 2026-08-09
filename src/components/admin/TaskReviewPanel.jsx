@@ -422,7 +422,7 @@ export default function TaskReviewPanel({ currentAdmin }) {
                   {/* File info */}
                   <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 p-3">
                     <div className="flex min-w-0 items-center gap-3">
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-info/10 text-info">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-info/10 text-info-on-tint">
                         <FileText className="h-5 w-5" aria-hidden="true" />
                       </span>
                       <div className="min-w-0">

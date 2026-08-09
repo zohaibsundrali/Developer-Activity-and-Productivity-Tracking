@@ -47,6 +47,38 @@
     --ring: 243 70% 56%;
     --radius: 0.75rem;
 
+    /* The rest of the radius scale, and it is load-bearing rather than
+       decorative. `src/components/ui/button.jsx` sets its small sizes with
+       `rounded-[min(var(--radius-md),12px)]`. Only `--radius` was ever
+       defined, so `var(--radius-md)` resolved to nothing, `min()` became
+       invalid, and the browser fell back to `border-radius: 0`.
+
+       The visible result: every `sm` and `icon-sm` button in the app had
+       SQUARE corners while `default` and `lg` were rounded — measured at 21
+       square buttons across the 18 admin sections, sitting next to rounded
+       ones on the same card. It reads as unfinished, and it is invisible in
+       the source, because the class name looks perfectly correct.
+
+       Same family of bug as the `ring-3` focus rings: Tailwind v4 idiom in a
+       v3 project. These four mirror tailwind.config.js's borderRadius scale,
+       so the utility classes and the raw vars now agree. */
+    --radius-xl: calc(var(--radius) + 4px);
+    --radius-lg: var(--radius);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-sm: calc(var(--radius) - 4px);
+
+    /* "On-tint" text colours. A Badge's soft variants sit on `bg-<tone>/15`,
+       and putting the mid-tone hue on top of its own 15% tint gives 1.97:1
+       for warning and 2.35:1 for info — measured, and nowhere near the 4.5:1
+       AA needs. These are the same hues dropped to the lightness that passes
+       (26% -> 5.69:1 and 6.40:1), so status still reads as amber and blue.
+
+       Not reusing --warning-foreground: that one is near-black ink meant for
+       text on a SOLID warning fill, which is a different surface. */
+    --warning-on-tint: 38 92% 26%;
+    --info-on-tint: 199 89% 26%;
+
+
     /* Premium dark sidebar */
     --sidebar: 200 45% 9%;
     --sidebar-foreground: 205 20% 74%;
@@ -81,6 +113,9 @@
     --warning-foreground: 200 45% 9%;
     --info: 199 89% 56%;
     --info-foreground: 200 45% 9%;
+    /* On a dark ground the tint is dark, so the text goes LIGHTER, not darker. */
+    --warning-on-tint: 38 92% 72%;
+    --info-on-tint: 199 89% 74%;
     --border: 200 22% 20%;
     --input: 200 22% 20%;
     --ring: 243 75% 68%;

@@ -204,9 +204,9 @@ export function HealthBadge({ health, className }) {
 // overview's recent-activity list so the same event never changes appearance
 // depending on which screen it lands on.
 const KIND_META = {
-  update: { label: "Update", icon: Megaphone, tone: "bg-info/10 text-info" },
+  update: { label: "Update", icon: Megaphone, tone: "bg-info/10 text-info-on-tint" },
   milestone: { label: "Milestone", icon: Flag, tone: "bg-success/10 text-success" },
-  approval: { label: "Approval", icon: CheckSquare, tone: "bg-warning/10 text-warning" },
+  approval: { label: "Approval", icon: CheckSquare, tone: "bg-warning/10 text-warning-on-tint" },
   comment: { label: "Comment", icon: MessageSquare, tone: "bg-primary/10 text-primary" },
   task_status: { label: "Task", icon: RefreshCw, tone: "bg-muted text-muted-foreground" },
 };

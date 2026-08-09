@@ -59,10 +59,12 @@ module.exports = {
         },
         warning: {
           DEFAULT: "hsl(var(--warning))",
+          "on-tint": "hsl(var(--warning-on-tint))",
           foreground: "hsl(var(--warning-foreground))",
         },
         info: {
           DEFAULT: "hsl(var(--info))",
+          "on-tint": "hsl(var(--info-on-tint))",
           foreground: "hsl(var(--info-foreground))",
         },
         muted: {

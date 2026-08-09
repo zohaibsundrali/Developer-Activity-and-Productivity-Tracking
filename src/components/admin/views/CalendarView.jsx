@@ -13,8 +13,8 @@ import { ViewEmpty, ViewPanel, ViewToolbar } from "@/components/admin/views/view
 // Status tone -> chip classes. Same tone vocabulary as every other view.
 const TONE_STYLES = {
   muted: "bg-muted text-muted-foreground",
-  info: "bg-info/15 text-info",
-  warning: "bg-warning/15 text-warning",
+  info: "bg-info/15 text-info-on-tint",
+  warning: "bg-warning/15 text-warning-on-tint",
   success: "bg-success/15 text-success",
   destructive: "bg-destructive/15 text-destructive",
 };

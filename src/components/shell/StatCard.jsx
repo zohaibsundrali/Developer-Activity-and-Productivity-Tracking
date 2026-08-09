@@ -9,9 +9,9 @@ import { Skeleton } from "@/components/ui";
 // reintroducing a literal colour.
 const TONES = {
   primary: "bg-primary/10 text-primary",
-  info: "bg-info/10 text-info",
+  info: "bg-info/10 text-info-on-tint",
   success: "bg-success/10 text-success",
-  warning: "bg-warning/10 text-warning",
+  warning: "bg-warning/10 text-warning-on-tint",
   destructive: "bg-destructive/10 text-destructive",
   accent: "bg-accent text-accent-foreground",
   secondary: "bg-secondary text-secondary-foreground",
@@ -22,8 +22,8 @@ const TONES = {
 const BADGE_TONES = {
   destructive: "bg-destructive/10 text-destructive",
   success: "bg-success/10 text-success",
-  warning: "bg-warning/10 text-warning",
-  info: "bg-info/10 text-info",
+  warning: "bg-warning/10 text-warning-on-tint",
+  info: "bg-info/10 text-info-on-tint",
   muted: "bg-muted text-muted-foreground",
 };
 

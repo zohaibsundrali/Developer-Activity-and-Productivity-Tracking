@@ -296,7 +296,7 @@ function CommentRow({ comment }) {
       <div className="flex items-start gap-4">
         <span
           className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
-            fromClient ? "bg-primary text-primary-foreground" : "bg-info/10 text-info"
+            fromClient ? "bg-primary text-primary-foreground" : "bg-info/10 text-info-on-tint"
           }`}
           aria-hidden="true"
         >
@@ -308,7 +308,7 @@ function CommentRow({ comment }) {
             <span className="text-[15px] font-semibold text-foreground">{comment.author_name}</span>
             <span
               className={`rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
-                fromClient ? "bg-primary/10 text-primary" : "bg-info/10 text-info"
+                fromClient ? "bg-primary/10 text-primary" : "bg-info/10 text-info-on-tint"
               }`}
             >
               {fromClient ? "Client" : "Team"}

@@ -53,9 +53,9 @@ const PRIORITY_TONES = {
   urgent: "bg-destructive/10 text-destructive",
   critical: "bg-destructive/10 text-destructive",
   highest: "bg-destructive/10 text-destructive",
-  high: "bg-warning/10 text-warning",
-  medium: "bg-info/10 text-info",
-  normal: "bg-info/10 text-info",
+  high: "bg-warning/10 text-warning-on-tint",
+  medium: "bg-info/10 text-info-on-tint",
+  normal: "bg-info/10 text-info-on-tint",
   low: "bg-muted text-muted-foreground",
   lowest: "bg-muted text-muted-foreground",
 };

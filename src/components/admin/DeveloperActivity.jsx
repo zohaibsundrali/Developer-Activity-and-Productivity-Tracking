@@ -1084,7 +1084,7 @@ export default function DeveloperActivity() {
   const statusColor = (status) => {
     const s = (status || "").toLowerCase();
     if (s === "active") return "bg-success/10 text-success";
-    if (s === "idle") return "bg-warning/10 text-warning";
+    if (s === "idle") return "bg-warning/10 text-warning-on-tint";
     return "bg-muted text-muted-foreground";
   };
 
@@ -2130,7 +2130,7 @@ export default function DeveloperActivity() {
                             </td>
                             <td className="px-4 py-3 text-sm text-muted-foreground truncate max-w-[200px]">{r.window_title || "—"}</td>
                             <td className="px-4 py-3">
-                              <span className="bg-info/10 text-info px-3 py-1 rounded-full text-xs whitespace-nowrap">{formattedDuration}</span>
+                              <span className="bg-info/10 text-info-on-tint px-3 py-1 rounded-full text-xs whitespace-nowrap">{formattedDuration}</span>
                             </td>
                           </tr>
                         );
@@ -2159,7 +2159,7 @@ export default function DeveloperActivity() {
                           )}
                           <span className="text-sm font-medium text-foreground truncate max-w-[120px]">{r.app_name}</span>
                           <span className="text-xs text-muted-foreground ml-auto">{(r.duration_minutes || 0).toFixed(1)} min</span>
-                          {r.is_new_app && <span className="px-1.5 py-0.5 text-xs bg-warning/10 text-warning rounded">NEW</span>}
+                          {r.is_new_app && <span className="px-1.5 py-0.5 text-xs bg-warning/10 text-warning-on-tint rounded">NEW</span>}
                         </div>
                       );
                     })}
@@ -2441,7 +2441,7 @@ export default function DeveloperActivity() {
                             <span className={`px-3 py-1 rounded-full text-xs font-medium ${prodBg(session.productivity_score)} ${prodColor(session.productivity_score)}`}>
                               Score: {(session.productivity_score || 0).toFixed(1)}%
                             </span>
-                            <span className="px-3 py-1 bg-info/10 text-info rounded-full text-xs">
+                            <span className="px-3 py-1 bg-info/10 text-info-on-tint rounded-full text-xs">
                               Active: {fmtDuration(session.active_duration)}
                             </span>
                             <span className="px-3 py-1 bg-destructive/10 text-red-800 rounded-full text-xs">

@@ -550,7 +550,7 @@ export default function TaskExtras({ task, projectId, members, onChanged }) {
                       <span className="font-medium">{actorName(row)}</span>{" "}
                       <span className="text-muted-foreground">{pretty(row.action)}</span>
                       {hint ? (
-                        <span className="ml-1 rounded-full bg-info/15 px-2 py-0.5 text-[10px] font-semibold text-info">
+                        <span className="ml-1 rounded-full bg-info/15 px-2 py-0.5 text-[10px] font-semibold text-info-on-tint">
                           {hint}
                         </span>
                       ) : null}

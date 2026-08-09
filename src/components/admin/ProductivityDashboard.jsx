@@ -414,11 +414,11 @@ export default function ProductivityDashboard({ currentAdmin }) {
                       <span
                         className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold ${
                           index === 0
-                            ? "bg-warning/10 text-warning"
+                            ? "bg-warning/10 text-warning-on-tint"
                             : index === 1
                             ? "bg-muted text-muted-foreground"
                             : index === 2
-                            ? "bg-warning/10 text-warning"
+                            ? "bg-warning/10 text-warning-on-tint"
                             : "bg-muted/50 text-muted-foreground"
                         }`}
                       >
@@ -624,7 +624,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
                       parseFloat(proj.productivityPercentage) >= 80
                         ? "bg-success/10 text-success"
                         : parseFloat(proj.productivityPercentage) >= 60
-                        ? "bg-warning/10 text-warning"
+                        ? "bg-warning/10 text-warning-on-tint"
                         : "bg-destructive/10 text-destructive"
                     }`}
                   >
@@ -652,7 +652,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
         </div>
 
         {/* Productivity formula note (same logic as developer timesheet) */}
-        <div className="mt-6 bg-info/10 border border-info/20 rounded-lg p-4 text-sm text-info">
+        <div className="mt-6 bg-info/10 border border-info/20 rounded-lg p-4 text-sm text-info-on-tint">
           <strong>Productivity Formula:</strong>
           {" "}(On-time tasks − Late tasks) / Total tasks × 100
           {" "}+ 50% · On-time completion = +1 point · Late completion = −1 point
@@ -787,7 +787,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
                             : task.status === "rejected"
                             ? "bg-destructive/10 text-destructive"
                             : task.status === "awaiting_approval"
-                            ? "bg-warning/10 text-warning"
+                            ? "bg-warning/10 text-warning-on-tint"
                             : "bg-muted text-muted-foreground"
                         }`}
                       >

@@ -1405,8 +1405,8 @@ export default function ProjectDetailsPage() {
                     <h1 className="text-2xl font-bold mb-2">{project.name}</h1>
                     <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
                       project.status === 'active' ? 'bg-success/15 text-success' :
-                      project.status === 'completed' ? 'bg-info/15 text-info' :
-                      'bg-warning/15 text-warning'
+                      project.status === 'completed' ? 'bg-info/15 text-info-on-tint' :
+                      'bg-warning/15 text-warning-on-tint'
                     }`}>
                       {project.status ? project.status.charAt(0).toUpperCase() + project.status.slice(1) : 'Unknown'}
                     </span>
@@ -1556,8 +1556,8 @@ export default function ProjectDetailsPage() {
                               {/* Status Badge */}
                               <span className={`mt-2 px-2 py-1 rounded-full text-xs font-medium ${
                                 task.status === 'completed' ? 'bg-success/15 text-success border border-success/20' :
-                                task.status === 'in_progress' ? 'bg-info/15 text-info border border-info/20' :
-                                task.status === 'awaiting_approval' ? 'bg-warning/15 text-warning border border-warning/20' :
+                                task.status === 'in_progress' ? 'bg-info/15 text-info-on-tint border border-info/20' :
+                                task.status === 'awaiting_approval' ? 'bg-warning/15 text-warning-on-tint border border-warning/20' :
                                 task.status === 'rejected' ? 'bg-destructive/15 text-destructive border border-destructive/20' :
                                 'bg-muted text-muted-foreground border border-border'
                               }`}>
@@ -1597,17 +1597,17 @@ export default function ProjectDetailsPage() {
                                 </div>
                               )}
                               {task.status === 'rejected' && task.admin_comments && (
-                                <div className="mt-1 p-2 bg-warning/10 border border-warning/20 rounded text-sm text-warning">
+                                <div className="mt-1 p-2 bg-warning/10 border border-warning/20 rounded text-sm text-warning-on-tint">
                                   <strong>Admin comments:</strong> {task.admin_comments}
                                 </div>
                               )}
                               {task.status === 'completed' && task.admin_comments && (
-                                <div className="mt-2 p-2 bg-info/10 border border-info/20 rounded text-sm text-info">
+                                <div className="mt-2 p-2 bg-info/10 border border-info/20 rounded text-sm text-info-on-tint">
                                   <strong>Admin comments:</strong> {task.admin_comments}
                                 </div>
                               )}
                               {task.status === 'completed' && task.is_on_time !== undefined && task.is_on_time !== null && (
-                                <div className={`mt-2 p-2 rounded text-xs font-medium ${task.is_on_time ? 'bg-success/15 text-success' : 'bg-warning/15 text-warning'}`}>
+                                <div className={`mt-2 p-2 rounded text-xs font-medium ${task.is_on_time ? 'bg-success/15 text-success' : 'bg-warning/15 text-warning-on-tint'}`}>
                                   {task.is_on_time ? '✓ Completed on time · +1 productivity point' : '⚠ Completed late · −1 productivity point'}
                                 </div>
                               )}
@@ -1716,7 +1716,7 @@ export default function ProjectDetailsPage() {
                               </button>
                             )}
                             {isSubmitted && isPlanApproved && task.status === 'awaiting_approval' && (
-                              <span className="px-3 py-2 rounded-lg text-xs bg-warning/15 text-warning border border-warning/20 inline-block">
+                              <span className="px-3 py-2 rounded-lg text-xs bg-warning/15 text-warning-on-tint border border-warning/20 inline-block">
                                 ⏳ Awaiting Admin Review
                               </span>
                             )}

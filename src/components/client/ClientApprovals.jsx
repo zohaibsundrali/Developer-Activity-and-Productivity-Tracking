@@ -75,7 +75,7 @@ const DECISIONS = [
 // same weight before one is chosen and the colour still says which is which.
 const TRIGGER_STYLES = {
   approve: "border-success/50 text-success hover:bg-success/10 hover:text-success",
-  request_changes: "border-warning/50 text-warning hover:bg-warning/10 hover:text-warning",
+  request_changes: "border-warning/50 text-warning hover:bg-warning/10 hover:text-warning-on-tint",
   reject: "border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive",
 };
 
@@ -83,9 +83,9 @@ const TRIGGER_STYLES = {
 const HISTORY_META = {
   approved: { icon: CheckCircle2, tone: "bg-success/10 text-success" },
   rejected: { icon: XCircle, tone: "bg-destructive/10 text-destructive" },
-  changes_requested: { icon: RotateCcw, tone: "bg-warning/10 text-warning" },
+  changes_requested: { icon: RotateCcw, tone: "bg-warning/10 text-warning-on-tint" },
   commented: { icon: MessageSquare, tone: "bg-muted text-muted-foreground" },
-  reopened: { icon: RefreshCw, tone: "bg-info/10 text-info" },
+  reopened: { icon: RefreshCw, tone: "bg-info/10 text-info-on-tint" },
 };
 
 const HISTORY_FALLBACK = { icon: History, tone: "bg-muted text-muted-foreground" };

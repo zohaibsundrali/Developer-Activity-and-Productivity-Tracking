@@ -1046,7 +1046,7 @@ export default function ReportsDashboard() {
                               className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                                 r.state === "Overdue"
                                   ? "bg-destructive/15 text-destructive"
-                                  : "bg-warning/15 text-warning"
+                                  : "bg-warning/15 text-warning-on-tint"
                               }`}
                             >
                               {cell(r.state)}
