@@ -105,11 +105,26 @@ export function LogoMark({ className, title, ...props }) {
  * @param {string} [props.className]  applied to the root element
  * @param {string} [props.title]      accessible name for the `mark` variant
  */
-export default function Logo({ variant = "full", className, title, ...props }) {
+export default function Logo({
+  variant = "full",
+  className,
+  markClassName,
+  title,
+  ...props
+}) {
   if (variant === "mark") {
     return <LogoMark className={className} title={title} {...props} />;
   }
 
+  // The lockup is two-tone on purpose: the mark carries the brand colour and
+  // the wordmark inherits the surrounding text colour. Letting the mark inherit
+  // too is what made it render as flat ink in the navbar — correct per
+  // `currentColor`, and wrong, because a monochrome mark beside a monochrome
+  // wordmark reads as a heading rather than a logo.
+  //
+  // `markClassName` exists for grounds where indigo does not carry: the navy
+  // footer and sidebar want `text-sidebar-primary`, the lighter step defined
+  // for dark surfaces.
   return (
     <span
       className={cn(
@@ -118,7 +133,9 @@ export default function Logo({ variant = "full", className, title, ...props }) {
       )}
       {...props}
     >
-      <LogoMark className="h-[1.75em] w-[1.75em] shrink-0" />
+      <LogoMark
+        className={cn("h-[1.75em] w-[1.75em] shrink-0 text-primary", markClassName)}
+      />
       {/* Space Grotesk (font-display). "Verisade" is four syllables of even
           width, so it takes slightly less negative tracking than the old
           wordmark did to stay open at small sizes. */}
