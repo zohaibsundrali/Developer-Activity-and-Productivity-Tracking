@@ -67,7 +67,7 @@ export default function SiteFooter() {
               href="#top"
               className="inline-flex items-center rounded-lg text-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
             >
-              <Logo variant="full" className="text-lg" />
+              <Logo variant="full" className="text-lg" markClassName="text-sidebar-primary" />
               <span className="sr-only">Back to top</span>
             </a>
 
