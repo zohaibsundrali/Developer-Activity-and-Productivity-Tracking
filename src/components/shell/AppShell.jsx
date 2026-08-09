@@ -30,6 +30,10 @@ export default function AppShell({
   title,
   subtitle,
   notificationSlot,
+  // True while a client-side route transition is in flight (React's
+  // `useTransition` isPending). The shell stays mounted and interactive; this
+  // only drives the hairline progress bar and the busy state on <main>.
+  navPending = false,
   children,
 }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -115,9 +119,22 @@ export default function AppShell({
           searchSlot={<GlobalSearchButton onClick={() => setSearchOpen(true)} />}
           onOpenMobile={openMobile}
           onLogout={onLogout}
+          navPending={navPending}
         />
 
-        <main id="main-content" tabIndex={-1} className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          aria-busy={navPending || undefined}
+          className="flex-1 px-4 py-6 sm:px-6 lg:px-8"
+        >
+          {/* Announced once per transition, and only for screen readers — the
+              sighted cue is the topbar hairline. */}
+          {navPending && (
+            <span className="sr-only" role="status" aria-live="polite">
+              Loading section…
+            </span>
+          )}
           <div className="mx-auto w-full max-w-[1400px] animate-fade-in motion-reduce:animate-none">{children}</div>
         </main>
       </div>

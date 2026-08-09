@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 import { Skeleton } from "@/components/ui";
@@ -80,6 +80,10 @@ export default function NotificationsPage() {
   // render on the server, so nothing may be decided from it before mount.
   const [status, setStatus] = useState("resolving");
   const [session, setSession] = useState(null);
+  // Leaving this page for a dashboard section is a real route change, not a
+  // swap inside one screen, so it is the case most likely to be slow enough to
+  // look frozen without a cue.
+  const [isNavigating, startNavigation] = useTransition();
 
   useEffect(() => {
     const resolved = resolveStaffSession();
@@ -166,7 +170,9 @@ export default function NotificationsPage() {
     // The sidebar's items are dashboard sections, and this is not one of them,
     // so navigating means going back to that dashboard with the section asked
     // for — the same `?section=` the dashboards already read.
-    router.push(`${dashboardPath}?section=${sectionId}`);
+    startNavigation(() => {
+      router.push(`${dashboardPath}?section=${sectionId}`);
+    });
   };
 
   const handleLogout = () => {
@@ -192,6 +198,7 @@ export default function NotificationsPage() {
       onLogout={handleLogout}
       title="Notifications"
       subtitle="Everything sent to you"
+      navPending={isNavigating}
       // No bell in the topbar here. The panel and this page would open the same
       // realtime topic name, and two subscribers on one topic take each other's
       // bindings — the second one's callbacks quietly stop firing.

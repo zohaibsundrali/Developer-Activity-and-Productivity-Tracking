@@ -5,15 +5,21 @@ import { getOrgId } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
 import EChart from "@/components/charts/EChart";
 import {
-  PALETTE,
+  PRIMARY,
   SEMANTIC,
   textStyle,
-  baseGrid,
   baseTooltip,
-  baseLegend,
   axisLabel,
-  axisLine,
-  splitLine,
+  valueAxis,
+  categoryAxis,
+  legendFor,
+  gridWithLegend,
+  donutCenter,
+  donutCenterEmphasis,
+  roundedBarH,
+  fmtInt,
+  fmtPct,
+  heightForRows,
 } from "@/components/charts/chartTheme";
 import {
   BarChart3,
@@ -30,9 +36,11 @@ import {
   Tabs,
 } from "@/components/ui";
 
-// Status slices read left-to-right as good → bad, so the colours are semantic
-// rather than a rotation through the categorical palette.
-const STATUS_COLORS = [SEMANTIC.success, SEMANTIC.danger, SEMANTIC.muted];
+// Status slices read as good → bad → not-yet, so the colours are semantic
+// rather than a rotation through the categorical palette. "Pending" takes the
+// inert track tint: work that has not happened yet should recede, not compete
+// with the two outcomes either side of it.
+const STATUS_COLORS = [SEMANTIC.success, SEMANTIC.danger, SEMANTIC.track];
 
 export default function ProductivityDashboard({ currentAdmin }) {
   const [loading, setLoading] = useState(true);
@@ -211,80 +219,74 @@ export default function ProductivityDashboard({ currentAdmin }) {
       { name: "Pending", value: (totalTasks || 0) - (totalCompleted || 0) },
     ];
 
-    const barNames = (barData || []).map((d) => d.name);
+    // Displayed top-down; echarts draws a category axis bottom-up, so the row
+    // order is flipped for the paint only. `barData` itself is untouched.
+    const barRows = [...(barData || [])].reverse();
 
     const barOption = {
-      color: [PALETTE[0]],
       textStyle,
-      // Bottom padding sized for rotated names plus the axis title; without it
-      // the labels were clipped by the panel rather than merely crowded.
-      grid: { ...baseGrid, bottom: 46, top: 34 },
+      // Was a column chart: ten first names on one axis collided at every width
+      // below ~900px, so they were rotated 35° and truncated to 64px. Rotated
+      // axis text is slow to read at any size and illegible on a phone. Laid on
+      // its side each name gets a full horizontal line at the shared 11px, and
+      // no rotation is needed at any width — truncation plus hideOverlap stay
+      // as the guard for unusually long names.
+      legend: legendFor(1),
+      grid: gridWithLegend(1, { bottom: 30 }),
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "shadow" },
-        valueFormatter: (v) => `${Number(v).toFixed(0)}%`,
+        valueFormatter: (v) => fmtPct(v),
         ...baseTooltip,
       },
-      legend: { ...baseLegend, data: ["Productivity %"] },
-      xAxis: {
-        type: "category",
-        name: "Developer",
-        nameLocation: "middle",
-        nameGap: 36,
-        nameTextStyle: axisLabel,
-        data: barNames,
-        // Ten first names on one axis collided at every width below ~900px.
-        // interval:0 keeps one tick per developer, the rotation and the fixed
-        // truncation width stop them ever printing over each other, and
-        // hideOverlap is the belt-and-braces guard on very narrow panels.
-        axisLabel: {
-          ...axisLabel,
-          interval: 0,
-          rotate: barNames.length > 5 ? 35 : 0,
-          width: 64,
-          overflow: "truncate",
-          hideOverlap: true,
-        },
-        axisLine,
-        axisTick: { show: false },
-      },
       yAxis: {
-        type: "value",
+        ...categoryAxis,
+        data: barRows.map((d) => d.name),
+        axisLabel: { ...axisLabel, width: 96, overflow: "truncate", hideOverlap: true },
+      },
+      xAxis: {
+        ...valueAxis,
         name: "Productivity",
         nameLocation: "middle",
-        nameGap: 40,
-        nameTextStyle: axisLabel,
+        nameGap: 28,
         max: 100,
         axisLabel: { ...axisLabel, formatter: "{value}%" },
-        splitLine,
       },
       series: [
         {
           name: "Productivity %",
           type: "bar",
-          barMaxWidth: 32,
-          itemStyle: { borderRadius: [4, 4, 0, 0] },
-          data: (barData || []).map((d) => d.productivity),
+          barMaxWidth: 18,
+          itemStyle: roundedBarH(PRIMARY),
+          data: barRows.map((d) => d.productivity),
         },
       ],
     };
 
+    // Total of the three slices already on screen — no new aggregation.
+    const pieTotal = pieData.reduce((a, d) => a + (Number(d.value) || 0), 0);
+
     const pieOption = {
       textStyle,
-      tooltip: { trigger: "item", ...baseTooltip },
-      legend: { ...baseLegend, bottom: 0, top: "auto", left: "center", right: "auto" },
+      tooltip: {
+        trigger: "item",
+        formatter: (p) => `${p.name}<br/><b>${fmtInt(p.value)}</b> tasks · ${p.percent.toFixed(0)}%`,
+        ...baseTooltip,
+      },
+      legend: { ...legendFor(3), bottom: 0, top: "auto", left: "center", right: "auto" },
       series: [
         {
           type: "pie",
-          radius: ["45%", "70%"],
-          center: ["50%", "46%"],
-          padAngle: 3,
+          radius: ["58%", "78%"],
+          center: ["50%", "44%"],
+          padAngle: 2,
           minAngle: 4,
           avoidLabelOverlap: true,
           // Slice labels used to print "{b}: {c}" on top of one another when
-          // two slices were thin. The legend carries the names; the tooltip
-          // carries the counts.
-          label: { show: false },
+          // two slices were thin. The legend carries the names, the tooltip
+          // carries the counts, and the hole carries the total.
+          label: donutCenter(pieTotal, fmtInt, "tasks"),
+          emphasis: donutCenterEmphasis,
           labelLine: { show: false },
           data: pieData.map((entry, index) => ({
             value: entry.value,
@@ -331,7 +333,12 @@ export default function ProductivityDashboard({ currentAdmin }) {
             className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5"
           >
             {hasBarData ? (
-              <EChart option={barOption} height={320} />
+              /* One row per developer at a readable band instead of ten
+                 columns squeezed under rotated names. */
+              <EChart
+                option={barOption}
+                height={heightForRows(barRows.length, { perRow: 30, chrome: 80, min: 200 })}
+              />
             ) : (
               <div className="flex h-[320px] items-center">
                 <EmptyState

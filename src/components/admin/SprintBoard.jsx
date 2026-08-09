@@ -12,12 +12,15 @@ import { showError } from "@/utils/alerts";
 import EChart from "@/components/charts/EChart";
 import StatCard from "@/components/shell/StatCard";
 import {
-  PALETTE,
+  PRIMARY,
   SEMANTIC,
-  baseGrid,
   baseTooltip,
   axisLabel,
-  splitLine,
+  valueAxis,
+  categoryAxis,
+  legendFor,
+  gridWithLegend,
+  fmtInt,
   FONT_FAMILY,
 } from "@/components/charts/chartTheme";
 import { Badge, EmptyState } from "@/components/ui";
@@ -158,19 +161,18 @@ export default function SprintBoard({
     const { days, ideal, actual } = burndown;
     return {
       textStyle: { fontFamily: FONT_FAMILY },
-      tooltip: { ...baseTooltip, trigger: "axis", confine: true },
-      legend: {
-        top: 0,
-        icon: "roundRect",
-        itemWidth: 10,
-        itemHeight: 10,
-        textStyle: { color: SEMANTIC.muted, fontSize: 11, fontFamily: FONT_FAMILY },
+      tooltip: {
+        ...baseTooltip,
+        trigger: "axis",
+        valueFormatter: (v) => (v == null ? "—" : `${fmtInt(v)} pts`),
       },
-      // baseGrid's 28px top leaves the legend sitting on the plot area; 44
-      // clears it, and the taller bottom keeps the date ticks off the edge.
-      grid: { ...baseGrid, top: 44, bottom: 16 },
+      // Two series, so the legend earns its place. gridWithLegend opens the top
+      // that baseGrid's 28px left too tight — the legend used to sit on the
+      // plot area. The bottom keeps the date ticks off the panel edge.
+      legend: legendFor(2),
+      grid: gridWithLegend(2, { bottom: 16 }),
       xAxis: {
-        type: "category",
+        ...categoryAxis,
         boundaryGap: false,
         data: days,
         // A three-week sprint has 21 ticks; hideOverlap thins them instead of
@@ -178,19 +180,19 @@ export default function SprintBoard({
         axisLabel: { ...axisLabel, hideOverlap: true, formatter: (v) => formatDayShort(v) },
       },
       yAxis: {
-        type: "value",
+        ...valueAxis,
         // The unit is named in the panel heading instead of as an axis name,
         // which used to collide with the legend on a narrow card.
         minInterval: 1,
-        axisLabel,
-        splitLine,
       },
       series: [
         {
+          // The ideal line is a reference, not a measurement: neutral and
+          // dashed so the eye reads the actual line against it.
           name: "Ideal",
           type: "line",
           data: ideal,
-          lineStyle: { type: "dashed" },
+          lineStyle: { type: "dashed", width: 2 },
           color: SEMANTIC.muted,
           symbol: "none",
         },
@@ -198,8 +200,9 @@ export default function SprintBoard({
           name: "Remaining",
           type: "line",
           data: actual,
-          color: PALETTE[0],
-          areaStyle: { opacity: 0.08 },
+          color: PRIMARY,
+          lineStyle: { width: 2 },
+          areaStyle: { opacity: 0.06 },
           connectNulls: false,
           smooth: true,
         },

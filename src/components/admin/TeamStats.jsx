@@ -64,8 +64,15 @@ const pct = (part, whole) =>
  * a long department name can never collide with its number, and the label
  * truncates rather than wrapping the row to two heights.
  */
-function BarRow({ label, value, share, width, tone = "primary" }) {
-  const toneClass = tone === "info" ? "bg-info" : "bg-primary";
+/*
+ * One hue for every bar in this file. These panels are each a SINGLE ranked
+ * series shown side by side; painting "by role" in brand indigo and "by
+ * department" in info blue implied the two carried different kinds of value,
+ * which they do not — and the near-clash of the two blues was exactly the
+ * "several saturated colours for no reason" look we are removing. Bar length
+ * carries the magnitude; colour has no work left to do here.
+ */
+function BarRow({ label, value, share, width }) {
   return (
     <li>
       <div className="flex items-baseline justify-between gap-3">
@@ -88,7 +95,7 @@ function BarRow({ label, value, share, width, tone = "primary" }) {
         aria-valuemax={100}
       >
         <div
-          className={`h-full rounded-full transition-[width] duration-150 ${toneClass}`}
+          className="h-full rounded-full bg-primary transition-[width] duration-150"
           style={{ width: `${width}%` }}
         />
       </div>
@@ -548,7 +555,6 @@ export default function TeamStats() {
                   value={d.count}
                   share={pct(d.count, headcount)}
                   width={pct(d.count, maxDeptCount)}
-                  tone="info"
                 />
               ))}
             </ul>

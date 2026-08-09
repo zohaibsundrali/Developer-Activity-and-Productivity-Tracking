@@ -28,14 +28,26 @@ const supabase = createClient(
  *      uploads cannot be enumerated even while the bucket remains public.
  *   4. Payload size cap.
  *
- * PHASE 2 (audit finding H2): screenshots no longer go to the public `documents`
- * bucket at all. They are written to the PRIVATE `monitoring` bucket created in
- * migration 019, and readers mint short-lived signed URLs via
- * `src/utils/screenshotFiles.js`. A storage policy limits signing to members of
- * the owning organization, so the org id in the path is enforced by the database.
+ * PHASE 2 (audit finding H2): screenshots written by THIS ROUTE go to the
+ * PRIVATE `monitoring` bucket created in migration 019, and readers mint
+ * short-lived signed URLs via `src/utils/screenshotFiles.js`. The storage policy
+ * installed by 019 and narrowed by 040 limits signing to people entitled to that
+ * developer's data, so the path is what enforces access.
  *
- * Rows written before this change keep their old public_url and still render;
- * they remain publicly reachable until those objects are migrated across.
+ * ─── WHERE THE LEGACY OBJECTS REALLY ARE ────────────────────────────────────
+ *
+ * 019 and the previous version of this comment both said the old captures live
+ * in the public `documents` bucket under a `screenshots/` prefix. They do not.
+ * The live project has a separate PUBLIC BUCKET named `screenshots`, and its
+ * objects are keyed `{email_local_part}/{file}.jpg` with no prefix at all. Every
+ * consequence of that error is documented in docs/screenshot-bucket-migration.md
+ * — the short version is that 019's progress query and this repository's legacy
+ * detector both keyed off a `screenshots/` prefix that has never existed, so the
+ * cleanup looked finished while every object was still world-readable.
+ *
+ * Rows written before Phase 2 keep their old public_url and still render; they
+ * remain publicly reachable until scripts/migrate-screenshots.mjs moves them and
+ * the owner flips that bucket private.
  */
 
 // ~8 MB of base64 ≈ 6 MB of PNG.
@@ -222,9 +234,29 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Unknown developer' }, { status: 403 });
     }
 
-    // The leading path segment is the organization id — the storage policy in
-    // migration 019 reads it to decide who may sign this object. The random
-    // component keeps objects unguessable.
+    // PATH SHAPE — LOAD-BEARING. Do not change without changing the reader.
+    //
+    //     {organization_id}/{developer_id}/{ts}-{uuid}.png
+    //
+    // Segment 1 is the organization id: 019's policy compares it to auth_org().
+    // Segment 2 is the developer id: migration 040 (PART 15) passes it through
+    // public.try_uuid() into public.auth_can_read_member(), which is what limits
+    // a signed URL to the subject themselves, their management chain, and
+    // owner/admin/hr. 019 checked segment 1 only, so any colleague could sign
+    // any colleague's capture; segment 2 is the whole fix. A developer id that
+    // is not a uuid in segment 2 resolves to null and the object becomes
+    // owner/admin-only — fail closed, by design.
+    //
+    // `unassigned` when the developer row has no organization: nothing can match
+    // that against auth_org(), so the object is service-role-only. Also by
+    // design; 040's PART 15 comment calls this case out explicitly.
+    //
+    // The random component keeps objects unguessable.
+    //
+    // The read side asserts this same shape in `isMonitoringPath()` in
+    // src/utils/screenshotFiles.js, and scripts/migrate-screenshots.mjs writes
+    // migrated objects to it. tests/screenshotPaths.test.js pins all three
+    // together — if you edit the line below, that test fails.
     const orgPrefix = developer.organization_id || 'unassigned';
     const fileName = `${orgPrefix}/${developer.id}/${Date.now()}-${crypto.randomUUID()}.png`;
 

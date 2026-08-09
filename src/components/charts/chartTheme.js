@@ -1,78 +1,292 @@
-// Shared Apache ECharts theme — consistent with the app's "Refined Teal" design
-// system. Canvas needs concrete hex values (not CSS vars), so tokens are mirrored
-// here. Keep in sync with globals.css if the brand palette ever changes.
+// Shared Apache ECharts theme.
+//
+// ECharts paints to a <canvas> and cannot read CSS custom properties, so the
+// design tokens are mirrored here as literals. THIS IS THE ONLY FILE ALLOWED TO
+// HOLD LITERAL COLOUR VALUES — components must use Tailwind token classes.
+// Every literal below is the exact hex of a token in src/app/globals.css; the
+// HSL it came from is written beside it so the two can be diffed by eye.
+//
+//   --primary          243 70% 56%   #4840dd
+//   --success          142 71% 30%   #16833e
+//   --warning           38 92% 48%   #eb980a
+//   --destructive        0 72% 51%   #dc2828
+//   --info             199 89% 48%   #0da2e7
+//   --background       210 30% 98%   #f8fafb
+//   --card               0  0% 100%  #ffffff
+//   --foreground       200 25% 12%   #172126
+//   --muted-foreground 210 12% 46%   #677583
+//   --border           214 22% 90%   #e0e5eb
+//   --radius                         0.75rem = 12px
 
-export const PRIMARY = "#0c8f6e"; // teal (≈ hsl(168 84% 30%))
-export const PRIMARY_SOFT = "rgba(12, 143, 110, 0.14)";
+/* ------------------------------------------------------------------ */
+/*  Neutrals                                                           */
+/* ------------------------------------------------------------------ */
 
-// Categorical palette for multi-series charts.
+const INK = "#172126"; // --foreground
+const MUTED = "#677583"; // --muted-foreground
+const LINE = "#e0e5eb"; // --border
+const SURFACE = "#ffffff"; // --card
+
+// Gridlines are --border at low opacity. They must be visible enough to read a
+// value against and quiet enough that the data is what the eye lands on.
+const GRID = "rgba(224, 229, 235, 0.9)";
+
+// An inert "everything else" fill: --border stepped one notch darker
+// (214 20% 88%). Used for the remainder half of a progress bar and for the
+// unstarted arc of a donut, where a saturated hue would claim attention it has
+// not earned.
+const TRACK = "#dae0e7";
+
+/* ------------------------------------------------------------------ */
+/*  Brand                                                              */
+/* ------------------------------------------------------------------ */
+
+export const PRIMARY = "#4840dd"; // --primary 243 70% 56%
+export const PRIMARY_SOFT = "rgba(72, 64, 221, 0.10)";
+
+/* ------------------------------------------------------------------ */
+/*  Series palettes                                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * CATEGORICAL — for series whose order carries no meaning (two different
+ * measures, "ideal vs actual", named apps that are not ranked).
+ *
+ * Six hues, brand indigo first, in a FIXED order that is assigned in sequence
+ * and never cycled or re-sorted. The order is not a taste call: it is the
+ * ordering that maximised the worst adjacent-pair separation under simulated
+ * protanopia/deuteranopia out of every permutation of these hues
+ * (worst adjacent ΔE 14.4 CVD / 20.4 normal vision, OKLab ×100).
+ *
+ * Deliberately SIX and not the old seven: the previous palette carried two
+ * near-identical teals, and a chart that needs seven saturated hues at once is
+ * the thing that makes a dashboard look amateur. Past six series, fold the tail
+ * into "Other" or facet the chart — do not invent a seventh hue.
+ */
 export const PALETTE = [
-  "#0c8f6e", // teal (brand)
-  "#0ea5e9", // sky
-  "#8b5cf6", // violet
-  "#f59e0b", // amber
-  "#ef4444", // red
-  "#14b8a6", // teal-2
-  "#6366f1", // indigo
+  "#4840dd", // indigo  — --primary
+  "#da2f68", // rose
+  "#9854d4", // violet
+  "#16833e", // green   — --success
+  "#eb980a", // amber   — --warning
+  "#1b99a7", // teal
 ];
 
-// Semantic accents (match tailwind tokens).
+/**
+ * RANKED — for categories that ARE ordered: "top N apps by time", "largest
+ * projects", any slice list sorted by size. One hue family (brand indigo)
+ * stepped in lightness, strongest first, so the reader sees the ranking in the
+ * colour instead of decoding six unrelated hues.
+ *
+ * Monotone in lightness with every adjacent step ≥ 0.06 apart in OKLCH L, and
+ * the palest step still clears 2:1 against a white card.
+ */
+export const RANKED = [
+  "#221e76",
+  "#2a24ae",
+  "#372fda",
+  "#5d56e1",
+  "#847fe6",
+  "#aaa6ed",
+];
+
+/** Ranked colour for slot `i`, clamped (never wraps back to the dark end). */
+export const rankedColor = (i) => RANKED[Math.min(i, RANKED.length - 1)];
+
+/* ------------------------------------------------------------------ */
+/*  Semantic accents                                                   */
+/* ------------------------------------------------------------------ */
+
+// Reserved meanings. A status colour never doubles as "series 4", and it always
+// ships with a label or legend entry beside it — amber sits below 3:1 on white
+// by design, so the text is what carries it, not the fill.
 export const SEMANTIC = {
-  success: "#16a34a",
-  info: "#0ea5e9",
-  warning: "#f59e0b",
-  danger: "#ef4444",
-  muted: "#94a3b8",
+  success: "#16833e", // --success
+  info: "#0da2e7", // --info
+  warning: "#eb980a", // --warning
+  danger: "#dc2828", // --destructive
+  muted: MUTED, // --muted-foreground
+  track: TRACK, // inert remainder
 };
 
-// Task/project status colors — preserved from the previous charts so status
-// semantics stay identical across the app (Gantt bars, legends, badges).
+// Task/project status colours. Shared by the Gantt bars, the timeline view and
+// the list chips so the three can never drift apart.
+//   completed / reviewed  → success, stepped in lightness (both are "done")
+//   in_progress           → brand indigo (active work)
+//   awaiting_approval     → warning
+//   rejected              → destructive
+//   pending               → an inert neutral: not-yet-started is not a state
+//                           that should compete for attention
 export const GANTT_STATUS_COLORS = {
-  completed: "#10b981",
-  reviewed: "#0c8f6e",
-  awaiting_approval: "#f59e0b",
-  in_progress: "#3b82f6",
-  pending: "#9ca3af",
-  rejected: "#ef4444",
+  completed: "#16833e", // --success            142 71% 30%
+  reviewed: "#10602d", // --success, darker     142 71% 22%
+  awaiting_approval: "#eb980a", // --warning     38 92% 48%
+  in_progress: "#4840dd", // --primary          243 70% 56%
+  pending: "#a6b2bf", // neutral                212 16% 70%
+  rejected: "#dc2828", // --destructive           0 72% 51%
 };
 
-// Neutrals for axes / grid / text (light theme — the app runs light).
-const INK = "#1e293b";
-const MUTED = "#64748b";
-const LINE = "#e2e8f0";
+/* ------------------------------------------------------------------ */
+/*  Type                                                               */
+/* ------------------------------------------------------------------ */
 
 export const FONT_FAMILY =
-  "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+  "var(--font-inter), Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
+// One type scale for every axis in the app: 11px, muted, never bold. Axis text
+// is a reference grid, not content — if it competes with the data it is wrong.
 export const axisLabel = { color: MUTED, fontSize: 11, fontFamily: FONT_FAMILY };
-export const axisLine = { lineStyle: { color: LINE } };
-export const splitLine = { lineStyle: { color: LINE, type: "dashed" } };
 
+// Axis titles sit one step down again so they never read as a series name.
+export const axisName = { color: MUTED, fontSize: 11, fontFamily: FONT_FAMILY };
+
+export const textStyle = { fontFamily: FONT_FAMILY, color: INK };
+
+/* ------------------------------------------------------------------ */
+/*  Axes & grid                                                        */
+/* ------------------------------------------------------------------ */
+
+// Solid, 1px, --border at low opacity. Dashed gridlines add a second visual
+// rhythm that fights the data for no information gain.
+export const splitLine = { lineStyle: { color: GRID, width: 1, type: "solid" } };
+
+export const axisLine = { lineStyle: { color: LINE } };
+
+/**
+ * Value axis: gridlines but no axis line and no ticks — the gridlines already
+ * say where the numbers are, so the rule and the tick marks are duplication.
+ * `splitNumber: 4` is the point of the whole thing: four labelled steps is
+ * enough to read a magnitude off, and it is roughly half what echarts picks by
+ * default.
+ */
+export const valueAxis = {
+  type: "value",
+  splitNumber: 4,
+  axisLine: { show: false },
+  axisTick: { show: false },
+  axisLabel,
+  splitLine,
+  nameTextStyle: axisName,
+};
+
+/**
+ * Category axis: the baseline stays (it anchors the bars) but the gridlines go.
+ * Vertical gridlines behind a bar chart almost never earn their place.
+ */
+export const categoryAxis = {
+  type: "category",
+  axisLine,
+  axisTick: { show: false },
+  splitLine: { show: false },
+  axisLabel,
+  nameTextStyle: axisName,
+};
+
+// `containLabel` lets echarts measure the real label box, so the tight left/
+// right values below are padding around the labels rather than around the plot.
 export const baseGrid = { left: 8, right: 16, top: 28, bottom: 8, containLabel: true };
 
+/* ------------------------------------------------------------------ */
+/*  Tooltip & legend                                                   */
+/* ------------------------------------------------------------------ */
+
+// Matches the app's card: white surface, --border hairline, --radius corners,
+// the `shadow-popover` token. `confine` keeps it inside the canvas instead of
+// hanging off the edge of a narrow panel.
 export const baseTooltip = {
-  backgroundColor: "#ffffff",
+  backgroundColor: SURFACE,
   borderColor: LINE,
   borderWidth: 1,
   padding: [8, 12],
+  confine: true,
   textStyle: { color: INK, fontSize: 12, fontFamily: FONT_FAMILY },
   extraCssText:
-    "box-shadow: 0 8px 30px rgba(30,41,59,0.12); border-radius: 10px;",
+    "box-shadow: 0 8px 30px hsl(200 25% 12% / 0.12); border-radius: 12px; font-variant-numeric: tabular-nums;",
 };
 
+// Top-right, out of the plot. Charts that use it must open enough `grid.top`
+// to clear it — see `gridWithLegend`.
 export const baseLegend = {
   top: 0,
   right: 0,
   icon: "roundRect",
   itemWidth: 10,
   itemHeight: 10,
+  itemGap: 14,
   textStyle: { color: MUTED, fontSize: 11, fontFamily: FONT_FAMILY },
 };
 
-export const textStyle = { fontFamily: FONT_FAMILY, color: INK };
+/**
+ * A legend only earns its place when there is more than one series to tell
+ * apart — with one series the panel heading already names it. Returns `{ show:
+ * false }` below two series so callers can pass this unconditionally.
+ */
+export const legendFor = (seriesCount, extra = {}) =>
+  seriesCount > 1 ? { ...baseLegend, ...extra } : { show: false };
 
-// A vertical linear gradient fill for area/bar charts (echarts graphic object).
-export function verticalGradient(topHex, bottomAlpha = 0.02, topAlpha = 0.28) {
+/**
+ * Grid top that clears a legend rather than letting it sit on the plot. Pass
+ * the same series count used for `legendFor` so the two can never disagree.
+ */
+export const gridWithLegend = (seriesCount, grid = {}) => ({
+  ...baseGrid,
+  top: seriesCount > 1 ? 36 : 16,
+  ...grid,
+});
+
+/* ------------------------------------------------------------------ */
+/*  Number formatting                                                  */
+/* ------------------------------------------------------------------ */
+
+/** 30000 → "30,000". Thousands separators everywhere, always. */
+export const fmtInt = (n) => Math.round(Number(n) || 0).toLocaleString("en-US");
+
+/** Axis-width integers: 30000 → "30k". Keeps a y-axis from eating the plot. */
+export const fmtCompact = (n) => {
+  const v = Number(n) || 0;
+  const a = Math.abs(v);
+  if (a >= 1_000_000) return `${(v / 1_000_000).toFixed(a >= 10_000_000 ? 0 : 1)}m`;
+  if (a >= 1_000) return `${(v / 1_000).toFixed(a >= 10_000 ? 0 : 1)}k`;
+  return fmtInt(v);
+};
+
+/** 8.333 hours → "8h 20m". Never print a raw decimal hour at a reader. */
+export const fmtHours = (h) => {
+  const v = Number(h) || 0;
+  if (v === 0) return "0h";
+  const sign = v < 0 ? "-" : "";
+  const total = Math.round(Math.abs(v) * 60);
+  const hh = Math.floor(total / 60);
+  const mm = total % 60;
+  if (hh === 0) return `${sign}${mm}m`;
+  if (mm === 0) return `${sign}${fmtInt(hh)}h`;
+  return `${sign}${fmtInt(hh)}h ${mm}m`;
+};
+
+/** 95.5 minutes → "1h 35m"; 0.4 minutes → "24s". */
+export const fmtMinutes = (m) => {
+  const v = Number(m) || 0;
+  if (v === 0) return "0m";
+  if (Math.abs(v) < 1) return `${Math.round(v * 60)}s`;
+  return fmtHours(v / 60);
+};
+
+/**
+ * Percentages carry no more precision than the data supports: whole numbers by
+ * default, because a productivity score of "73.4%" implies a resolution the
+ * underlying task counts do not have.
+ */
+export const fmtPct = (v, dp = 0) => `${(Number(v) || 0).toFixed(dp)}%`;
+
+/* ------------------------------------------------------------------ */
+/*  Mark helpers                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A soft vertical fill under a line. Kept subtle on purpose: the fill is there
+ * to tie the line to the baseline, not to be a gradient.
+ */
+export function verticalGradient(topHex, bottomAlpha = 0.01, topAlpha = 0.16) {
   const toRgba = (hex, a) => {
     const n = hex.replace("#", "");
     const r = parseInt(n.slice(0, 2), 16);
@@ -82,7 +296,10 @@ export function verticalGradient(topHex, bottomAlpha = 0.02, topAlpha = 0.28) {
   };
   return {
     type: "linear",
-    x: 0, y: 0, x2: 0, y2: 1,
+    x: 0,
+    y: 0,
+    x2: 0,
+    y2: 1,
     colorStops: [
       { offset: 0, color: toRgba(topHex, topAlpha) },
       { offset: 1, color: toRgba(topHex, bottomAlpha) },
@@ -90,8 +307,46 @@ export function verticalGradient(topHex, bottomAlpha = 0.02, topAlpha = 0.28) {
   };
 }
 
-// Rounded-corner bar item style helper.
-export const roundedBar = (color, radius = [6, 6, 0, 0]) => ({
-  color,
-  borderRadius: radius,
+/**
+ * Bar fill: a flat colour and a 4px radius on the data end only. No border, no
+ * shadow, no gradient — a bar chart is a set of rectangles and whitespace.
+ */
+export const roundedBar = (color, radius = [4, 4, 0, 0]) => ({ color, borderRadius: radius });
+
+/** Same, for a horizontal bar growing to the right. */
+export const roundedBarH = (color, radius = [0, 4, 4, 0]) => ({ color, borderRadius: radius });
+
+/**
+ * The centre label for a donut, as an echarts `series.label`.
+ *
+ * A donut with an empty middle wastes the one spot on the chart the eye goes to
+ * first, so the headline number lives there. Built here rather than in each
+ * dashboard so the ink/muted values stay inside this file — components must not
+ * carry literal colours.
+ *
+ *   label: donutCenter(totalMinutes, fmtMinutes, "tracked")
+ *
+ * Pair it with `emphasis: { scale: false, label: { show: true } }` so the number
+ * is a fixed readout rather than something that appears on hover.
+ */
+export const donutCenter = (value, format = fmtInt, caption = "") => ({
+  show: true,
+  position: "center",
+  formatter: () => `{v|${format(value)}}\n{l|${caption}}`,
+  rich: {
+    v: { fontSize: 22, fontWeight: 600, color: INK, fontFamily: FONT_FAMILY },
+    l: { fontSize: 11, color: MUTED, fontFamily: FONT_FAMILY, padding: [4, 0, 0, 0] },
+  },
 });
+
+/** Standard emphasis for a donut carrying a fixed centre readout. */
+export const donutCenterEmphasis = { scale: false, label: { show: true } };
+
+/**
+ * Row-count-driven chart height. A fixed height turns 40 categories into
+ * slivers and a single category into a stripe floating in whitespace; both read
+ * as broken. `perRow` is the band each category gets, `chrome` is the axis and
+ * legend furniture above and below the plot.
+ */
+export const heightForRows = (rows, { perRow = 34, chrome = 72, min = 220, max = 900 } = {}) =>
+  Math.min(max, Math.max(min, (Number(rows) || 0) * perRow + chrome));

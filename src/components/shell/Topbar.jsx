@@ -20,6 +20,7 @@ export default function Topbar({
   searchSlot,
   onOpenMobile,
   onLogout,
+  navPending = false,
 }) {
   const displayName = user?.full_name || user?.name || "";
   const displayEmail = user?.email || "";
@@ -170,6 +171,45 @@ export default function Topbar({
           )}
         </div>
       </div>
+
+      {/* Client-side route transition indicator.
+          Deliberately a hairline on the topbar's own bottom edge and NOT an
+          overlay: the screen you are leaving stays readable and clickable while
+          the next section resolves, which is the whole point of doing the
+          navigation in a transition. It only ever appears if the transition is
+          slow enough to see — a fast section switch commits before the bar has
+          grown wide enough to register. `aria-hidden` because the live region
+          announcing the wait lives on <main> in AppShell; two announcements for
+          one event is noise. */}
+      {navPending && (
+        <>
+          <style>{TOPBAR_PROGRESS_CSS}</style>
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 overflow-hidden"
+          >
+            <span className="topbar-nav-progress block h-full bg-primary" />
+          </span>
+        </>
+      )}
     </header>
   );
 }
+
+// Eases towards — but never reaches — full width, because the transition ends
+// at an unknown time and a bar that completes on its own would be lying. It is
+// unmounted the moment the navigation commits.
+const TOPBAR_PROGRESS_CSS = `
+@keyframes topbar-nav-progress {
+  0%   { width: 0%; }
+  40%  { width: 55%; }
+  100% { width: 90%; }
+}
+.topbar-nav-progress {
+  width: 0%;
+  animation: topbar-nav-progress 4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .topbar-nav-progress { width: 100%; animation: none; opacity: 0.6; }
+}
+`;

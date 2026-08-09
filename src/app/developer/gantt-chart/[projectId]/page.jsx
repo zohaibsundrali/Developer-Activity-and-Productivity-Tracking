@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
+import { authFetch } from "@/utils/authFetch";
 import AdminGanttChart from "@/components/admin/AdminGanttChart";
 import {
   ArrowLeft,
@@ -135,7 +136,13 @@ export default function DeveloperGanttChartPage() {
       setLoading(true);
       setError(null);
 
-      const res = await fetch(`/api/developer-gantt?projectId=${projectId}&developerId=${encodeURIComponent(String(developerId || ''))}`, {
+      // authFetch, not fetch: /api/developer-gantt authenticates the caller with
+      // getAuthedOrg(), which reads a Bearer token and nothing else. A bare
+      // fetch() sends no Authorization header, so this page answered 401 for
+      // every role — including the owner — and "View Timeline" only ever led to
+      // an error state. The query string is unchanged; the route still resolves
+      // the developer from the verified token for a developer caller.
+      const res = await authFetch(`/api/developer-gantt?projectId=${projectId}&developerId=${encodeURIComponent(String(developerId || ''))}`, {
         credentials: 'include',
       });
       const data = await res.json().catch(() => ({}));

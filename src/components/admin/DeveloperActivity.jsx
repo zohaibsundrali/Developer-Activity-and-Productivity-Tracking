@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
@@ -8,15 +9,24 @@ import { resolveScreenshotUrls } from "@/utils/screenshotFiles";
 import { setVisibleInterval } from "@/hooks/useVisibleInterval";
 import EChart from "@/components/charts/EChart";
 import {
-  PALETTE,
+  PRIMARY,
+  RANKED,
+  rankedColor,
   SEMANTIC,
   textStyle,
-  baseGrid,
   baseTooltip,
   baseLegend,
   axisLabel,
-  axisLine,
-  splitLine,
+  valueAxis,
+  categoryAxis,
+  legendFor,
+  gridWithLegend,
+  roundedBarH,
+  fmtMinutes,
+  fmtPct,
+  heightForRows,
+  donutCenter,
+  donutCenterEmphasis,
   verticalGradient,
 } from "@/components/charts/chartTheme";
 import {
@@ -50,9 +60,14 @@ import {
   User,
 } from "lucide-react";
 
-// One categorical palette for the whole app — this file used to carry its own
-// eight hexes, which drifted from every other chart.
-const CHART_COLORS = PALETTE;
+// Every list and donut in this file ranks applications by time spent, largest
+// first. That is an ORDERED set, not an unrelated one, so it takes a single hue
+// stepped in lightness rather than six competing hues — the reader sees the
+// ranking in the colour, and the panel stops looking like a pie of confetti.
+// (This file used to carry its own eight hexes, which drifted from every other
+// chart; then a seven-hue categorical palette, which was the single loudest
+// thing on the page.)
+const CHART_COLORS = RANKED;
 
 /**
  * Category-axis labels for time series. A day of per-minute samples is
@@ -67,15 +82,20 @@ const timeAxisLabel = { ...axisLabel, hideOverlap: true, interval: "auto" };
  */
 const donutBase = {
   type: "pie",
-  radius: ["45%", "70%"],
-  center: ["50%", "46%"],
+  radius: ["58%", "78%"],
+  center: ["50%", "44%"],
   avoidLabelOverlap: true,
   minAngle: 4,
   padAngle: 2,
   label: { show: false },
   labelLine: { show: false },
+  emphasis: { scale: false },
 };
 
+const sumValues = (rows) => rows.reduce((a, r) => a + (Number(r?.value) || 0), 0);
+
+// Legend under the ring, centred: at 375px a top-right legend and a donut fight
+// for the same corner.
 const donutLegend = { ...baseLegend, bottom: 0, top: "auto", left: "center", right: "auto" };
 const POLL_INTERVAL = 10_000; // 10 seconds
 const MOUSE_PAGE_SIZE = 50;
@@ -89,6 +109,7 @@ const SCREENSHOT_LIMIT = 200;
 const LOGIN_LIMIT = 500;
 
 export default function DeveloperActivity() {
+  const router = useRouter();
   const [currentAdmin, setCurrentAdmin] = useState(null);
   const [developers, setDevelopers] = useState([]);
   const [selectedDeveloper, setSelectedDeveloper] = useState("");
@@ -1132,6 +1153,11 @@ export default function DeveloperActivity() {
               <div className="mt-2">
                 <p className="text-xs text-destructive">Please login to view developers</p>
                 <button
+                  // Deliberately a HARD load, unlike the in-app links in this
+                  // file. Signing out of a stale session must tear down the
+                  // whole document so in-memory auth state and any live
+                  // Supabase subscriptions cannot survive the redirect.
+                  // Do not "optimise" this into router.push.
                   onClick={() => window.location.href = "/login"}
                   className="text-xs text-info hover:text-info/80 underline"
                 >
@@ -1144,7 +1170,10 @@ export default function DeveloperActivity() {
               <div className="mt-2">
                 <p className="text-xs text-warning">No developers added by you yet</p>
                 <button
-                  onClick={() => window.location.href = "/admin/dashboard?section=add-developer"}
+                  // In-app route change: router.push keeps the shell mounted.
+                  // A window.location assignment here reloaded the whole
+                  // document — flash, lost scroll, shell rebuilt from scratch.
+                  onClick={() => router.push("/admin/dashboard?section=add-developer")}
                   className="text-xs text-success hover:text-success/80 underline"
                 >
                   Add Developers
@@ -1322,7 +1351,7 @@ export default function DeveloperActivity() {
                         <li key={i} className="flex h-14 items-center gap-3 px-3">
                           <span
                             className="h-2.5 w-2.5 shrink-0 rounded-full"
-                            style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}
+                            style={{ backgroundColor: rankedColor(i) }}
                             aria-hidden="true"
                           />
                           <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground" title={app.app}>
@@ -1354,17 +1383,28 @@ export default function DeveloperActivity() {
                         textStyle,
                         tooltip: {
                           trigger: "item",
-                          valueFormatter: (v) => `${Number(v).toFixed(1)} min`,
+                          // "12.4 min" is a machine's unit. Show the duration
+                          // the way a person would say it.
+                          formatter: (p) =>
+                            `${p.name}<br/><b>${fmtMinutes(p.value)}</b> · ${p.percent.toFixed(0)}%`,
                           ...baseTooltip,
                         },
-                        legend: donutLegend,
+                        legend: legendFor(appPieData.length, donutLegend),
                         series: [
                           {
                             ...donutBase,
+                            // Caption says "top apps", not "tracked": these slices are the top
+                            // six only, so the sum is NOT the developer's total
+                            // tracked time and must not be labelled as if it were.
+                            label: donutCenter(sumValues(appPieData), fmtMinutes, "top apps"),
+                            emphasis: donutCenterEmphasis,
                             data: appPieData.map((d, i) => ({
                               value: d.value,
                               name: d.name,
-                              itemStyle: { color: CHART_COLORS[i % CHART_COLORS.length] },
+                              // Ranked, so the ramp is indexed by position and
+                              // clamped rather than wrapped — slice 7 must not
+                              // come back round to the darkest step.
+                              itemStyle: { color: rankedColor(i) },
                             })),
                           },
                         ],
@@ -1430,35 +1470,32 @@ export default function DeveloperActivity() {
                     option={{
                       color: [SEMANTIC.success, SEMANTIC.danger],
                       textStyle,
-                      grid: { ...baseGrid, top: 36, bottom: 30 },
                       tooltip: {
                         trigger: "axis",
-                        valueFormatter: (v) => `${Number(v).toFixed(1)}%`,
+                        valueFormatter: (v) => fmtPct(v, 1),
                         ...baseTooltip,
                       },
-                      legend: { ...baseLegend, data: ["Active %", "Idle %"] },
+                      // Two series, so the legend earns its place; the matching
+                      // grid.top keeps it off the plot.
+                      legend: legendFor(2, { data: ["Active %", "Idle %"] }),
+                      grid: gridWithLegend(2, { bottom: 30 }),
                       xAxis: {
-                        type: "category",
+                        ...categoryAxis,
                         boundaryGap: false,
                         name: "Time",
                         nameLocation: "middle",
                         nameGap: 28,
-                        nameTextStyle: axisLabel,
                         data: mouseChartData.map((d) => d.time),
                         // 50 timestamps per page used to overprint each other.
                         axisLabel: timeAxisLabel,
-                        axisLine,
-                        axisTick: { show: false },
                       },
                       yAxis: {
-                        type: "value",
+                        ...valueAxis,
                         name: "Share of minute",
                         nameLocation: "middle",
                         nameGap: 42,
-                        nameTextStyle: axisLabel,
                         max: 100,
                         axisLabel: { ...axisLabel, formatter: "{value}%" },
-                        splitLine,
                       },
                       series: [
                         {
@@ -1496,16 +1533,21 @@ export default function DeveloperActivity() {
                         textStyle,
                         tooltip: {
                           trigger: "item",
-                          valueFormatter: (v) => `${Number(v).toFixed(1)}%`,
+                          valueFormatter: (v) => fmtPct(v, 1),
                           ...baseTooltip,
                         },
-                        legend: donutLegend,
+                        legend: legendFor(2, donutLegend),
                         series: [
                           {
                             ...donutBase,
+                            // The two slices sum to 100%, so a total in the hole
+                            // would say nothing. The active share is the number
+                            // the reader actually came for.
+                            label: donutCenter(avgMouseActive, (v) => fmtPct(v), "active"),
+                            emphasis: donutCenterEmphasis,
                             data: [
                               { name: "Active", value: Math.round(avgMouseActive * 100) / 100, itemStyle: { color: SEMANTIC.success } },
-                              { name: "Idle", value: Math.round(avgMouseIdle * 100) / 100, itemStyle: { color: SEMANTIC.danger } },
+                              { name: "Idle", value: Math.round(avgMouseIdle * 100) / 100, itemStyle: { color: SEMANTIC.track } },
                             ],
                           },
                         ],
@@ -1725,16 +1767,26 @@ export default function DeveloperActivity() {
                             textStyle,
                             tooltip: {
                               trigger: "item",
-                              valueFormatter: (v) => `${Number(v).toFixed(1)} min`,
+                              formatter: (p) =>
+                                `${p.name}<br/><b>${fmtMinutes(p.value)}</b> · ${p.percent.toFixed(0)}%`,
                               ...baseTooltip,
                             },
-                            legend: donutLegend,
+                            legend: legendFor(2, donutLegend),
                             series: [
                               {
                                 ...donutBase,
+                                label: donutCenter(
+                                  totalKbActiveTime + totalKbIdleTime,
+                                  fmtMinutes,
+                                  "tracked"
+                                ),
+                                emphasis: donutCenterEmphasis,
                                 data: [
                                   { name: "Active", value: Math.round(totalKbActiveTime * 100) / 100, itemStyle: { color: SEMANTIC.success } },
-                                  { name: "Idle", value: Math.round(totalKbIdleTime * 100) / 100, itemStyle: { color: SEMANTIC.danger } },
+                                  // Idle is the absence of work, not a fault:
+                                  // the inert track tint rather than the red
+                                  // that means "rejected" everywhere else.
+                                  { name: "Idle", value: Math.round(totalKbIdleTime * 100) / 100, itemStyle: { color: SEMANTIC.track } },
                                 ],
                               },
                             ],
@@ -1914,7 +1966,10 @@ export default function DeveloperActivity() {
                               className="h-2 rounded-full"
                               style={{
                                 width: `${Math.min(app.pct, 100)}%`,
-                                backgroundColor: CHART_COLORS[i % CHART_COLORS.length],
+                                // Same ranked ramp, same index, as the donut on
+                                // this tab — the list and the chart are two
+                                // views of one ordering and must agree.
+                                backgroundColor: rankedColor(i),
                               }}
                             />
                           </div>
@@ -1922,7 +1977,7 @@ export default function DeveloperActivity() {
                             {app.pct.toFixed(0)}%
                           </span>
                           <span className="w-20 whitespace-nowrap text-right font-mono text-xs tabular-nums text-foreground">
-                            {app.totalMinutes.toFixed(1)} min
+                            {fmtMinutes(app.totalMinutes)}
                           </span>
                         </div>
                       </li>
@@ -1943,17 +1998,23 @@ export default function DeveloperActivity() {
                         textStyle,
                         tooltip: {
                           trigger: "item",
-                          valueFormatter: (v) => `${Number(v).toFixed(1)} min`,
+                          formatter: (p) =>
+                            `${p.name}<br/><b>${fmtMinutes(p.value)}</b> · ${p.percent.toFixed(0)}%`,
                           ...baseTooltip,
                         },
-                        legend: donutLegend,
+                        legend: legendFor(appPieData.length, donutLegend),
                         series: [
                           {
                             ...donutBase,
+                            // Caption says "top apps", not "tracked": these slices are the top
+                            // six only, so the sum is NOT the developer's total
+                            // tracked time and must not be labelled as if it were.
+                            label: donutCenter(sumValues(appPieData), fmtMinutes, "top apps"),
+                            emphasis: donutCenterEmphasis,
                             data: appPieData.map((d, i) => ({
                               value: d.value,
                               name: d.name,
-                              itemStyle: { color: CHART_COLORS[i % CHART_COLORS.length] },
+                              itemStyle: { color: rankedColor(i) },
                             })),
                           },
                         ],
@@ -1966,67 +2027,58 @@ export default function DeveloperActivity() {
                   <div className="rounded-xl border border-border bg-card p-6 shadow-card">
                     <h3 className="text-lg font-semibold text-foreground mb-4">Top Apps Usage (minutes)</h3>
                     <EChart
-                      height={300}
+                      // One row per app at a readable band instead of eight
+                      // squeezed into a fixed 300px box.
+                      height={heightForRows(appBarData.length, {
+                        perRow: 30,
+                        chrome: 76,
+                        min: 200,
+                      })}
                       option={{
-                        color: [PALETTE[0]],
                         textStyle,
-                        grid: { ...baseGrid, top: 24, bottom: 30 },
+                        // Nominal bars, so every bar takes the same hue: the bar
+                        // length already encodes the magnitude, and colouring by
+                        // value would spend the identity channel saying it twice.
+                        legend: legendFor(1),
+                        grid: gridWithLegend(1, { bottom: 30 }),
                         tooltip: {
                           trigger: "axis",
                           axisPointer: { type: "shadow" },
-                          valueFormatter: (v) => {
-                            // Convert minutes to seconds for calculation
-                            const totalSeconds = v * 60;
-
-                            if (totalSeconds < 60) {
-                              // Less than 1 minute - show seconds
-                              return `${Math.round(totalSeconds)} sec`;
-                            } else if (totalSeconds < 3600) {
-                              // Less than 1 hour - show minutes and seconds
-                              const minutes = Math.floor(totalSeconds / 60);
-                              const seconds = Math.round(totalSeconds % 60);
-                              return `${minutes} min ${seconds} sec`;
-                            } else {
-                              // Greater than or equal to 1 hour - show HH:MM:SS
-                              const hours = Math.floor(totalSeconds / 3600);
-                              const minutes = Math.floor((totalSeconds % 3600) / 60);
-                              const seconds = Math.round(totalSeconds % 60);
-                              return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-                            }
-                          },
+                          // Was a bespoke three-branch formatter that fell back
+                          // to a raw HH:MM:SS clock past an hour. One shared
+                          // duration format now covers every branch: "42s",
+                          // "7m", "1h 35m".
+                          valueFormatter: (v) => fmtMinutes(v),
                           ...baseTooltip,
                         },
                         xAxis: {
-                          type: "value",
-                          name: "Minutes",
+                          ...valueAxis,
+                          name: "Time spent",
                           nameLocation: "middle",
                           nameGap: 28,
-                          nameTextStyle: axisLabel,
-                          axisLabel,
-                          splitLine,
+                          axisLabel: { ...axisLabel, formatter: (v) => fmtMinutes(v) },
                         },
                         yAxis: {
-                          type: "category",
+                          ...categoryAxis,
                           data: appBarData.map((d) => d.name),
                           inverse: true,
                           // App names are arbitrary length; truncate at a fixed
-                          // width and drop any that still collide.
+                          // width and drop any that still collide. 11px matches
+                          // every other axis in the app.
                           axisLabel: {
                             ...axisLabel,
-                            fontSize: 12,
                             width: 120,
                             overflow: "truncate",
                             hideOverlap: true,
                           },
-                          axisLine,
-                          axisTick: { show: false },
                         },
                         series: [
                           {
-                            name: "Minutes",
+                            name: "Time spent",
                             type: "bar",
+                            barMaxWidth: 18,
                             data: appBarData.map((d) => d.minutes),
-                            itemStyle: { color: PALETTE[0], borderRadius: [0, 4, 4, 0] },
+                            itemStyle: roundedBarH(PRIMARY),
                           },
                         ],
                       }}
@@ -2466,7 +2518,7 @@ export default function DeveloperActivity() {
               {/* {developers.length === 0 && (
                 <div className="mt-4">
                   <p className="text-muted-foreground text-sm">No developers added by you yet</p>
-                  <button onClick={() => window.location.href = "/admin/dashboard?section=add-developer"} className="mt-2 text-info hover:text-info underline text-sm">Add Developers First</button>
+                  <button onClick={() => router.push("/admin/dashboard?section=add-developer")} className="mt-2 text-info hover:text-info underline text-sm">Add Developers First</button>
                 </div>
               )} */}
             </div>
@@ -2474,6 +2526,9 @@ export default function DeveloperActivity() {
             <div>
               <p className="text-muted-foreground text-lg">Please login to access developer activity</p>
               <p className="text-muted-foreground text-sm mt-2">Only admins can view developer activity data</p>
+              {/* Hard load on purpose — see the note on the other Go to Login
+                  button: the stale session and its subscriptions must die with
+                  the document. Not a candidate for router.push. */}
               <button onClick={() => window.location.href = "/login"} className="mt-4 inline-flex items-center gap-2 bg-primary text-primary-foreground py-2 px-4 rounded-lg font-semibold hover:bg-primary/90 transition-colors">Go to Login</button>
             </div>
           )}

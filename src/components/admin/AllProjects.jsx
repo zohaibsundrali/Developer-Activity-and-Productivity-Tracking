@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   RefreshCw,
   Plus,
@@ -23,6 +24,7 @@ import {
   CardHeader,
   CardTitle,
   CardDescription,
+  CardAction,
   CardContent,
   CardFooter,
   Badge,
@@ -70,11 +72,37 @@ const statusLabel = (status) =>
 const assignedDeveloperCount = (project) =>
   project?.assigned_developer_email || project?.assigned_developer_id ? 1 : 0;
 
+// `progress` is a nullable integer column, and rows written by older code paths
+// have held null and non-numeric strings. Rendering it raw put "null%" in the
+// label and `width: null%` (i.e. no width at all) on the bar, so every unknown
+// value is folded to a real 0–100 number once, here.
+const clampPercent = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, Math.round(n)));
+};
+
+// A card fact: the same label/value pair in the same slot on every card, so the
+// grid reads as columns rather than as a ransom note. Matches EmployeeDirectory.
+function Fact({ label, children, title }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="mt-0.5 truncate text-sm text-foreground" title={title}>
+        {children}
+      </dd>
+    </div>
+  );
+}
+
 // Native controls the kit has no primitive for (select / textarea / file).
 const CONTROL_CLASS =
   "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 export default function AllProjects({ developers: initialDevelopers, supabase }) {
+  const router = useRouter();
   const [showAddProject, setShowAddProject] = useState(false);
   const [loading, setLoading] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
@@ -180,22 +208,30 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
     }
   };
 
+  // Guarded: an unparseable timestamp used to reach the card as the literal
+  // string "Invalid Date".
   const formatDate = (dateString) => {
-    if (!dateString) return 'No date';
-    return new Date(dateString).toLocaleDateString('en-US', {
+    if (!dateString) return 'Not set';
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return 'Not set';
+    return date.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric'
     });
   };
 
+  // Both targets are internal routes. `window.location.href` made each click a
+  // full document load — the flash, the lost scroll position, the whole shell
+  // rebuilt — so they navigate through the router instead. Same targets, same
+  // guards, same ordering.
   const handleViewGanttChart = (projectId) => {
     // Navigate to Gantt chart page
-    window.location.href = `/admin/gantt-chart/${projectId}`;
+    router.push(`/admin/gantt-chart/${projectId}`);
   };
 
   const handleViewProjectDetails = (projectId) => {
-    window.location.href = `/admin/project-details/${projectId}`;
+    router.push(`/admin/project-details/${projectId}`);
   };
 
   const handleViewMetrics = async (project) => {
@@ -616,9 +652,11 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
           actions={headerActions}
         />
         <div className="space-y-6">
+          {/* Shaped like the card that will arrive — title, blurb, bar, four
+              facts, attachment row — rather than a spinner on a blank page. */}
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
             {[0, 1, 2, 3, 4, 5].map((i) => (
-              <SkeletonCard key={i} />
+              <SkeletonCard key={i} lines={7} />
             ))}
           </div>
         </div>
@@ -647,13 +685,19 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
   }
 
   const getDeadlineSummary = (deadline) => {
-    if (!deadline) return { label: 'No deadline set', variant: 'outline' };
+    if (!deadline) return { label: 'No deadline', variant: 'outline' };
 
     try {
       const deadlineDate = new Date(deadline);
       const today = new Date();
       const diffTime = deadlineDate - today;
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      // An unparseable deadline makes diffDays NaN, which used to fall through
+      // to the `${diffDays} days left` branch and render "NaN days left".
+      if (!Number.isFinite(diffDays)) {
+        return { label: 'No deadline', variant: 'outline' };
+      }
 
       if (diffDays < 0) {
         return {
@@ -673,7 +717,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
         variant: diffDays <= 3 ? 'warning' : 'success'
       };
     } catch {
-      return { label: 'N/A', variant: 'outline' };
+      return { label: 'No deadline', variant: 'outline' };
     }
   };
 
@@ -843,19 +887,17 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
                 <span className="font-semibold">&quot;{projectToDelete?.name}&quot;</span>?
               </p>
 
-              <div className="rounded-lg bg-muted p-3">
-                <p className="text-sm text-muted-foreground">
-                  <span className="font-medium text-foreground">Assigned to:</span> {projectToDelete?.assigned_developer_name || 'No developer assigned'}
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  <span className="font-medium text-foreground">Progress:</span> {projectToDelete?.progress}%
-                </p>
-                {projectToDelete?.deadline && (
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    <span className="font-medium text-foreground">Deadline:</span> {formatDate(projectToDelete.deadline)}
-                  </p>
-                )}
-              </div>
+              <dl className="grid grid-cols-1 gap-x-4 gap-y-3 rounded-lg bg-muted p-3 sm:grid-cols-3">
+                <Fact label="Assigned to">
+                  {projectToDelete?.assigned_developer_name || 'Unassigned'}
+                </Fact>
+                <Fact label="Progress">
+                  <span className="tabular-nums">{clampPercent(projectToDelete?.progress)}%</span>
+                </Fact>
+                <Fact label="Deadline">
+                  <span className="tabular-nums">{formatDate(projectToDelete?.deadline)}</span>
+                </Fact>
+              </dl>
 
               <p className="text-sm text-muted-foreground">
                 The assigned developer will be notified.
@@ -900,13 +942,15 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
             size="lg"
           >
             {metricsLoading ? (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
+              // Same tile geometry as the loaded state, so the dialog does not
+              // resize when the numbers arrive.
+              <div className="space-y-4" aria-busy="true">
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                   {[0, 1, 2, 3].map((i) => (
-                    <SkeletonCard key={i} />
+                    <Skeleton key={i} className="h-28 w-full rounded-xl" />
                   ))}
                 </div>
-                <Skeleton className="h-16 w-full rounded-lg" />
+                <Skeleton className="h-12 w-full rounded-lg" />
               </div>
             ) : metricsError ? (
               <ErrorState
@@ -917,64 +961,74 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
             ) : metricsData ? (
               <div className="animate-fade-in space-y-4">
                 {/* Summary tiles similar to developer timesheet */}
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
-                  <div className="rounded-xl border border-border bg-card p-4 text-center shadow-card">
-                    <div className="text-2xl font-bold tabular-nums text-foreground">{metricsData.totalTasks}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">Total Tasks</div>
-                  </div>
-                  <div className="rounded-xl border border-border bg-card p-4 text-center shadow-card">
-                    <div className="text-2xl font-bold tabular-nums text-success">{metricsData.summary?.onTime || 0}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">On Time</div>
-                    <div className="mt-1 text-[11px] text-success">+{metricsData.summary?.onTime || 0} pts</div>
-                  </div>
-                  <div className="rounded-xl border border-border bg-card p-4 text-center shadow-card">
-                    <div className="text-2xl font-bold tabular-nums text-destructive">{metricsData.summary?.late || 0}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">Late</div>
-                    <div className="mt-1 text-[11px] text-destructive">-{metricsData.summary?.late || 0} pts</div>
-                  </div>
-                  <div className="rounded-xl border border-border bg-card p-4 text-center shadow-card">
-                    <div className="text-2xl font-bold tabular-nums text-foreground">
-                      {metricsData.productivityPercentage || 0}%
-                    </div>
-                    <div className="mt-1 text-xs text-muted-foreground">Productivity</div>
-                    <div className="mt-2 flex justify-center">
-                      <Badge
-                        size="sm"
-                        variant={
-                          parseFloat(metricsData.productivityPercentage || 0) >= 80
-                            ? "success"
-                            : parseFloat(metricsData.productivityPercentage || 0) >= 50
-                              ? "warning"
-                              : "destructive"
-                        }
-                      >
-                        {parseFloat(metricsData.productivityPercentage || 0) >= 80
-                          ? "On track"
-                          : parseFloat(metricsData.productivityPercentage || 0) >= 50
-                            ? "Needs attention"
-                            : "At risk"}
-                      </Badge>
-                    </div>
-                    <div className="mt-1 text-[11px] text-muted-foreground">
-                      Points: {metricsData.productivityPoints >= 0 ? `+${metricsData.productivityPoints}` : metricsData.productivityPoints}
-                    </div>
-                  </div>
-                </div>
+                {(() => {
+                  // Every number below is folded to a real integer first: an
+                  // absent `productivityPoints` used to render the literal
+                  // "undefined" through the `>= 0 ? … : value` ternary.
+                  const totalTasks = Number(metricsData.totalTasks) || 0;
+                  const onTime = Number(metricsData.summary?.onTime) || 0;
+                  const late = Number(metricsData.summary?.late) || 0;
+                  const completed = Number(metricsData.summary?.completed) || 0;
+                  const rejected = Number(metricsData.summary?.rejected) || 0;
+                  const pending =
+                    (Number(metricsData.summary?.pending) || 0) +
+                    (Number(metricsData.summary?.inProgress) || 0) +
+                    (Number(metricsData.summary?.awaiting) || 0);
+                  const pct = clampPercent(metricsData.productivityPercentage);
+                  const points = Number(metricsData.productivityPoints) || 0;
+                  const health =
+                    pct >= 80
+                      ? { variant: "success", label: "On track" }
+                      : pct >= 50
+                        ? { variant: "warning", label: "Needs attention" }
+                        : { variant: "destructive", label: "At risk" };
 
-                {/* Basic breakdown */}
-                <div className="rounded-lg border border-border bg-muted p-3 text-xs text-muted-foreground">
-                  <p className="mb-1">
-                    <span className="font-semibold text-foreground">Completed:</span> {metricsData.summary?.completed || 0} ·
-                    {" "}
-                    <span className="font-semibold text-success">On Time:</span> {metricsData.summary?.onTime || 0} ·
-                    {" "}
-                    <span className="font-semibold text-destructive">Late:</span> {metricsData.summary?.late || 0} ·
-                    {" "}
-                    <span className="font-semibold text-foreground">Pending:</span> {(metricsData.summary?.pending || 0) + (metricsData.summary?.inProgress || 0) + (metricsData.summary?.awaiting || 0)} ·
-                    {" "}
-                    <span className="font-semibold text-foreground">Rejected:</span> {metricsData.summary?.rejected || 0}
-                  </p>
-                </div>
+                  return (
+                    <>
+                      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                        <div className="rounded-xl border border-border bg-card p-4 text-center shadow-card">
+                          <div className="text-2xl font-semibold tabular-nums text-foreground">{totalTasks}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">Total tasks</div>
+                        </div>
+                        <div className="rounded-xl border border-border bg-card p-4 text-center shadow-card">
+                          <div className="text-2xl font-semibold tabular-nums text-success">{onTime}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">On time</div>
+                          <div className="mt-1 text-xs tabular-nums text-muted-foreground">+{onTime} pts</div>
+                        </div>
+                        <div className="rounded-xl border border-border bg-card p-4 text-center shadow-card">
+                          <div className="text-2xl font-semibold tabular-nums text-destructive">{late}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">Late</div>
+                          <div className="mt-1 text-xs tabular-nums text-muted-foreground">−{late} pts</div>
+                        </div>
+                        <div className="rounded-xl border border-border bg-card p-4 text-center shadow-card">
+                          <div className="text-2xl font-semibold tabular-nums text-foreground">{pct}%</div>
+                          <div className="mt-1 text-xs text-muted-foreground">Productivity</div>
+                          <div className="mt-2 flex justify-center">
+                            <Badge size="sm" variant={health.variant}>{health.label}</Badge>
+                          </div>
+                          <div className="mt-1 text-xs tabular-nums text-muted-foreground">
+                            {points >= 0 ? `+${points}` : points} pts
+                          </div>
+                        </div>
+                      </div>
+
+                      <dl className="flex flex-wrap gap-x-5 gap-y-2 rounded-lg border border-border bg-muted/40 p-3 text-xs">
+                        {[
+                          { label: "Completed", value: completed },
+                          { label: "On time", value: onTime },
+                          { label: "Late", value: late },
+                          { label: "Pending", value: pending },
+                          { label: "Rejected", value: rejected },
+                        ].map((row) => (
+                          <div key={row.label} className="flex items-baseline gap-1.5">
+                            <dt className="text-muted-foreground">{row.label}</dt>
+                            <dd className="font-semibold tabular-nums text-foreground">{row.value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </>
+                  );
+                })()}
               </div>
             ) : (
               <EmptyState
@@ -997,127 +1051,113 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
             {projects.map(project => {
               const deadlineSummary = getDeadlineSummary(project.deadline);
+              const progress = clampPercent(project.progress);
+              const projectName = project.name || 'Untitled project';
               return (
                 <Card key={project.id} className="animate-fade-in">
                   <CardHeader>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 space-y-1">
-                        <CardTitle className="truncate">{project.name}</CardTitle>
-                        {project.description && (
-                          <CardDescription className="line-clamp-2">
-                            {project.description}
-                          </CardDescription>
-                        )}
-                      </div>
+                    {/* The project name is the only large text on the card. */}
+                    <CardTitle className="line-clamp-2 min-h-[2.75rem]">{projectName}</CardTitle>
+                    {/* Reserved whether or not there is a description, so a card
+                        with one does not sit taller than the card beside it. */}
+                    <CardDescription className="line-clamp-2 min-h-[2.5rem]">
+                      {project.description || 'No description provided.'}
+                    </CardDescription>
+                    <CardAction>
                       <Button
                         variant="ghost"
                         size="icon-sm"
                         onClick={() => handleDeleteClick(project)}
-                        aria-label={`Delete project ${project.name}`}
+                        aria-label={`Delete project ${projectName}`}
                         title="Delete Project"
                       >
                         <Trash2 className="h-4 w-4" aria-hidden="true" />
                       </Button>
-                    </div>
-                    <div className="pt-1">
+                    </CardAction>
+                  </CardHeader>
+
+                  <CardContent className="flex flex-1 flex-col gap-4">
+                    {/* Two states, one line: what the project is, and how the
+                        deadline is going. The dates themselves live in the
+                        fact grid below rather than being repeated here. */}
+                    <div className="flex flex-wrap items-center gap-2">
                       <StatusPill
                         size="sm"
                         status={statusPillKey(project.status)}
                         label={statusLabel(project.status)}
                       />
+                      <Badge size="sm" variant={deadlineSummary.variant}>
+                        {deadlineSummary.label}
+                      </Badge>
                     </div>
-                  </CardHeader>
 
-                  <CardContent className="space-y-3">
+                    {/* One progress indicator — a labelled bar, nothing else. */}
                     <div>
-                      <div className="mb-1 flex justify-between text-sm text-foreground">
-                        <span>Progress</span>
-                        <span className="tabular-nums">{project.progress}%</span>
+                      <div className="mb-1.5 flex items-baseline justify-between text-sm">
+                        <span className="text-muted-foreground">Progress</span>
+                        <span className="font-semibold tabular-nums text-foreground">{progress}%</span>
                       </div>
                       <div
                         className="h-2 w-full overflow-hidden rounded-full bg-muted"
                         role="progressbar"
-                        aria-valuenow={Number(project.progress) || 0}
+                        aria-valuenow={progress}
                         aria-valuemin={0}
                         aria-valuemax={100}
-                        aria-label={`${project.name} progress`}
+                        aria-label={`${projectName} progress`}
                       >
                         <div
-                          className="h-2 rounded-full bg-primary"
-                          style={{ width: `${project.progress}%` }}
+                          className="h-full rounded-full bg-primary"
+                          style={{ width: `${progress}%` }}
                         />
                       </div>
                     </div>
 
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">
-                        <span className="font-medium text-foreground">Developers:</span> {assignedDeveloperCount(project)}
-                      </p>
+                    {/* The same four facts, in the same order, on every card. */}
+                    <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-border pt-4">
+                      <Fact
+                        label="Assigned to"
+                        title={project.assigned_developer_email || undefined}
+                      >
+                        {project.assigned_developer_name || 'Unassigned'}
+                      </Fact>
+                      <Fact label="Developers">
+                        <span className="tabular-nums">{assignedDeveloperCount(project)}</span>
+                      </Fact>
+                      <Fact label="Deadline">
+                        <span className="tabular-nums">{formatDate(project.deadline)}</span>
+                      </Fact>
+                      <Fact label="Created">
+                        <span className="tabular-nums">{formatDate(project.created_at)}</span>
+                      </Fact>
+                    </dl>
 
-                      {project.assigned_developer_name && (
-                        <div>
-                          <p className="text-sm text-muted-foreground">
-                            <span className="font-medium text-foreground">Assigned to:</span> {project.assigned_developer_name}
-                          </p>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {project.assigned_developer_email}
-                          </p>
+                    {/* The attachment slot is always here and always the same
+                        height, so the footers line up across the row. */}
+                    <div className="mt-auto pt-1">
+                      {project.file_url ? (
+                        <div className="flex h-12 items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 px-3">
+                          <div className="flex min-w-0 flex-1 items-center gap-2">
+                            <FileText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                            <span className="truncate text-sm text-foreground">
+                              {project.file_name || 'Requirements file'}
+                            </span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDownloadFile(project)}
+                            aria-label={`Download requirements for ${projectName}`}
+                          >
+                            <Download className="h-4 w-4" aria-hidden="true" />
+                            Download
+                          </Button>
                         </div>
-                      )}
-
-                      {project.deadline && (
-                        <p className="text-sm text-muted-foreground">
-                          <span className="font-medium text-foreground">Deadline:</span> {formatDate(project.deadline)}
-                        </p>
-                      )}
-
-                      <p className="text-xs text-muted-foreground">
-                        Created: {formatDate(project.created_at)}
-                      </p>
-                    </div>
-
-                    {project.file_url && (
-                      <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 p-2">
-                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                      ) : (
+                        <div className="flex h-12 items-center gap-2 rounded-lg border border-dashed border-border px-3">
                           <FileText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                          <span className="truncate text-sm text-foreground">
-                            {project.file_name || 'Requirements File'}
-                          </span>
+                          <span className="text-sm text-muted-foreground">No requirements file</span>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDownloadFile(project)}
-                        >
-                          <Download className="h-4 w-4" aria-hidden="true" />
-                          Download
-                        </Button>
-                      </div>
-                    )}
-
-                    {/* Compact timeline similar to developer view */}
-                    <div className="rounded-lg border border-border bg-muted/40 p-3">
-                      <p className="mb-2 flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        <Calendar className="h-4 w-4" aria-hidden="true" />
-                        Project timeline
-                      </p>
-                      <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
-                        <div>
-                          <p className="font-medium text-foreground">Created</p>
-                          <p>{formatDate(project.created_at)}</p>
-                        </div>
-                        <div className="relative mx-3 h-0.5 flex-1 bg-border">
-                          <span className="absolute -top-1 left-0 h-2 w-2 rounded-full bg-muted-foreground/50" />
-                          <span className="absolute -top-1 right-0 h-2 w-2 rounded-full bg-muted-foreground/50" />
-                        </div>
-                        <div className="text-right">
-                          <p className="font-medium text-foreground">Deadline</p>
-                          <p>{project.deadline ? formatDate(project.deadline) : 'Not set'}</p>
-                        </div>
-                      </div>
-                      <Badge size="sm" variant={deadlineSummary.variant}>
-                        {deadlineSummary.label}
-                      </Badge>
+                      )}
                     </div>
                   </CardContent>
 
@@ -1126,7 +1166,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
                       variant="outline"
                       size="sm"
                       onClick={() => handleViewMetrics(project)}
-                      title="View Productivity"
+                      aria-label={`View productivity metrics for ${projectName}`}
                     >
                       <BarChart3 className="h-4 w-4" aria-hidden="true" />
                       Metrics
@@ -1135,7 +1175,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
                       variant="outline"
                       size="sm"
                       onClick={() => handleViewGanttChart(project.id)}
-                      title="View Gantt Chart Timeline"
+                      aria-label={`View timeline for ${projectName}`}
                     >
                       <Calendar className="h-4 w-4" aria-hidden="true" />
                       Timeline
@@ -1144,11 +1184,11 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
                       variant="outline"
                       size="sm"
                       onClick={() => handleViewProjectDetails(project.id)}
-                      title="View Project Details"
+                      aria-label={`View details for ${projectName}`}
                       className="ml-auto"
                     >
                       <Eye className="h-4 w-4" aria-hidden="true" />
-                      View Detail
+                      View detail
                     </Button>
                   </CardFooter>
                 </Card>

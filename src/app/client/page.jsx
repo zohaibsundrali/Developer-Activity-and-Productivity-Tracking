@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 import AppShell from "@/components/shell/AppShell";
@@ -121,6 +121,8 @@ function ClientDashboardContent() {
 
   const [user, setUser] = useState(null);
   const [activeSection, setActiveSection] = useState("overview");
+  const [activeProjectId, setActiveProjectId] = useState(null);
+  const [isNavigating, startNavigation] = useTransition();
 
   // Initialize user + ensure cookies exist for middleware / API scoping.
   useEffect(() => {
@@ -137,28 +139,48 @@ function ClientDashboardContent() {
     }
   }, [router]);
 
-  // Drive active section from ?section=
+  // Drive active section (and the project it is scoped to) from the URL. The
+  // URL stays authoritative — back/forward and pasted links have to win — but
+  // both are mirrored into state so a click can move them on the same frame
+  // rather than after the router has answered. They are mirrored *together*:
+  // setting the section without the project id would render the picker for a
+  // frame on the way into a project detail.
   useEffect(() => {
-    const sectionParam = searchParams.get("section");
-    setActiveSection(sectionParam || "overview");
+    setActiveSection(searchParams.get("section") || "overview");
+    setActiveProjectId(searchParams.get("projectId"));
   }, [pathname, searchParams]);
 
-  // Navigate to a section (updates the URL without a reload)
+  // Navigate to a section. The local state moves first so the sidebar and the
+  // topbar title change on the click; the router then catches the URL up inside
+  // a transition, which keeps the current screen visible (and gives us
+  // `isNavigating` for the topbar hairline) instead of blanking it.
+  //
+  // The pushes below no longer pass `scroll: false`: a section is a new screen
+  // and should open at the top. Back/forward still lands you where you were —
+  // the router restores scroll on popstate on its own.
   const handleSectionChange = (section) => {
+    if (section === activeSection && !activeProjectId) return;
     setActiveSection(section);
+    setActiveProjectId(null);
     const params = new URLSearchParams();
     params.set("section", section);
-    router.push(`/client?${params.toString()}`, { scroll: false });
+    startNavigation(() => {
+      router.push(`/client?${params.toString()}`);
+    });
   };
 
   // Navigate into a project-scoped view. `section` selects which one, so the
   // activity feed and the project conversation are linkable on their own rather
   // than only reachable as a tab inside the detail screen.
   const handleViewProjectIn = (section) => (projectId) => {
+    setActiveSection(section);
+    setActiveProjectId(String(projectId));
     const params = new URLSearchParams();
     params.set("section", section);
     params.set("projectId", String(projectId));
-    router.push(`/client?${params.toString()}`, { scroll: false });
+    startNavigation(() => {
+      router.push(`/client?${params.toString()}`);
+    });
   };
 
   const handleViewProject = handleViewProjectIn("projects");
@@ -173,7 +195,7 @@ function ClientDashboardContent() {
     router.push("/login");
   };
 
-  const projectId = searchParams.get("projectId");
+  const projectId = activeProjectId;
 
   const renderContent = () => {
     switch (activeSection) {
@@ -236,6 +258,7 @@ function ClientDashboardContent() {
       onLogout={handleLogout}
       title={sectionTitle(activeSection, "client")}
       subtitle={user?.name ? `Welcome back, ${user.name}` : undefined}
+      navPending={isNavigating}
     >
       {renderContent()}
     </AppShell>

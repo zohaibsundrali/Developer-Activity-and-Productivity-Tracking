@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 import AppShell from "@/components/shell/AppShell";
@@ -175,7 +175,20 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
   const [projects, setProjects] = useState([]);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const activeSection = searchParams?.get("section") || "overview";
+  const sectionParam = searchParams?.get("section") || "overview";
+
+  // The URL is still the source of truth — back/forward, a pasted ?section=
+  // link and the notification centre's deep links all have to win — but the
+  // sidebar reads this mirror, which the click sets on the same frame. Reading
+  // `searchParams` directly meant the highlight, the topbar title and the
+  // content all waited for the router round-trip before anything moved, which
+  // is what made a section switch feel like a page load.
+  const [activeSection, setActiveSection] = useState(sectionParam);
+  const [isNavigating, startNavigation] = useTransition();
+
+  useEffect(() => {
+    setActiveSection(sectionParam);
+  }, [sectionParam]);
 
   useEffect(() => {
     const authUser = checkAdminAuth();
@@ -185,7 +198,7 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
     }
 
     setUser(authUser);
-    fetchDashboardData();
+    fetchDashboardData({ initial: true });
 
     // Set up interval to check session every minute
     const sessionCheckInterval = setInterval(() => {
@@ -200,10 +213,16 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
     };
   }, [router]);
 
-  const fetchDashboardData = async () => {
+  // `initial` is the *first* load, the only one that has nothing to show yet.
+  // Every later call is a refresh triggered from inside a section (after adding
+  // a developer, say), and those used to flip `loading` back on — which swapped
+  // the whole shell out for the boot skeleton, tearing down the sidebar, the
+  // topbar and the command palette and reading exactly like a page reload. The
+  // queries below are unchanged; only the teardown is gone.
+  const fetchDashboardData = async ({ initial = false } = {}) => {
     try {
-      setLoading(true);
-      
+      if (initial) setLoading(true);
+
       // Verify user is still authenticated
       const currentUser = checkAdminAuth();
       if (!currentUser) {
@@ -235,7 +254,7 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
     } catch (error) {
       // Silently handle error
     } finally {
-      setLoading(false);
+      if (initial) setLoading(false);
     }
   };
 
@@ -256,7 +275,10 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
       user,
       developers,
       projects,
-      onRefresh: fetchDashboardData,
+      // Wrapped rather than passed raw: children call this from click handlers,
+      // and a DOM event landing in the options argument must not be able to
+      // look like `{ initial: true }`.
+      onRefresh: () => fetchDashboardData(),
       supabase,
       onLogout: handleLogout
     };
@@ -323,7 +345,17 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
   }
 
   const handleNavigate = (sectionId) => {
-    router.push(`/admin/dashboard?section=${sectionId}`);
+    // Re-clicking the section you are already on would still cost a router
+    // round-trip and a re-render for no visible change.
+    if (sectionId === activeSection) return;
+    // Paint first…
+    setActiveSection(sectionId);
+    // …then let the router catch the URL up. In a transition, so React keeps
+    // the current screen on-screen and hands us `isNavigating` for the topbar
+    // hairline instead of blanking the page.
+    startNavigation(() => {
+      router.push(`/admin/dashboard?section=${sectionId}`);
+    });
   };
 
   const role = user?.membership_role || "admin";
@@ -338,6 +370,7 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
       onLogout={handleLogout}
       title={sectionTitle(activeSection, "admin")}
       subtitle={user?.full_name ? `Signed in as ${user.full_name}` : undefined}
+      navPending={isNavigating}
       notificationSlot={<NotificationDropdown user={user} />}
     >
       {renderContent()}

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 import AppShell from "@/components/shell/AppShell";
@@ -132,6 +132,7 @@ function DeveloperDashboardContent() {
   const [user, setUser] = useState(null);
   const [assignedProjects, setAssignedProjects] = useState([]);
   const [activeSection, setActiveSection] = useState("overview");
+  const [isNavigating, startNavigation] = useTransition();
   const audioRef = useRef(null);
 
   // Notification sound setup
@@ -258,16 +259,22 @@ function DeveloperDashboardContent() {
     updateActiveSection();
   }, [pathname, searchParams]);
 
-  // ✅ FIXED: Handle section change with URL update
+  // Section change: paint the new section immediately, then catch the URL up.
   const handleSectionChange = (section) => {
+    if (section === activeSection) return;
     setActiveSection(section);
-    
-    // Update URL without page reload
+
     const params = new URLSearchParams(searchParams.toString());
     params.set('section', section);
-    
-    // Update URL - maintain path as /developer/dashboard
-    router.push(`/developer/dashboard?${params.toString()}`, { scroll: false });
+
+    // No `scroll: false` here any more. A section is a new screen, so it should
+    // open at the top; leaving the previous screen's scroll offset in place
+    // dropped you into the middle of a list you had never seen. Back/forward
+    // still restores the old offset — the router handles popstate itself, and
+    // that is the case `scroll: false` was blunting.
+    startNavigation(() => {
+      router.push(`/developer/dashboard?${params.toString()}`);
+    });
   };
 
   const fetchDeveloperData = async (developerData) => {
@@ -298,7 +305,9 @@ function DeveloperDashboardContent() {
   // ✅ FIXED: Handle project details navigation
   const handleViewProjectDetails = (project) => {
     // Navigate to project details page
-    router.push(`/developer/project-details?id=${project.id}&name=${encodeURIComponent(project.name)}&description=${encodeURIComponent(project.description || '')}&status=${project.status}&progress=${project.progress}&deadline=${project.deadline}&created_at=${project.created_at}&file_url=${project.file_url || ''}&file_name=${encodeURIComponent(project.file_name || '')}&assigned_at=${project.assigned_at || ''}&assigned_developer_name=${encodeURIComponent(project.assigned_developer_name || '')}&assigned_developer_email=${project.assigned_developer_email || ''}`);
+    startNavigation(() => {
+      router.push(`/developer/project-details?id=${project.id}&name=${encodeURIComponent(project.name)}&description=${encodeURIComponent(project.description || '')}&status=${project.status}&progress=${project.progress}&deadline=${project.deadline}&created_at=${project.created_at}&file_url=${project.file_url || ''}&file_name=${encodeURIComponent(project.file_name || '')}&assigned_at=${project.assigned_at || ''}&assigned_developer_name=${encodeURIComponent(project.assigned_developer_name || '')}&assigned_developer_email=${project.assigned_developer_email || ''}`);
+    });
   };
 
   const renderContent = () => {
@@ -351,6 +360,7 @@ function DeveloperDashboardContent() {
       onLogout={handleLogout}
       title={sectionTitle(activeSection, effectiveRole)}
       subtitle={user?.name ? `Welcome back, ${user.name}` : undefined}
+      navPending={isNavigating}
       notificationSlot={<NotificationDropdown user={user} />}
     >
       {renderContent()}

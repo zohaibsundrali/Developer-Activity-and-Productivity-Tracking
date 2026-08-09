@@ -9,8 +9,10 @@ import {
   baseGrid,
   baseTooltip,
   axisLabel,
-  axisLine,
-  splitLine,
+  valueAxis,
+  categoryAxis,
+  fmtInt,
+  heightForRows,
 } from "@/components/charts/chartTheme";
 import { EmptyState, StatusPill, Tabs } from "@/components/ui";
 
@@ -106,6 +108,13 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
     });
   }, [tasks]);
 
+  // Which statuses are actually plotted — drives the legend so it lists what is
+  // on screen and nothing else. Read off chartData; no extra query.
+  const presentStatuses = useMemo(
+    () => new Set(chartData.map((d) => d.status)),
+    [chartData]
+  );
+
   // Calculate today's position
   const todayPosition = useMemo(() => {
     if (!tasks || tasks.length === 0) return null;
@@ -172,41 +181,37 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
             `<div style="font-weight:600;margin-bottom:4px">${row.name}</div>` +
             `<div>Start: ${row.startDate}</div>` +
             `<div>End: ${row.endDate}</div>` +
-            `<div>Duration: ${row.duration} days</div>` +
+            `<div>Duration: ${fmtInt(row.duration)} ${row.duration === 1 ? "day" : "days"}</div>` +
             `<div style="text-transform:capitalize">Status: ${row.status.replace("_", " ")}</div>` +
             onTimeRow(row)
           );
         },
       },
       xAxis: {
-        type: "value",
+        ...valueAxis,
         min: 0,
         name: "Days from project start",
         nameLocation: "middle",
         nameGap: 26,
-        nameTextStyle: axisLabel,
         minInterval: 1,
         // hideOverlap stops "Day 12"/"Day 13" printing on top of each other
         // once a long project squeezes the axis at narrow widths.
-        axisLabel: { ...axisLabel, hideOverlap: true, formatter: (value) => `Day ${value}` },
-        axisLine,
-        splitLine,
+        axisLabel: { ...axisLabel, hideOverlap: true, formatter: (value) => `Day ${fmtInt(value)}` },
       },
       yAxis: {
-        type: "category",
+        ...categoryAxis,
         inverse: true,
         data: chartData.map((d) => d.name),
         // Task titles are free text and used to run into the plot area. They
         // now truncate at a fixed width with the full name in the tooltip.
+        // 11px matches every other axis in the app — this one used to run 12px
+        // and read as a row header rather than as axis furniture.
         axisLabel: {
           ...axisLabel,
-          fontSize: 12,
           width: 150,
           overflow: "truncate",
           hideOverlap: true,
         },
-        axisLine,
-        axisTick: { show: false },
       },
       series: [
         {
@@ -224,7 +229,7 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
           name: "duration",
           type: "bar",
           stack: "g",
-          barWidth: 24,
+          barWidth: 20,
           data: chartData.map((d) => ({
             value: d.duration,
             itemStyle: {
@@ -232,13 +237,21 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
               borderRadius: 4,
             },
           })),
+          // "Today" is a reference line, not an alarm. It used to be drawn in
+          // the destructive red that also means "rejected" on the bars beside
+          // it, so the same colour said two different things in one chart.
           markLine: todayPosition
             ? {
                 symbol: "none",
                 silent: true,
                 data: [{ xAxis: todayPosition }],
-                lineStyle: { color: SEMANTIC.danger, type: "dashed", width: 1 },
-                label: { formatter: "Today", color: SEMANTIC.danger, fontSize: 12, position: "insideEndTop" },
+                lineStyle: { color: SEMANTIC.muted, type: "dashed", width: 1 },
+                label: {
+                  formatter: "Today",
+                  color: SEMANTIC.muted,
+                  fontSize: 11,
+                  position: "insideEndTop",
+                },
               }
             : undefined,
         },
@@ -306,16 +319,27 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
       <div className="p-4 sm:p-6">
         {viewMode === "chart" ? (
           <>
-            {/* Legend */}
-            <div className="flex flex-wrap gap-4 mb-4">
-              {Object.entries(statusColors).map(([status, color]) => (
-                <div key={status} className="flex items-center">
-                  <div className="w-4 h-4 rounded" style={{ backgroundColor: color }}></div>
-                  <span className="ml-2 text-sm text-muted-foreground capitalize">
-                    {status.replace('_', ' ')}
-                  </span>
-                </div>
-              ))}
+            {/* Legend — only the statuses actually on the chart. Printing all
+                five when a project has two of them is noise, and the swatch
+                colours are read straight from the shared theme so the key can
+                never disagree with the bars. */}
+            <div
+              className={`flex flex-wrap gap-x-4 gap-y-2 ${chartData.length > 0 ? "mb-4" : ""}`}
+            >
+              {Object.entries(statusColors)
+                .filter(([status]) => presentStatuses.has(status))
+                .map(([status, color]) => (
+                  <div key={status} className="flex items-center">
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                      style={{ backgroundColor: color }}
+                      aria-hidden="true"
+                    />
+                    <span className="ml-2 text-xs capitalize text-muted-foreground">
+                      {status.replace('_', ' ')}
+                    </span>
+                  </div>
+                ))}
             </div>
 
             {/* Gantt chart.
@@ -323,14 +347,35 @@ export default function EnhancedGanttChart({ tasks, projectName }) {
                 past ~10 tasks squeezed the category axis until the task names
                 collided. 34px per row keeps every label on its own line, and
                 the floor stops a one-task chart from collapsing. */}
-            <div className="overflow-x-auto">
-              <div className="min-w-[700px]">
-                <EChart
-                  option={chartOption}
-                  height={Math.max(260, chartData.length * 34 + 80)}
-                />
-              </div>
-            </div>
+            {chartData.length === 0 ? (
+              /* Tasks exist, but none of them carry both a start and an end
+                 date — so there is nothing to plot. Say so, rather than drawing
+                 an empty axis and letting the reader wonder. */
+              <EmptyState
+                icon={GanttChartSquare}
+                title="No dated tasks to plot"
+                description="These tasks have no start and end date yet. Add dates to see them on the timeline, or use the List view."
+              />
+            ) : (
+              <>
+                <p className="mb-3 text-xs text-muted-foreground sm:hidden">
+                  Scroll sideways to follow the timeline, or switch to List for a
+                  reading-friendly view on a small screen.
+                </p>
+                <div className="overflow-x-auto">
+                  <div className="min-w-[640px]">
+                    <EChart
+                      option={chartOption}
+                      height={heightForRows(chartData.length, {
+                        perRow: 34,
+                        chrome: 80,
+                        min: 260,
+                      })}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
           </>
         ) : (
           /* List View */

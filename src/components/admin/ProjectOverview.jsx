@@ -87,10 +87,29 @@ function safeDate(value) {
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;
 }
+// Pinned to en-US rather than the runtime default: an undefined locale renders
+// a different string on the server than in the browser (and a different one per
+// user), which is both a hydration mismatch and an inconsistent product.
 function formatDate(value) {
   const d = safeDate(value);
   if (!d) return null;
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+}
+
+// Progress arrives either from the task rollup or from the stored column, which
+// is nullable — fold anything unusable to a real 0–100 number before it reaches
+// a width or a label.
+function clampPercent(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+// "3 of 8", never "3/8".
+function countOf(done, total) {
+  const d = Number(done) || 0;
+  const t = Number(total) || 0;
+  return `${d} of ${t}`;
 }
 function relativeTime(value) {
   const d = safeDate(value);
@@ -442,7 +461,8 @@ export default function ProjectOverview() {
     ? STATUS_BADGE_VARIANT[statusMeta.tone] || "secondary"
     : "secondary";
   const risk = RISK_META[health.risk] || RISK_META.low;
-  const deadlineLabel = formatDate(health.deadline) || "No deadline";
+  const deadlineLabel = formatDate(health.deadline) || "Not set";
+  const healthProgress = clampPercent(health.progress);
 
   return (
     <div>
@@ -516,28 +536,29 @@ export default function ProjectOverview() {
               </CardHeader>
               <CardContent>
                 <div>
-                  <div className="mb-1.5 flex items-center justify-between text-sm">
-                    <span className="font-medium text-muted-foreground">Progress</span>
-                    <span className="font-semibold tabular-nums text-foreground">{health.progress}%</span>
+                  <div className="mb-1.5 flex items-baseline justify-between text-sm">
+                    <span className="text-muted-foreground">Progress</span>
+                    <span className="font-semibold tabular-nums text-foreground">{healthProgress}%</span>
                   </div>
                   <div
                     className="h-2.5 w-full overflow-hidden rounded-full bg-muted"
                     role="progressbar"
-                    aria-valuenow={Math.max(0, Math.min(100, health.progress))}
+                    aria-valuenow={healthProgress}
                     aria-valuemin={0}
                     aria-valuemax={100}
                     aria-label="Project progress"
                   >
                     <div
                       className="h-full rounded-full bg-primary"
-                      style={{ width: `${Math.max(0, Math.min(100, health.progress))}%` }}
+                      style={{ width: `${healthProgress}%` }}
                     />
                   </div>
                 </div>
 
                 <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
                   <span className="text-muted-foreground">
-                    Deadline: <span className="font-medium text-foreground">{deadlineLabel}</span>
+                    Deadline:{" "}
+                    <span className="font-medium tabular-nums text-foreground">{deadlineLabel}</span>
                   </span>
                   {health.deadlinePassed && (
                     <Badge size="sm" variant="destructive">Deadline passed</Badge>
@@ -554,7 +575,7 @@ export default function ProjectOverview() {
               <StatCard title="Overdue" value={health.overdue} icon={AlertTriangle} tone="destructive" />
               <StatCard
                 title="Milestones"
-                value={`${doneMilestones}/${milestones.length}`}
+                value={countOf(doneMilestones, milestones.length)}
                 icon={Flag}
                 tone="accent"
               />
@@ -638,57 +659,73 @@ export default function ProjectOverview() {
                       const meta = MILESTONE_STATUS_META[m.status] || MILESTONE_STATUS_META.pending;
                       const completed = m.status === "completed";
                       const due = formatDate(m.due_date);
+                      const milestoneTitle = m.title || "Untitled milestone";
                       return (
+                        // Five controls on one line is a desktop layout. Below
+                        // sm the row stacks — status/title/due on top, the
+                        // controls beneath — rather than scrolling sideways.
                         <li
                           key={m.id}
-                          className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5 transition-colors duration-150 hover:bg-muted/40"
+                          className="flex flex-col gap-3 rounded-lg border border-border bg-card px-3 py-3 transition-colors duration-150 hover:bg-muted/40 sm:flex-row sm:items-center"
                         >
-                          <StatusPill size="sm" status={meta.pill} label={meta.label} />
-                          <div className="min-w-0 flex-1">
-                            <p className={`truncate text-sm font-medium ${completed ? "text-muted-foreground line-through" : "text-foreground"}`}>
-                              {m.title || "Untitled milestone"}
-                            </p>
-                            {m.description && (
-                              <p className="truncate text-xs text-muted-foreground">{m.description}</p>
-                            )}
+                          <div className="flex min-w-0 flex-1 items-start gap-3">
+                            <StatusPill
+                              size="sm"
+                              status={meta.pill}
+                              label={meta.label}
+                              className="mt-0.5 shrink-0"
+                            />
+                            <div className="min-w-0">
+                              <p className={`truncate text-sm font-medium ${completed ? "text-muted-foreground line-through" : "text-foreground"}`}>
+                                {milestoneTitle}
+                              </p>
+                              {m.description && (
+                                <p className="truncate text-sm text-muted-foreground">{m.description}</p>
+                              )}
+                              {/* Always rendered, so the rows line up whether or
+                                  not a milestone has a date. */}
+                              <p className="text-sm tabular-nums text-muted-foreground">
+                                Due {due || "not set"}
+                              </p>
+                            </div>
                           </div>
-                          <span className="text-xs tabular-nums text-muted-foreground">
-                            {due || "No due date"}
-                          </span>
-                          <select
-                            value={MILESTONE_STATUS.includes(m.status) ? m.status : "pending"}
-                            onChange={(e) => changeMilestoneStatus(m, e.target.value)}
-                            disabled={busy}
-                            className={`${CONTROL_CLASS} py-1`}
-                            aria-label="Change milestone status"
-                          >
-                            {MILESTONE_STATUS.map((s) => (
-                              <option key={s} value={s}>
-                                {MILESTONE_STATUS_META[s]?.label || labelize(s)}
-                              </option>
-                            ))}
-                          </select>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            onClick={() => openEdit(m)}
-                            title="Edit milestone"
-                            aria-label={`Edit milestone ${m.title || "Untitled milestone"}`}
-                          >
-                            <Pencil className="h-4 w-4" aria-hidden="true" />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            onClick={() => removeMilestone(m)}
-                            disabled={busy}
-                            title="Delete milestone"
-                            aria-label={`Delete milestone ${m.title || "Untitled milestone"}`}
-                          >
-                            <Trash2 className="h-4 w-4" aria-hidden="true" />
-                          </Button>
+
+                          <div className="flex shrink-0 items-center gap-2">
+                            <select
+                              value={MILESTONE_STATUS.includes(m.status) ? m.status : "pending"}
+                              onChange={(e) => changeMilestoneStatus(m, e.target.value)}
+                              disabled={busy}
+                              className={`${CONTROL_CLASS} flex-1 py-1 sm:flex-none`}
+                              aria-label={`Change status of milestone ${milestoneTitle}`}
+                            >
+                              {MILESTONE_STATUS.map((s) => (
+                                <option key={s} value={s}>
+                                  {MILESTONE_STATUS_META[s]?.label || labelize(s)}
+                                </option>
+                              ))}
+                            </select>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => openEdit(m)}
+                              title="Edit milestone"
+                              aria-label={`Edit milestone ${milestoneTitle}`}
+                            >
+                              <Pencil className="h-4 w-4" aria-hidden="true" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => removeMilestone(m)}
+                              disabled={busy}
+                              title="Delete milestone"
+                              aria-label={`Delete milestone ${milestoneTitle}`}
+                            >
+                              <Trash2 className="h-4 w-4" aria-hidden="true" />
+                            </Button>
+                          </div>
                         </li>
                       );
                     })}
@@ -726,21 +763,26 @@ export default function ProjectOverview() {
                         a.actor_name || actorNameById.get(a.actor_id) || "Someone";
                       const meta = a.meta || {};
                       const hint = meta.title || meta.to || meta.name || null;
+                      // Both of these are nullable on the row, and both used to
+                      // render as a gap in the sentence.
+                      const action = labelize(a.action).toLowerCase() || "changed";
+                      const entity = labelize(a.entity_type).toLowerCase() || "an item";
+                      const when = relativeTime(a.created_at);
                       return (
                         <li key={a.id} className="flex gap-3">
                           <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />
                           <div className="min-w-0 flex-1">
                             <p className="text-sm text-foreground">
                               <span className="font-medium">{actor}</span>{" "}
-                              <span className="text-muted-foreground">{labelize(a.action).toLowerCase()}</span>{" "}
-                              <span>{a.entity_type}</span>
+                              <span className="text-muted-foreground">{action}</span>{" "}
+                              <span>{entity}</span>
                               {hint && (
                                 <span className="text-muted-foreground"> — {String(hint)}</span>
                               )}
                             </p>
-                            <p className="text-xs tabular-nums text-muted-foreground">
-                              {relativeTime(a.created_at)}
-                            </p>
+                            {when && (
+                              <p className="text-sm tabular-nums text-muted-foreground">{when}</p>
+                            )}
                           </div>
                         </li>
                       );

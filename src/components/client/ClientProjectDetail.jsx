@@ -186,11 +186,12 @@ export default function ClientProjectDetail({ projectId, onBack }) {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0 space-y-2">
               <h2 className="text-2xl font-semibold leading-tight tracking-tight text-foreground sm:text-3xl">
-                {project.name}
+                {project.name || "Untitled project"}
               </h2>
-              {project.deadline && (
-                <p className="text-base text-muted-foreground">Deadline: {formatDate(project.deadline)}</p>
-              )}
+              {/* The deadline is one of the four dated facts in the Overview
+                  tab; repeating it here made the header say the same thing
+                  twice for projects that have one and go quiet for those that
+                  do not. */}
             </div>
             <div className="flex shrink-0 flex-wrap items-center gap-2">
               <HealthBadge health={project.health} />
@@ -248,25 +249,25 @@ function OverviewTab({ project, health }) {
 
   return (
     <div className="space-y-8">
+      {/* One progress indicator. The health badge already sits in the header
+          above, so it is not repeated here. */}
       <div className="rounded-xl border border-border bg-muted/50 p-6">
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <h3 className="text-lg font-semibold tracking-tight text-foreground">Completion status</h3>
             <p className="text-[15px] text-muted-foreground">Progress across the work you can see</p>
           </div>
-          <div className="flex items-center gap-4">
-            <HealthBadge health={project.health} />
-            <span className="text-4xl font-semibold tabular-nums text-foreground">{pct}%</span>
-          </div>
+          <span className="text-4xl font-semibold tabular-nums text-foreground">{pct}%</span>
         </div>
         <ProgressBar value={project.progress} showLabel={false} tone={health?.barTone} />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <InfoTile label="Status" value={humanize(project.status) || "—"} />
-        <InfoTile label="Start" value={project.start_date ? formatDate(project.start_date) : "Not set"} />
-        <InfoTile label="End" value={project.end_date ? formatDate(project.end_date) : "Not set"} />
-        <InfoTile label="Deadline" value={project.deadline ? formatDate(project.deadline) : "Not set"} />
+      {/* The three dates, always all three, so the row never goes ragged.
+          Status is not repeated here — the header pill carries it. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <InfoTile label="Start" value={formatDate(project.start_date)} />
+        <InfoTile label="End" value={formatDate(project.end_date)} />
+        <InfoTile label="Deadline" value={formatDate(project.deadline)} />
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -300,7 +301,7 @@ function InfoTile({ label, value }) {
   return (
     <div className={`${surface} p-5`}>
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-2 break-words text-lg font-semibold text-foreground">{value}</p>
+      <p className="mt-2 break-words text-lg font-semibold tabular-nums text-foreground">{value}</p>
     </div>
   );
 }
@@ -333,17 +334,24 @@ function MilestonesTab({ milestones }) {
           </span>
           <Panel className="space-y-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-              <p className="min-w-0 text-lg font-semibold leading-snug text-foreground">{milestone.title}</p>
+              <p className="min-w-0 text-lg font-semibold leading-snug text-foreground">
+                {milestone.title || "Untitled milestone"}
+              </p>
               <StatusBadge status={milestone.status} />
             </div>
             <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-muted-foreground">
               <span>
-                Due: <span className="font-medium text-foreground">{formatDate(milestone.due_date)}</span>
+                Due:{" "}
+                <span className="font-medium tabular-nums text-foreground">
+                  {formatDate(milestone.due_date)}
+                </span>
               </span>
               {milestone.completed_at && (
                 <span>
                   Completed:{" "}
-                  <span className="font-medium text-success">{formatDate(milestone.completed_at)}</span>
+                  <span className="font-medium tabular-nums text-success">
+                    {formatDate(milestone.completed_at)}
+                  </span>
                 </span>
               )}
             </div>
@@ -370,6 +378,8 @@ function TasksTab({ tasks, onOpenTask }) {
       {tasks.map((task) => {
         const priorityKey = String(task.priority || "").toLowerCase().trim();
         const labels = Array.isArray(task.labels) ? task.labels : [];
+        const taskTitle = task.title || "Untitled task";
+        const attachments = Number(task.attachment_count) || 0;
         return (
           <li key={task.id}>
             {/* The whole row is the control: a client reads the title to decide
@@ -378,11 +388,11 @@ function TasksTab({ tasks, onOpenTask }) {
             <button
               type="button"
               onClick={() => onOpenTask(task.id)}
-              aria-label={`Open task ${task.title}`}
+              aria-label={`Open task ${taskTitle}`}
               className={`${surface} w-full space-y-4 p-6 text-left transition-colors duration-150 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2`}
             >
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                <p className="min-w-0 text-lg font-semibold leading-snug text-foreground">{task.title}</p>
+                <p className="min-w-0 text-lg font-semibold leading-snug text-foreground">{taskTitle}</p>
                 <StatusBadge status={task.status} />
               </div>
 
@@ -398,7 +408,10 @@ function TasksTab({ tasks, onOpenTask }) {
                 )}
                 {task.due_date && (
                   <span>
-                    Due: <span className="font-medium text-foreground">{formatDate(task.due_date)}</span>
+                    Due:{" "}
+                    <span className="font-medium tabular-nums text-foreground">
+                      {formatDate(task.due_date)}
+                    </span>
                   </span>
                 )}
                 {task.assignee_name && (
@@ -406,10 +419,11 @@ function TasksTab({ tasks, onOpenTask }) {
                     Assigned to <span className="font-medium text-foreground">{task.assignee_name}</span>
                   </span>
                 )}
-                {Number(task.attachment_count) > 0 && (
+                {attachments > 0 && (
                   <span className="inline-flex items-center gap-1.5">
                     <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
-                    {Number(task.attachment_count)}
+                    <span className="tabular-nums">{attachments}</span>{" "}
+                    {attachments === 1 ? "file" : "files"}
                   </span>
                 )}
               </div>
@@ -455,8 +469,12 @@ function TeamTab({ team }) {
             {String(member.name || "?").trim().charAt(0).toUpperCase() || "?"}
           </span>
           <div className="min-w-0">
-            <p className="truncate text-[15px] font-semibold text-foreground">{member.name}</p>
-            <p className="truncate text-sm text-muted-foreground">{humanize(member.role)}</p>
+            <p className="truncate text-[15px] font-semibold text-foreground">
+              {member.name || "Unnamed member"}
+            </p>
+            <p className="truncate text-sm text-muted-foreground">
+              {humanize(member.role) || "Team member"}
+            </p>
           </div>
         </li>
       ))}
@@ -485,11 +503,15 @@ function DeliverablesTab({ deliverables, onDownload, downloadingId }) {
                 <FileText className="h-5 w-5" aria-hidden="true" />
               </div>
               <div className="min-w-0">
-                <p className="truncate text-[15px] font-semibold text-foreground">{deliverable.file_name}</p>
+                <p className="truncate text-[15px] font-semibold text-foreground">
+                  {deliverable.file_name || "Untitled file"}
+                </p>
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                   {deliverable.file_type && <span>{deliverable.file_type}</span>}
-                  {size && <span>{size}</span>}
-                  {deliverable.submitted_at && <span>{formatDate(deliverable.submitted_at)}</span>}
+                  {size && <span className="tabular-nums">{size}</span>}
+                  {deliverable.submitted_at && (
+                    <span className="tabular-nums">{formatDate(deliverable.submitted_at)}</span>
+                  )}
                 </div>
               </div>
             </div>
@@ -523,8 +545,10 @@ function UpdatesTab({ updates }) {
           <span className="absolute -left-[33px] top-6 h-3 w-3 rounded-full border-2 border-card bg-primary sm:-left-[37px]" />
           <Panel className="space-y-2">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
-              <p className="min-w-0 text-lg font-semibold leading-snug text-foreground">{update.title}</p>
-              <span className="whitespace-nowrap text-sm text-muted-foreground">
+              <p className="min-w-0 text-lg font-semibold leading-snug text-foreground">
+                {update.title || "Untitled update"}
+              </p>
+              <span className="whitespace-nowrap text-sm tabular-nums text-muted-foreground">
                 {formatDateTime(update.created_at)}
               </span>
             </div>
