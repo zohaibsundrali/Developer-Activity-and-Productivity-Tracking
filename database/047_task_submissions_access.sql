@@ -1,0 +1,816 @@
+-- =====================================================================
+--  047 - task_submissions: the same per-person rule 040 installed on the
+--        seven desktop-tracking tables, 044 on activity_logs and 045 on
+--        admin_reviews - on the table that the application actually reads
+-- =====================================================================
+--  WHY THIS ONE MATTERS MORE THAN THE THREE BEFORE IT
+--
+--  045 closed admin_reviews and then said so at the bottom of its own file,
+--  under "STILL OPEN", item (d):
+--
+--    task_submissions carries review_status and review_comments - the same
+--    verdict text as this table, denormalised onto the submission - and is
+--    the copy the UI actually reads. Whatever policy governs it governs the
+--    comments in practice; this file narrows the history table only.
+--
+--  That is correct and it is the reason this file exists. admin_reviews has
+--  ZERO select sites anywhere in src/ - the verdict history is written and
+--  never read back. task_submissions is where the same verdict lives, and it
+--  is read by six sites across five API routes and two browser modules. It
+--  also carries the thing admin_reviews only points at: file_url,
+--  storage_path, file_name and submission_notes - the deliverable itself.
+--
+--  Under the policy this file replaces, every non-client member of the
+--  organisation could select every colleague's submission - the file they
+--  uploaded, the note they wrote with it, the admin's rejection comments
+--  about it - through PostgREST, with the anon key that ships in the browser
+--  bundle, from their own ordinary session. The UI shows a developer only
+--  their own submissions; that limit has only ever existed in the UI.
+--
+--  AND UNLIKE 044 AND 045, THIS ONE IS NOT DORMANT. Read the next section
+--  before anything else.
+--
+--  =====================================================================
+--  organization_id IS STAMPED ON THIS TABLE. THIS MIGRATION IS LIVE.
+--  =====================================================================
+--
+--  044 and 045 both found that activity_logs.organization_id and
+--  admin_reviews.organization_id are populated by nothing - not by 013's
+--  trg_stamp_org loops, not by 011's backfill, not by any insert site in
+--  src/ - so `organization_id = public.auth_org()` was false for every row
+--  and both tables were already unreadable by every authenticated caller.
+--  Both migrations were correctness fixes for a day that has not arrived.
+--
+--  task_submissions is the opposite, on all three counts:
+--
+--    013 line 54    task_submissions is IN the Group A trg_stamp_org loop, so
+--                   every insert - including service-role inserts from
+--                   /api/task-submission - gets organization_id stamped from
+--                   the row's developer/project links.
+--    011 line 83    backfills organization_id from projects for every row that
+--                   predates the SaaS work.
+--    022 lines 58-59 indexes (organization_id, project_id, submitted_at desc)
+--                   and (organization_id, developer_id, submitted_at desc),
+--                   which nobody does to a column that is always null.
+--
+--  So the org clause is true for essentially every row, 014's policy really
+--  is admitting the whole organisation today, and PART 2 below really does
+--  take rows away from real sessions the moment it is run. PART 0d is the
+--  query that confirms this on YOUR database rather than on this file's word.
+--  Expect org_null_rows to be 0 or near it - the reverse of what 044 and 045
+--  found.
+--
+--  THE MODEL INSTALLED HERE - identical to 040, 044 and 045 for staff
+--
+--    owner, admin, hr          -> all task_submissions rows in the organisation
+--    manager, team_lead        -> their own, plus their reporting subtree
+--                                 via memberships.reports_to, transitively
+--    developer, employee       -> their own submissions only
+--    anything else / no role   -> their own only  (fail closed)
+--    client                    -> UNCHANGED, and NOT via this policy. Clients
+--                                 keep 014's separate, project-scoped policy
+--                                 task_submissions_client_read. See THE CLIENT
+--                                 DECISION below - this is the one place where
+--                                 this file departs from 044 and 045.
+--
+--  =====================================================================
+--  THE POLICY NAME. GET THIS RIGHT OR THE MIGRATION DOES NOTHING.
+--  =====================================================================
+--
+--  044 found activity_logs_read. 045 found admin_reviews_read. Neither was
+--  org_isolation, and both files warn at length that dropping a name which
+--  does not exist succeeds silently, leaves the old policy in place, adds a
+--  SECOND permissive select policy, and changes nobody's access while looking
+--  like it worked - because PostgreSQL ORs permissive policies together.
+--
+--  On THIS table the answer is different again, and it is the name those two
+--  files were warning you not to assume:
+--
+--    THE POLICY IS CALLED org_isolation. AND IT IS `FOR ALL`, NOT `FOR SELECT`.
+--
+--  Its history, grepped:
+--
+--    013 lines 53-67   Group A loop creates, for each of eleven tables
+--                      including task_submissions:
+--                        create policy org_isolation on public.<t> for all
+--                          to authenticated
+--                          using (organization_id = public.auth_org())
+--                          with check (organization_id = public.auth_org())
+--
+--    014 lines 337-344 replaces it, adding the client denial, and adds the
+--                      separate client policy beside it:
+--                        drop policy if exists org_isolation on public.task_submissions;
+--                        create policy org_isolation on public.task_submissions for all
+--                          to authenticated
+--                          using (organization_id = public.auth_org() and not public.auth_is_client())
+--                          with check (organization_id = public.auth_org() and not public.auth_is_client());
+--                        drop policy if exists task_submissions_client_read on public.task_submissions;
+--                        create policy task_submissions_client_read on public.task_submissions for select
+--                          to authenticated
+--                          using (public.auth_is_client() and organization_id = public.auth_org()
+--                                 and project_id in (select public.auth_client_project_ids()));
+--
+--    018 line 44       drops the legacy "Allow all access to task_submissions"
+--                      from schema.sql line 453 and does NOTHING else to this
+--                      table. 018 is NOT where this table's policy comes from -
+--                      which is exactly the assumption that copying 044 or 045
+--                      would have baked in.
+--
+--    042               does not mention this table. Nothing after 014 touches
+--                      either policy. VERIFY_saas.sql line 60 asserts that
+--                      org_isolation exists on task_submissions, which is a
+--                      third confirmation of the name.
+--
+--  So there are TWO permissive select policies on this table, not one, and the
+--  staff one is a FOR ALL. Both facts change the shape of this migration.
+--
+--  =====================================================================
+--  WHY THIS FILE HAS TO SPLIT org_isolation, AND WHY THAT IS NOT
+--  "TOUCHING THE WRITE POLICIES"
+--  =====================================================================
+--
+--  A FOR ALL policy is one object serving four commands. Its `using` governs
+--  SELECT, UPDATE row-selection and DELETE row-selection; its `with check`
+--  governs INSERT and the post-image of UPDATE. PostgreSQL has no "ALL except
+--  SELECT", so there are exactly two ways to narrow what SELECT admits:
+--
+--    (a) add the per-person conjunct to the FOR ALL policy's `using`. That
+--        narrows SELECT - and silently narrows UPDATE and DELETE with it.
+--    (b) decompose: keep 014's predicate verbatim on three new command-scoped
+--        write policies, then rebuild org_isolation as FOR SELECT with the
+--        per-person conjunct.
+--
+--  This file does (b). (a) would have been fewer lines and would have looked
+--  tidier, and it is the edit a reader is most likely to "simplify" this back
+--  into. It is wrong for this migration because the brief for 044, 045 and
+--  this file is to narrow READS and to leave writes exactly as they are,
+--  reporting any write problem rather than fixing it in passing. (a) changes
+--  who may UPDATE and DELETE as a side effect of a read fix, and it does so
+--  invisibly - there is no line in the diff that says "managers can no longer
+--  delete an out-of-team submission", because the same three words did both
+--  jobs.
+--
+--  PART 1 therefore reproduces 014's predicate CHARACTER FOR CHARACTER on
+--  org_isolation_insert, org_isolation_update and org_isolation_delete. No
+--  authenticated caller gains or loses a single write. The names keep the
+--  lineage obvious: they are 014's policy, split, not a new rule.
+--
+--  ONE CONSEQUENCE OF THE SPLIT THAT MUST NOT BE MISREPRESENTED. PostgreSQL
+--  applies SELECT policies to an UPDATE or DELETE that carries a WHERE clause
+--  or a RETURNING clause, because those need read rights on the rows. PostgREST
+--  always emits a WHERE clause. So after this migration a member cannot UPDATE
+--  a row the new SELECT policy hides from them - not because PART 1 narrowed
+--  anything, but because the narrowed read is now upstream of the write. That
+--  is a genuine effect and it is worth knowing; it is not a change to the write
+--  rule, and it does NOT close the write hole described in the next section.
+--
+--  =====================================================================
+--  A WRITE HOLE THIS FILE FINDS AND DELIBERATELY DOES NOT FIX
+--  =====================================================================
+--
+--  014's org_isolation grants `for all` - which includes UPDATE - to every
+--  authenticated non-client member of the organisation, with no column list
+--  and no role test. review_status, review_comments, is_reviewed, reviewed_by
+--  and reviewed_at are ordinary columns of this table.
+--
+--  A developer holding the anon key and their own session can therefore
+--  PATCH their own submission to review_status = 'approved',
+--  is_reviewed = true, reviewed_by = <any uuid>. /api/admin-review is not
+--  involved, so REVIEWER_ROLES is not consulted; 024's CHECK constraint
+--  permits the value; and TaskReviewPanel reads review_status straight off
+--  this table. That is self-approval of one's own proof of work, by anyone,
+--  through the database.
+--
+--  This file does NOT fix it, on purpose, for two reasons. It is a WRITE
+--  defect, and every one of these migrations has narrowed reads only. And
+--  fixing it properly is a design decision, not a predicate: it needs either
+--  a role test on the update policy, or a column-level grant, or - the honest
+--  answer - moving the whole review write behind the service-role route it is
+--  already supposed to go through. That belongs in its own migration, decided
+--  on purpose. It is recorded here, and in "STILL OPEN" at the bottom, so that
+--  nobody reads this file and concludes the table is now safe.
+--
+--  Note that after PART 2 the hole is narrower than it was, for the WHERE-
+--  clause reason above: a developer can still self-approve their OWN
+--  submission, but can no longer approve or reject anyone else's. Narrower is
+--  not closed.
+--
+--  =====================================================================
+--  THE DECISION, PART ONE: SUBJECT vs ACTOR
+--  =====================================================================
+--
+--    SCOPE ON developer_id ONLY. The subject of a submission is the person
+--    who SUBMITTED it, not the person who reviewed it.
+--
+--  This table names two people. Per schema.sql lines 151-174:
+--
+--    developer_id  uuid references developers(id)   SUBJECT - who did the work
+--    reviewed_by   uuid                             ACTOR   - who ruled on it
+--
+--  and one thing that is not a person: project_id.
+--
+--  developer_id is the subject on every reading. The file is theirs, the note
+--  is theirs, review_comments is written ABOUT them. api/task-submission
+--  line 138 sets it from the submitting developer; api/admin-review line 199
+--  only ever writes the review columns and never rewrites developer_id. The
+--  rule installed by 040 is a rule about whose data you may read, and the data
+--  in this row is the developer's.
+--
+--  Why not match the actor too, "so a reviewer can find their own decisions"?
+--  045 answered this for admin_reviews and the answer is stronger here, not
+--  weaker. Consider a manager with an admin somewhere in their reporting
+--  subtree - an ordinary org chart, and one reports_to permits. If the
+--  predicate matched reviewed_by, that manager's subject set would contain
+--  that admin's user_id, and the manager would read EVERY submission that
+--  admin ever reviewed - across the whole company, outside their subtree
+--  entirely. On admin_reviews that leaked the verdict text. Here it leaks the
+--  verdict text AND file_url AND storage_path: the deliverables themselves,
+--  for people the manager does not manage. One line of the org chart would
+--  hand over the company's work product.
+--
+--  And no reviewer loses anything. Reviewers are owner, admin or manager
+--  (api/admin-review line 6, REVIEWER_ROLES). owner and admin are in the
+--  sees_all branch and see every submission in the organisation, including
+--  every one they ruled on, through the FIRST disjunct - the row predicate is
+--  never reached. A manager sees their reports' submissions through the
+--  subject branch, which is the same set they were reviewing. The actor branch
+--  would buy nobody anything they do not already have, and would cost a
+--  manager's reports their privacy.
+--
+--  project_id is rejected as a subject for staff for the same reason: it is
+--  the wrong axis. "Everyone on the project may read everyone's submissions"
+--  is a different rule from the one the owner chose, and it is very close to
+--  the org-wide rule being removed - most staff here work across most
+--  projects. project_id IS the right axis for a client, which is the next
+--  section, and that difference is the whole point of keeping the two policies
+--  separate.
+--
+--  =====================================================================
+--  THE DECISION, PART TWO: THE CLIENT. THIS FILE DOES NOT EXCLUDE THEM.
+--  =====================================================================
+--
+--  040, 044 and 045 all end their client story with one word: nothing. That
+--  was right for keystroke counts, for the audit trail and for the verdict
+--  history. It is WRONG here, and copying it would have broken a shipped,
+--  paid-for feature. Grepped, not assumed - clients read this table today,
+--  through two routes:
+--
+--    api/client/projects/[id]/route.js:190   select id, file_name, file_type,
+--                                            file_size, submitted_at
+--                                            .eq(organization_id).eq(project_id)
+--                                            -> the portal's Deliverables tab
+--    api/client/deliverables/[id]/url/route.js:27
+--                                            select id, project_id, file_url,
+--                                            storage_path .eq(organization_id)
+--                                            .eq(id) -> mints a 1-hour signed
+--                                            URL after checking the project is
+--                                            one of the caller's
+--
+--  Both hold the service-role key (serviceClient(), src/utils/serverAuth.js
+--  line 121) and both authenticate with getAuthedClient, so RLS is bypassed
+--  and neither is affected by anything in this file. But the CAPABILITY is
+--  real, deliberate and shipped: a client can list and download the
+--  deliverables of the projects they are linked to. 014 wrote the matching RLS
+--  policy for it at lines 341-344 and this file leaves that policy exactly as
+--  it stands.
+--
+--  THE CORRECT PREDICATE FOR A CLIENT IS PROJECT LINKAGE, NOT PERSON.
+--
+--  Not a stylistic preference - the person axis is undefined for them. A
+--  client has no memberships row and is not in the reports_to tree at all, and
+--  040's PART 4 returns array[]::uuid[] for any caller where auth_is_client()
+--  is true, before it looks at anything else. Folding clients into the staff
+--  policy would give every client an empty subject set and therefore zero
+--  rows: the Deliverables tab would go blank the day anyone moved it off the
+--  service-role route, which is precisely the migration 035 had to write for
+--  developer_tasks. A client is entitled to the deliverables of the projects
+--  they are paying for, whoever inside the agency produced them; the producing
+--  developer's identity is not the client's business and not the client's
+--  filter. That is what 014's policy already says, so the right change to it
+--  is none.
+--
+--  WHY NOT ALSO REQUIRE client_visible, THE WAY 035 DID FOR TASKS?
+--
+--  Worth asking, and the answer is no - here, at least.
+--
+--  First, a correction to the record, because this file will be read next to
+--  the others: it was 035 PART 1, not 032, that put `client_visible = true`
+--  into developer_tasks_client_read. 032 added the COLUMN (line 36, default
+--  false) and taught the route to filter; 035 found the policy had never been
+--  narrowed to match and fixed it. Neither file mentions task_submissions.
+--
+--  Second, and this is the substance: task_submissions has no client_visible
+--  column, and the product does not treat deliverables the way it treats
+--  tasks. api/client/projects/[id] filters tasks, milestones and updates on
+--  client_visible - and deliberately does NOT filter the submissions query at
+--  line 190. Every submission on a linked project is offered to the client as
+--  a deliverable. Bolting client_visible onto the RLS policy would need a
+--  subquery into developer_tasks on the nullable task_id, would make the
+--  database stricter than the route that is the only thing actually serving
+--  clients, and would hide paid-for deliverables from the client the moment
+--  those two ever met. That is a NARROWING of a client capability, made on a
+--  guess about product intent, inside a migration whose subject is staff
+--  privacy. It does not belong here.
+--
+--  There IS a real question underneath - whether a client should be able to
+--  download the deliverable attached to an internal, client_visible = false
+--  task, which today they can, through the route, regardless of RLS. That is
+--  an application-layer decision about the two routes above; no policy on this
+--  table can close it while those routes hold the service-role key. It is
+--  recorded in "STILL OPEN" and it needs the owner, not this file.
+--
+--  =====================================================================
+--  WHY THE PREDICATE IS BUILT BY HAND AND NOT FROM to_jsonb(row)
+--  =====================================================================
+--
+--  045's technique, for 045's reasons, which apply here with more force.
+--
+--  040's monitoring_row_visible(r jsonb, ids uuid[], emails text[]) checks TEN
+--  keys: developer_id, user_id, employee_id, member_id, dev_id as uuids, and
+--  developer_email, user_email, email, user_login, login_email as emails. On a
+--  copy of task_submissions matching schema.sql, handing it to_jsonb(row)
+--  would behave IDENTICALLY to the object built in PART 2: the actor column is
+--  called reviewed_by, and reviewed_by is in neither list. Say that plainly,
+--  because the overstatement is false and a reader who catches it will throw
+--  out the true reason with it. TODAY, ON THIS SCHEMA, THE TWO FORMS AGREE.
+--
+--  The subject-only object defends against the two ways that coincidence ends:
+--
+--   1. THE COLUMN NAME. reviewed_by is a bare uuid with a generic name and no
+--      FK declared on it (schema.sql line 170: `reviewed_by UUID`, nothing
+--      more). 040's own header documents that these pre-SaaS tables have
+--      inconsistent shapes across deployments and that nobody has confirmed
+--      every copy matches schema.sql - that is the entire reason 040 is
+--      column-agnostic. A copy of this table that recorded its reviewer in a
+--      generic user_id, or that grew an admin's email into a plain `email`
+--      column, is matched by the whole-row form instantly and silently.
+--
+--   2. THE KEY LIST. 040's PART 6 says, in its own comment, "Add to either
+--      list if PART 0b shows an identity column that is not here." An author
+--      extending this rule to a tenth table, seeing reviewed_by go unmatched,
+--      is being actively invited by that sentence to add it. That is a
+--      one-word edit in a DIFFERENT file that would re-open this table, with
+--      nothing in 040 to warn them and nothing in this file's diff to show it.
+--
+--  So PART 2 builds a jsonb object carrying ONLY the subject fields:
+--
+--    jsonb_build_object('developer_id',    to_jsonb(task_submissions) ->> 'developer_id',
+--                       'developer_email', to_jsonb(task_submissions) ->> 'developer_email')
+--
+--  reviewed_by, project_id, task_id and every review column are absent from
+--  it, so no branch of monitoring_row_visible can ever see them. This converts
+--  a property that is currently true by luck into one that is true by
+--  construction, and puts the reason in the file that would be blamed for the
+--  leak.
+--
+--  developer_email is included for 045's reason: 040's PART 5 exists precisely
+--  because half these legacy tables identify a person by address rather than
+--  id, and if a deployment's copy carries one it is a SUBJECT column and
+--  belongs in the match. schema.sql's copy does not have one - see PART 0b -
+--  in which case the key is present with a null value and matches nothing.
+--  That is the correct behaviour, not a bug.
+--
+--  WHY IT READS to_jsonb(task_submissions) ->> 'x' AND NOT THE BARE COLUMN
+--
+--  Because `jsonb_build_object('developer_id', developer_id)` names a column,
+--  and naming a column is how this repository has been bitten before - 022 and
+--  025 both say so in writing. The `drop policy if exists` on the line above
+--  the `create policy` has already succeeded when the create runs. If the
+--  create names a column the table does not have, it fails, and the table is
+--  left with RLS enabled and no staff select policy at all: deny everything,
+--  for everyone, including the owner, on the table the app reads on six
+--  screens. Worse than the leak. `to_jsonb(t) ->> 'absent_key'` is null, never
+--  an error. This file therefore gets BOTH properties: it cannot fail on a
+--  missing column, and it cannot match the actor.
+--
+--  monitoring_row_visible recognises developer_id in its uuid list, and
+--  developer_id is a uuid FK to developers(id) (schema.sql line 155).
+--  auth_monitoring_subjects() returns memberships.user_id values, and 011
+--  populates memberships.user_id from developers.id and admin_users.id (lines
+--  36 and 53). Same id space, so the match is real and not a coincidence of
+--  both being uuids.
+--
+--  =====================================================================
+--  WHO READS THIS TABLE - grepped exhaustively, not assumed
+--  =====================================================================
+--
+--  Six sites. Two of them run under a USER SESSION and are the only places in
+--  the application where this migration can change what a person sees. That is
+--  the difference from 044 and 045, both of which were invisible to the app.
+--
+--  SERVICE ROLE - RLS bypassed, unaffected by this file
+--    api/task-submission/route.js:103   select  duplicate-pending check
+--    api/task-submission/route.js:138   INSERT  the submission
+--    api/task-submission/route.js:278   select  the list endpoint; note lines
+--                                       269-270 already force a developer
+--                                       caller to their own developer_id, so
+--                                       the route has been enforcing in JS the
+--                                       rule PART 2 moves into the database
+--    api/admin-review/route.js:118      select  one submission by id
+--    api/admin-review/route.js:199      UPDATE  the review columns
+--    api/admin-review/route.js:434,466  select+count  pending / reviewed queues
+--                                       -> TaskReviewPanel.jsx, admin dashboard
+--                                          section "task-reviews"
+--    api/developer/delete/route.js:188,325  count  the delete impact preview
+--    api/developer/delete/route.js:199,209  DELETE  cascade cleanup
+--    api/client/projects/[id]/route.js:190  select  client Deliverables tab
+--    api/client/deliverables/[id]/url/route.js:27  select  signed download URL
+--
+--  USER SESSION - anon key + the caller's JWT, RLS applies, THIS FILE BITES
+--    src/utils/pmData.js:325
+--      reviewTask(): select id, submitted_at where task_id = ? and
+--      review_status = 'pending'. The pre-flight that decides whether there is
+--      anything to approve, run before POSTing to /api/admin-review.
+--      Reached from changeTaskStatus() when the destination is completed or
+--      rejected. Screens: Views, Sprints and Project Hub, whose
+--      ADMIN_SECTION_ROLES entries are ["owner","admin","manager","team_lead"],
+--      plus Board, which is ["owner","admin"].
+--      SEE "THE ONE REGRESSION" BELOW. This path is currently unreachable from
+--      the shipped UI and is one config edit away from being reachable.
+--
+--    src/app/developer/project-details/page.jsx:406
+--      select task_id where task_id in (...), guarding which of the caller's
+--      own still-pending developer_tasks a re-saved plan may delete. The task
+--      ids come from line 396, `.eq('developer_id', developerToUse.id)`, and
+--      developerToUse resolves to the signed-in person themselves on all three
+--      of its branches (lines 301, 312, 331). Screen: /developer/project-details,
+--      reached by developer, employee, manager and team_lead.
+--      A developer still sees every one of their OWN submissions after PART 2,
+--      so this guard keeps working. Its one edge is in "STILL OPEN" item (d).
+--
+--  NOT readers, contrary to the note carried in 045's header: AllProjects.jsx
+--  and Timesheet.jsx do not reference task_submissions at all - `grep -rn
+--  task_submissions src/` returns sixteen lines and none is in either file.
+--  TaskReviewPanel.jsx does render review_status and review_comments (lines
+--  367-509) but reads them out of the /api/admin-review GET response, which is
+--  service-role. That distinction matters: it means the review-text screen is
+--  NOT affected by this policy, and the leak this file closes was never a
+--  screen at all - it was PostgREST.
+--
+--  =====================================================================
+--  THE ONE REGRESSION, STATED BEFORE ANYONE FINDS IT
+--  =====================================================================
+--
+--  A DEVELOPER'S OWN SUBMISSION LIST DOES NOT SHRINK. That is the property
+--  that would make this policy a bug rather than a fix, and it holds:
+--  auth_monitoring_subjects() seeds the caller literally (040 PART 4, note 2)
+--  rather than reading memberships, so a developer's subject set always
+--  contains their own user_id even if their membership row is missing,
+--  suspended or in the wrong org; auth_app_user_id() returns developers.id;
+--  task_submissions.developer_id is developers.id. Verified per persona in
+--  docker, twice - see the VERIFY section.
+--
+--  WHAT DOES CHANGE, for one role on one code path:
+--
+--  A manager or team_lead who approves or rejects a task belonging to a
+--  developer OUTSIDE their reporting subtree. pmData.js:325 runs under their
+--  session, so after PART 2 it returns no row for such a task, and
+--  reviewTask() aborts with "There is nothing to review - the assignee has to
+--  submit proof of work before this task can be approved or rejected." That
+--  message would be wrong: the proof exists, the manager simply may not read
+--  it. /api/admin-review would have accepted the call - REVIEWER_ROLES is
+--  ["owner","admin","manager"] and checks org, not subtree - so the database
+--  and the route would disagree about what a manager is for. This is the same
+--  class of mismatch 040's hr amendment was written to fix after TeamStats.jsx
+--  rendered empty.
+--
+--  IT IS NOT LIVE TODAY. Every shipped path into that code is blocked before
+--  it reaches the query: KanbanView.jsx:50-57, ProjectBoard.jsx:276-283 and
+--  SprintBoard.jsx:235-242 all refuse a drop into a reviewOnly column;
+--  TaskDetailDrawer.jsx:650 builds its menu from allowedTransitions(), and
+--  STATUS_TRANSITIONS (pmData.js:91-97) never offers completed or rejected
+--  from any state; automation.js:135 refuses the same transition. So today
+--  reviewTask() is unreachable from the UI and this migration changes nothing
+--  a manager can actually do. It is one line of board config away from being
+--  reachable, which is why it is written down here rather than discovered
+--  later.
+--
+--  THIS FILE DOES NOT WORK AROUND IT. The two available workarounds are both
+--  worse than the note: adding manager and team_lead to
+--  auth_monitoring_sees_all() would delete the rule this file exists to
+--  install, and matching reviewed_by would not help - the manager has not
+--  reviewed the row yet at the moment of the check. If the owner wants
+--  managers to review org-wide, the honest fix is to narrow
+--  ADMIN_SECTION_ROLES for views/sprints/project-hub, or to move that
+--  pre-flight into /api/admin-review where it belongs and where it already
+--  holds the service-role key. Both are application changes and neither
+--  belongs in a migration.
+--
+--  =====================================================================
+--  WHY THE SET-RETURNING HELPERS ARE WRAPPED IN (select ...)
+--  =====================================================================
+--
+--  040's point, 044's and 045's, and it matters most here. A bare stable
+--  function call in a policy qual is re-evaluated for every row, so the
+--  recursive walk down memberships.reports_to would run once per submission.
+--  Wrapped in a scalar subquery with no outer reference, the planner hoists it
+--  to an InitPlan and runs it once per query. This is the busiest table of the
+--  four - 022 gave it two composite indexes because the portal and the review
+--  queues page through it - so an unhoisted walk here is the difference
+--  between a policy you can ship and one that melts the table.
+--
+--  auth_monitoring_subject_emails() is passed even though schema.sql's copy of
+--  this table has no email column. It costs one InitPlan per query and keeps
+--  the predicate's shape identical to 040's seven, 044's one and 045's one,
+--  which is the property that makes the rule auditable in one grep. Do not
+--  "optimise" it to array[]::text[] - that is the edit that silently stops
+--  working the day a deployment's table grows a developer_email.
+--
+--  This file adds NO index. 022's idx_task_submissions_org_dev
+--  (organization_id, developer_id, submitted_at desc) already serves the org
+--  clause, which is the clause that runs first and does the bulk filtering.
+--  The identity match through to_jsonb is not index-driven, exactly as in 040,
+--  and for the same accepted reason.
+--
+--  Depends on: 010 (task_submissions.organization_id), 011 (the backfill that
+--  makes the org clause real), 012 (auth_org), 013 (org_isolation, the
+--  trg_stamp_org trigger that keeps organization_id populated),
+--  014 (auth_role, auth_is_client, auth_app_user_id, auth_client_project_ids,
+--       org_isolation as replaced here, task_submissions_client_read as left
+--       alone here), 015 (reports_to, team_lead + hr), 022 (the indexes),
+--  040 (auth_monitoring_sees_all, auth_monitoring_subjects,
+--       auth_monitoring_subject_emails, monitoring_row_visible, try_uuid,
+--       idx_memberships_org_reports_to).
+--  Defines no function - every function it calls belongs to 040 or to 012/014
+--  and none is redefined here, so this file cannot drift from 040's rule.
+--  Creates no table, drops no column, rewrites no row, adds no index, and
+--  leaves task_submissions_client_read untouched.
+--
+--  Idempotent: both PARTs are drop-if-exists + create, so they may be re-run.
+--  Verified by running the whole file twice in docker.
+--
+--  ORDERING IS NOT OPTIONAL. PART 1 MUST RUN BEFORE PART 2. PART 2 removes the
+--  FOR ALL policy that is currently the only thing permitting authenticated
+--  INSERT, UPDATE and DELETE on this table; PART 1 is what carries that
+--  permission over. Run PART 2 on its own and every authenticated write is
+--  denied until PART 1 lands. Run PART 1 on its own and nothing is narrowed -
+--  it is a no-op, because the FOR ALL policy still grants everything PART 1
+--  grants. That asymmetry is deliberate: the safe half is the one that can be
+--  run early.
+--
+--  FORMAT NOTE: one statement per physical line, no DO blocks, no dollar
+--  quoting, no double-quoted identifiers. 018 line 44 already dropped the one
+--  legacy name on this table that would have needed quotes ("Allow all access
+--  to task_submissions", schema.sql line 453); PART 0c is what proves it is
+--  gone on YOUR database. The editor shows only the LAST statement's result,
+--  so run each PART as its own query, in order.
+-- =====================================================================
+
+
+-- ---------------------------------------------------------------------
+--  PART 0 - READ-ONLY pre-flight. Run these four FIRST, one at a time.
+--           Nothing here changes anything.
+-- ---------------------------------------------------------------------
+--  0a. Does the table exist, and what is its FULL column list? This table is
+--      not created by any migration - it comes from schema.sql line 151, which
+--      predates the SaaS work, and 010 line 110 only bolted organization_id
+--      onto it. If this returns nothing, stop: there is nothing to police.
+--      What you are confirming is the one column PART 2 names by key -
+--      developer_id - plus developer_email if this deployment has one, and the
+--      actor column PART 2 deliberately ignores: reviewed_by. Expect
+--      organization_id to be present and nullable.
+
+-- select column_name, data_type, is_nullable from information_schema.columns where table_schema = 'public' and table_name = 'task_submissions' order by ordinal_position;
+
+--  0b. Which identity columns does it actually carry, and which of them are
+--      SUBJECT columns rather than ACTOR columns? This is the query the
+--      decision in the header rests on. On a copy matching schema.sql expect
+--      exactly two hits: developer_id (SUBJECT - matched) and reviewed_by
+--      (ACTOR - not matched, and not in 040's key list either). No
+--      developer_email, no user_id, no email.
+--
+--      If this lists a SUBJECT column that identifies a person and is not
+--      developer_id or developer_email, add it to the jsonb_build_object in
+--      PART 2 - and only if 040's PART 6 already recognises the key name,
+--      otherwise 040 must be amended first, in its own migration.
+--
+--      If this lists a new ACTOR column, do nothing: PART 2 names its keys, so
+--      an actor column that did not exist when this was written still cannot
+--      leak through it. That is the second reason the predicate is built by
+--      hand instead of from to_jsonb(row).
+
+-- select column_name, data_type from information_schema.columns where table_schema = 'public' and table_name = 'task_submissions' and (column_name like '%user%' or column_name like '%dev%' or column_name like '%email%' or column_name like '%member%' or column_name like '%employee%' or column_name like '%login%' or column_name like '%admin%' or column_name like '%actor%' or column_name like '%author%' or column_name like '%review%' or column_name like '%submit%') order by column_name;
+
+--  0c. What policies are on it right now? THIS IS THE ONE 044 AND 045 EXIST TO
+--      INSIST ON, and this table is where the naming assumption breaks. Expect
+--      EXACTLY TWO rows:
+--
+--        org_isolation                 ALL     {authenticated}  014's staff policy
+--        task_submissions_client_read  SELECT  {authenticated}  014's client policy
+--
+--      NOT activity_logs_read, NOT admin_reviews_read, NOT track_read. If you
+--      see any third permissive SELECT policy - a dashboard-created one, a
+--      surviving "Allow all access to task_submissions", or a track_read
+--      someone copied over from 040 - PART 2 will NOT narrow anything, because
+--      permissive policies are OR-ed. Drop the extra one first, deliberately,
+--      in a migration of its own.
+--
+--      If org_isolation comes back with cmd = 'SELECT' rather than 'ALL', this
+--      file has already been run: PART 1 exists and PART 2 has landed.
+
+-- select policyname, cmd, permissive, roles, qual as using_expr, with_check from pg_policies where schemaname = 'public' and tablename = 'task_submissions' order by policyname;
+
+--  0d. THE ONE THAT SAYS HOW MUCH THIS CHANGES TODAY - and unlike 044's and
+--      045's, this one should come back LOUD. See the header.
+--      org_null_rows counts rows the org clause already hides from every
+--      authenticated caller; on this table 011 backfilled it and 013's
+--      trg_stamp_org keeps it populated, so expect 0 or near it. If instead
+--      org_null_rows equals total_rows, the trigger has been dropped on this
+--      deployment - stop and find out why before running anything.
+--      unattributable_rows counts rows with a null developer_id: the rows
+--      PART 2 will restrict to OWNER, ADMIN AND HR ONLY, because they name no
+--      subject. Expect 0. If it is not 0, those submissions become invisible
+--      to the developer who made them; backfill developer_id from task_id in
+--      its own migration before running PART 2.
+--      rows_this_policy_will_actually_filter is the number of rows whose
+--      visibility genuinely changes for a non-sees_all caller.
+
+-- select count(*) as total_rows, count(*) filter (where organization_id is null) as org_null_rows, count(*) filter (where developer_id is null) as unattributable_rows, count(*) filter (where organization_id is not null and developer_id is not null) as rows_this_policy_will_actually_filter from public.task_submissions;
+
+
+-- ---------------------------------------------------------------------
+--  PART 1 - Carry 014's write permission across, unchanged, before PART 2
+--           takes away the FOR ALL policy that currently supplies it
+-- ---------------------------------------------------------------------
+--  Three command-scoped policies, each carrying 014 line 339's predicate
+--  character for character:
+--
+--    organization_id = public.auth_org() and not public.auth_is_client()
+--
+--  No authenticated caller gains or loses a single insert, update or delete
+--  from these three statements. They exist only so that PART 2 can narrow
+--  SELECT without narrowing the other three commands as a side effect - see
+--  "WHY THIS FILE HAS TO SPLIT org_isolation" in the header, and the write
+--  hole recorded immediately after it, which these statements deliberately do
+--  NOT fix.
+--
+--  Running PART 1 alone is a no-op: org_isolation is still FOR ALL at this
+--  point and still permits everything these three permit, and permissive
+--  policies are OR-ed. That is why it is safe to run this part first and think
+--  about PART 2 afterwards.
+--
+--  The update policy needs both halves. `using` selects which existing rows may
+--  be updated; `with check` validates the row after the update - without it,
+--  PostgreSQL would fall back to denying, and a service-role-free deployment
+--  could no longer move a submission between orgs, which 014 permitted.
+
+drop policy if exists org_isolation_insert on public.task_submissions;
+create policy org_isolation_insert on public.task_submissions for insert to authenticated with check (organization_id = public.auth_org() and not public.auth_is_client());
+
+drop policy if exists org_isolation_update on public.task_submissions;
+create policy org_isolation_update on public.task_submissions for update to authenticated using (organization_id = public.auth_org() and not public.auth_is_client()) with check (organization_id = public.auth_org() and not public.auth_is_client());
+
+drop policy if exists org_isolation_delete on public.task_submissions;
+create policy org_isolation_delete on public.task_submissions for delete to authenticated using (organization_id = public.auth_org() and not public.auth_is_client());
+
+
+-- ---------------------------------------------------------------------
+--  PART 2 - The read policy (AFTER PART 1, and AFTER 040 has created every
+--           function it calls)
+-- ---------------------------------------------------------------------
+--  Read the clauses left to right, because that is the order they cost
+--  anything in:
+--
+--    organization_id = public.auth_org()   unchanged from 014. Still first,
+--                                          still the indexed one (022).
+--    not public.auth_is_client()           unchanged from 014. Clients are not
+--                                          denied by this - they are served by
+--                                          task_submissions_client_read, which
+--                                          this file leaves alone.
+--    (select ...sees_all())                owner/admin/hr stop here.
+--    monitoring_row_visible(subject-only)  everyone else.
+--
+--  The jsonb argument is built by hand and carries the SUBJECT fields and
+--  nothing else. reviewed_by, project_id and task_id are absent from it on
+--  purpose; see "THE DECISION, PART ONE" in the header. Do not replace it with
+--  to_jsonb(task_submissions).
+--
+--  Replaced BY NAME - org_isolation, 013's name kept by 014 and asserted by
+--  VERIFY_saas.sql line 60 - so 014's policy is gone rather than sitting
+--  beside this one OR-ing every row back in. The re-created policy is FOR
+--  SELECT, not FOR ALL; PART 1 is what holds the other three commands.
+--
+--  If this statement fails, the table is left with NO staff select policy -
+--  deny everything for every staff member, on a table six screens read - so
+--  re-run it before anyone uses the app, and read PART 0a/0b for why it
+--  failed. Clients are unaffected either way, because their policy is separate.
+
+drop policy if exists org_isolation on public.task_submissions;
+create policy org_isolation on public.task_submissions for select to authenticated using (organization_id = public.auth_org() and not public.auth_is_client() and ((select public.auth_monitoring_sees_all()) or public.monitoring_row_visible(jsonb_build_object('developer_id', to_jsonb(task_submissions) ->> 'developer_id', 'developer_email', to_jsonb(task_submissions) ->> 'developer_email'), (select public.auth_monitoring_subjects()), (select public.auth_monitoring_subject_emails()))));
+
+
+-- =====================================================================
+--  VERIFY (read-only). Run each on its own - the editor shows only the last.
+-- =====================================================================
+--  1. Five policies now, not two: org_isolation is SELECT, the three write
+--     policies carry 014's predicate, and the client policy is untouched.
+-- select policyname, cmd, roles, qual as using_expr, with_check from pg_policies where schemaname = 'public' and tablename = 'task_submissions' order by policyname;
+
+--  2. The client policy is byte-identical to what 014 wrote. This file must not
+--     have changed it. Expect true.
+-- select qual like '%auth_client_project_ids%' as still_project_scoped, qual like '%auth_is_client%' as still_client_gated from pg_policies where schemaname = 'public' and tablename = 'task_submissions' and policyname = 'task_submissions_client_read';
+
+--  3. The read predicate really is subject-only. Expect has_developer_id = true
+--     and mentions_reviewed_by = false. If the second is true, someone reverted
+--     the jsonb_build_object to to_jsonb(row). On schema.sql's column names
+--     that is not yet a leak - see the header - but it is one column rename or
+--     one edit to 040's PART 6 key list away from being one, and this check
+--     catches it while it is still cheap.
+-- select policyname, qual like '%developer_id%' as has_developer_id, qual like '%reviewed_by%' as mentions_reviewed_by from pg_policies where schemaname = 'public' and tablename = 'task_submissions' and cmd = 'SELECT' and policyname = 'org_isolation';
+
+--  4. The six functions this policy leans on all exist and are 040's. If this
+--     returns fewer than six rows, 040 has not been applied and PART 2 could
+--     not have been created.
+-- select proname, prosecdef, proconfig from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and proname in ('auth_monitoring_sees_all','auth_monitoring_subjects','auth_monitoring_subject_emails','monitoring_row_visible','auth_can_read_member','try_uuid') order by proname;
+
+--  5. The same rule now covers ten tables, not nine. Expect seven track_read
+--     rows, plus activity_logs_read, plus admin_reviews_read, plus this one.
+-- select tablename, policyname, cmd from pg_policies where schemaname = 'public' and policyname in ('track_read','activity_logs_read','admin_reviews_read','org_isolation') and tablename in ('productivity_sessions','keyboard_stats','mouse_activities','app_usage','screenshots','developer_logins','browser_usage','activity_logs','admin_reviews','task_submissions') order by tablename;
+
+--  6. Spot-check what a given member would see, without logging in as them.
+--     Replace the uuid with a real memberships.user_id. This runs as YOU, so it
+--     reports the SUBTREE, not the row count - to check row visibility you must
+--     impersonate, because the policy reads auth.jwt().
+-- with recursive sub as (select 'REPLACE-WITH-A-MEMBER-USER-ID'::uuid as user_id, 0 as depth union all select c.user_id, s.depth + 1 from public.memberships c join sub s on c.reports_to = s.user_id where c.user_id is not null and c.user_id <> s.user_id and s.depth < 64) select distinct sub.user_id, sub.depth from sub order by sub.depth, sub.user_id;
+
+--  7. Rows that PART 2 hid from everyone below owner/admin/hr. Re-run of 0d,
+--     for the record, after the change.
+-- select count(*) as unattributable_rows from public.task_submissions where developer_id is null;
+
+--  8. The case the subject-vs-actor decision turns on, checked against YOUR org
+--     chart: admins sitting inside somebody's reporting subtree. Every row this
+--     returns is a manager who WOULD have inherited every submission that admin
+--     ever reviewed - file_url included - had the predicate matched reviewed_by.
+--     An empty result does not mean the design was unnecessary; it means the
+--     org chart has not grown that shape YET.
+-- select mgr.user_id as manager_user_id, mgr.role as manager_role, adm.user_id as admin_in_their_subtree from public.memberships mgr join public.memberships adm on adm.organization_id = mgr.organization_id and adm.reports_to = mgr.user_id where mgr.role in ('manager','team_lead') and adm.role in ('admin','owner') order by mgr.user_id;
+
+--  9. The write hole, quantified, so it is not forgotten: submissions a
+--     non-reviewer could still PATCH to approved through PostgREST. After PART
+--     2 that set is limited to rows the caller can also read, which for a
+--     developer is their own - but their own is exactly the set that matters
+--     for self-approval. Counts what is at stake; fixes nothing.
+-- select count(*) as submissions_a_developer_could_self_approve from public.task_submissions where review_status = 'pending' and developer_id is not null;
+
+
+-- =====================================================================
+--  STILL OPEN AFTER THIS FILE - not fixed here, listed so it is not lost
+-- =====================================================================
+--  a. THE WRITE HOLE. 014's org_isolation granted `for all`, and PART 1 carries
+--     that grant across unchanged: any authenticated non-client member of the
+--     organisation may still UPDATE review_status, review_comments, is_reviewed
+--     and reviewed_by on any submission the read policy lets them see - which,
+--     for a developer, includes their own. That is self-approval of one's own
+--     proof of work, bypassing /api/admin-review and REVIEWER_ROLES entirely.
+--     This is a WRITE defect and fixing it is a design decision, not a
+--     predicate: a role test on the update policy, a column-level grant, or
+--     moving the review write behind the service-role route it is supposed to
+--     use. Its own migration, decided on purpose. DO NOT read this file as
+--     having made the table safe.
+--
+--  b. THE CLIENT / client_visible QUESTION. api/client/projects/[id]:190 offers
+--     the client every submission on a linked project as a deliverable, and
+--     api/client/deliverables/[id]/url:27 will sign a download URL for any of
+--     them - including submissions attached to a developer_task with
+--     client_visible = false, the internal board 032 and 035 spent two
+--     migrations hiding. Both routes hold the service-role key, so no policy on
+--     this table can close it; it is an application-layer decision about
+--     whether a deliverable inherits its task's visibility. If the answer is
+--     yes, 014's task_submissions_client_read needs the matching predicate at
+--     the same time, exactly as 035 PART 1 did for developer_tasks - and note
+--     that task_id is nullable, so "inherits" needs a rule for submissions with
+--     no task.
+--
+--  c. THE MANAGER REVIEW PATH. pmData.js:325 runs under the caller's session
+--     and, once reachable, will tell a manager "there is nothing to review" for
+--     a task outside their subtree when in fact there is. Unreachable from the
+--     shipped UI today - see "THE ONE REGRESSION" in the header - and fixable
+--     only in application code: narrow ADMIN_SECTION_ROLES for views/sprints/
+--     project-hub, or move the pre-flight into /api/admin-review where the
+--     service-role key already is.
+--
+--  d. THE REASSIGNED-TASK EDGE on src/app/developer/project-details/page.jsx:406.
+--     That guard stops a re-saved plan from deleting a still-pending task that
+--     already has a submission against it; developer_tasks cascades, so the
+--     submission goes with the task. It reads task_submissions under the
+--     caller's own session. If a task was reassigned - developer_tasks
+--     .developer_id is now the caller but the submission's developer_id is a
+--     previous assignee - the guard goes blind after PART 2 and the row is
+--     deleted rather than merely hidden. Narrow (the task must still be
+--     'pending', which a submitted task normally is not) but it is the one
+--     place in the app where this narrowing could destroy data instead of
+--     concealing it. The real fix is that the guard should not be a
+--     browser-side select at all.
+--
+--  e. task_time_logs (018 lines 147-155) and pm_activity (018 lines 123-127)
+--     are still org-wide reads that expose per-person working patterns. Same
+--     shape, same helpers would apply, different judgement call about whether
+--     billable hours are meant to be visible team-wide. Carried over from 044's
+--     item (c) and 045's item (c), still open.
+--
+--  f. RE-RUNNING 013 OR 014 UNDOES PART 2. Both recreate org_isolation as a
+--     FOR ALL with the org-wide predicate; PART 1's three policies would
+--     survive beside it and the OR would admit every row again. That is true of
+--     044 and 045 with respect to 018 as well. If either file is ever replayed,
+--     replay this one after it.
+-- =====================================================================

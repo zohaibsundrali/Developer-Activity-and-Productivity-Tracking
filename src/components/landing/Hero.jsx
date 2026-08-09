@@ -3,25 +3,24 @@
 /**
  * Hero.
  *
- * The 3D lattice from `SceneLoader` sits behind the copy as an absolutely
- * positioned, `aria-hidden` layer. It is deliberately *behind* and not *beside*
- * the text: at 375px a side-by-side hero either shrinks the headline to nothing
- * or pushes the CTA below the fold, and this way the scene degrades to a
- * background texture on a phone with no layout change at all.
+ * The background is a flat token-coloured wash behind an `aria-hidden` layer.
  *
- * `SceneLoader` owns its own reduced-motion / mobile / no-WebGL fallbacks, so
- * this file never asks what the visitor's preferences are — it just gives the
- * loader a positioned box to fill. The box is `absolute` inside an
- * `overflow-hidden` parent and has its height fixed up front, so the scene can
- * neither shift layout nor widen the document while it loads.
+ * A WebGL lattice used to sit here, loaded through `SceneLoader`. It was
+ * removed at the owner's request: it did not read the way it was intended to,
+ * and a hero effect that has to be explained is not doing its job. Removing it
+ * also takes ~131KB of gzipped JavaScript, a canvas, a render loop and four
+ * fallback paths out of the most performance-sensitive screen on the site — so
+ * the page it leaves behind is faster and simpler, not merely emptier.
+ *
+ * Keep it that way. If a background is ever wanted again here, it should cost
+ * nothing to load and nothing to fall back from.
  *
  * The entrance is a hand-staggered fade-and-rise: eyebrow, headline, subhead,
  * actions, then the assurance line — 80ms apart, so the eye lands on the
  * headline first and the CTA arrives last.
  */
 
-import SceneLoader from "@/components/landing/SceneLoader";
-import { CtaButton, Reveal, stagger } from "@/components/landing/primitives";
+import { Container, CtaButton, Reveal, stagger } from "@/components/landing/primitives";
 import { cta, hero, pick } from "@/components/landing/content";
 
 export default function Hero() {
@@ -49,19 +48,18 @@ export default function Hero() {
       className="relative isolate overflow-hidden bg-background"
     >
       {/*
-        Scene layer. A fixed-height box reserved before anything loads, so the
-        arrival of the canvas cannot move a single pixel of the copy.
+        Background. The WebGL lattice that used to sit here was removed at the
+        owner's request — it did not read the way it was meant to. What is left
+        is a flat token-coloured wash: no canvas, no animation, nothing to load,
+        and nothing that can move the copy once it has painted.
       */}
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 select-none">
-        <div className="absolute inset-x-0 top-0 h-[38rem] sm:h-[46rem] lg:h-[54rem]">
-          <SceneLoader />
-        </div>
-        {/* Settles the lattice behind the text without touching its colours. */}
-        <div className="absolute inset-x-0 top-0 h-56 bg-gradient-to-b from-background via-background/70 to-transparent" />
-        <div className="absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-background to-transparent" />
+        <div className="absolute inset-x-0 top-0 h-[38rem] bg-gradient-to-b from-accent/40 via-background to-background sm:h-[46rem] lg:h-[54rem]" />
       </div>
 
-      <div className="mx-auto w-full max-w-6xl px-5 pb-24 pt-14 sm:px-6 sm:pb-28 sm:pt-20 lg:px-8 lg:pb-36 lg:pt-24">
+      <Container className="pb-24 pt-14 sm:pb-28 sm:pt-20 lg:pb-36 lg:pt-24">
+        {/* The hero copy keeps its own measure — the wider band underneath is
+            for layout, and a headline set across 1400px is not a headline. */}
         <div className="mx-auto max-w-4xl text-center">
           {eyebrow ? (
             <Reveal delay={0} distance={16}>
@@ -133,7 +131,7 @@ export default function Hero() {
             </Reveal>
           ) : null}
         </div>
-      </div>
+      </Container>
     </section>
   );
 }

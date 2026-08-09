@@ -20,7 +20,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  *      rather than being given the same silent success as before.
  *
  *  Plus the one that keeps the fix from re-creating the exposure it fixes: the
- *  legacy column is re-synced as a HASH, never as the cleartext password.
+ *  route writes NOTHING into the legacy `developers.password` column any more.
+ *  It briefly re-synced that column with a PBKDF2 hash, to stop the old password
+ *  still working through the fallback branch in src/app/login/page.js. That
+ *  fallback is gone — it only ever ran for a caller holding no JWT, and every
+ *  policy on the profile tables is `TO authenticated`, so its lookup returned
+ *  nothing — and with no reader left the sync had no purpose. A password change
+ *  now has exactly one effect: the Supabase Auth credential.
  */
 
 // Captured at module scope by the route, so it must be set before the import.
@@ -89,7 +95,6 @@ function makeSvc({
   fetchError = null,
   authUser = { id: AUTH_ID, email: EMAIL },
   updateUserError = null,
-  legacyUpdateError = null,
 } = {}) {
   const writes = [];
 
@@ -108,7 +113,7 @@ function makeSvc({
       select: () => chain({ data: developer, error: fetchError }),
       update: (values) => {
         writes.push(values);
-        return chain({ data: null, error: legacyUpdateError });
+        return chain({ data: null, error: null });
       },
     })),
     auth: {
@@ -229,23 +234,18 @@ describe('a successful change updates the authentication credential', () => {
     expect(svc.auth.admin.updateUserById).toHaveBeenCalledWith(AUTH_ID, { password: NEXT });
   });
 
-  it('re-syncs the legacy column as a hash, never as the cleartext password', async () => {
+  it('writes nothing at all into the legacy password column', async () => {
     const svc = makeSvc();
     install(svc, makeVerifier());
 
-    await POST(req(validBody()));
+    const res = await POST(req(validBody()));
 
-    expect(svc.writes).toHaveLength(1);
-    const written = svc.writes[0].password;
-
-    // The whole point: any authenticated colleague can read this column.
-    expect(written).not.toBe(NEXT);
-    expect(written).not.toContain(NEXT);
-    expect(isLegacyHash(written)).toBe(true);
-
-    // ...and it is still a working credential for the login fallback.
-    await expect(verifyLegacyPassword(NEXT, written)).resolves.toBe(true);
-    await expect(verifyLegacyPassword(CURRENT, written)).resolves.toBe(false);
+    expect(res.status).toBe(200);
+    // A successful change touches Supabase Auth and no profile table. Any
+    // authenticated colleague can `select *` from `developers`, so a value
+    // written here — cleartext OR hash — is a cost with no reader behind it.
+    expect(svc.writes).toHaveLength(0);
+    expect(svc.auth.admin.updateUserById).toHaveBeenCalledWith(AUTH_ID, { password: NEXT });
   });
 
   it('reports the auth failure rather than a success when the credential update fails', async () => {
@@ -261,10 +261,8 @@ describe('a successful change updates the authentication credential', () => {
     expect(svc.writes).toHaveLength(0);
   });
 
-  it('still reports success when only the legacy sync fails, and says so', async () => {
-    // The real credential HAS changed at that point. Reporting failure would be
-    // false and would send the user back to their old password.
-    const svc = makeSvc({ legacyUpdateError: { message: 'rls' } });
+  it('reports success without any legacy-sync caveat, because there is no sync', async () => {
+    const svc = makeSvc();
     install(svc, makeVerifier());
 
     const res = await POST(req(validBody()));
@@ -272,7 +270,10 @@ describe('a successful change updates the authentication credential', () => {
 
     expect(res.status).toBe(200);
     expect(body.success).toBe(true);
-    expect(body.legacySynced).toBe(false);
+    // The old response carried `legacySynced`, a partial-success flag for a
+    // second write that no longer happens. Nothing consumed it, and reporting
+    // on a write that does not occur is a way to mislead the next reader.
+    expect(body).not.toHaveProperty('legacySynced');
   });
 });
 
@@ -357,6 +358,8 @@ describe('legacy password hashing', () => {
   it('verifies a password it hashed', async () => {
     const hash = await hashLegacyPassword('correct horse battery staple');
     expect(hash.startsWith('pbkdf2$sha256$210000$')).toBe(true);
+    expect(isLegacyHash(hash)).toBe(true);
+    expect(isLegacyHash('hunter2')).toBe(false);
     await expect(verifyLegacyPassword('correct horse battery staple', hash)).resolves.toBe(true);
     await expect(verifyLegacyPassword('wrong', hash)).resolves.toBe(false);
   });
@@ -369,9 +372,11 @@ describe('legacy password hashing', () => {
     await expect(verifyLegacyPassword('same-password', b)).resolves.toBe(true);
   });
 
-  it('still accepts an untouched cleartext row, so nobody is locked out', async () => {
-    // This is the branch that keeps every row written by the five unchanged
-    // writers working. It goes away in stage 6 of migration 041, not before.
+  it('still accepts an untouched cleartext row', async () => {
+    // Nothing on a request path calls this any more. The pair is retained for
+    // the stage-5 backfill in database/041_password_hardening.sql, which
+    // replaces each surviving cleartext value with a hash of itself and has to
+    // read both shapes to know which rows it has already done.
     await expect(verifyLegacyPassword('hunter2', 'hunter2')).resolves.toBe(true);
     await expect(verifyLegacyPassword('hunter3', 'hunter2')).resolves.toBe(false);
   });

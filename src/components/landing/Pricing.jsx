@@ -3,7 +3,7 @@
 /**
  * Pricing.
  *
- * Four cards on `lg`, two on `sm`, one on a phone. The plan the content marks
+ * Four cards on `xl`, two from `sm`, one on a phone. The plan the content marks
  * (`highlight` / `featured` / `popular`) gets the heavier border and the only
  * filled button in the section, so "one primary CTA per section" survives
  * having four buttons on screen.
@@ -21,6 +21,7 @@ import { Calculator, Check, Minus } from "lucide-react";
 
 import {
   CARD_LIFT,
+  Container,
   Counter,
   CtaButton,
   Reveal,
@@ -82,9 +83,18 @@ export default function Pricing() {
 
   if (plans.length === 0 && !title) return null;
 
+  /*
+    Four across only once the measure can actually pay for it.
+
+    On the 1400px container `xl` gives each of four cards ~323px, which is the
+    first width at which the two-column limits list holds "Unlimited" on one
+    line and the plan button holds its label without wrapping. Below that the
+    row collapses to two — 1024px over four cards left ~229px each, and the
+    limits grid was folding inside it. Two roomy cards beat four cramped ones.
+  */
   const columns =
     plans.length >= 4
-      ? "sm:grid-cols-2 lg:grid-cols-4"
+      ? "sm:grid-cols-2 xl:grid-cols-4"
       : plans.length === 3
         ? "sm:grid-cols-2 lg:grid-cols-3"
         : plans.length === 2
@@ -97,7 +107,7 @@ export default function Pricing() {
       aria-labelledby={title ? "pricing-heading" : undefined}
       className="relative isolate scroll-mt-20 overflow-hidden border-t border-border bg-background py-20 sm:py-24 lg:py-32"
     >
-      <div className="mx-auto w-full max-w-6xl px-5 sm:px-6 lg:px-8">
+      <Container>
         <SectionHeading
           eyebrow={eyebrow}
           title={title}
@@ -109,7 +119,9 @@ export default function Pricing() {
         {plans.length > 0 ? (
           <ul
             className={[
-              "mx-auto mt-16 grid max-w-md grid-cols-1 items-stretch gap-5 sm:mt-20 sm:max-w-none",
+              // `max-w-md` caps the single-column phone layout only; from `sm`
+              // up the row takes the full container.
+              "mx-auto mt-16 grid max-w-md grid-cols-1 items-stretch gap-5 sm:mt-20 sm:max-w-none xl:gap-6",
               columns,
             ]
               .filter(Boolean)
@@ -158,7 +170,7 @@ export default function Pricing() {
                   ) : null}
 
                   {plan.limits.length > 0 ? (
-                    <dl className="mt-7 grid grid-cols-2 gap-x-4 gap-y-4 border-t border-border pt-6">
+                    <dl className="mt-7 grid grid-cols-2 gap-x-5 gap-y-4 border-t border-border pt-6 xl:gap-x-6">
                       {plan.limits.map((limit) => (
                         <div key={limit.label}>
                           <dd className="font-display text-xl font-semibold tracking-[-0.02em] text-foreground">
@@ -228,7 +240,11 @@ export default function Pricing() {
 
         {comparison ? (
           <Reveal delay={stagger(1)}>
-            <div className="mx-auto mt-12 flex max-w-3xl flex-col items-center gap-4 rounded-2xl border border-primary/20 bg-accent p-6 text-center sm:flex-row sm:items-start sm:gap-5 sm:p-7 sm:text-left">
+            {/* One step wider than the prose cap, not the full container: the
+                icon and its gap eat ~64px, so `max-w-4xl` leaves the sentence
+                itself at a readable measure while giving it room to stop
+                wrapping onto three ragged lines. */}
+            <div className="mx-auto mt-12 flex max-w-4xl flex-col items-center gap-4 rounded-2xl border border-primary/20 bg-accent p-6 text-center sm:flex-row sm:items-center sm:gap-5 sm:p-7 sm:text-left">
               <span
                 aria-hidden="true"
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"
@@ -252,7 +268,7 @@ export default function Pricing() {
             </div>
           </Reveal>
         ) : null}
-      </div>
+      </Container>
     </section>
   );
 }

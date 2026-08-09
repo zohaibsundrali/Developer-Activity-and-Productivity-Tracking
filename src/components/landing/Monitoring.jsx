@@ -22,7 +22,7 @@
 
 import { Ban, Eye, Users } from "lucide-react";
 
-import { CARD_LIFT, Reveal, SectionHeading, stagger } from "@/components/landing/primitives";
+import { CARD_LIFT, Container, Reveal, SectionHeading, stagger } from "@/components/landing/primitives";
 import { monitoring, pick, pickList, str } from "@/components/landing/content";
 
 /** Structural labels for the author's own three groups — see the note above. */
@@ -71,7 +71,7 @@ export default function Monitoring() {
       aria-labelledby={title ? "monitoring-heading" : undefined}
       className="relative isolate scroll-mt-20 overflow-hidden border-t border-border bg-background py-20 sm:py-24 lg:py-32"
     >
-      <div className="mx-auto w-full max-w-6xl px-5 sm:px-6 lg:px-8">
+      <Container>
         <SectionHeading
           eyebrow={eyebrow}
           title={title}
@@ -186,12 +186,20 @@ export default function Monitoring() {
 
         {honesty ? (
           <Reveal delay={stagger(1)}>
-            <p className="mt-6 rounded-2xl border border-warning/30 bg-warning/10 p-6 text-sm leading-relaxed text-foreground sm:p-7 sm:text-base">
-              {honesty}
-            </p>
+            {/*
+              The banner stays the full width of the grid above it — it is the
+              caveat on that grid, and pulling it in would orphan it. The
+              sentence inside does not: on the 1400px measure an uncapped
+              paragraph here ran to 1352px, which is not a line anyone reads.
+            */}
+            <div className="mt-6 rounded-2xl border border-warning/30 bg-warning/10 p-6 sm:p-7">
+              <p className="max-w-3xl text-sm leading-relaxed text-foreground sm:text-base">
+                {honesty}
+              </p>
+            </div>
           </Reveal>
         ) : null}
-      </div>
+      </Container>
     </section>
   );
 }

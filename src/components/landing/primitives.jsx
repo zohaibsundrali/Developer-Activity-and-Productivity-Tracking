@@ -75,6 +75,46 @@ import { useReveal, useOnEnter } from "@/hooks/useReveal";
 import { useCountUp } from "@/hooks/useCountUp";
 
 /* ------------------------------------------------------------------ *
+ * Measure — the page's one horizontal rhythm
+ * ------------------------------------------------------------------ */
+
+/**
+ * The shared measure every landing band is laid out on.
+ *
+ * 1400px rather than `max-w-6xl` (1152px): on a 1920px display the old measure
+ * left 384px of dead margin on each side, which read as the page hiding in a
+ * column down the middle. 1400px is where modern B2B SaaS marketing sites sit,
+ * and it buys back ~264px of usable layout without the page touching the edges.
+ *
+ * The horizontal padding deliberately stops escalating at `lg`. It existed to
+ * create breathing room the container itself now provides, so it holds at 24px
+ * from `sm` up instead of stepping to 32px — a little less padding at large
+ * widths, exactly where the measure is already doing the work.
+ *
+ * **This is a layout measure, not a text measure.** Prose must never be laid out
+ * across 1400px: headings, descriptions, footnotes and the FAQ keep their own
+ * `max-w-2xl` / `max-w-3xl` caps inside this box. Only grids, cards, tables and
+ * the pricing row are allowed to use the full width.
+ *
+ * Every band on the page reads this one constant, so the next width change is a
+ * single line here rather than fourteen edits that drift apart.
+ */
+export const CONTAINER = "mx-auto w-full max-w-[1400px] px-5 sm:px-6";
+
+/**
+ * The measure as an element. `as` lets a band keep its correct tag (`nav`,
+ * `ul`) instead of wrapping one in a div, and `className` carries the band's
+ * own vertical rhythm — the horizontal geometry is never overridden.
+ */
+export function Container({ as: Tag = "div", className = "", children, ...rest }) {
+  return (
+    <Tag className={[CONTAINER, className].filter(Boolean).join(" ")} {...rest}>
+      {children}
+    </Tag>
+  );
+}
+
+/* ------------------------------------------------------------------ *
  * Motion tuning — one place, so every section moves the same way
  * ------------------------------------------------------------------ */
 
@@ -303,6 +343,12 @@ const BUTTON_VARIANTS = {
   secondary:
     "border border-border bg-card text-foreground shadow-card hover:bg-muted " +
     "focus-visible:ring-ring focus-visible:ring-offset-background",
+  // Outline with no fill and no shadow. The header sits transparent over the
+  // hero until the page scrolls, and a filled secondary there would punch a
+  // card-coloured hole in the scene; this one only draws its own edge.
+  ghost:
+    "border border-border bg-transparent text-foreground hover:border-primary/30 hover:bg-muted " +
+    "focus-visible:ring-ring focus-visible:ring-offset-background",
   onDark:
     "border border-sidebar-border bg-sidebar-accent text-background hover:bg-sidebar-border " +
     "focus-visible:ring-sidebar-primary focus-visible:ring-offset-sidebar",
@@ -318,6 +364,9 @@ const BUTTON_VARIANTS = {
 };
 
 const BUTTON_SIZES = {
+  // Header scale. Two of these plus a text link have to sit inside an 80px bar
+  // without crowding it, which `md` at 44px cannot do.
+  sm: "h-10 px-4 text-sm",
   md: "h-11 px-6 text-sm",
   lg: "h-12 px-7 text-base",
 };

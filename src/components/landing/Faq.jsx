@@ -15,7 +15,7 @@
 
 import { ChevronDown } from "lucide-react";
 
-import { Reveal, SectionHeading, stagger } from "@/components/landing/primitives";
+import { Container, Reveal, SectionHeading, stagger } from "@/components/landing/primitives";
 import { faq, heading, items, pick } from "@/components/landing/content";
 
 function questionList() {
@@ -41,7 +41,7 @@ export default function Faq() {
       aria-labelledby={title ? "faq-heading" : undefined}
       className="relative isolate scroll-mt-20 overflow-hidden border-t border-border bg-muted/40 py-20 sm:py-24 lg:py-32"
     >
-      <div className="mx-auto w-full max-w-6xl px-5 sm:px-6 lg:px-8">
+      <Container>
         <SectionHeading
           eyebrow={eyebrow}
           title={title}
@@ -76,7 +76,7 @@ export default function Faq() {
             ))}
           </ul>
         </div>
-      </div>
+      </Container>
     </section>
   );
 }

@@ -28,9 +28,10 @@
  *   clients blocked from tracking .......... database/014_client_portal.sql (7f)
  *   employee profile fields ................ database/015_team_employee_management.sql:53-75
  *   plaintext password columns ............. database/014_client_portal.sql:48,
- *                                            src/app/api/auth/signup/route.js:29,
- *                                            src/app/api/invitations/accept/route.js:73-103,
- *                                            src/app/api/developer/change-password/route.js:76-86
+ *                                            database/041_password_hardening.sql
+ *                                            (stages 5 and 7 — the values and the
+ *                                            columns are what is left; every
+ *                                            writer and reader is already gone)
  *   session cookie ......................... src/utils/sessionCookie.js:20-23, middleware.ts
  *   transport headers ...................... next.config.mjs:38-60
  *   email provider selection ............... src/utils/emailProvider.js:37-40
@@ -46,8 +47,9 @@
  *   - that we record keystroke content (we do not)
  *   - that we record mouse clicks or cursor position (we do not)
  *   - that passwords are hashed by this application (see section 12 — three
- *     tables hold plaintext copies; saying otherwise in a legal document would
- *     be a false security statement)
+ *     tables still hold plaintext copies written before the writers were
+ *     removed; the values have not been cleared, so saying otherwise in a legal
+ *     document would still be a false security statement)
  *   - any retention period (nothing in this system deletes anything on a
  *     schedule; inventing "90 days" here would be a lie people would rely on)
  *   - encryption at rest as OUR control (it is our hosting provider's; stated
@@ -65,9 +67,10 @@ import { entity, lastUpdated, legalReviewNotice, TBD } from "./entity";
  * NOT on this list, and why:
  *   Resend    — the send path supports it, but RESEND_API_KEY is unset, so
  *               `emailProviderMode()` never selects it (emailProvider.js:39).
- *   EmailJS   — the browser SDK is imported and `init()` is called on the
- *               registration page, but nothing ever calls `send()`. No data
- *               reaches them. It is a dependency to delete, not a processor.
+ *   EmailJS   — the browser SDK is no longer imported or initialised anywhere
+ *               in src/, and `send()` was never called even when it was. No
+ *               data reaches them. Only the package.json entry is left to
+ *               delete; it is not a processor.
  *   OpenAI /  — both packages are in package.json; neither is imported
  *   Gemini      anywhere in src/. No calls, no data.
  */
@@ -653,9 +656,9 @@ export const sections = [
       {
         type: "callout",
         tone: "critical",
-        title: "Account passwords are currently stored in plain text",
+        title: "Older account passwords are still stored in plain text",
         text:
-          "Signing in runs through a managed authentication service that stores a properly hashed password. Separately, and left over from an older login path, the product also writes an unencrypted copy of the password into the staff, administrator and client profile tables, and the change-password endpoint reads and rewrites that plain-text copy. That is a defect, not a design. It means anyone with database-level read access — or a leaked backup — obtains usable passwords, and because people reuse passwords the damage would not stop at this product. We are stating it rather than writing the sentence a template would supply, because “your password is encrypted” would be false. Until it is fixed, treat your Verisade password as a password you must not use anywhere else.",
+          "Signing in runs through a managed authentication service that stores a properly hashed password, and that is now the only credential the product checks. Left over from an older login path, the staff, administrator and client profile tables each still carry a password column, and the values written into it before this was fixed are still there — most of them unencrypted. Nothing writes a new one: creating an account, accepting an invitation, an administrator adding a team member and changing your own password all stopped copying the password into those tables, and no part of the product signs anyone in from them any more. But the old values have not been erased or replaced yet, and the columns have not been dropped. So for any account that existed before the fix, anyone with database-level read access — or a leaked backup — still obtains a usable password, and because people reuse passwords the damage would not stop at this product. We are stating it rather than writing the sentence a template would supply, because “your password is encrypted” would still be false for those accounts. Until the remaining values are removed, treat your Verisade password as a password you must not use anywhere else. Changing your password does stop the stored copy from matching the one you sign in with — but the old value stays in the table until it is cleared, so a password you have ever used here should not be reused elsewhere either.",
       },
       {
         type: "callout",
@@ -800,9 +803,9 @@ export const openItems = [
       "The Supabase project's region is a deployment fact the source code does not record. Until it is confirmed and the Standard Contractual Clauses are in place where they are needed, section 14 describes a gap rather than a safeguard.",
   },
   {
-    title: "Remove the plain-text password columns and the code that maintains them.",
+    title: "Clear the remaining plain-text password values, then drop the columns.",
     text:
-      "Three tables store an unencrypted copy of the password and the change-password endpoint reads and rewrites it. Until that is gone, this policy has to carry the disclosure in section 12, every prospect will read it, and the exposure is real regardless of what the document says. Note also that changing a password through that endpoint updates only the plain-text copy and not the credential the authentication service actually checks.",
+      "The code that created and maintained them is gone: no account-creation path writes the column, the change-password endpoint no longer touches it, and no sign-in reads it. What is left is data — the values written before that change, still sitting in three tables, most of them readable. Replacing or nulling them is a one-off service-role pass, and the columns can be dropped a release later. Until that is done, this policy has to carry the disclosure in section 12, every prospect will read it, and the exposure is real regardless of what the document says.",
   },
   {
     title: "Migrate the screen captures still sitting in the public bucket.",
@@ -825,9 +828,9 @@ export const openItems = [
       "It sends requirements-document text to a third-party inference provider. There is currently no per-organisation switch to disable it. Consider making it opt-in per organisation, so a customer with confidential requirements documents can turn it off rather than having to remember not to click the button.",
   },
   {
-    title: "Remove the unused EmailJS dependency, or start disclosing it.",
+    title: "Remove the unused EmailJS dependency from the package manifest.",
     text:
-      "The browser SDK is imported and initialised on the registration page with a public key, but nothing ever calls it to send. It is left off the sub-processor table because no data reaches them — but a third-party SDK loaded on a page is the kind of thing an auditor finds and asks about. Delete it.",
+      "The browser SDK is no longer imported or initialised anywhere — the registration page used to load it and hand it a public key without ever calling it to send. Nothing in the application references it now, so no data has ever reached them and none can. What remains is the package still listed as a dependency; drop it so the SDK cannot be reintroduced by accident.",
   },
 ];
 

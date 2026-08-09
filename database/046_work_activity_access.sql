@@ -1,0 +1,620 @@
+-- =====================================================================
+--  046 - task_time_logs + pm_activity: the same per-person rule 040
+--        installed on the seven desktop-tracking tables and 044 installed
+--        on activity_logs
+-- =====================================================================
+--  044's closing note listed these two as "still open, same shape". They
+--  are the same shape as each other only in the sense that both leak a
+--  person's working pattern org-wide. In every detail that decides how the
+--  policy must be written they are different tables, so they get one PART
+--  each and one argument each.
+--
+--  WHAT IS LEAKING TODAY
+--
+--  018, lines 144-155:
+--
+--    -- 9) task_time_logs - billable time. Everyone in the org can read
+--    --    (reports need it), but you may only log and edit your OWN time.
+--    create policy task_time_logs_read on public.task_time_logs for select
+--      to authenticated
+--      using (organization_id = public.auth_org() and not public.auth_is_client());
+--
+--  018, lines 120-127:
+--
+--    -- 7) pm_activity - an audit feed. Append-only ...
+--    create policy pm_activity_read on public.pm_activity for select
+--      to authenticated
+--      using (organization_id = public.auth_org() and not public.auth_is_client());
+--
+--  018 got the WRITE side of task_time_logs right - insert/update/delete are
+--  already "your own row, or owner/admin". It is only the read side that is
+--  org-wide, and the comment on line 144 says why out loud: "Everyone in the
+--  org can read (reports need it)". That is the trade this file re-decides.
+--
+--  What a member can currently fetch from PostgREST with the anon key that
+--  ships in the browser bundle and their own ordinary session:
+--
+--    task_time_logs - every colleague's start and stop timestamps, to the
+--                     second, per task, with a free-text note. That is a
+--                     minute-by-minute record of when a person was at their
+--                     desk, how long each piece of work took them, and how
+--                     often they stopped. 024 made it worse in a useful way:
+--                     the partial unique index means the row with ended_at
+--                     null IS the answer to "is this person working right
+--                     now, and on what".
+--    pm_activity    - every action every colleague took on every entity,
+--                     newest first, with created_at. Same working-pattern
+--                     disclosure by a different route, plus the change diff
+--                     in meta.
+--
+--  THE MODEL INSTALLED HERE - identical to 040 and 044, deliberately
+--
+--    owner, admin, hr          -> everything in the organisation
+--    manager, team_lead        -> their own, plus their reporting subtree
+--                                 via memberships.reports_to, transitively
+--    developer, employee       -> their own record only
+--    anything else / no role   -> their own record only  (fail closed)
+--    client                    -> nothing  (unchanged; 018 already denies it)
+--
+--  Every clause of 018's two policies is kept and one conjunct is added to
+--  each. Nothing widens. owner/admin/hr keep exactly what they had, everyone
+--  else loses rows, clients were denied before and are denied after.
+--
+--  This file adds NO insert, update or delete policy. 018's
+--  task_time_logs_insert/update/delete and pm_activity_insert are left
+--  exactly as they are - they are already per-person on the write side, and
+--  touching them here would be a change nobody asked for. In particular
+--  pm_activity_insert stays open to every non-client member, because
+--  src/utils/pmData.js logActivity() and src/utils/automation.js both write
+--  to it from the browser under the user's own JWT.
+--
+--
+--  =====================================================================
+--  THE POLICY NAMES. READ THIS BEFORE COPYING ANYTHING FROM 040.
+--  =====================================================================
+--
+--  Neither table's read policy is called track_read, and neither is called
+--  org_isolation any more:
+--
+--    017 (lines 95-105) created org_isolation FOR ALL on both tables.
+--    016_017_combined_oneline.sql (lines 102-108) is the same statement.
+--    018 then DROPPED org_isolation on both and replaced it with named,
+--        per-command policies: pm_activity_read + pm_activity_insert
+--        (lines 123-127), and task_time_logs_read + _insert + _update +
+--        _delete (lines 147-155).
+--
+--  So the live SELECT policies are, exactly:
+--
+--    public.task_time_logs  ->  task_time_logs_read
+--    public.pm_activity     ->  pm_activity_read
+--
+--  and those are the two names PART 1 and PART 2 drop and recreate. This is
+--  044's trap restated: `drop policy if exists track_read` on either of
+--  these tables drops NOTHING, the create then adds a SECOND permissive
+--  SELECT policy, PostgreSQL ORs permissive policies together, and 018's
+--  org-wide one keeps admitting every row. The migration would look like it
+--  worked and change nobody's access. PART 0d is the query that proves the
+--  names on YOUR database before you run anything.
+--
+--  Nothing between 019 and 045 renames either policy - 042 drops dead admin
+--  policies and touches neither table; 022, 024 and 026 only add indexes.
+--
+--
+--  =====================================================================
+--  SUBJECT vs ACTOR - decided separately, per table, and argued
+--  =====================================================================
+--
+--  044 had it easy: activity_logs carries developer_id and nothing else, and
+--  that column is the developer whose TASK it is. These two are not that.
+--
+--  ---------------------------------------------------------------------
+--  task_time_logs (017 lines 60-72). Full column list:
+--
+--    id, organization_id, task_id, project_id, developer_id, started_at,
+--    ended_at, seconds, source, note, created_at
+--
+--  ONE person column: developer_id ("membership user_id / developers.id",
+--  017's own comment). No email column at all.
+--
+--  DECISION: developer_id is the subject, and here subject IS actor.
+--
+--  The argument. A time log row means "this person spent this long". The
+--  person who spent it is the person whose timer it was, and
+--  src/utils/pmData.js sets developer_id from the SESSION, not from the
+--  task: startTaskTimer() writes `developer_id: ctx.userId`, and
+--  addManualTimeLog() the same. There is no separate "who recorded this"
+--  column, so there is no second candidate to weigh.
+--
+--  The tempting wrong answer is task_id -> developer_tasks.developer_id,
+--  i.e. "the row belongs to whoever owns the task". That is wrong twice
+--  over. First it is factually not the subject: when an admin runs the
+--  drawer timer on a developer's task, the hours are the ADMIN's hours, and
+--  attributing them to the task's owner would both mis-state the owner's
+--  logged time and hide the admin's. Second it would need a correlated
+--  subquery into developer_tasks inside the policy qual, on a table 026
+--  sizes at 200k rows, evaluated per row - and developer_tasks has its own
+--  RLS, so the join would have to be security definer to be correct. The
+--  column that is already there is the right one.
+--
+--  Note what this does NOT do: it does not hide the row's task_id or
+--  project_id from anyone who could already see the task. A developer still
+--  sees their own task; what they stop seeing is how long a colleague spent
+--  on it.
+--
+--  ---------------------------------------------------------------------
+--  pm_activity (017 lines 40-51). Full column list:
+--
+--    id, organization_id, project_id, entity_type, entity_id, action,
+--    actor_id, actor_name, meta, created_at
+--
+--  TWO people-ish columns, and one of them is a trap:
+--
+--    actor_id    uuid - who performed the action
+--    actor_name  text - their DISPLAY NAME, not an email. 017's comment and
+--                       pmData.js logActivity() agree: the name is resolved
+--                       by readers via actor_id and is only stored when the
+--                       caller passes meta.actorName.
+--    entity_id   uuid - NOT a person. It is the task/project/sprint that was
+--                       touched, and it is a uuid, which is exactly what
+--                       makes it dangerous (see the jsonb section below).
+--
+--  DECISION: this is an ACTOR log, and it is scoped on the ACTOR. There is
+--  no subject column to scope on instead.
+--
+--  The argument. pm_activity records "X did Y to entity Z". The only person
+--  it names is X. Z is a thing, not a person, and resolving Z to a person
+--  would mean a per-row join into developer_tasks / projects / sprints
+--  chosen by entity_type - a polymorphic lookup inside a policy qual on an
+--  append-only feed that 022 indexes precisely because it is read in bulk.
+--
+--  More importantly, actor is the RIGHT scope for the harm being fixed. The
+--  leak is a per-person working pattern: created_at ordered by actor tells
+--  you when someone starts, when they stop, how much they touch and on
+--  which days. That pattern belongs to the actor. Scoping on the entity
+--  owner would leave it fully exposed - a developer could read every action
+--  every colleague ever took on any task the developer happens to own.
+--
+--  THE CONSEQUENCE, STATED PLAINLY BECAUSE IT IS A REAL LOSS:
+--
+--    A developer will NOT see a row recording an admin's action on the
+--    developer's OWN task, because that row names the admin as actor.
+--
+--  That is deliberate and it is the opposite of 044's choice for
+--  activity_logs - and the two are right to differ. activity_logs is the
+--  per-TASK audit trail (approved / rejected / submitted, keyed by
+--  developer_id = the task's developer), so its subject is the person being
+--  reviewed and a developer keeps their own approval history. pm_activity
+--  is the per-PERSON action feed. One answers "what happened to my work",
+--  the other answers "what did this colleague do today". The second is the
+--  one that should not be readable across the org, and the first is not
+--  weakened by this file because it lives in a different table that 044
+--  already scoped the other way.
+--
+--  Rows written with no actor are therefore owner/admin/hr-only, and there
+--  are two known writers that produce exactly those (both counted by PART
+--  0e, and both intentionally left alone):
+--
+--    src/utils/automation.js:250   inserts action='automation_ran' with NO
+--                                  actor_id key at all - the rule fired, not
+--                                  a person.
+--    src/app/api/cron/route.js:198 inserts action='recurring_spawned' with
+--                                  no actor_id - cron, service role.
+--
+--  Those two feed entries becoming owner/admin/hr-only is correct on the
+--  merits (nobody performed them) but it IS a visible change - see the
+--  reader list. src/app/api/admin/health/route.js:166 reads the
+--  'automation_ran' row to prove the automation engine is alive; it holds
+--  the service role, which does not consult policies, so that check is
+--  unaffected.
+--
+--
+--  =====================================================================
+--  WHY A CONSTRUCTED jsonb OBJECT AND NOT to_jsonb(row)
+--  =====================================================================
+--
+--  040 and 044 pass the whole row: `monitoring_row_visible(to_jsonb(t), ...)`.
+--  That helper tries EIGHT identity keys in order - developer_id, user_id,
+--  employee_id, member_id, dev_id as uuids, then developer_email,
+--  user_email, email, user_login, login_email as emails - and returns true
+--  on the first one that matches. It takes whichever the row happens to
+--  carry. On 040's seven tables that is the whole point, because every one
+--  of them carries exactly one identity and nobody knows which.
+--
+--  On these two it would be wrong, in opposite directions:
+--
+--    pm_activity: the key it needs is actor_id, and actor_id is NOT in the
+--      helper's list. to_jsonb(pm_activity) would match nothing, every row
+--      would fall through to the owner/admin/hr branch, and the entire
+--      activity feed would go blank for managers and developers - a silent
+--      lockout that looks exactly like "the policy worked". This is the
+--      single most important line in this file: the actor field must be
+--      RE-KEYED onto a name the helper recognises. It is mapped to
+--      'user_id'.
+--
+--    both tables: handing over the whole row also hands over entity_id,
+--      task_id and project_id. Those are uuids that are not people. None of
+--      them is in the helper's list TODAY, so nothing matches today - but
+--      the failure mode if that ever changes is a widening that no one would
+--      notice, and the rule "give the matcher only the fields you decided
+--      are the subject" costs nothing to follow.
+--
+--  So each policy builds a one-key object and passes that:
+--
+--    task_time_logs : jsonb_build_object('developer_id', ... 'developer_id')
+--    pm_activity    : jsonb_build_object('user_id',      ... 'actor_id')
+--
+--  The value is read as `to_jsonb(t) ->> 'column'` rather than as a bare
+--  column reference, and that is not decoration. 040's PART 0 and 044's PART
+--  0a exist because a `create policy` that names a column the table does not
+--  have FAILS - and the `drop policy if exists` on the line above it has
+--  already succeeded, so the table is left with RLS enabled and NO select
+--  policy: deny everything, for everyone, including the owner. Worse than
+--  the leak. `to_jsonb(t)` names only the table, and `->> 'actor_id'` on a
+--  jsonb object with no such key is null, not an error. A deployment whose
+--  copy of these tables is missing the column therefore gets
+--  owner/admin/hr-only rows - fail closed, no outage - instead of a broken
+--  migration. PART 0a/0b tell you which case you are in.
+--
+--  monitoring_row_visible then does try_uuid() on that text, so a malformed
+--  value is null and matches nothing rather than raising 22P02 mid-query.
+--
+--  Both ids are in memberships.user_id's space, so the match is real and not
+--  a coincidence of both being uuids: 017 documents task_time_logs.developer_id
+--  as "membership user_id / developers.id"; pmData.js sets pm_activity.actor_id
+--  from getOrgContext().userId, the same value 014's auth_app_user_id() reads
+--  out of app_metadata.app_user_id; and 011 populates memberships.user_id from
+--  developers.id and admin_users.id.
+--
+--  auth_monitoring_subject_emails() is still passed to both, exactly as 044
+--  passes it to a table with no email column. Neither constructed object
+--  carries an email key, so it cannot match today. It costs one InitPlan per
+--  query and keeps the predicate readable as the same rule as 040's seven
+--  and 044's one. If either table ever grows an email identity, add the key
+--  to the object here and it works.
+--
+--
+--  =====================================================================
+--  WHY THE SET-RETURNING HELPERS ARE WRAPPED IN (select ...)
+--  =====================================================================
+--
+--  040's point, and it bites hardest here. A bare stable function call in a
+--  policy qual is re-evaluated once per ROW, so the recursive walk down
+--  memberships.reports_to would run once per time log. Wrapped in a scalar
+--  subquery with no outer reference, the planner hoists it to an InitPlan
+--  and runs it once per QUERY.
+--
+--  026 sizes task_time_logs at 200k rows. 022 indexed it three ways
+--  (org+started_at, org+dev+started_at, org+project+started_at) because
+--  reports read a whole date window at once, and src/utils/reportsData.js
+--  pages that window up to MAX_TIME_LOG_ROWS = 20000 rows in one screen
+--  load. pm_activity is the same story: 022 indexed (organization_id,
+--  created_at desc) because it is read newest-first in bulk. Unwrapped, this
+--  is 20000 recursive CTE walks per report render.
+--
+--  The org clause stays first and stays the indexed one, so the planner can
+--  still use those three indexes; the row predicate only ever runs on rows
+--  the org filter already admitted.
+--
+--
+--  =====================================================================
+--  WHO READS THESE TABLES - grepped over all of src/, not assumed
+--  =====================================================================
+--
+--  Unlike 044, this one is NOT invisible to the running application. Both
+--  tables are read from the browser under the user's own session, so real
+--  screens change for real roles. The full list:
+--
+--  task_time_logs - USER SESSION (anon key + user JWT, RLS applies)
+--    src/utils/pmData.js:1057  getActiveTimer()   - own developer_id only
+--    src/utils/pmData.js:1087  startTaskTimer()   - insert (write, untouched)
+--    src/utils/pmData.js:1121  stopTaskTimer()    - update (write, untouched)
+--    src/utils/pmData.js:1143  addManualTimeLog() - insert (write, untouched)
+--    src/utils/pmData.js:1164  loadTimeLogs()     - by task / project / dev
+--    src/utils/reportsData.js:139  the report bundle, whole org, date window
+--
+--  pm_activity - USER SESSION (anon key + user JWT, RLS applies)
+--    src/utils/pmData.js:1014  logActivity()  - insert (write, untouched)
+--    src/utils/pmData.js:1029  loadActivity() - by project / entity, newest first
+--    src/utils/automation.js:250  insert 'automation_ran' (write, untouched)
+--
+--  pm_activity - SERVICE ROLE (bypasses RLS entirely, unaffected)
+--    src/app/api/cron/route.js:198          insert 'recurring_spawned'
+--    src/app/api/admin/health/route.js:166  reads the newest 'automation_ran'
+--
+--  NOT a reader, despite the name: src/components/client/ClientOverview.jsx
+--  has its own local loadActivity(), which calls
+--  /api/client/projects/[id]/timeline. That route does not touch either
+--  table, and src/app/api/client/tasks/[id]/route.js:156 says in a comment
+--  that pm_activity is deliberately not a client-facing source. Clients are
+--  denied by the policy anyway, before and after.
+--
+--  ---------------------------------------------------------------------
+--  WHICH SCREENS CHANGE, FOR WHICH ROLES
+--
+--  Section -> role mapping is src/components/shell/navConfig.js
+--  ADMIN_SECTION_ROLES. owner, admin and hr are in the sees-all branch, so
+--  no screen changes for them anywhere. hr additionally has no route to any
+--  of these screens (reports/views/board/project-hub are not in hr's list),
+--  so hr sees no difference either way.
+--
+--  1. Reports  (src/components/admin/ReportsDashboard.jsx, section "reports",
+--     roles owner/admin/manager/team_lead)
+--     reportsData.js:139 pulls task_time_logs for the whole org over the
+--     selected date range. THREE numbers shrink for manager and team_lead:
+--       - summaryKpis().loggedHours (reportsData.js:477) - the headline
+--         "logged hours" tile
+--       - projectPerformance().loggedHours (reportsData.js:303) - the per
+--         project column
+--       - teamProductivity().loggedSeconds (reportsData.js:352) - the per
+--         employee row; every employee outside the manager's subtree now
+--         shows 0 logged hours while still showing their task counts and
+--         their DESKTOP tracked hours, which come from productivity_sessions
+--         and are governed by 040, not by this file.
+--     THIS IS THE VISIBLE CHANGE THE OWNER NEEDS TO AGREE TO. A manager's
+--     report totals will drop, and 018 line 144 explicitly justified the
+--     org-wide read with "reports need it". If org-wide billable totals are
+--     a requirement for managers, this file is the wrong answer for
+--     task_time_logs and PART 1 should not be run - see the note at the
+--     bottom.
+--
+--  2. Task drawer, "Time tracking" panel
+--     (src/components/admin/TaskTimer.jsx inside TaskDetailDrawer.jsx,
+--     mounted from ProjectBoard.jsx section "board" (owner/admin) and
+--     ProjectViews.jsx section "views" (owner/admin/manager/team_lead))
+--     loadTimeLogs({taskId}) lists every person's entries on the task and
+--     labels them with nameFor(developer_id). For manager and team_lead the
+--     list and the "logged vs estimate" bar now cover only themselves and
+--     their subtree, so a task worked on by someone outside it can read as
+--     0 logged. getActiveTimer() filters on the caller's own developer_id
+--     and is unaffected for everyone; start/stop/manual writes are
+--     unaffected for everyone.
+--
+--  3. Task drawer, "Activity" tab
+--     (src/components/admin/TaskExtras.jsx:122, same two sections)
+--     loadActivity({entityId, entityType:'task'}) - manager and team_lead
+--     now see only actions taken by themselves and their subtree, and
+--     NOBODY below owner/admin/hr sees the actor-less 'automation_ran' and
+--     'recurring_spawned' entries.
+--
+--  4. Project Hub activity feed
+--     (src/components/admin/ProjectOverview.jsx:227, section "project-hub",
+--     roles owner/admin/manager/team_lead)
+--     loadActivity({projectId, limit:40}) - same shortening for manager and
+--     team_lead. Because the feed is limit-40 over the whole project, a
+--     manager may now see OLDER entries than before rather than fewer: the
+--     limit is applied after the policy filters.
+--
+--  No developer-facing or employee-facing screen reads either table. The
+--  staff dashboard has no timer and no activity feed (grep for TaskTimer and
+--  loadActivity outside src/components/admin returns nothing), so for the
+--  developer and employee roles this change is invisible in the UI and
+--  exists purely to close the PostgREST hole.
+--
+--
+--  Depends on: 012 (auth_org), 014 (auth_role, auth_is_client,
+--  auth_app_user_id), 015 (memberships.reports_to, roles team_lead + hr),
+--  017 (both tables), 018 (task_time_logs_read + pm_activity_read, the two
+--  policies replaced here), 037 (acyclic reports_to), 040
+--  (auth_monitoring_sees_all, auth_monitoring_subjects,
+--   auth_monitoring_subject_emails, monitoring_row_visible, try_uuid,
+--   idx_memberships_org_reports_to).
+--  Defines no function - every function it calls belongs to 040 and is not
+--  redefined here, so this file cannot drift from 040's rule. Creates no
+--  table, drops no column, rewrites no row, adds no index, adds no trigger.
+--
+--  Independent of 044 and of 045 (admin_reviews): it shares 040's helpers
+--  with them but no object, so the three may be applied in any order.
+--
+--  Idempotent: PART 1 and PART 2 are each drop-if-exists + create, and each
+--  is runnable and rollbackable on its own without the other.
+--
+--  FORMAT NOTE: one statement per physical line, no DO blocks, no dollar
+--  quoting, no double-quoted identifiers. The editor shows only the LAST
+--  statement's result, so run each PART as its own query, in order.
+-- =====================================================================
+
+
+-- ---------------------------------------------------------------------
+--  PART 0 - READ-ONLY pre-flight. Run these FIRST, one at a time.
+--           Nothing here changes anything.
+-- ---------------------------------------------------------------------
+--  0a. task_time_logs: does it exist, and what is its FULL column list?
+--      Expect 017 lines 60-72: id, organization_id, task_id, project_id,
+--      developer_id, started_at, ended_at, seconds, source, note,
+--      created_at. PART 1 needs exactly one of these to be present -
+--      developer_id. If it is missing, PART 1 still applies cleanly (the
+--      predicate reads it out of jsonb, not as a column) but every row
+--      becomes owner/admin/hr-only, so find out first.
+
+-- select column_name, data_type, is_nullable from information_schema.columns where table_schema = 'public' and table_name = 'task_time_logs' order by ordinal_position;
+
+--  0b. pm_activity: the same question. Expect 017 lines 40-51: id,
+--      organization_id, project_id, entity_type, entity_id, action,
+--      actor_id, actor_name, meta, created_at. PART 2 needs actor_id.
+
+-- select column_name, data_type, is_nullable from information_schema.columns where table_schema = 'public' and table_name = 'pm_activity' order by ordinal_position;
+
+--  0c. Which columns on either table could identify a PERSON? This is the
+--      query that has to be read with judgement rather than skimmed. On a
+--      stock database it returns exactly three rows:
+--        task_time_logs.developer_id  - the subject, used by PART 1
+--        pm_activity.actor_id         - the actor,   used by PART 2
+--        pm_activity.actor_name       - a DISPLAY NAME, not an email, not an
+--                                       id, and deliberately used by nothing
+--      Anything else that names a person - an email column, a created_by, a
+--      reviewer_id - is a column this file did not weigh, and PART 1/PART 2
+--      will ignore it. Decide what it means before running either PART.
+
+-- select table_name, column_name, data_type from information_schema.columns where table_schema = 'public' and table_name in ('task_time_logs','pm_activity') and (column_name like '%user%' or column_name like '%dev%' or column_name like '%email%' or column_name like '%member%' or column_name like '%employee%' or column_name like '%login%' or column_name like '%admin%' or column_name like '%actor%' or column_name like '%author%' or column_name like '%owner%' or column_name like '%by%') order by table_name, column_name;
+
+--  0d. What policies are on the two tables RIGHT NOW? This is the one that
+--      stops the 044 trap. Expect exactly:
+--        pm_activity      pm_activity_read       SELECT  {authenticated}
+--        pm_activity      pm_activity_insert     INSERT  {authenticated}
+--        task_time_logs   task_time_logs_read    SELECT  {authenticated}
+--        task_time_logs   task_time_logs_insert  INSERT  {authenticated}
+--        task_time_logs   task_time_logs_update  UPDATE  {authenticated}
+--        task_time_logs   task_time_logs_delete  DELETE  {authenticated}
+--      If you see org_isolation here, 018 has not been applied and PART 1/2
+--      would leave 017's FOR ALL policy beside the new one, OR-ed, changing
+--      nothing. If you see a SECOND permissive SELECT policy from any
+--      source, drop it deliberately in its own migration first.
+
+-- select tablename, policyname, cmd, permissive, roles, qual as using_expr, with_check from pg_policies where schemaname = 'public' and tablename in ('task_time_logs','pm_activity') order by tablename, cmd, policyname;
+
+--  0e. How many rows carry no recognisable subject? Those become
+--      owner/admin/hr-only - that is the fail-closed default and it is
+--      deliberate, but you should know the number before it happens.
+--
+--      For task_time_logs expect 0: every writer in src/ sets developer_id
+--      from the session. A non-zero count means hand-inserted or imported
+--      rows whose hours will vanish from every manager's report.
+--
+--      For pm_activity expect NON-ZERO and that is FINE: automation.js and
+--      the cron job both write actor-less rows on purpose (see the header).
+--      The second query breaks the count down by action so you can confirm
+--      the actor-less rows really are only 'automation_ran' and
+--      'recurring_spawned'. If some ordinary user action shows up there, a
+--      writer is failing to record its actor and that is a bug to fix
+--      before this policy hides those rows.
+
+-- select count(*) as total_rows, count(*) filter (where organization_id is null) as org_null_rows, count(*) filter (where developer_id is null) as unattributable_rows, count(*) filter (where organization_id is not null and developer_id is not null) as rows_this_policy_will_actually_filter from public.task_time_logs;
+
+-- select count(*) as total_rows, count(*) filter (where organization_id is null) as org_null_rows, count(*) filter (where actor_id is null) as unattributable_rows, count(*) filter (where organization_id is not null and actor_id is not null) as rows_this_policy_will_actually_filter from public.pm_activity;
+
+-- select action, count(*) as rows_with_no_actor from public.pm_activity where actor_id is null group by action order by rows_with_no_actor desc, action;
+
+--  0f. Are 040's helpers present? PART 1 and PART 2 both call five of them
+--      and neither can be created without all five. Expect six rows.
+
+-- select proname, prosecdef, proconfig from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and proname in ('auth_monitoring_sees_all','auth_monitoring_subjects','auth_monitoring_subject_emails','monitoring_row_visible','auth_can_read_member','try_uuid') order by proname;
+
+
+-- ---------------------------------------------------------------------
+--  PART 1 - task_time_logs. Subject = developer_id (subject IS actor).
+--           Runnable alone. Rollback is 018 line 152, quoted below.
+-- ---------------------------------------------------------------------
+--  Read the clauses left to right, because that is the order they cost
+--  anything in:
+--
+--    organization_id = public.auth_org()   unchanged from 018. Still first,
+--                                          still the indexed one (022).
+--    not public.auth_is_client()           unchanged from 018. Clients stay out.
+--    (select ...sees_all())                owner/admin/hr stop here.
+--    monitoring_row_visible(...)           everyone else, one jsonb key.
+--
+--  Replaced BY NAME - task_time_logs_read, 018 line 152 - so 018's policy is
+--  gone rather than sitting beside this one and OR-ing it back open.
+--
+--  018's task_time_logs_insert, _update and _delete (lines 153-155) are NOT
+--  touched. A developer can still log, edit and delete their own time; the
+--  timer in TaskTimer.jsx keeps working for every role that could use it.
+--
+--  If this statement fails, the table is left with no select policy at all -
+--  deny everything - so re-run it before anyone uses the app, and read PART
+--  0a for why it failed.
+--
+--  TO ROLL BACK PART 1 ALONE, run these two lines:
+--    drop policy if exists task_time_logs_read on public.task_time_logs;
+--    create policy task_time_logs_read on public.task_time_logs for select to authenticated using (organization_id = public.auth_org() and not public.auth_is_client());
+
+drop policy if exists task_time_logs_read on public.task_time_logs;
+create policy task_time_logs_read on public.task_time_logs for select to authenticated using (organization_id = public.auth_org() and not public.auth_is_client() and ((select public.auth_monitoring_sees_all()) or public.monitoring_row_visible(jsonb_build_object('developer_id', to_jsonb(task_time_logs) ->> 'developer_id'), (select public.auth_monitoring_subjects()), (select public.auth_monitoring_subject_emails()))));
+
+
+-- ---------------------------------------------------------------------
+--  PART 2 - pm_activity. Subject = actor_id, RE-KEYED to 'user_id'.
+--           Runnable alone. Rollback is 018 line 126, quoted below.
+-- ---------------------------------------------------------------------
+--  Same four clauses, one difference that decides whether this works at
+--  all: monitoring_row_visible does not know the name actor_id. The object
+--  handed to it maps actor_id onto 'user_id', which is in its uuid key list.
+--  Change that key and every row in the feed disappears for everyone below
+--  owner/admin/hr.
+--
+--  Replaced BY NAME - pm_activity_read, 018 line 126.
+--
+--  018's pm_activity_insert (line 127) is NOT touched: pmData.js
+--  logActivity() and automation.js both insert from the browser under the
+--  user's own JWT and must keep working. The table still has no update and
+--  no delete policy, so it stays append-only for every authenticated caller,
+--  exactly as 018 left it.
+--
+--  Rows with actor_id null - 'automation_ran' from automation.js:250 and
+--  'recurring_spawned' from api/cron/route.js:198 - become owner/admin/hr
+--  only. PART 0e counts them. api/admin/health reads the 'automation_ran'
+--  row with the service role and is unaffected.
+--
+--  TO ROLL BACK PART 2 ALONE, run these two lines:
+--    drop policy if exists pm_activity_read on public.pm_activity;
+--    create policy pm_activity_read on public.pm_activity for select to authenticated using (organization_id = public.auth_org() and not public.auth_is_client());
+
+drop policy if exists pm_activity_read on public.pm_activity;
+create policy pm_activity_read on public.pm_activity for select to authenticated using (organization_id = public.auth_org() and not public.auth_is_client() and ((select public.auth_monitoring_sees_all()) or public.monitoring_row_visible(jsonb_build_object('user_id', to_jsonb(pm_activity) ->> 'actor_id'), (select public.auth_monitoring_subjects()), (select public.auth_monitoring_subject_emails()))));
+
+
+-- =====================================================================
+--  VERIFY (read-only). Run each on its own - the editor shows only the last.
+-- =====================================================================
+--  1. Exactly one SELECT policy per table, under the ORIGINAL 018 names, and
+--     both quals mention auth_monitoring_sees_all. Two rows with cmd =
+--     SELECT. If you see three, something added a second permissive policy
+--     and the narrowing is not in effect.
+-- select tablename, policyname, cmd, roles, qual as using_expr from pg_policies where schemaname = 'public' and tablename in ('task_time_logs','pm_activity') order by tablename, cmd, policyname;
+
+--  2. The write policies 018 created are all still there and untouched.
+--     Expect task_time_logs_insert/_update/_delete and pm_activity_insert.
+-- select tablename, policyname, cmd from pg_policies where schemaname = 'public' and tablename in ('task_time_logs','pm_activity') and cmd <> 'SELECT' order by tablename, policyname;
+
+--  3. The same rule now covers ten tables: 040's seven track_read, 044's
+--     activity_logs_read, and these two.
+-- select tablename, policyname from pg_policies where schemaname = 'public' and policyname in ('track_read','activity_logs_read','task_time_logs_read','pm_activity_read') order by tablename, policyname;
+
+--  4. Spot-check a member's subtree without logging in as them. Replace the
+--     uuid with a real memberships.user_id. This runs as YOU, so it reports
+--     the SUBTREE, not the row count - to check row visibility you must
+--     impersonate, because the policy reads auth.jwt().
+-- with recursive sub as (select 'REPLACE-WITH-A-MEMBER-USER-ID'::uuid as user_id, 0 as depth union all select c.user_id, s.depth + 1 from public.memberships c join sub s on c.reports_to = s.user_id where c.user_id is not null and c.user_id <> s.user_id and s.depth < 64) select distinct sub.user_id, sub.depth from sub order by sub.depth, sub.user_id;
+
+--  5. Re-run of 0e for the record, after the change: what is now
+--     owner/admin/hr-only.
+-- select count(*) as unattributable_time_logs from public.task_time_logs where developer_id is null;
+-- select count(*) as unattributable_activity from public.pm_activity where actor_id is null;
+
+--  6. The report number a manager will ask about. Run as the service role to
+--     get the true org total, then have the manager reload Reports and
+--     compare - the difference is exactly the hours logged outside their
+--     subtree, and it is the expected outcome, not a bug.
+-- select round(sum(coalesce(seconds,0)) / 3600.0, 1) as org_logged_hours from public.task_time_logs where organization_id = 'REPLACE-WITH-AN-ORG-ID';
+
+
+-- =====================================================================
+--  STILL OPEN AFTER THIS FILE - not fixed here, listed so it is not lost
+-- =====================================================================
+--  a. THE PRODUCT DECISION, not a bug: 018 line 144 justified the org-wide
+--     read with "reports need it". PART 1 overrides that. If managers are
+--     meant to see org-wide billable totals, do NOT run PART 1 - or run it
+--     and accept that Reports becomes a subtree report for manager and
+--     team_lead. PART 2 is not affected by that decision and can be applied
+--     on its own either way.
+--
+--  b. task_comments (018 lines 108-113) is still an org-wide read, and
+--     comment bodies plus author_id disclose who was working on what and
+--     when in much the same way pm_activity does. It is deliberately not
+--     swept in here: a comment thread that a colleague cannot read is a
+--     collaboration feature broken, not a leak closed, so it needs its own
+--     decision rather than this one copied.
+--
+--  c. pm_activity.meta is a free-form jsonb diff written by whichever caller
+--     logged the action. This file scopes the ROW by its actor; it does not
+--     inspect meta, so a writer that puts someone else's name or email in
+--     meta discloses it to everyone who can see the row. logActivity() only
+--     ever stores meta.actorName, which is the actor's own name, so there is
+--     nothing to fix today - but a new writer could change that.
+--
+--  d. activity_logs.organization_id is still stamped by nothing (044's
+--     header), so 044's policy remains dormant. Both tables in THIS file are
+--     stamped by 017's trg_stamp_org trigger, so 046 is live from the moment
+--     it is applied - that is the difference between the two migrations and
+--     the reason this one needed a reader list and 044 did not.
+-- =====================================================================

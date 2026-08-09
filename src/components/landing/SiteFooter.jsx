@@ -16,7 +16,7 @@
  */
 
 import Logo from "@/components/brand/Logo";
-import { Reveal, stagger } from "@/components/landing/primitives";
+import { Container, Reveal, stagger } from "@/components/landing/primitives";
 import { footer, list, pick, pickList, str } from "@/components/landing/content";
 
 function linkGroups() {
@@ -60,7 +60,7 @@ export default function SiteFooter() {
 
   return (
     <footer className="border-t border-sidebar-border bg-sidebar text-sidebar-foreground">
-      <div className="mx-auto w-full max-w-6xl px-5 py-14 sm:px-6 sm:py-16 lg:px-8">
+      <Container className="py-14 sm:py-16">
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-12 lg:gap-8">
           <Reveal className="lg:col-span-4">
             <a
@@ -109,7 +109,7 @@ export default function SiteFooter() {
             <p className="text-sm text-sidebar-muted">{copyright}</p>
           </div>
         ) : null}
-      </div>
+      </Container>
     </footer>
   );
 }

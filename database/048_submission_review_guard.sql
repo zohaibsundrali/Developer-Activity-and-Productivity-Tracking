@@ -1,0 +1,556 @@
+-- =====================================================================
+--  048 - task_submissions: close the self-approval hole that 047 recorded
+--        under "STILL OPEN" item (a) and deliberately did not fix
+-- =====================================================================
+--  WHAT IS BROKEN, AND WHY 047 DID NOT FIX IT
+--
+--  014 lines 337-340 gave this table one policy for four commands:
+--
+--    create policy org_isolation on public.task_submissions for all
+--      to authenticated
+--      using (organization_id = public.auth_org() and not public.auth_is_client())
+--      with check (organization_id = public.auth_org() and not public.auth_is_client());
+--
+--  `for all` includes UPDATE. There is no column list on an RLS policy and
+--  there is no role test in that predicate. review_status, review_comments,
+--  is_reviewed, reviewed_by and reviewed_at are ordinary columns of this table
+--  (schema.sql lines 168-172, plus line 70 which adds review_comments by
+--  ALTER). So any authenticated non-client member of the organisation, holding
+--  the anon key that ships in the browser bundle and their own ordinary
+--  session, could PATCH a submission to review_status = 'approved',
+--  is_reviewed = true, reviewed_by = <any uuid> straight through PostgREST.
+--
+--  /api/admin-review is not involved, so its REVIEWER_ROLES check (route.js
+--  line 6, ['owner','admin','manager'], enforced at lines 28 and 387) is never
+--  consulted. 024 line 78's CHECK constraint permits the value. TaskReviewPanel
+--  renders review_status and review_comments out of the /api/admin-review GET
+--  response, which reads this table. That is self-approval of one's own proof
+--  of work, by the person being reviewed, through the database.
+--
+--  047 narrowed it and said so in writing. It rebuilt org_isolation as FOR
+--  SELECT with the per-person predicate and carried 014's write permission
+--  across verbatim onto org_isolation_insert/_update/_delete. Because
+--  PostgreSQL applies SELECT policies to an UPDATE that carries a WHERE clause,
+--  and PostgREST always emits one, a developer can no longer touch anyone
+--  ELSE's submission. Their own is exactly the set that matters for
+--  self-approval, so narrower is not closed. 047's header says this twice and
+--  its "STILL OPEN" item (a) says it a third time. This file is that item.
+--
+--  =====================================================================
+--  WHY A TRIGGER AND NOT A POLICY
+--  =====================================================================
+--
+--  The rule that needs expressing is COLUMN-level, and it is conditional on
+--  the caller:
+--
+--    a developer may update their own submission - the note, a re-upload, a
+--    correction to the file name - and may NOT update the verdict on it.
+--
+--  RLS cannot say that. A policy's `using` and `with check` are row predicates;
+--  they see the whole OLD row and the whole NEW row and have no vocabulary for
+--  "this column changed". The three ways to get column-level behaviour are:
+--
+--    (a) column-level GRANTs. `revoke update (review_status, ...) on
+--        task_submissions from authenticated` would work for the developer and
+--        would also break the owner, the admin and the manager, because GRANTs
+--        are per-ROLE and every staff member is the same database role
+--        (`authenticated`) with their app role carried in a JWT claim. There is
+--        no `authenticated_reviewer` role to grant to. Rejected.
+--
+--    (b) split the update policy in two, one for reviewers and one for
+--        everyone else. The non-reviewer policy still cannot forbid a COLUMN;
+--        the best it can do is `with check (review_status = ''pending'')`,
+--        which is not the rule - it forbids a developer from updating a row
+--        that has already been reviewed at all, including its notes, and it
+--        still lets them set is_reviewed and reviewed_by. Rejected as wrong,
+--        not merely as ugly.
+--
+--    (c) a BEFORE UPDATE trigger comparing OLD to NEW. This is the only form
+--        that can say "these five columns did not change" and it is what this
+--        file installs.
+--
+--  The trigger is an OVERLAY on 047, not a replacement for it. 047's policies
+--  still decide WHICH ROWS a caller may update at all; this trigger decides
+--  which COLUMNS of those rows may move. Both are needed: without 047 a
+--  developer could still edit a colleague's submission_notes, and without this
+--  file they can still approve their own. Nothing here touches a policy.
+--
+--  =====================================================================
+--  THE GUARDED COLUMNS - VERIFIED AGAINST THE SCHEMA, NOT ASSUMED
+--  =====================================================================
+--
+--  schema.sql lines 151-174 create the table. The review block is lines 167-172:
+--
+--    is_reviewed      BOOLEAN DEFAULT false                        line 168
+--    reviewed_by      UUID                                         line 169
+--    reviewed_at      TIMESTAMP WITH TIME ZONE                     line 170
+--    review_status    TEXT DEFAULT 'pending' CHECK (...)           line 171
+--    review_comments  TEXT                                         line 172
+--
+--  schema.sql line 70 also adds review_comments by `alter table ... add column
+--  if not exists`, for deployments whose copy of the table predates it. 010
+--  line 110 bolts organization_id on and adds nothing else. 024 lines 77-78
+--  replace the review_status CHECK to widen it to include 'superseded' - it
+--  adds no column. 015, 016 and 017 do not mention this table. Nothing anywhere
+--  in database/ adds a sixth review column.
+--
+--  So the guarded list is exactly those five, and it is the same five that
+--  /api/admin-review/route.js lines 199-205 writes in one statement:
+--
+--    .update({ is_reviewed, reviewed_by, reviewed_at, review_status,
+--              review_comments }).eq('id', submissionId)
+--
+--  That correspondence is the point. The set this trigger protects is the set
+--  the review route writes; nothing else in src/ writes any of them.
+--
+--  NOT GUARDED, deliberately: submission_notes, file_url, file_name, file_type,
+--  file_size, storage_path, submitted_at, task_id, project_id, developer_id,
+--  organization_id. The first six are the developer's own work product and
+--  editing them is the legitimate case this file exists to preserve. The last
+--  five are re-parenting columns and they are a DIFFERENT problem - see "STILL
+--  OPEN" item (b); do not fold them in here on the way past.
+--
+--  =====================================================================
+--  WHO IS ENTITLED - VERIFIED IN THE APPLICATION, NOT ASSUMED
+--  =====================================================================
+--
+--    src/app/api/admin-review/route.js line 6
+--      const REVIEWER_ROLES = ['owner', 'admin', 'manager'];
+--
+--  with the comment "matches permissions.js `review_tasks`", checked at line 28
+--  on the POST that records a verdict and again at line 387 on the GET that
+--  serves the review queues. That is the list this trigger uses, character for
+--  character, and it is deliberately NOT the list 040 uses for reading.
+--
+--  READING AND REVIEWING ARE DIFFERENT SETS AND THIS FILE KEEPS THEM DIFFERENT:
+--
+--    040 / 044 / 045 / 047 read side:  owner, admin, hr see all rows
+--    this file, review side:           owner, admin, manager may write verdicts
+--
+--  hr is in the first list and NOT in the second: hr can see every submission
+--  in the organisation and may not rule on any of them, which is what the
+--  application already enforces. team_lead is in neither: 047's policy gives a
+--  team_lead their reporting subtree to READ, and REVIEWER_ROLES has never
+--  included them, so a team_lead who could previously self-approve through
+--  PostgREST loses that and gains nothing. If those two facts are ever meant to
+--  change, they change in REVIEWER_ROLES first and in this file second, and the
+--  two must be edited together or the database and the route will disagree
+--  about what a role is for - the same class of mismatch 040's hr amendment was
+--  written to fix.
+--
+--  This trigger does NOT re-check the organisation. It does not need to: 047's
+--  org_isolation_update still requires `organization_id = public.auth_org() and
+--  not public.auth_is_client()` before any row reaches this trigger, and 047's
+--  org_isolation (SELECT) restricts which rows an UPDATE ... WHERE can even
+--  name. Repeating the org test here would duplicate a rule that lives in one
+--  place today, and would silently diverge from it the day 047 is amended. A
+--  client cannot reach this trigger on an UPDATE at all - the update policy
+--  denies them before it fires - and the entitlement test below still calls
+--  auth_is_client() as a second lock, because a guard that depends on another
+--  file's policy for its correctness is a guard that fails the day someone
+--  re-runs 013.
+--
+--  =====================================================================
+--  THE SERVICE ROLE MUST PASS UNCONDITIONALLY. THIS IS THE OUTAGE RISK.
+--  =====================================================================
+--
+--  RLS IS BYPASSED FOR THE SERVICE ROLE. TRIGGERS ARE NOT. That single sentence
+--  is the difference between this file being a security fix and this file being
+--  an outage, and it is the reason PART 1 checks the database role before it
+--  looks at anything else.
+--
+--  /api/admin-review/route.js line 199 - the ONLY sanctioned writer of these
+--  five columns - runs on a client built at line 15 from
+--  SUPABASE_SERVICE_ROLE_KEY. If this trigger refused it, every approval and
+--  every rejection in the product would start returning 403 the moment this
+--  file was applied, and the fix for the self-approval hole would have taken
+--  the review feature down with it. The same is true of any backfill run from
+--  psql as postgres, of 024 line 85's `update ... set review_status =
+--  'superseded'` were it ever replayed, and of any future cron that ages out
+--  stale submissions.
+--
+--  THE TEST IS THE DATABASE ROLE, NOT A JWT CLAIM. A JWT is presented by the
+--  caller; a database role is assigned by the connection. PostgREST issues
+--  `set local role service_role` for a service-key request and `set local role
+--  authenticated` for a user request, so current_user is the honest answer to
+--  "which key opened this connection" and a browser session cannot forge it.
+--  PART 1 passes a caller when EITHER:
+--
+--    * current_user is one of the known privileged names - service_role,
+--      postgres and the three supabase_* maintenance roles; or
+--    * current_user carries rolsuper or rolbypassrls in pg_roles.
+--
+--  The second test is the one that carries the meaning: a role that bypasses
+--  RLS bypasses this guard too, because it is already trusted with every row on
+--  the table and a column-level rule on top of that would be theatre. It also
+--  covers deployments whose service role has been renamed, and it is checked
+--  from pg_roles rather than hardcoded so it stays true if the grant changes.
+--  The name list is kept in front of it purely so the common case costs no
+--  catalogue lookup. `authenticated`, `anon` and `authenticator` carry neither
+--  attribute and are in neither list, which is the whole point.
+--
+--  THE FUNCTION IS SECURITY INVOKER, AND THAT IS LOAD-BEARING. A SECURITY
+--  DEFINER function reports current_user as its OWNER, which on a Supabase
+--  project is postgres - so every caller would look privileged and the guard
+--  would pass everyone, silently, while appearing to work. Do not add SECURITY
+--  DEFINER to this function. It reads nothing that needs elevated rights: OLD,
+--  NEW, pg_roles (world-readable) and two stable helpers from 014 that are
+--  already executable by authenticated.
+--
+--  =====================================================================
+--  WHAT COUNTS AS A CHANGE: `IS DISTINCT FROM`, AND WHY THAT IS THE ONLY
+--  ANSWER AVAILABLE
+--  =====================================================================
+--
+--  THE DECISION: setting a review column to the value it already holds is NOT a
+--  change. Such an UPDATE is allowed, for everyone who could perform it before.
+--
+--  This is deliberate, and it is worth being honest about why, because the
+--  alternative sounds stricter and is not implementable:
+--
+--  A BEFORE UPDATE trigger receives OLD and NEW as complete rows. It cannot see
+--  the SET list. PostgREST sends a PATCH body containing only the columns the
+--  caller named, and PostgreSQL fills every unnamed column of NEW from OLD
+--  before the trigger fires. So a developer who PATCHes {"submission_notes":
+--  "fixed the typo"} produces a NEW row whose review_status, review_comments,
+--  is_reviewed, reviewed_by and reviewed_at are all identical to OLD's - and a
+--  developer who PATCHes {"review_status": "pending"} onto a row that is
+--  already 'pending' produces a byte-identical NEW row. THE TWO ARE THE SAME
+--  EVENT AS FAR AS ANY TRIGGER CAN SEE. There is no flag, no `SET` list, no
+--  `pg_trigger_depth` trick and no jsonb comparison that separates them.
+--
+--  Given that, the choice is between refusing both and allowing both. This file
+--  allows both, because:
+--
+--    * refusing both would refuse the FIRST case too - the ordinary developer
+--      editing their notes - which is the exact regression the brief forbids
+--      and which would break /developer/project-details;
+--    * the permitted case writes no new information. review_status was
+--      'pending' before the statement and is 'pending' after it. Nobody has
+--      been approved, no verdict has been forged, no audit trail has moved.
+--      What a developer gains is the ability to spend a round trip confirming
+--      a value they could already read;
+--    * `is distinct from` handles null correctly in both directions, so
+--      null -> null passes and null -> anything is caught. A plain `<>` would
+--      have returned null for a first write into reviewed_by, and null is not
+--      true, so the guard would have let exactly the interesting case through.
+--      That is the bug this comment exists to stop someone reintroducing.
+--
+--  THE COMPARISON IS DONE THROUGH to_jsonb, NOT ON NAMED FIELDS. Same reason
+--  047 builds its jsonb by hand rather than naming columns: `new.review_status`
+--  is a hard reference that raises at RUNTIME on a deployment whose copy of the
+--  table lacks the column - and a trigger that raises on every UPDATE is worse
+--  than the hole it was closing, because it takes /api/task-submission down
+--  with it. `to_jsonb(new) ->> 'absent_key'` is null on both sides, compares
+--  equal, and the guard degrades to permitting exactly the columns that do not
+--  exist. Note that plpgsql does not resolve record fields at CREATE time, so
+--  the named form would have created cleanly and failed on the first real
+--  update, in production, on a table six screens read.
+--
+--  Comparing the two rows as text through ->> is safe for all five types
+--  because both sides are rendered in the same session: boolean is_reviewed
+--  becomes 'true'/'false', reviewed_at renders as one ISO timestamp, and equal
+--  values always produce equal text.
+--
+--  =====================================================================
+--  THE ERROR: 42501, AND WHAT IT DOES AND DOES NOT SAY
+--  =====================================================================
+--
+--  `raise ... using errcode = '42501'` is insufficient_privilege. PostgREST maps
+--  42501 to HTTP 403; an unqualified `raise exception` would carry P0001 and
+--  come back as a 500, which would read as an outage to every monitor watching
+--  the app and would tell an attacker they had found a crash rather than a
+--  wall.
+--
+--  The message NAMES THE COLUMNS REFUSED and NAMES NOBODY. "review fields may
+--  not be changed by this request (review_status)" tells an honest caller
+--  exactly which part of their PATCH was rejected, which is what makes the
+--  failure debuggable. It does not say which roles may do it, does not echo the
+--  caller's role, and does not hint that a different session would succeed -
+--  there is no reason to hand a probing client the shape of the permission
+--  model, and REVIEWER_ROLES is already discoverable to anyone entitled to see
+--  it. The HINT points at the workflow rather than at a role, for the same
+--  reason.
+--
+--  Depends on: schema.sql (the table and its five review columns), 010 (nothing
+--  used here, but organization_id is what 047's policies filter on),
+--  014 (auth_role, auth_is_client - both called by PART 1), 047 (the policies
+--  this trigger overlays; not required for this file to install, but the
+--  security story is only complete with both).
+--  Requires PostgreSQL 11 or later for `execute function` in PART 2.
+--  Creates one function and one trigger. Creates no table, no policy and no
+--  index, drops no column, rewrites no row, and does not touch org_isolation,
+--  org_isolation_insert, org_isolation_update, org_isolation_delete or
+--  task_submissions_client_read.
+--
+--  Idempotent: PART 1 is `create or replace function`, PART 2 is
+--  `drop trigger if exists` + `create trigger`. Verified by running the whole
+--  file twice in docker.
+--
+--  ORDERING. PART 1 MUST RUN BEFORE PART 2 - PART 2 names the function PART 1
+--  creates and fails outright without it, which is the safe direction: no
+--  trigger exists, so nothing is broken, and the table is left exactly as 047
+--  left it. Running PART 1 alone is inert: a trigger function that nothing
+--  fires. There is no ordering in which a half-applied 048 denies a write that
+--  047 permitted.
+--
+--  FORMAT NOTE: one statement per physical line, no DO blocks, no dollar
+--  quoting - the function body is a single-quoted string with doubled inner
+--  quotes - and no double-quoted identifiers. The editor shows only the LAST
+--  statement's result, so run each PART as its own query, in order.
+-- =====================================================================
+
+
+-- ---------------------------------------------------------------------
+--  PART 0 - READ-ONLY pre-flight. Run these four FIRST, one at a time.
+--           Nothing here changes anything.
+-- ---------------------------------------------------------------------
+--  0a. Do all five review columns exist on THIS deployment's copy of the table,
+--      and what are their types? Expect exactly five rows: is_reviewed boolean,
+--      reviewed_by uuid, reviewed_at timestamp with time zone, review_status
+--      text, review_comments text.
+--      If one is MISSING, this file still installs and still works - the
+--      to_jsonb comparison in PART 1 simply never sees it - but find out why
+--      before trusting the guard, because a deployment that renamed a review
+--      column has an unguarded review column.
+--      If a SIXTH review column comes back, add its name to v_cols in PART 1
+--      and to /api/admin-review's update at route.js line 199 in the same
+--      change, or the new column is writable by the person being reviewed.
+
+-- select column_name, data_type, column_default from information_schema.columns where table_schema = 'public' and table_name = 'task_submissions' and column_name in ('review_status','review_comments','is_reviewed','reviewed_by','reviewed_at') order by column_name;
+
+--  0b. Is 047 actually in place? This file is an overlay on it and the security
+--      story needs both. Expect five policies: org_isolation with cmd = SELECT,
+--      org_isolation_insert / _update / _delete, and task_submissions_client_read.
+--      If org_isolation comes back as cmd = 'ALL', 047 has NOT been applied:
+--      this trigger will still stop self-approval, but a developer can still
+--      UPDATE a COLLEAGUE'S submission_notes and file_url, because the row-level
+--      half of the fix is missing. Apply 047 first.
+
+-- select policyname, cmd, roles from pg_policies where schemaname = 'public' and tablename = 'task_submissions' order by policyname;
+
+--  0c. Is there already a BEFORE UPDATE trigger on this table that this one
+--      would sit beside? Expect exactly one row - trg_stamp_org, 013 line 59,
+--      which is BEFORE INSERT and therefore never runs alongside this guard.
+--      If this file has already been applied you will also see
+--      trg_task_submissions_review_guard.
+--      Any OTHER before-update trigger matters: triggers on the same event fire
+--      in NAME order, and one that rewrites a review column before this guard
+--      runs would be attributed to the caller. There is none in database/ today.
+
+-- select tgname, tgenabled, pg_get_triggerdef(oid) as definition from pg_trigger where tgrelid = 'public.task_submissions'::regclass and not tgisinternal order by tgname;
+
+--  0d. WHICH DATABASE ROLES WILL THIS GUARD LET STRAIGHT THROUGH? Run this
+--      before PART 1, because it is the outage question. Expect service_role
+--      with bypasses_rls = true and postgres with is_super = true, and expect
+--      authenticated and anon with false in both columns. If authenticated
+--      comes back true, every user session is already exempt from every RLS
+--      policy on this database and you have a much larger problem than this
+--      file. If service_role comes back false in both AND is not named
+--      service_role on this deployment, PART 1's name list needs its real name
+--      adding or /api/admin-review will start returning 403.
+
+-- select rolname, rolsuper as is_super, rolbypassrls as bypasses_rls from pg_roles where rolname in ('service_role','authenticated','anon','authenticator','postgres','supabase_admin','supabase_auth_admin','supabase_storage_admin') order by rolname;
+
+
+-- ---------------------------------------------------------------------
+--  PART 1 - The guard function
+-- ---------------------------------------------------------------------
+--  Read the body in the order it short-circuits, because the order is the
+--  design:
+--
+--    1. tg_op guard. Defensive only - PART 2 attaches this to UPDATE alone.
+--       It costs nothing and it means the function stays correct if someone
+--       later attaches it to another event by hand.
+--
+--    2. THE PRIVILEGED-ROLE ESCAPE, FIRST, BEFORE ANY JWT IS TOUCHED. The
+--       service role frequently has no request.jwt.claims set at all, so any
+--       ordering that consults auth_role() before this point would be reading a
+--       null and deciding on it. See "THE SERVICE ROLE MUST PASS
+--       UNCONDITIONALLY" in the header. The name list is checked first because
+--       it is free; the pg_roles lookup behind it is what actually carries the
+--       rule.
+--
+--    3. THE CHANGE TEST, BEFORE THE ENTITLEMENT TEST. A developer saving their
+--       notes is the overwhelmingly common UPDATE on this table, and this
+--       ordering returns it without ever calling auth_role() or auth_is_client().
+--       It also means an UPDATE that touches no review column is permitted for
+--       everyone who could perform it before this file existed - which is the
+--       no-regression property the whole design rests on - and that it is
+--       permitted structurally, not by a role happening to be in a list.
+--
+--    4. THE ENTITLEMENT TEST, reached only when a review column really moved.
+--       REVIEWER_ROLES, plus the client lock described in the header. The
+--       coalesce matters: auth_role() is null when there is no JWT, `null in
+--       (...)` is null, and null is not true - so a session with no claims is
+--       refused rather than admitted. Fail closed.
+--
+--    5. The refusal. 42501, the moved columns named, nobody named.
+--
+--  DO NOT ADD `security definer` TO THIS FUNCTION. It reports current_user as
+--  the owner, every caller would look like postgres, and step 2 would pass
+--  everyone while the file still looked applied. This is the single most
+--  dangerous edit that could be made to it.
+
+create or replace function public.task_submissions_guard_review_columns() returns trigger language plpgsql security invoker set search_path = public, pg_temp as 'declare v_cols text[] := array[''review_status'',''review_comments'',''is_reviewed'',''reviewed_by'',''reviewed_at'']; v_old jsonb; v_new jsonb; v_changed text[] := array[]::text[]; k text; v_privileged boolean := false; v_role text; begin if tg_op <> ''UPDATE'' then return new; end if; if current_user in (''service_role'',''postgres'',''supabase_admin'',''supabase_auth_admin'',''supabase_storage_admin'') then return new; end if; select coalesce(bool_or(r.rolsuper or r.rolbypassrls), false) into v_privileged from pg_roles r where r.rolname = current_user; if v_privileged then return new; end if; v_old := to_jsonb(old); v_new := to_jsonb(new); foreach k in array v_cols loop if (v_old ->> k) is distinct from (v_new ->> k) then v_changed := v_changed || k; end if; end loop; if array_length(v_changed, 1) is null then return new; end if; v_role := public.auth_role(); if coalesce(v_role in (''owner'',''admin'',''manager''), false) and not public.auth_is_client() then return new; end if; raise exception using errcode = ''42501'', message = ''permission denied: task_submissions review fields may not be changed by this request ('' || array_to_string(v_changed, '', '') || '')'', hint = ''Review outcomes are recorded by the review workflow, not by direct row updates.''; end';
+
+
+-- ---------------------------------------------------------------------
+--  PART 2 - Attach it (AFTER PART 1)
+-- ---------------------------------------------------------------------
+--  BEFORE UPDATE, FOR EACH ROW, no WHEN clause.
+--
+--  BEFORE rather than AFTER: a BEFORE trigger raising aborts the statement
+--  before the row is written, so nothing has to be rolled back and no other
+--  AFTER trigger on this table observes a verdict that is about to be undone.
+--
+--  FOR EACH ROW rather than FOR EACH STATEMENT: a statement-level trigger has
+--  no OLD or NEW, so it cannot see which columns moved. This is the only level
+--  at which the rule is expressible.
+--
+--  NO `when` CLAUSE. A `when (old.review_status is distinct from
+--  new.review_status or ...)` would name five columns in the trigger DEFINITION,
+--  where PostgreSQL resolves them at CREATE time - so on a deployment missing
+--  one of the five the CREATE would fail outright and the guard would silently
+--  not exist. That is the opposite of the to_jsonb property PART 1 was written
+--  to have, and it would throw it away in the last statement of the file. The
+--  short-circuit that a WHEN clause would have bought is already in PART 1
+--  step 3, at the cost of one function call per updated row.
+--
+--  The name is prefixed trg_ to sit beside 013's trg_stamp_org, and sorts after
+--  it - which is the harmless order, since trg_stamp_org is BEFORE INSERT and
+--  the two never fire on the same event.
+--
+--  Firing this trigger needs no EXECUTE grant: PostgreSQL checks EXECUTE on the
+--  function when the trigger is CREATED, not each time it fires. Nothing needs
+--  granting to authenticated.
+
+drop trigger if exists trg_task_submissions_review_guard on public.task_submissions;
+create trigger trg_task_submissions_review_guard before update on public.task_submissions for each row execute function public.task_submissions_guard_review_columns();
+
+
+-- =====================================================================
+--  VERIFY (read-only). Run each on its own - the editor shows only the last.
+-- =====================================================================
+--  1. The trigger exists, is enabled (tgenabled = 'O'), and is BEFORE UPDATE
+--     FOR EACH ROW.
+-- select tgname, tgenabled, pg_get_triggerdef(oid) as definition from pg_trigger where tgrelid = 'public.task_submissions'::regclass and not tgisinternal order by tgname;
+
+--  2. The function is SECURITY INVOKER. prosecdef MUST be false. If it is true
+--     the guard passes every caller - see the header. This is the one check
+--     worth wiring into VERIFY_saas.sql.
+-- select proname, prosecdef as is_security_definer, provolatile, proconfig from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and proname = 'task_submissions_guard_review_columns';
+
+--  3. The guarded list in the installed function matches the columns that
+--     actually exist. Expect five true.
+-- select c.column_name, position(c.column_name in pg_get_functiondef(p.oid)) > 0 as is_guarded from information_schema.columns c cross join (select oid from pg_proc where proname = 'task_submissions_guard_review_columns') p where c.table_schema = 'public' and c.table_name = 'task_submissions' and c.column_name in ('review_status','review_comments','is_reviewed','reviewed_by','reviewed_at') order by c.column_name;
+
+--  4. The entitled list in the installed function still matches REVIEWER_ROLES
+--     in src/app/api/admin-review/route.js line 6. Expect true, true, true,
+--     false, false - owner/admin/manager present, hr and team_lead absent.
+-- select pg_get_functiondef(oid) like '%owner%' as has_owner, pg_get_functiondef(oid) like '%admin%' as has_admin, pg_get_functiondef(oid) like '%manager%' as has_manager, pg_get_functiondef(oid) like '%''hr''%' as has_hr, pg_get_functiondef(oid) like '%team_lead%' as has_team_lead from pg_proc where proname = 'task_submissions_guard_review_columns';
+
+--  5. 047 is still intact underneath - this file must not have altered a policy.
+--     Expect org_isolation SELECT, three write policies, and the client policy.
+-- select policyname, cmd from pg_policies where schemaname = 'public' and tablename = 'task_submissions' order by policyname;
+
+--  6. The roles that will bypass this guard, on YOUR database. Re-run of 0d,
+--     for the record, after the change.
+-- select rolname, rolsuper as is_super, rolbypassrls as bypasses_rls from pg_roles where rolname in ('service_role','authenticated','anon','authenticator','postgres') order by rolname;
+
+--  7. How much was actually at stake - 047's VERIFY item 9, re-run now that it
+--     is closed. These are the submissions a developer could have PATCHed to
+--     approved through PostgREST before this file, and can no longer.
+-- select count(*) as submissions_no_longer_self_approvable from public.task_submissions where review_status = 'pending' and developer_id is not null;
+
+--  8. Live proof, in a transaction that rolls itself back, that a developer is
+--     refused. Replace both uuids with a real submission and its developer_id.
+--     Expect ERROR 42501. If it SUCCEEDS, the trigger is not installed or the
+--     function is SECURITY DEFINER - go back to check 2.
+-- begin; set local role authenticated; set local request.jwt.claims = '{"app_metadata":{"organization_id":"REPLACE-ORG","role":"developer","user_type":"developer","app_user_id":"REPLACE-DEVELOPER-ID"}}'; update public.task_submissions set review_status = 'approved' where id = 'REPLACE-SUBMISSION-ID'; rollback;
+
+--  9. The matching proof that the same developer may still edit their own
+--     notes. Expect UPDATE 1, then rolled back.
+-- begin; set local role authenticated; set local request.jwt.claims = '{"app_metadata":{"organization_id":"REPLACE-ORG","role":"developer","user_type":"developer","app_user_id":"REPLACE-DEVELOPER-ID"}}'; update public.task_submissions set submission_notes = 'guard smoke test' where id = 'REPLACE-SUBMISSION-ID'; rollback;
+
+
+-- =====================================================================
+--  STILL OPEN AFTER THIS FILE - not fixed here, listed so it is not lost
+-- =====================================================================
+--  a. INSERT IS NOT GUARDED, AND IT IS THE SAME HOLE THROUGH A DIFFERENT DOOR.
+--     THIS IS THE MOST IMPORTANT ITEM ON THIS LIST. This file installs a BEFORE
+--     UPDATE trigger, which is the change that was specified and the change
+--     that closes the reported attack. It does not close the equivalent one:
+--     047's org_isolation_insert carries 014's predicate unchanged, so any
+--     authenticated non-client member may still INSERT into this table through
+--     PostgREST, and an INSERT may name review_status, is_reviewed, reviewed_by
+--     and reviewed_at outright. A developer can therefore insert a SECOND
+--     submission against their own task carrying review_status = 'approved'
+--     rather than editing the first. 024 line 87's unique index only constrains
+--     rows whose review_status is 'pending', so a forged 'approved' row is not
+--     blocked by it, and 013's trg_stamp_org will helpfully stamp the correct
+--     organization_id on the way in.
+--     WHAT IT DOES AND DOES NOT BUY THE ATTACKER, precisely, because this
+--     should not be overstated: developer_tasks.status is written only by
+--     /api/admin-review (route.js line 178) under the service role, so a forged
+--     submission row does NOT mark the task complete and does not award
+--     productivity points. What it does corrupt is every reader of
+--     task_submissions.review_status - the review queues at route.js lines 434
+--     and 466 that feed TaskReviewPanel, and pmData.js line 325's pre-flight,
+--     which would conclude there is nothing pending to review.
+--     THE FIX IS SMALL AND IT IS NOT DONE HERE ON PURPOSE: the same function,
+--     attached BEFORE INSERT as well, refusing any inserted row whose review
+--     columns are not at their defaults (review_status 'pending', is_reviewed
+--     false, the rest null) unless the caller is entitled. Grepped, that would
+--     affect nothing shipped - the only INSERT into this table in all of src/
+--     is /api/task-submission/route.js line 138, which holds the service role
+--     and passes step 2 regardless. It is a deliberate, separate decision about
+--     what a legitimate non-service-role insert may look like, and it belongs
+--     in 049 rather than being smuggled into a file whose brief was UPDATE.
+--     DO NOT READ THIS FILE AS HAVING MADE SELF-APPROVAL IMPOSSIBLE. It has
+--     made EDITING A VERDICT impossible. FORGING A NEW ONE is still open.
+--
+--  b. THE RE-PARENTING COLUMNS. developer_id, task_id, project_id and
+--     organization_id are not in the guarded list, and an authenticated member
+--     may still move a row they can see between them - subject to 047's
+--     with_check, which only pins organization_id. Re-pointing a submission's
+--     developer_id at a colleague hands them your rejected work; re-pointing
+--     task_id attaches an approved submission to a different task. This is a
+--     different rule from the review rule - it is about ownership, not verdicts
+--     - and folding it into v_cols would ALSO block /api/task-submission from
+--     ever correcting a mis-filed submission. Its own decision, its own file.
+--
+--  c. DELETE IS NOT GUARDED. A developer may still DELETE their own submission
+--     - 047's org_isolation_delete permits it and no trigger here objects - so
+--     a rejected submission can be made to disappear and be re-submitted clean,
+--     losing the rejection. admin_reviews retains the verdict history (045), but
+--     nothing in src/ reads it back, so in practice the record is gone from
+--     every screen. Whether a submission should be deletable at all once
+--     reviewed is a product decision.
+--
+--  d. hr AND team_lead ARE NOW EXPLICITLY NON-REVIEWERS IN THE DATABASE. That
+--     matches REVIEWER_ROLES today. If either is ever added to REVIEWER_ROLES
+--     in src/app/api/admin-review/route.js line 6 without the matching edit to
+--     PART 1, nothing will break - the route holds the service role and passes
+--     step 2 - but the database and the application will have quietly diverged,
+--     and any future move of the review write onto a user-session client would
+--     then fail for exactly those roles. VERIFY item 4 is the check that
+--     catches it.
+--
+--  e. THE REAL FIX IS STILL ARCHITECTURAL. This trigger makes the database
+--     enforce what /api/admin-review already enforces, which is the right
+--     defence in depth and is not the same as the review write only ever
+--     happening in one place. 047's item (a) named the honest answer - move the
+--     whole review write behind the service-role route it is already supposed
+--     to go through, and revoke authenticated's UPDATE on this table entirely
+--     once nothing user-session-side needs it. That is reachable: grepped,
+--     NOTHING in src/ updates task_submissions under a user session today. This
+--     file is what makes that migration safe to attempt rather than a
+--     replacement for it.
+--
+--  f. RE-RUNNING 013 OR 014 DOES NOT UNDO THIS FILE - triggers are not
+--     policies, and neither migration drops one on this table. But re-running
+--     either DOES undo 047, and this guard alone permits a developer to edit a
+--     colleague's submission_notes and file_url. If either file is replayed,
+--     replay 047 after it; 048 survives untouched.
+-- =====================================================================

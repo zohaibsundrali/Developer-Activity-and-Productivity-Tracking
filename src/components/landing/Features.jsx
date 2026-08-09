@@ -22,6 +22,7 @@
 
 import {
   CARD_LIFT,
+  Container,
   Eyebrow,
   IconChip,
   Reveal,
@@ -70,7 +71,7 @@ export default function Features() {
       aria-labelledby={title ? "features-heading" : undefined}
       className="relative isolate scroll-mt-20 overflow-hidden border-t border-border bg-muted/40 py-20 sm:py-24 lg:py-32"
     >
-      <div className="mx-auto w-full max-w-6xl px-5 sm:px-6 lg:px-8">
+      <Container>
         <SectionHeading
           eyebrow={eyebrow}
           title={title}
@@ -146,7 +147,7 @@ export default function Features() {
             </Reveal>
           ))}
         </ul>
-      </div>
+      </Container>
     </section>
   );
 }

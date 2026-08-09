@@ -104,10 +104,19 @@ export async function POST(request) {
     const profileTable = isAdminLike ? "admin_users" : isClient ? "clients" : "developers";
 
     // 2) create the profile row
+    //
+    // NONE of these three inserts writes the legacy `password` column. It existed
+    // to feed the fallback branch in src/app/login/page.js, which has been
+    // deleted: it only ran for a caller with no JWT, and every policy on
+    // developers / admin_users / clients is `TO authenticated`, so its profile
+    // lookup returned nothing and the stored value was never compared. Nothing
+    // reads the column as a credential now — GET /api/admin/legacy-auth-audit
+    // only counts rows by its shape. The real credential is created in step 4,
+    // by Supabase Auth, which stores it hashed.
     let newUser = null;
     if (isAdminLike) {
       const { data, error } = await admin.from("admin_users").insert([{
-        full_name: fullName || null, email, password, company: null,
+        full_name: fullName || null, email, company: null,
         role: "admin", is_verified: true, organization_id: invite.organization_id,
         created_at: new Date().toISOString(),
       }]).select().single();
@@ -118,7 +127,7 @@ export async function POST(request) {
       newUser = data;
     } else if (isClient) {
       const { data, error } = await admin.from("clients").insert([{
-        name: fullName || null, email, password, status: "active",
+        name: fullName || null, email, status: "active",
         organization_id: invite.organization_id, created_at: new Date().toISOString(),
       }]).select().single();
       if (error) {
@@ -137,7 +146,7 @@ export async function POST(request) {
       }
     } else {
       const { data, error } = await admin.from("developers").insert([{
-        name: fullName || null, email, password, status: "active",
+        name: fullName || null, email, status: "active",
         organization_id: invite.organization_id, created_at: new Date().toISOString(),
       }]).select().single();
       if (error) {

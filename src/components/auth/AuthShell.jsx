@@ -2,7 +2,6 @@
 
 import { BarChart3, Clock, ShieldCheck } from "lucide-react";
 
-import AuthBackdrop from "@/components/auth/AuthBackdrop";
 import { BRAND_NAME } from "@/components/brand/brand";
 import { LogoMark } from "@/components/brand/Logo";
 import "@/styles/auth-motion.css";
@@ -54,8 +53,10 @@ export default function AuthShell({ children, highlights = DEFAULT_HIGHLIGHTS, p
     <div className="flex min-h-screen flex-col bg-background text-foreground lg:flex-row">
       {/* Brand column — decorative context, hidden where space is scarce */}
       <aside className="relative hidden overflow-hidden border-r border-border bg-muted/30 lg:flex lg:w-[42%] lg:max-w-xl lg:flex-col lg:justify-between lg:p-12 xl:p-16">
-        <AuthBackdrop />
-
+        {/* The animated backdrop that used to sit here was removed at the
+            owner's request. The pane keeps its flat `bg-muted/30` ground: the
+            brand column is context, and a login screen someone visits every
+            morning is the last place that benefits from motion. */}
         <div className="auth-enter relative z-10">
           <BrandLockup />
         </div>

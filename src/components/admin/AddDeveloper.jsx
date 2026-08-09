@@ -336,12 +336,19 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
       setIsAddingDeveloper(true);
       let insertedData = null; // Use let instead of const for reassignment
 
-      // Prepare developer data
+      // Prepare developer data.
+      //
+      // The typed password is NOT written into `developers.password`. That
+      // column fed the legacy fallback in src/app/login/page.js, which has been
+      // deleted — it only ran for a caller holding no JWT, and every policy on
+      // `developers` is `TO authenticated`, so it never authenticated anyone.
+      // Leaving the write in place would put a readable credential in a column
+      // that RLS exposes to every authenticated member of the organization. The
+      // password's one real destination is /api/auth/provision below, which
+      // hands it to Supabase Auth to store hashed.
       const developerData = {
         name: newDeveloper.name.trim(),
         email: newDeveloper.email.trim(),
-        // Development/testing only: store password as plain text.
-        password: newDeveloper.password,
         status: 'active',
         projects_count: 0,
         company: user?.company || 'Unknown Company',
@@ -371,8 +378,6 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
           const simplifiedData = {
             name: newDeveloper.name.trim(),
             email: newDeveloper.email.trim(),
-            // Development/testing only: store password as plain text.
-            password: newDeveloper.password,
             status: 'active',
             projects_count: 0,
             company: user?.company || 'Unknown Company',
