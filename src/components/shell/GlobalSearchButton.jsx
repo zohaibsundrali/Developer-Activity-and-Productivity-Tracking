@@ -32,10 +32,14 @@ export default function GlobalSearchButton({ onClick, className }) {
       aria-label="Search"
       title={isMac ? "Search (⌘K)" : "Search (Ctrl K)"}
       className={cn(
-        "flex items-center gap-2 rounded-lg border border-border bg-background/60 p-2 text-muted-foreground",
+        // Below sm this collapses to the icon, and a 16px glyph inside `p-2`
+        // made it a 34px target — the smallest control in the whole shell. It
+        // is now a 44px square that only relaxes into the wide search field
+        // once there is room for the label.
+        "flex h-11 w-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background/60 text-muted-foreground",
         "transition-colors duration-150 hover:bg-muted hover:text-foreground motion-reduce:transition-none",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-        "sm:w-56 sm:px-3 sm:py-1.5 lg:w-64",
+        "sm:h-10 sm:w-56 sm:justify-start sm:px-3 lg:w-64",
         className
       )}
     >

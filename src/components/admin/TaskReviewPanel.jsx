@@ -5,7 +5,9 @@ import { getSignedSubmissionUrl } from "@/utils/submissionFiles";
 import { authFetch } from "@/utils/authFetch";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId } from "@/utils/orgContext";
-import { Badge, Button, EmptyState, Modal, Section, SkeletonCard, Tabs } from "@/components/ui";
+// The page <h1> reads the same string the sidebar and topbar do.
+import { sectionTitle } from "@/components/shell/navConfig";
+import { Badge, Button, EmptyState, Modal, PageHeader, SkeletonCard, Tabs } from "@/components/ui";
 import {
   RefreshCw,
   ClipboardList,
@@ -282,27 +284,35 @@ export default function TaskReviewPanel({ currentAdmin }) {
     }
   };
 
-  if (!currentAdmin) {
-    return (
-      <EmptyState
-        icon={ClipboardList}
-        title="Not signed in"
-        description="Please log in to view task reviews."
-      />
-    );
-  }
-
-  return (
-    <Section
-      title="Task reviews"
+  const header = (
+    <PageHeader
+      title={sectionTitle("task-reviews", "admin")}
       description="Approve or reject the work developers have submitted."
       actions={
-        <Button variant="outline" size="lg" onClick={fetchSubmissions} disabled={loading}>
+        <Button variant="outline" onClick={fetchSubmissions} disabled={loading}>
           <RefreshCw className={loading ? "animate-spin" : undefined} aria-hidden="true" />
           Refresh
         </Button>
       }
-    >
+    />
+  );
+
+  if (!currentAdmin) {
+    return (
+      <div>
+        {header}
+        <EmptyState
+          icon={ClipboardList}
+          title="Not signed in"
+          description="Please log in to view task reviews."
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {header}
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
         <Tabs
           className="px-4 pt-1"
@@ -620,6 +630,6 @@ export default function TaskReviewPanel({ currentAdmin }) {
           )}
         </Modal>
       )}
-    </Section>
+    </div>
   );
 }

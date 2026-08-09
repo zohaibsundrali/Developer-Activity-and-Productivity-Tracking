@@ -18,6 +18,8 @@ import { showError, showInfo, showSuccess, showWarning } from "@/utils/alerts";
 import { getOrgId } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
 import { uploadOrgFile, resolveOrgFileUrl } from "@/utils/orgFiles";
+// The page <h1> reads the same string the sidebar and topbar do.
+import { sectionTitle } from "@/components/shell/navConfig";
 import {
   PageHeader,
   Card,
@@ -647,7 +649,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
     return (
       <div>
         <PageHeader
-          title="My Projects"
+          title={sectionTitle("all-projects", "admin")}
           description="Projects you created, with progress, deadlines and assigned developers."
           actions={headerActions}
         />
@@ -669,7 +671,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
     return (
       <div>
         <PageHeader
-          title="My Projects"
+          title={sectionTitle("all-projects", "admin")}
           description="Projects you created, with progress, deadlines and assigned developers."
           actions={headerActions}
         />
@@ -724,7 +726,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
   return (
     <div>
       <PageHeader
-        title="My Projects"
+        title={sectionTitle("all-projects", "admin")}
         description="Projects you created, with progress, deadlines and assigned developers."
         actions={headerActions}
       />
@@ -1067,6 +1069,11 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
                       <Button
                         variant="ghost"
                         size="icon-sm"
+                        // `icon-sm` is a 28px box. This deletes a project and
+                        // everything under it, so it gets a 44px touch target
+                        // (40px from sm up) rather than the densest size in
+                        // the kit — small and irreversible is the worst pair.
+                        className="size-11 sm:size-10"
                         onClick={() => handleDeleteClick(project)}
                         aria-label={`Delete project ${projectName}`}
                         title="Delete Project"

@@ -29,9 +29,13 @@ import {
   donutCenterEmphasis,
   verticalGradient,
 } from "@/components/charts/chartTheme";
+// The page <h1> reads the same string the sidebar and topbar do.
+import { sectionTitle } from "@/components/shell/navConfig";
 import {
+  Button,
   EmptyState,
   Modal,
+  PageHeader,
   Skeleton,
   SkeletonTable,
 } from "@/components/ui";
@@ -1099,28 +1103,20 @@ export default function DeveloperActivity() {
 
   // ─── Render ───
   return (
-    <div className="bg-card p-6 rounded-xl border border-border shadow-card">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex items-center gap-3">
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Developer Activity Dashboard</h2>
-          {/* Live indicator */}
-
-        </div>
-        <div className="flex items-center space-x-4">
-
-          {/* {currentAdmin && (
-            <div className="text-right">
-              <p className="text-sm font-medium text-foreground">{currentAdmin.name || currentAdmin.email}</p>
-              <p className="text-xs text-muted-foreground">Admin Dashboard</p>
-            </div>
-          )} */}
-          <button onClick={refreshAdminData} className="inline-flex items-center gap-2 bg-card text-foreground border border-border px-3 py-1.5 rounded-lg hover:bg-muted transition-colors text-sm font-semibold">
-            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+    /* The screen is the page, not a card: it used to be wrapped in one so its
+       heading sat inside a panel at 24px padding. The shared PageHeader owns
+       the <h1> now and the panels below carry their own frames. */
+    <div>
+      <PageHeader
+        title={sectionTitle("developer-activity", "admin")}
+        description="Sessions, input, applications and screenshots recorded by the desktop tracker."
+        actions={
+          <Button variant="outline" onClick={refreshAdminData}>
+            <RefreshCw aria-hidden="true" />
             Refresh
-          </button>
-        </div>
-      </div>
+          </Button>
+        }
+      />
 
       {/* Filters */}
       <div className="mb-6 bg-card rounded-xl p-5 border border-border shadow-card">
@@ -2495,44 +2491,37 @@ export default function DeveloperActivity() {
         </div>
       )}
 
-      {/* No Data State */}
+      {/* No Data State — the shared dashed-border EmptyState, like every other
+          screen, instead of this file's own bare centred icon. */}
       {!loading && selectedDeveloper && !hasData && viewMode !== "logins" && (
-        <div className="text-center py-12">
-          <svg className="w-16 h-16 mx-auto text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 17h6l2 2V7a2 2 0 00-2-2H9a2 2 0 00-2 2v12l2-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v8" />
-          </svg>
-          <p className="text-muted-foreground text-lg mt-4">No activity data found for selected period</p>
-          <p className="text-muted-foreground text-sm mt-2">Make sure the developer has tracking sessions on {selectedDate}</p>
-        </div>
+        <EmptyState
+          icon={Monitor}
+          title="No activity data found for selected period"
+          description={`Make sure the developer has tracking sessions on ${selectedDate}`}
+        />
       )}
 
       {/* No Developer Selected */}
       {!selectedDeveloper && !loading && (
-        <div className="text-center py-12">
-          <svg className="w-16 h-16 mx-auto text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
-          </svg>
-          {currentAdmin ? (
-            <div>
-              <p className="text-muted-foreground text-lg">Select a developer to view activity data</p>
-              {/* {developers.length === 0 && (
-                <div className="mt-4">
-                  <p className="text-muted-foreground text-sm">No developers added by you yet</p>
-                  <button onClick={() => router.push("/admin/dashboard?section=add-developer")} className="mt-2 text-info hover:text-info underline text-sm">Add Developers First</button>
-                </div>
-              )} */}
-            </div>
-          ) : (
-            <div>
-              <p className="text-muted-foreground text-lg">Please login to access developer activity</p>
-              <p className="text-muted-foreground text-sm mt-2">Only admins can view developer activity data</p>
-              {/* Hard load on purpose — see the note on the other Go to Login
-                  button: the stale session and its subscriptions must die with
-                  the document. Not a candidate for router.push. */}
-              <button onClick={() => window.location.href = "/login"} className="mt-4 inline-flex items-center gap-2 bg-primary text-primary-foreground py-2 px-4 rounded-lg font-semibold hover:bg-primary/90 transition-colors">Go to Login</button>
-            </div>
-          )}
-        </div>
+        currentAdmin ? (
+          <EmptyState
+            icon={User}
+            title="Select a developer to view activity data"
+            description="Pick someone from the Select Developer list above to see their sessions, input and screenshots."
+          />
+        ) : (
+          <EmptyState
+            icon={LockKeyhole}
+            title="Please login to access developer activity"
+            description="Only admins can view developer activity data"
+            action={
+              /* Hard load on purpose — see the note on the other Go to Login
+                 button: the stale session and its subscriptions must die with
+                 the document. Not a candidate for router.push. */
+              <Button onClick={() => window.location.href = "/login"}>Go to Login</Button>
+            }
+          />
+        )
       )}
     </div>
   );

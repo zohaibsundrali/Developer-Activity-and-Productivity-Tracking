@@ -32,6 +32,7 @@ export { Badge, badgeVariants } from "./badge"
 export { StatusPill } from "./status-pill"
 export { DataTable } from "./data-table"
 export { Tabs } from "./tabs"
+export { ScrollStrip } from "./scroll-strip"
 
 // Async surface states
 export { EmptyState } from "./empty-state"

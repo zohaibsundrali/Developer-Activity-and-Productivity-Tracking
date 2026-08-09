@@ -25,6 +25,8 @@ import {
   SkeletonTable,
   SkeletonList,
 } from "@/components/ui";
+// The page <h1> reads the same string the sidebar and topbar do.
+import { sectionTitle } from "@/components/shell/navConfig";
 import { getOrgId } from "@/utils/orgContext";
 import { loadEmployees, setEmployeeStatus } from "@/utils/employeesData";
 import { can } from "@/utils/permissions";
@@ -305,7 +307,7 @@ export default function EmployeeDirectory() {
 
   const header = (
     <PageHeader
-      title="Employees"
+      title={sectionTitle("employees", "admin")}
       description="Directory of everyone in your organization."
       actions={
         <Button

@@ -36,6 +36,8 @@ import {
   Button,
   Input,
 } from "@/components/ui";
+// The page <h1> reads the same string the sidebar and topbar do.
+import { sectionTitle } from "@/components/shell/navConfig";
 import {
   ListChecks,
   CheckCircle2,
@@ -389,7 +391,7 @@ export default function ProjectOverview() {
   /* ---- render ---- */
   const pageHeader = (
     <PageHeader
-      title="Project Hub"
+      title={sectionTitle("project-hub", "admin")}
       description="Health, milestones, activity and templates for one project."
       actions={
         <Button variant="outline" onClick={reload} disabled={loading}>

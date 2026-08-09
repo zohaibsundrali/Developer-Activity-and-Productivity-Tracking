@@ -25,6 +25,10 @@ import {
   HeartPulse,
 } from "lucide-react";
 
+// Re-exported so existing imports keep working; the definitions live in
+// sectionTitles.js, which has no icon dependency.
+export { SECTION_TITLES, sectionTitle } from "@/components/shell/sectionTitles";
+
 // Admin sidebar items — ids MUST match the ?section= switch in the admin dashboard.
 export const ADMIN_NAV = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
@@ -135,40 +139,18 @@ export const CLIENT_NAV = [
   { id: "account", label: "Account", icon: UserCircle },
 ];
 
-// Human-readable titles per section (for the topbar).
-export const SECTION_TITLES = {
-  overview: { admin: "Dashboard Overview", developer: "Dashboard", client: "Overview" },
-  "all-projects": { admin: "All Projects" },
-  "project-hub": { admin: "Project Hub" },
-  board: { admin: "Project Board" },
-  views: { admin: "Project Views" },
-  sprints: { admin: "Sprints & Agile" },
-  "task-reviews": { admin: "Task Reviews" },
-  "developer-activity": { admin: "Developer Activity" },
-  reports: { admin: "Reports & Analytics" },
-  automation: { admin: "Workflow Automation" },
-  "add-developer": { admin: "Add Developer" },
-  "view-developers": { admin: "View Developers" },
-  employees: { admin: "Employees" },
-  "team-stats": { admin: "Team Stats" },
-  organization: { admin: "Organization" },
-  clients: { admin: "Clients" },
-  billing: { admin: "Billing & Subscription" },
-  "system-health": { admin: "System Health" },
-  productivity: { admin: "Productivity" },
-  projects: { developer: "My Projects", client: "My Projects" },
-  account: { admin: "Account", developer: "Account", client: "Account" },
-  team: { developer: "Team" },
-  announcements: { client: "Announcements" },
-  approvals: { client: "Approvals" },
-  invoices: { client: "Invoices" },
-  support: { client: "Support" },
-};
+// Human-readable titles per section.
+//
+// SINGLE SOURCE OF TRUTH for a section's name. Three surfaces read it and must
+// never disagree:
+//   1. the topbar, via sectionTitle() in each dashboard page,
+//   2. the page <h1>, via <PageHeader title={sectionTitle(id, role)} />,
+//   3. the sidebar, whose ADMIN_NAV/staff labels are the same words (shortened
+//      only where the sidebar cannot fit them — "Reports" for "Reports &
+//      Analytics" — never re-worded).
+//
+// Convention: Title Case. Section names are proper names of places in the
+// product, they are what the sidebar and topbar already used, and the E2E
+// specs address screens by these exact strings. Sentence case stays where it
+// belongs — <Section> titles, card titles and descriptions inside a page.
 
-export function sectionTitle(section, role) {
-  const entry = SECTION_TITLES[section];
-  if (!entry) return "Dashboard";
-  // manager/employee share the staff (developer) dashboard, so fall back to
-  // the developer title when a role-specific one isn't defined.
-  return entry[role] || entry.developer || entry.admin || "Dashboard";
-}

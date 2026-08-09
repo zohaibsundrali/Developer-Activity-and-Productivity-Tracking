@@ -20,6 +20,7 @@ import { CalendarDays, GripVertical, Inbox } from "lucide-react";
 import {
   Badge,
   EmptyState,
+  ScrollStrip,
   Skeleton,
   SkeletonCard,
   SkeletonTable,
@@ -349,8 +350,10 @@ export function Board({ columns = [], ariaLabel = "Board" }) {
 
   return (
     <div className="space-y-3">
-      {/* mobile column switcher */}
-      <div className="-mx-1 overflow-x-auto overscroll-x-contain px-1 pb-1 sm:hidden">
+      {/* Mobile column switcher. Five chips do not fit in 375px, so the row
+          scrolls inside a ScrollStrip: the edge fade is the only thing on
+          screen saying the columns past the right edge exist at all. */}
+      <ScrollStrip className="-mx-1 sm:hidden" viewportClassName="px-1 pb-1" fadeFrom="from-background">
         <div
           role="tablist"
           aria-label={`${ariaLabel} columns`}
@@ -365,7 +368,7 @@ export function Board({ columns = [], ariaLabel = "Board" }) {
                 role="tab"
                 aria-selected={active}
                 onClick={() => setActiveIndex(i)}
-                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                className={`inline-flex min-h-11 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
                   active
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:text-foreground"
@@ -383,7 +386,7 @@ export function Board({ columns = [], ariaLabel = "Board" }) {
             );
           })}
         </div>
-      </div>
+      </ScrollStrip>
 
       <div className="flex gap-4 overflow-x-auto overscroll-x-contain pb-2">
         {columns.map((col, i) => (

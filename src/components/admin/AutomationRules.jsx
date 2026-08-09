@@ -14,6 +14,8 @@ import {
 import { loadEmployees } from "@/utils/employeesData";
 import { loadLabels, BOARD_COLUMNS, DRAGGABLE_COLUMNS, PRIORITIES, TASK_TYPES } from "@/utils/pmData";
 import { showError, showSuccess } from "@/utils/alerts";
+// The page <h1> reads the same string the sidebar and topbar do.
+import { sectionTitle } from "@/components/shell/navConfig";
 import {
   PageHeader,
   Section,
@@ -591,7 +593,7 @@ export default function AutomationRules() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Automation rules"
+        title={sectionTitle("automation", "admin")}
         description="Run actions automatically when a task is created, moved, or assigned."
         actions={
           <>

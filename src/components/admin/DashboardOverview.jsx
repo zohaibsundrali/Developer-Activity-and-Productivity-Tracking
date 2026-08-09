@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { Users, FolderKanban, Bell, RefreshCw, Mail, BadgeCheck, User } from "lucide-react";
 import StatCard from "@/components/shell/StatCard";
 import { PageHeader, Section, Card, CardContent, Button, ErrorState } from "@/components/ui";
+// The page <h1> reads the same string the sidebar and topbar do.
+import { sectionTitle } from "@/components/shell/navConfig";
 import { getOrgId } from "@/utils/orgContext";
 import { setVisibleInterval } from "@/hooks/useVisibleInterval";
 
@@ -148,7 +150,7 @@ export default function DashboardOverview({ user, onRefresh, supabase }) {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Dashboard Overview"
+        title={sectionTitle("overview", "admin")}
         description={
           lastUpdated
             ? `Your workspace at a glance · last updated ${formatTime(lastUpdated)}`

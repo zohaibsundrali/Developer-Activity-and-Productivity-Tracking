@@ -11,13 +11,36 @@ import {
   EmptyState,
   ErrorState,
   SkeletonTable,
+  SkeletonList,
   Skeleton,
+  ScrollStrip,
   Button,
 } from "@/components/ui";
+// The page <h1> reads the same string the sidebar and topbar do.
+import { sectionTitle } from "@/components/shell/navConfig";
 import StatCard from "@/components/shell/StatCard";
 import { showError, showInfo, showPre, showSuccess, showWarning } from "@/utils/alerts";
 import { getOrgId } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
+
+/** One labelled fact inside a mobile card. Mirrors EmployeeDirectory's card
+ *  list, which is the one table on this portal that already survives 375px. */
+function CardFact({ label, children }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="mt-0.5 truncate text-sm text-foreground">{children}</dd>
+    </div>
+  );
+}
+
+// Row actions were `size="sm"` — a 28px control, one of which deletes a
+// developer and every project, task and submission under them. 40px in the
+// table, 44px in the cards where the pointer is a thumb.
+const ROW_ACTION = "min-h-10";
+const CARD_ACTION = "min-h-11 flex-1";
 
 export default function ViewDevelopers({ developers: initialDevelopers, onRefresh, supabase, user }) {
   const [developers, setDevelopers] = useState([]);
@@ -481,7 +504,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
 
   const pageHeader = (
     <PageHeader
-      title="View Developers"
+      title={sectionTitle("view-developers", "admin")}
       description="Developers you added to this organization, with the projects currently assigned to each."
       actions={
         <Button variant="outline" onClick={fetchAdminDevelopers} disabled={loading}>
@@ -502,7 +525,13 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
         </div>
         <Card className="sm:py-5">
           <CardContent className="sm:px-5">
-            <SkeletonTable rows={5} cols={5} />
+            {/* Shaped like whichever layout is about to replace it. */}
+            <div className="hidden lg:block">
+              <SkeletonTable rows={5} cols={5} />
+            </div>
+            <div className="lg:hidden">
+              <SkeletonList rows={4} />
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -552,7 +581,14 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
         ) : (
           <Card className="sm:py-5">
             <CardContent className="sm:px-5">
-              <div className="overflow-x-auto">
+              {/* Table — lg and up (not md: the five columns need 820px, which
+                  a 768px viewport still cannot hold).
+                  Below that the table hid 514px of a 375px viewport — PROJECTS,
+                  ADDED ON and ACTIONS entirely off-screen, and the name column
+                  hard-clipped mid-glyph with no ellipsis. The card list
+                  underneath carries the same five fields, none dropped. Where
+                  the table still overflows, ScrollStrip says so. */}
+              <ScrollStrip className="hidden lg:block" fadeFrom="from-card">
                 <table className="w-full min-w-[820px] divide-y divide-border">
                   <thead>
                     <tr className="h-10">
@@ -612,6 +648,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
                             <Button
                               variant="ghost"
                               size="sm"
+                              className={ROW_ACTION}
                               onClick={() => handleViewDeveloper(developer.id)}
                               title="View Details"
                             >
@@ -620,6 +657,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
                             <Button
                               variant="ghost"
                               size="sm"
+                              className={ROW_ACTION}
                               onClick={() => handleEditDeveloper(developer.id)}
                               title="Edit Developer"
                               disabled={isEditing}
@@ -629,6 +667,7 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
                             <Button
                               variant="destructive"
                               size="sm"
+                              className={ROW_ACTION}
                               onClick={() => handleDeleteDeveloper(developer.id)}
                               title="Delete Developer"
                               disabled={deletingId !== null}
@@ -641,6 +680,83 @@ export default function ViewDevelopers({ developers: initialDevelopers, onRefres
                     ))}
                   </tbody>
                 </table>
+              </ScrollStrip>
+
+              {/* Card list — below lg. Same five fields as the table row:
+                  name (+ status, + who added them), email, projects, added on,
+                  and all three actions. */}
+              <div className="space-y-3 lg:hidden">
+                {developers.map(developer => (
+                  <div
+                    key={developer.id}
+                    className="rounded-xl border border-border bg-card p-4 shadow-card"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        {/* `break-words`, not nowrap: a long name wraps onto a
+                            second line rather than being sliced mid-glyph. */}
+                        <p className="break-words text-sm font-semibold text-foreground">
+                          {developer.name}
+                        </p>
+                        <p className="mt-0.5 break-all text-xs text-muted-foreground">
+                          {developer.email}
+                        </p>
+                      </div>
+                      {developer.status && (
+                        <StatusPill
+                          size="sm"
+                          className="shrink-0"
+                          status={developer.status === 'active' ? 'active' : 'inactive'}
+                          label={developer.status === 'active' ? 'Active' : 'Inactive'}
+                        />
+                      )}
+                    </div>
+
+                    <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-border pt-4">
+                      <CardFact label="Projects">
+                        <span className="font-medium tabular-nums text-foreground">
+                          {developer.assigned_projects_count ?? developer.projects_count ?? 0}
+                        </span>
+                      </CardFact>
+                      <CardFact label="Added on">{formatDate(developer.created_at)}</CardFact>
+                      {developer.added_by_name && (
+                        <CardFact label="Added by">{developer.added_by_name}</CardFact>
+                      )}
+                    </dl>
+
+                    <div className="mt-4 flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={CARD_ACTION}
+                        onClick={() => handleViewDeveloper(developer.id)}
+                        aria-label={`View details for ${developer.name || 'developer'}`}
+                      >
+                        View
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={CARD_ACTION}
+                        onClick={() => handleEditDeveloper(developer.id)}
+                        disabled={isEditing}
+                        aria-label={`Edit ${developer.name || 'developer'}`}
+                      >
+                        {isEditing ? 'Editing...' : 'Edit'}
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className={CARD_ACTION}
+                        onClick={() => handleDeleteDeveloper(developer.id)}
+                        disabled={deletingId !== null}
+                        aria-label={`Delete ${developer.name || 'developer'}`}
+                      >
+                        {deletingId === developer.id ? 'Deleting…' : 'Delete'}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>

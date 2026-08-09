@@ -37,7 +37,9 @@ import {
   heightForRows,
 } from "@/components/charts/chartTheme";
 import { showError } from "@/utils/alerts";
-import { EmptyState, Skeleton, Tabs } from "@/components/ui";
+// The page <h1> reads the same string the sidebar and topbar do.
+import { sectionTitle } from "@/components/shell/navConfig";
+import { Button, EmptyState, Input, PageHeader, Skeleton, Tabs } from "@/components/ui";
 import {
   RefreshCw,
   Download,
@@ -58,11 +60,11 @@ import {
 /*  Static config                                                      */
 /* ------------------------------------------------------------------ */
 
-const INPUT_CLASS =
-  "rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30";
-
-const BTN_CLASS =
-  "inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:border-primary disabled:opacity-60";
+/* Sizing only — the kit `Input` owns the border, background and focus ring.
+   `w-auto` because Input is `w-full` by default and these sit inline in a
+   label. 40px tall on touch, dropping to the kit's own height from sm up so
+   the pair still lines up with the buttons sharing this toolbar row. */
+const DATE_INPUT_CLASS = "h-10 w-auto min-w-[9.5rem] px-3 text-sm sm:h-8";
 
 const PANEL_CLASS = "rounded-xl border border-border bg-card p-5 shadow-card";
 
@@ -179,13 +181,13 @@ function TablePager({ page, pageCount, total, shown, onPage }) {
     <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-sm">
       <span className="text-muted-foreground">{`Showing ${shown} of ${total} rows`}</span>
       <div className="flex items-center gap-1.5">
-        <button type="button" onClick={() => onPage(page - 1)} disabled={page <= 1} className={BTN_CLASS}>
+        <Button variant="outline" onClick={() => onPage(page - 1)} disabled={page <= 1}>
           Previous
-        </button>
+        </Button>
         <span className="px-1 text-xs text-muted-foreground">{`Page ${page} of ${pageCount}`}</span>
-        <button type="button" onClick={() => onPage(page + 1)} disabled={page >= pageCount} className={BTN_CLASS}>
+        <Button variant="outline" onClick={() => onPage(page + 1)} disabled={page >= pageCount}>
           Next
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -616,348 +618,208 @@ export default function ReportsDashboard() {
 
   /* ---- render ---- */
   return (
-    <div className="space-y-4">
-      {/* ---------- Toolbar ---------- */}
-      <div className="rounded-xl border border-border bg-card p-3 shadow-card">
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span className="font-medium">From</span>
-            <input
-              type="date"
-              value={range.from || ""}
-              max={range.to || undefined}
-              onChange={(e) => setRangePart("from", e.target.value)}
-              className={INPUT_CLASS}
-              aria-label="Report range start date"
+    <div>
+      <PageHeader
+        title={sectionTitle("reports", "admin")}
+        description="Delivery, workload, time and delay analytics across the whole organization."
+        actions={
+          <Button variant="outline" onClick={load} disabled={loading}>
+            <RefreshCw
+              className={loading ? "animate-spin motion-reduce:animate-none" : undefined}
+              aria-hidden="true"
             />
-          </label>
-          <label className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span className="font-medium">To</span>
-            <input
-              type="date"
-              value={range.to || ""}
-              min={range.from || undefined}
-              onChange={(e) => setRangePart("to", e.target.value)}
-              className={INPUT_CLASS}
-              aria-label="Report range end date"
-            />
-          </label>
+            Refresh
+          </Button>
+        }
+      />
 
-          <button type="button" onClick={load} disabled={loading} className={BTN_CLASS}>
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Refresh
-          </button>
+      <div className="space-y-4">
+        {/* ---------- Toolbar ---------- */}
+        <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* The kit `Input`, not a hand-rolled class. These two were the only
+                focusable elements in the whole admin portal with no visible focus
+                ring — `outline: transparent` and no box-shadow — because their
+                local class set one and never landed it. The primitive already
+                carries the ring every other control on the page uses. */}
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="font-medium">From</span>
+              <Input
+                type="date"
+                value={range.from || ""}
+                max={range.to || undefined}
+                onChange={(e) => setRangePart("from", e.target.value)}
+                className={DATE_INPUT_CLASS}
+                aria-label="Report range start date"
+              />
+            </label>
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="font-medium">To</span>
+              <Input
+                type="date"
+                value={range.to || ""}
+                min={range.from || undefined}
+                onChange={(e) => setRangePart("to", e.target.value)}
+                className={DATE_INPUT_CLASS}
+                aria-label="Report range end date"
+              />
+            </label>
 
-          <div className="ml-auto flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={handleExportCsv}
-              disabled={exporting || loading}
-              className={BTN_CLASS}
-              title={`Export the ${activeExport.label} table as CSV`}
-            >
-              <Download className="h-4 w-4" /> Export CSV
-            </button>
-            <button
-              type="button"
-              onClick={handleExportPdf}
-              disabled={exporting || loading}
-              className={BTN_CLASS}
-              title={`Export the ${activeExport.label} table as PDF`}
-            >
-              <FileText className="h-4 w-4" /> Export PDF
-            </button>
+            <div className="ml-auto flex items-center gap-1.5">
+              <Button
+                variant="outline"
+                onClick={handleExportCsv}
+                disabled={exporting || loading}
+                title={`Export the ${activeExport.label} table as CSV`}
+              >
+                <Download aria-hidden="true" /> Export CSV
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleExportPdf}
+                disabled={exporting || loading}
+                title={`Export the ${activeExport.label} table as PDF`}
+              >
+                <FileText aria-hidden="true" /> Export PDF
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* ---------- KPI strip ---------- */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <StatCard title="Projects" value={kpis.projects} icon={FolderKanban} tone="primary" />
-        <StatCard title="Tasks" value={kpis.tasks} icon={ListChecks} tone="info" />
-        <StatCard
-          title="Completed"
-          value={kpis.done}
-          icon={CheckCircle2}
-          tone="success"
-          hint={<span className="text-muted-foreground">{`${kpis.completionRate}% complete`}</span>}
-        />
-        <StatCard
-          title="Logged Hours"
-          value={kpis.loggedHours}
-          icon={Timer}
-          tone="violet"
-          hint={<span className="text-muted-foreground">in-app timer</span>}
-        />
-        <StatCard
-          title="Tracked Hours"
-          value={kpis.trackedHours}
-          icon={Monitor}
-          tone="warning"
-          hint={<span className="text-muted-foreground">desktop tracker</span>}
-        />
-        <StatCard title="Overdue" value={kpis.overdue} icon={AlertTriangle} tone="destructive" />
-      </div>
-
-      {/* ---------- Tab bar ---------- */}
-      <Tabs tabs={TABS} active={tab} onChange={setTab} aria-label="Report section" />
-
-      {/* ---------- Tab content ---------- */}
-      {loading && !bundle ? (
-        // Skeleton shaped like the overview: a wide chart beside a narrow one.
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3" aria-busy="true">
-          <div className={`${PANEL_CLASS} xl:col-span-2 space-y-3`}>
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className="h-3 w-64" />
-            <Skeleton className="h-[300px] w-full rounded-lg" />
-          </div>
-          <div className={`${PANEL_CLASS} space-y-3`}>
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-3 w-48" />
-            <Skeleton className="h-[300px] w-full rounded-lg" />
-          </div>
+        {/* ---------- KPI strip ---------- */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <StatCard title="Projects" value={kpis.projects} icon={FolderKanban} tone="primary" />
+          <StatCard title="Tasks" value={kpis.tasks} icon={ListChecks} tone="info" />
+          <StatCard
+            title="Completed"
+            value={kpis.done}
+            icon={CheckCircle2}
+            tone="success"
+            hint={<span className="text-muted-foreground">{`${kpis.completionRate}% complete`}</span>}
+          />
+          <StatCard
+            title="Logged Hours"
+            value={kpis.loggedHours}
+            icon={Timer}
+            tone="violet"
+            hint={<span className="text-muted-foreground">in-app timer</span>}
+          />
+          <StatCard
+            title="Tracked Hours"
+            value={kpis.trackedHours}
+            icon={Monitor}
+            tone="warning"
+            hint={<span className="text-muted-foreground">desktop tracker</span>}
+          />
+          <StatCard title="Overdue" value={kpis.overdue} icon={AlertTriangle} tone="destructive" />
         </div>
-      ) : (
-        <>
-          {tab === "overview" && (
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-              <div className={`${PANEL_CLASS} xl:col-span-2`}>
-                <h3 className="text-sm font-semibold text-foreground">Activity trend</h3>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Completed tasks and time spent, per day.
-                </p>
-                {hasTrend ? (
-                  /* Two panels over a shared date axis rather than one chart
-                     with a second y-axis on the right. Counts and hours are
-                     different units, so a single frame would have invented a
-                     crossing point between them. */
-                  <div className="mt-3 space-y-4">
-                    <div>
-                      <h4 className="text-xs font-medium text-muted-foreground">Completed tasks</h4>
-                      <EChart option={tasksTrendOption} height={168} />
+
+        {/* ---------- Tab bar ---------- */}
+        <Tabs tabs={TABS} active={tab} onChange={setTab} aria-label="Report section" />
+
+        {/* ---------- Tab content ---------- */}
+        {loading && !bundle ? (
+          // Skeleton shaped like the overview: a wide chart beside a narrow one.
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-3" aria-busy="true">
+            <div className={`${PANEL_CLASS} xl:col-span-2 space-y-3`}>
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-3 w-64" />
+              <Skeleton className="h-[300px] w-full rounded-lg" />
+            </div>
+            <div className={`${PANEL_CLASS} space-y-3`}>
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-3 w-48" />
+              <Skeleton className="h-[300px] w-full rounded-lg" />
+            </div>
+          </div>
+        ) : (
+          <>
+            {tab === "overview" && (
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+                <div className={`${PANEL_CLASS} xl:col-span-2`}>
+                  <h3 className="text-sm font-semibold text-foreground">Activity trend</h3>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Completed tasks and time spent, per day.
+                  </p>
+                  {hasTrend ? (
+                    /* Two panels over a shared date axis rather than one chart
+                       with a second y-axis on the right. Counts and hours are
+                       different units, so a single frame would have invented a
+                       crossing point between them. */
+                    <div className="mt-3 space-y-4">
+                      <div>
+                        <h4 className="text-xs font-medium text-muted-foreground">Completed tasks</h4>
+                        <EChart option={tasksTrendOption} height={168} />
+                      </div>
+                      <div className="border-t border-border pt-3">
+                        <h4 className="text-xs font-medium text-muted-foreground">Hours</h4>
+                        <EChart option={hoursTrendOption} height={168} />
+                      </div>
                     </div>
-                    <div className="border-t border-border pt-3">
-                      <h4 className="text-xs font-medium text-muted-foreground">Hours</h4>
-                      <EChart option={hoursTrendOption} height={168} />
+                  ) : (
+                    <div className="mt-3">
+                      <EmptyState
+                        className="h-[336px] justify-center"
+                        icon={CalendarClock}
+                        title="Nothing happened in this range"
+                        description="Widen the date range, or wait for tasks to be completed and time to be logged."
+                      />
                     </div>
-                  </div>
-                ) : (
+                  )}
+                </div>
+
+                <div className={PANEL_CLASS}>
+                  <h3 className="text-sm font-semibold text-foreground">Task status</h3>
+                  <p className="mt-0.5 text-xs text-muted-foreground">Across every task in the organization.</p>
                   <div className="mt-3">
-                    <EmptyState
-                      className="h-[336px] justify-center"
-                      icon={CalendarClock}
-                      title="Nothing happened in this range"
-                      description="Widen the date range, or wait for tasks to be completed and time to be logged."
-                    />
+                    {hasStatus ? (
+                      <EChart option={statusOption} height={300} />
+                    ) : (
+                      <EmptyState
+                        className="h-[300px] justify-center"
+                        icon={ListChecks}
+                        title="No tasks yet"
+                        description="The status split fills in as soon as tasks exist."
+                      />
+                    )}
                   </div>
-                )}
-              </div>
-
-              <div className={PANEL_CLASS}>
-                <h3 className="text-sm font-semibold text-foreground">Task status</h3>
-                <p className="mt-0.5 text-xs text-muted-foreground">Across every task in the organization.</p>
-                <div className="mt-3">
-                  {hasStatus ? (
-                    <EChart option={statusOption} height={300} />
-                  ) : (
-                    <EmptyState
-                      className="h-[300px] justify-center"
-                      icon={ListChecks}
-                      title="No tasks yet"
-                      description="The status split fills in as soon as tasks exist."
-                    />
-                  )}
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {tab === "projects" && (
-            <div className="space-y-4">
-              <div className={PANEL_CLASS}>
-                <h3 className="text-sm font-semibold text-foreground">Top projects by workload</h3>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Ten largest projects, split into done and remaining tasks.
-                </p>
-                <div className="mt-3">
-                  {projectRows.length > 0 ? (
-                    /* Height follows the row count: ten projects in a fixed
-                       300px box left each bar a sliver with its name clipped. */
-                    <EChart
-                      option={projectChartOption}
-                      height={heightForRows(projectTop.length, { perRow: 30, chrome: 96, min: 200 })}
-                    />
-                  ) : (
-                    <EmptyState
-                      className="h-[300px] justify-center"
-                      icon={FolderKanban}
-                      title="No projects to rank"
-                      description="Create a project and assign tasks to see the workload split."
-                    />
-                  )}
+            {tab === "projects" && (
+              <div className="space-y-4">
+                <div className={PANEL_CLASS}>
+                  <h3 className="text-sm font-semibold text-foreground">Top projects by workload</h3>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Ten largest projects, split into done and remaining tasks.
+                  </p>
+                  <div className="mt-3">
+                    {projectRows.length > 0 ? (
+                      /* Height follows the row count: ten projects in a fixed
+                         300px box left each bar a sliver with its name clipped. */
+                      <EChart
+                        option={projectChartOption}
+                        height={heightForRows(projectTop.length, { perRow: 30, chrome: 96, min: 200 })}
+                      />
+                    ) : (
+                      <EmptyState
+                        className="h-[300px] justify-center"
+                        icon={FolderKanban}
+                        title="No projects to rank"
+                        description="Create a project and assign tasks to see the workload split."
+                      />
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              <div className={PANEL_CLASS}>
-                <h3 className="text-sm font-semibold text-foreground">Project performance</h3>
-                <div className="mt-3 overflow-x-auto">
-                  <table className="w-full border-collapse text-sm">
-                    <thead>
-                      <tr className="sticky top-0 bg-card text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        {PROJECT_COLUMNS.map((c) => (
-                          <th key={c.key} className="whitespace-nowrap px-3 py-2 text-left">
-                            {c.label}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {projectRows.length === 0 ? (
-                        <tr className="border-t border-border">
-                          <td
-                            colSpan={PROJECT_COLUMNS.length}
-                            className="px-3 py-8 text-center text-sm text-muted-foreground"
-                          >
-                            No projects in this organization yet.
-                          </td>
-                        </tr>
-                      ) : (
-                        projectRows.map((r) => (
-                          <tr key={r.projectId} className="border-t border-border hover:bg-muted/40">
-                            <td className="px-3 py-2 font-medium text-foreground">{cell(r.project)}</td>
-                            <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{cell(r.status)}</td>
-                            <td className="px-3 py-2">
-                              <div className="flex min-w-[110px] items-center gap-2">
-                                <div className="h-1.5 flex-1 rounded-full bg-muted">
-                                  <div
-                                    className="h-1.5 rounded-full bg-primary"
-                                    style={{ width: `${Math.max(0, Math.min(100, Number(r.progress) || 0))}%` }}
-                                  />
-                                </div>
-                                <span className="tabular-nums text-xs text-muted-foreground">
-                                  {Number(r.progress) || 0}%
-                                </span>
-                              </div>
-                            </td>
-                            <td className="px-3 py-2 tabular-nums">{cell(r.total)}</td>
-                            <td className="px-3 py-2 tabular-nums">{cell(r.done)}</td>
-                            <td className="px-3 py-2 tabular-nums">
-                              {r.overdue > 0 ? (
-                                <span className="font-semibold text-destructive">{r.overdue}</span>
-                              ) : (
-                                0
-                              )}
-                            </td>
-                            <td className="px-3 py-2 tabular-nums">{pct(r.onTimeRate)}</td>
-                            <td className="px-3 py-2 tabular-nums">{cell(r.loggedHours)}</td>
-                            <td className="whitespace-nowrap px-3 py-2 tabular-nums text-muted-foreground">
-                              {cell(r.deadline)}
-                            </td>
-                            <td className="px-3 py-2 tabular-nums">
-                              {r.daysLate > 0 ? (
-                                <span className="font-semibold text-warning">{r.daysLate}</span>
-                              ) : (
-                                "—"
-                              )}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {tab === "team" && (
-            <div className="space-y-4">
-              <div className={PANEL_CLASS}>
-                <h3 className="text-sm font-semibold text-foreground">Completed tasks per person</h3>
-                <p className="mt-0.5 text-xs text-muted-foreground">Top twelve, most completed first.</p>
-                <div className="mt-3">
-                  {teamRows.length > 0 ? (
-                    /* One row per person at a readable band, rather than twelve
-                       columns squeezed under 35°-rotated names. */
-                    <EChart
-                      option={teamChartOption}
-                      height={heightForRows(teamTop.length, { perRow: 30, chrome: 84, min: 200 })}
-                    />
-                  ) : (
-                    <EmptyState
-                      className="h-[300px] justify-center"
-                      icon={Users}
-                      title="No team members to report on"
-                      description="Add people to the organization and assign them tasks."
-                    />
-                  )}
-                </div>
-              </div>
-
-              <div className={PANEL_CLASS}>
-                <h3 className="text-sm font-semibold text-foreground">Team productivity</h3>
-                <div className="mt-3 overflow-x-auto">
-                  <table className="w-full border-collapse text-sm">
-                    <thead>
-                      <tr className="sticky top-0 bg-card text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        {TEAM_COLUMNS.map((c) => (
-                          <th key={c.key} className="whitespace-nowrap px-3 py-2 text-left">
-                            {c.label}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {teamRows.length === 0 ? (
-                        <tr className="border-t border-border">
-                          <td
-                            colSpan={TEAM_COLUMNS.length}
-                            className="px-3 py-8 text-center text-sm text-muted-foreground"
-                          >
-                            No team members to report on yet.
-                          </td>
-                        </tr>
-                      ) : (
-                        teamRows.map((r) => (
-                          <tr key={r.userId || r.name} className="border-t border-border hover:bg-muted/40">
-                            <td className="whitespace-nowrap px-3 py-2 font-medium text-foreground">{cell(r.name)}</td>
-                            <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{cell(r.role)}</td>
-                            <td className="px-3 py-2 tabular-nums">{cell(r.total)}</td>
-                            <td className="px-3 py-2 tabular-nums">{cell(r.done)}</td>
-                            <td className="px-3 py-2 tabular-nums">{pct(r.completionRate)}</td>
-                            <td className="px-3 py-2 tabular-nums">{pct(r.onTimeRate)}</td>
-                            <td className="px-3 py-2 tabular-nums">{cell(r.points)}</td>
-                            <td className="px-3 py-2 tabular-nums">{cell(r.loggedHours)}</td>
-                            <td className="px-3 py-2 tabular-nums">{cell(r.trackedHours)}</td>
-                            <td className="px-3 py-2 tabular-nums">{cell(r.avgProductivity)}</td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                <p className="mt-3 text-xs text-muted-foreground">{TRACKING_CAVEAT}</p>
-              </div>
-            </div>
-          )}
-
-          {tab === "time" && (
-            <div className={PANEL_CLASS}>
-              <h3 className="text-sm font-semibold text-foreground">Time tracking</h3>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Exact per-task intervals recorded by the in-app timer.
-              </p>
-
-              {timeRows.length === 0 ? (
-                <div className="mt-4 rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-                  No timed work in this range — start a timer from any task to record time.
-                </div>
-              ) : (
-                <>
+                <div className={PANEL_CLASS}>
+                  <h3 className="text-sm font-semibold text-foreground">Project performance</h3>
                   <div className="mt-3 overflow-x-auto">
                     <table className="w-full border-collapse text-sm">
                       <thead>
                         <tr className="sticky top-0 bg-card text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                          {TIME_COLUMNS.map((c) => (
+                          {PROJECT_COLUMNS.map((c) => (
                             <th key={c.key} className="whitespace-nowrap px-3 py-2 text-left">
                               {c.label}
                             </th>
@@ -965,113 +827,268 @@ export default function ReportsDashboard() {
                         </tr>
                       </thead>
                       <tbody>
-                        {pagedTimeRows.map((r, i) => (
+                        {projectRows.length === 0 ? (
+                          <tr className="border-t border-border">
+                            <td
+                              colSpan={PROJECT_COLUMNS.length}
+                              className="px-3 py-8 text-center text-sm text-muted-foreground"
+                            >
+                              No projects in this organization yet.
+                            </td>
+                          </tr>
+                        ) : (
+                          projectRows.map((r) => (
+                            <tr key={r.projectId} className="border-t border-border hover:bg-muted/40">
+                              <td className="px-3 py-2 font-medium text-foreground">{cell(r.project)}</td>
+                              <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{cell(r.status)}</td>
+                              <td className="px-3 py-2">
+                                <div className="flex min-w-[110px] items-center gap-2">
+                                  <div className="h-1.5 flex-1 rounded-full bg-muted">
+                                    <div
+                                      className="h-1.5 rounded-full bg-primary"
+                                      style={{ width: `${Math.max(0, Math.min(100, Number(r.progress) || 0))}%` }}
+                                    />
+                                  </div>
+                                  <span className="tabular-nums text-xs text-muted-foreground">
+                                    {Number(r.progress) || 0}%
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2 tabular-nums">{cell(r.total)}</td>
+                              <td className="px-3 py-2 tabular-nums">{cell(r.done)}</td>
+                              <td className="px-3 py-2 tabular-nums">
+                                {r.overdue > 0 ? (
+                                  <span className="font-semibold text-destructive">{r.overdue}</span>
+                                ) : (
+                                  0
+                                )}
+                              </td>
+                              <td className="px-3 py-2 tabular-nums">{pct(r.onTimeRate)}</td>
+                              <td className="px-3 py-2 tabular-nums">{cell(r.loggedHours)}</td>
+                              <td className="whitespace-nowrap px-3 py-2 tabular-nums text-muted-foreground">
+                                {cell(r.deadline)}
+                              </td>
+                              <td className="px-3 py-2 tabular-nums">
+                                {r.daysLate > 0 ? (
+                                  <span className="font-semibold text-warning">{r.daysLate}</span>
+                                ) : (
+                                  "—"
+                                )}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {tab === "team" && (
+              <div className="space-y-4">
+                <div className={PANEL_CLASS}>
+                  <h3 className="text-sm font-semibold text-foreground">Completed tasks per person</h3>
+                  <p className="mt-0.5 text-xs text-muted-foreground">Top twelve, most completed first.</p>
+                  <div className="mt-3">
+                    {teamRows.length > 0 ? (
+                      /* One row per person at a readable band, rather than twelve
+                         columns squeezed under 35°-rotated names. */
+                      <EChart
+                        option={teamChartOption}
+                        height={heightForRows(teamTop.length, { perRow: 30, chrome: 84, min: 200 })}
+                      />
+                    ) : (
+                      <EmptyState
+                        className="h-[300px] justify-center"
+                        icon={Users}
+                        title="No team members to report on"
+                        description="Add people to the organization and assign them tasks."
+                      />
+                    )}
+                  </div>
+                </div>
+
+                <div className={PANEL_CLASS}>
+                  <h3 className="text-sm font-semibold text-foreground">Team productivity</h3>
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="w-full border-collapse text-sm">
+                      <thead>
+                        <tr className="sticky top-0 bg-card text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          {TEAM_COLUMNS.map((c) => (
+                            <th key={c.key} className="whitespace-nowrap px-3 py-2 text-left">
+                              {c.label}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {teamRows.length === 0 ? (
+                          <tr className="border-t border-border">
+                            <td
+                              colSpan={TEAM_COLUMNS.length}
+                              className="px-3 py-8 text-center text-sm text-muted-foreground"
+                            >
+                              No team members to report on yet.
+                            </td>
+                          </tr>
+                        ) : (
+                          teamRows.map((r) => (
+                            <tr key={r.userId || r.name} className="border-t border-border hover:bg-muted/40">
+                              <td className="whitespace-nowrap px-3 py-2 font-medium text-foreground">{cell(r.name)}</td>
+                              <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{cell(r.role)}</td>
+                              <td className="px-3 py-2 tabular-nums">{cell(r.total)}</td>
+                              <td className="px-3 py-2 tabular-nums">{cell(r.done)}</td>
+                              <td className="px-3 py-2 tabular-nums">{pct(r.completionRate)}</td>
+                              <td className="px-3 py-2 tabular-nums">{pct(r.onTimeRate)}</td>
+                              <td className="px-3 py-2 tabular-nums">{cell(r.points)}</td>
+                              <td className="px-3 py-2 tabular-nums">{cell(r.loggedHours)}</td>
+                              <td className="px-3 py-2 tabular-nums">{cell(r.trackedHours)}</td>
+                              <td className="px-3 py-2 tabular-nums">{cell(r.avgProductivity)}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="mt-3 text-xs text-muted-foreground">{TRACKING_CAVEAT}</p>
+                </div>
+              </div>
+            )}
+
+            {tab === "time" && (
+              <div className={PANEL_CLASS}>
+                <h3 className="text-sm font-semibold text-foreground">Time tracking</h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Exact per-task intervals recorded by the in-app timer.
+                </p>
+
+                {timeRows.length === 0 ? (
+                  <div className="mt-4 rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                    No timed work in this range — start a timer from any task to record time.
+                  </div>
+                ) : (
+                  <>
+                    <div className="mt-3 overflow-x-auto">
+                      <table className="w-full border-collapse text-sm">
+                        <thead>
+                          <tr className="sticky top-0 bg-card text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            {TIME_COLUMNS.map((c) => (
+                              <th key={c.key} className="whitespace-nowrap px-3 py-2 text-left">
+                                {c.label}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pagedTimeRows.map((r, i) => (
+                            <tr
+                              key={`${r.date}-${r.developer}-${r.task}-${timeStart + i}`}
+                              className="border-t border-border hover:bg-muted/40"
+                            >
+                              <td className="whitespace-nowrap px-3 py-2 tabular-nums text-muted-foreground">
+                                {cell(r.date)}
+                              </td>
+                              <td className="whitespace-nowrap px-3 py-2 font-medium text-foreground">
+                                {cell(r.developer)}
+                              </td>
+                              <td className="px-3 py-2">{cell(r.project)}</td>
+                              <td className="px-3 py-2">{cell(r.task)}</td>
+                              <td className="px-3 py-2 tabular-nums">{cell(r.hours)}</td>
+                              <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{cell(r.source)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <TablePager
+                      page={Math.min(timePage, timePageCount)}
+                      pageCount={timePageCount}
+                      total={timeRows.length}
+                      shown={pagedTimeRows.length}
+                      onPage={setTimePage}
+                    />
+                    <div className="mt-3 flex items-center justify-end gap-2 border-t border-border pt-3 text-sm">
+                      <span className="text-muted-foreground">Total:</span>
+                      <span className="font-semibold tabular-nums text-foreground">
+                        {totalTimedHours.toFixed(2)} h
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        ({formatDuration(totalTimedHours * 3600)})
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {tab === "delays" && (
+              <div className={PANEL_CLASS}>
+                <h3 className="text-sm font-semibold text-foreground">Deadline delays</h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Tasks that are still overdue, or that were completed after their due date.
+                </p>
+
+                {delayRows.length === 0 ? (
+                  <div className="mt-4 rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                    No delays 🎉
+                  </div>
+                ) : (
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="w-full border-collapse text-sm">
+                      <thead>
+                        <tr className="sticky top-0 bg-card text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          {DELAY_COLUMNS.map((c) => (
+                            <th key={c.key} className="whitespace-nowrap px-3 py-2 text-left">
+                              {c.label}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pagedDelayRows.map((r, i) => (
                           <tr
-                            key={`${r.date}-${r.developer}-${r.task}-${timeStart + i}`}
+                            key={`${r.task}-${r.due}-${delayStart + i}`}
                             className="border-t border-border hover:bg-muted/40"
                           >
-                            <td className="whitespace-nowrap px-3 py-2 tabular-nums text-muted-foreground">
-                              {cell(r.date)}
-                            </td>
-                            <td className="whitespace-nowrap px-3 py-2 font-medium text-foreground">
-                              {cell(r.developer)}
-                            </td>
+                            <td className="px-3 py-2 font-medium text-foreground">{cell(r.task)}</td>
                             <td className="px-3 py-2">{cell(r.project)}</td>
-                            <td className="px-3 py-2">{cell(r.task)}</td>
-                            <td className="px-3 py-2 tabular-nums">{cell(r.hours)}</td>
-                            <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{cell(r.source)}</td>
+                            <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{cell(r.assignee)}</td>
+                            <td className="whitespace-nowrap px-3 py-2 tabular-nums text-muted-foreground">
+                              {cell(r.due)}
+                            </td>
+                            <td className="px-3 py-2">
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                r.state === "Overdue"
+                                  ? "bg-destructive/15 text-destructive"
+                                  : "bg-warning/15 text-warning-on-tint"
+                              }`}
+                              >
+                                {cell(r.state)}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 tabular-nums">{cell(r.daysLate)}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
+                )}
+                {delayRows.length > 0 && (
                   <TablePager
-                    page={Math.min(timePage, timePageCount)}
-                    pageCount={timePageCount}
-                    total={timeRows.length}
-                    shown={pagedTimeRows.length}
-                    onPage={setTimePage}
+                    page={Math.min(delayPage, delayPageCount)}
+                    pageCount={delayPageCount}
+                    total={delayRows.length}
+                    shown={pagedDelayRows.length}
+                    onPage={setDelayPage}
                   />
-                  <div className="mt-3 flex items-center justify-end gap-2 border-t border-border pt-3 text-sm">
-                    <span className="text-muted-foreground">Total:</span>
-                    <span className="font-semibold tabular-nums text-foreground">
-                      {totalTimedHours.toFixed(2)} h
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      ({formatDuration(totalTimedHours * 3600)})
-                    </span>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {tab === "delays" && (
-            <div className={PANEL_CLASS}>
-              <h3 className="text-sm font-semibold text-foreground">Deadline delays</h3>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Tasks that are still overdue, or that were completed after their due date.
-              </p>
-
-              {delayRows.length === 0 ? (
-                <div className="mt-4 rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-                  No delays 🎉
-                </div>
-              ) : (
-                <div className="mt-3 overflow-x-auto">
-                  <table className="w-full border-collapse text-sm">
-                    <thead>
-                      <tr className="sticky top-0 bg-card text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        {DELAY_COLUMNS.map((c) => (
-                          <th key={c.key} className="whitespace-nowrap px-3 py-2 text-left">
-                            {c.label}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pagedDelayRows.map((r, i) => (
-                        <tr
-                          key={`${r.task}-${r.due}-${delayStart + i}`}
-                          className="border-t border-border hover:bg-muted/40"
-                        >
-                          <td className="px-3 py-2 font-medium text-foreground">{cell(r.task)}</td>
-                          <td className="px-3 py-2">{cell(r.project)}</td>
-                          <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{cell(r.assignee)}</td>
-                          <td className="whitespace-nowrap px-3 py-2 tabular-nums text-muted-foreground">
-                            {cell(r.due)}
-                          </td>
-                          <td className="px-3 py-2">
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                                r.state === "Overdue"
-                                  ? "bg-destructive/15 text-destructive"
-                                  : "bg-warning/15 text-warning-on-tint"
-                              }`}
-                            >
-                              {cell(r.state)}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 tabular-nums">{cell(r.daysLate)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              {delayRows.length > 0 && (
-                <TablePager
-                  page={Math.min(delayPage, delayPageCount)}
-                  pageCount={delayPageCount}
-                  total={delayRows.length}
-                  shown={pagedDelayRows.length}
-                  onPage={setDelayPage}
-                />
-              )}
-            </div>
-          )}
-        </>
-      )}
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

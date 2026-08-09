@@ -30,7 +30,9 @@ import {
   Section,
   Skeleton,
   StatusPill,
+  PageHeader,
 } from "@/components/ui";
+import { sectionTitle } from "@/components/shell/sectionTitles";
 import { cn } from "@/lib/utils";
 
 /**
@@ -203,6 +205,59 @@ function formatLimit(key, value) {
   return n.toLocaleString();
 }
 
+/**
+ * One row of the `usage` object -> the shape the meter renders from.
+ *
+ * `unlimited` is deliberately widened beyond the -1 sentinel: a limit the API
+ * omits entirely is already printed as "Unlimited" by formatLimit, and reading
+ * that same row as a bounded one produced "/ NaN" beside a bar drawn against a
+ * denominator that does not exist. One notion of "no ceiling", used everywhere.
+ *
+ * A limit of 0 is NOT unlimited — it is a real ceiling that admits nothing —
+ * but it is also not a denominator, so the percentage stays 0 rather than
+ * dividing by it.
+ */
+export function usageMetric(key, raw) {
+  const row = raw || {};
+  const used = Number(row.used) || 0;
+  // A missing limit is "no ceiling", not a ceiling of zero — Number(null) is 0,
+  // which is why this cannot go straight through Number().
+  const limit =
+    row.limit === null || row.limit === undefined ? Number.NaN : Number(row.limit);
+  const unlimited = Boolean(row.unlimited) || limit === UNLIMITED || !Number.isFinite(limit);
+  const pct = unlimited || limit <= 0 ? 0 : Math.min(100, Math.round((used / limit) * 100));
+  return {
+    key,
+    label: row.label || LIMIT_LABELS[key] || prettyLabel(key),
+    used,
+    limit,
+    unlimited,
+    exceeded: Boolean(row.exceeded),
+    remaining: row.remaining,
+    pct,
+    // Amber before the wall, red at it — a bar that only changes on failure
+    // gives no warning that a limit is coming.
+    near: !unlimited && pct >= NEAR_LIMIT_PCT,
+  };
+}
+
+/**
+ * How wide to draw a usage row's fill — or `null` for "draw no meter at all".
+ *
+ * A meter is a fraction of something. An unlimited resource has no denominator,
+ * so every possible fill percentage is a fiction: 100% (what this used to draw)
+ * reads as "full, at the limit" — flatly contradicting both the "/ Unlimited"
+ * beside it and the "Resources at limit: 0" card above — and 0% would read as
+ * "none used" for an org with nine active tasks. The honest rendering is the
+ * one this file already uses for a catalogue number nothing enforces: change
+ * the FORM rather than invent a value. So the track, the fill and the 80% tick
+ * are dropped, and the row states its count and says there is no ceiling.
+ */
+export function usageBarWidth(row) {
+  if (!row || row.unlimited) return null;
+  return row.exceeded ? 100 : row.pct;
+}
+
 export default function BillingSubscription() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -270,26 +325,7 @@ export default function BillingSubscription() {
       ...preferred.filter((k) => keys.includes(k)),
       ...keys.filter((k) => !preferred.includes(k)),
     ];
-    return ordered.map((key) => {
-      const row = usage[key] || {};
-      const used = Number(row.used) || 0;
-      const limit = Number(row.limit);
-      const unlimited = Boolean(row.unlimited) || limit === UNLIMITED;
-      const pct = unlimited || !limit || limit <= 0 ? 0 : Math.min(100, Math.round((used / limit) * 100));
-      return {
-        key,
-        label: row.label || LIMIT_LABELS[key] || prettyLabel(key),
-        used,
-        limit,
-        unlimited,
-        exceeded: Boolean(row.exceeded),
-        remaining: row.remaining,
-        pct,
-        // Amber before the wall, red at it — a bar that only changes on failure
-        // gives no warning that a limit is coming.
-        near: !unlimited && pct >= NEAR_LIMIT_PCT,
-      };
-    });
+    return ordered.map((key) => usageMetric(key, usage[key]));
   }, [usage]);
 
   // "Resources at limit" has to mean "creation is actually refused". A meter
@@ -434,32 +470,30 @@ export default function BillingSubscription() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight text-foreground">
-            Billing &amp; Subscription
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Your plan, usage against its limits, and payment settings.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+      {/* Header — title comes from SECTION_TITLES so the sidebar, the topbar
+          and this h1 cannot drift apart. Was a bare h2 at 20px, which left
+          this screen with no h1 at all. */}
+      <PageHeader
+        title={sectionTitle("billing", "admin")}
+        description="Your plan, usage against its limits, and payment settings."
+        actions={
+          <div className="flex items-center gap-2">
           {testMode && (
             <Badge variant="warning" size="md">
               <FlaskConical aria-hidden="true" />
               Stripe test mode
             </Badge>
           )}
-          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+          <Button variant="outline" onClick={load} disabled={loading}>
             <RefreshCw
               className={cn(loading && "animate-spin motion-reduce:animate-none")}
               aria-hidden="true"
             />
             Refresh
           </Button>
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       {/* Return from Stripe Checkout. The subscription itself is written by the
           webhook, which can land after this page does, so success is worded as
@@ -861,9 +895,11 @@ export default function BillingSubscription() {
  * The bar is the warning system: a tick at 80% is drawn on every bounded bar,
  * so a fill approaching it reads as "coming up" rather than as a surprise the
  * day it turns red. Colour is backed by a chip in words at both thresholds.
+ *
+ * An unlimited resource has no bar — see usageBarWidth.
  */
-function UsageBar({ row }) {
-  const width = row.unlimited ? 100 : row.exceeded ? 100 : row.pct;
+export function UsageBar({ row }) {
+  const width = usageBarWidth(row);
   const unenforcedNote = UNENFORCED[row.key];
 
   return (
@@ -906,42 +942,38 @@ function UsageBar({ row }) {
         </span>
       </div>
 
-      <div
-        className="relative mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted"
-        role="progressbar"
-        aria-label={`${row.label} usage`}
-        aria-valuemin={0}
-        aria-valuemax={row.unlimited ? undefined : 100}
-        aria-valuenow={row.unlimited ? undefined : width}
-        aria-valuetext={
-          row.unlimited
-            ? `${row.used.toLocaleString()} used, no limit`
-            : `${row.used.toLocaleString()} of ${Number(row.limit).toLocaleString()} used`
-        }
-      >
+      {width !== null && (
         <div
-          className={cn(
-            "h-full rounded-full transition-all duration-150 motion-reduce:transition-none",
-            unenforcedNote
-              ? "bg-muted-foreground/40"
-              : row.exceeded
-              ? "bg-destructive"
-              : row.near
-              ? "bg-warning"
-              : "bg-primary"
-          )}
-          style={{ width: `${width}%` }}
-        />
-        {/* The warning line. Present before anything is wrong, which is the
-            whole point — you can see the wall coming. */}
-        {!row.unlimited && (
+          className="relative mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted"
+          role="progressbar"
+          aria-label={`${row.label} usage`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={width}
+          aria-valuetext={`${row.used.toLocaleString()} of ${Number(row.limit).toLocaleString()} used`}
+        >
+          <div
+            className={cn(
+              "h-full rounded-full transition-all duration-150 motion-reduce:transition-none",
+              unenforcedNote
+                ? "bg-muted-foreground/40"
+                : row.exceeded
+                ? "bg-destructive"
+                : row.near
+                ? "bg-warning"
+                : "bg-primary"
+            )}
+            style={{ width: `${width}%` }}
+          />
+          {/* The warning line. Present before anything is wrong, which is the
+              whole point — you can see the wall coming. */}
           <span
             aria-hidden="true"
             className="absolute inset-y-0 w-px bg-foreground/30"
             style={{ left: `${NEAR_LIMIT_PCT}%` }}
           />
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Only say "blocked" about a meter that actually blocks. `screenshots` is
           counted here for information but never enforced — checkResourceLimit is
@@ -951,9 +983,13 @@ function UsageBar({ row }) {
         <p className="mt-1 text-xs text-muted-foreground">
           <span className="font-medium text-warning">Not enforced.</span> {unenforcedNote}
         </p>
+      ) : row.unlimited ? (
+        <p className="mt-1 text-xs text-muted-foreground">
+          No limit on this plan — there is no ceiling to measure this against.
+        </p>
       ) : (
         <>
-          {!row.unlimited && !row.exceeded && typeof row.remaining === "number" && (
+          {!row.exceeded && typeof row.remaining === "number" && (
             <p
               className={cn(
                 "mt-1 text-xs",

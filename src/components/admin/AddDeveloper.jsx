@@ -10,11 +10,15 @@ import {
   EmptyState,
   ErrorState,
   SkeletonTable,
+  SkeletonList,
   SkeletonCard,
+  ScrollStrip,
   Field,
   Input,
   Button,
 } from "@/components/ui";
+// The page <h1> reads the same string the sidebar and topbar do.
+import { sectionTitle } from "@/components/shell/navConfig";
 import { showError, showSuccess, showWarning } from "@/utils/alerts";
 import { getOrgId } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
@@ -93,6 +97,17 @@ const DeveloperForm = ({
   </form>
 );
 
+/** One labelled fact inside a mobile card — same shape the Employees
+ *  directory already uses for the one table on this portal that survives 375px. */
+const CardFact = ({ label, children }) => (
+  <div className="min-w-0">
+    <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      {label}
+    </dt>
+    <dd className="mt-0.5 truncate text-sm text-foreground">{children}</dd>
+  </div>
+);
+
 const DeveloperTable = ({ developers, missingColumns, loading, error, onRetry }) => (
   <Section
     title={!missingColumns ? 'Your Developers' : 'All Developers'}
@@ -110,7 +125,13 @@ const DeveloperTable = ({ developers, missingColumns, loading, error, onRetry })
     {loading ? (
       <Card className="sm:py-5">
         <CardContent className="sm:px-5">
-          <SkeletonTable rows={5} cols={4} />
+          {/* Shaped like whichever layout is about to replace it. */}
+          <div className="hidden md:block">
+            <SkeletonTable rows={5} cols={4} />
+          </div>
+          <div className="md:hidden">
+            <SkeletonList rows={4} />
+          </div>
         </CardContent>
       </Card>
     ) : error ? (
@@ -122,7 +143,12 @@ const DeveloperTable = ({ developers, missingColumns, loading, error, onRetry })
     ) : developers.length > 0 ? (
       <Card className="sm:py-5">
         <CardContent className="sm:px-5">
-          <div className="overflow-x-auto">
+          {/* Table — md and up.
+              Below md the four columns needed 720px against a 375px viewport,
+              hiding 409px of it: PROJECTS and ADDED ON were entirely
+              off-screen. The card list underneath carries all four fields, and
+              where the table still overflows, ScrollStrip says so. */}
+          <ScrollStrip className="hidden md:block" fadeFrom="from-card">
             <table className="w-full min-w-[720px] divide-y divide-border">
               <thead>
                 <tr className="h-10">
@@ -167,6 +193,32 @@ const DeveloperTable = ({ developers, missingColumns, loading, error, onRetry })
                 ))}
               </tbody>
             </table>
+          </ScrollStrip>
+
+          {/* Card list — below md. Name, email, projects, added on. */}
+          <div className="space-y-3 md:hidden">
+            {developers.map(developer => (
+              <div
+                key={developer.id}
+                className="rounded-xl border border-border bg-card p-4 shadow-card"
+              >
+                <p className="break-words text-sm font-semibold text-foreground">
+                  {developer.name}
+                </p>
+                <p className="mt-0.5 break-all text-xs text-muted-foreground">
+                  {developer.email}
+                </p>
+
+                <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-border pt-4">
+                  <CardFact label="Projects">
+                    <span className="font-medium tabular-nums text-foreground">
+                      {developer.dynamic_projects_count ?? developer.projects_count ?? 0}
+                    </span>
+                  </CardFact>
+                  <CardFact label="Added on">{formatDate(developer.created_at)}</CardFact>
+                </dl>
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>
@@ -528,7 +580,7 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
 
   const pageHeader = (
     <PageHeader
-      title="Add Developer"
+      title={sectionTitle("add-developer", "admin")}
       description="Create developer accounts for your organization and review the ones you have added."
       actions={
         <Button variant="outline" onClick={fetchAdminDevelopers} disabled={loading}>

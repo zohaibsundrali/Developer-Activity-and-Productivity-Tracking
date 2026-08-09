@@ -15,6 +15,7 @@ import { getOrgId } from "@/utils/orgContext";
 import { loadEmployees } from "@/utils/employeesData";
 import { supabase } from "@/utils/supabaseClient";
 import StatCard from "@/components/shell/StatCard";
+import { sectionTitle } from "@/components/shell/sectionTitles";
 import {
   PageHeader,
   Section,
@@ -56,8 +57,28 @@ function isSameLocalDay(a, b) {
   );
 }
 
-const pct = (part, whole) =>
+export const pct = (part, whole) =>
   whole > 0 ? Math.round((part / whole) * 100) : 0;
+
+/**
+ * Group counts -> ranked rows carrying the ONE percentage this panel means:
+ * each bucket's share of the whole population.
+ *
+ * The share is computed here, once, and is both what the row prints and what
+ * the bar is drawn to. Previously the label printed share-of-headcount while
+ * the bar was scaled to the largest bucket, so a two-person org with one Owner
+ * and one Developer printed "50%" beside two bars that were each drawn full
+ * width — the panel stating two different numbers about the same row.
+ *
+ * A "relative to the biggest bucket" bar is a legitimate chart, but only when
+ * nothing on the row claims to be a percentage of anything else. This panel is
+ * described as "Share of headcount in each role", so share is the scale.
+ */
+export function distributionRows(counts, total) {
+  return Array.from(counts instanceof Map ? counts.entries() : Object.entries(counts || {}))
+    .map(([key, count]) => ({ key, count, share: pct(count, total) }))
+    .sort((a, b) => b.count - a.count);
+}
 
 /**
  * One horizontal bar. Label and value sit on their own line above the track so
@@ -72,7 +93,10 @@ const pct = (part, whole) =>
  * "several saturated colours for no reason" look we are removing. Bar length
  * carries the magnitude; colour has no work left to do here.
  */
-function BarRow({ label, value, share, width }) {
+export function BarRow({ label, value, share }) {
+  // The bar IS the printed share. There is deliberately no separate width prop:
+  // the two can no longer drift apart.
+  const width = Math.max(0, Math.min(100, Number(share) || 0));
   return (
     <li>
       <div className="flex items-baseline justify-between gap-3">
@@ -90,9 +114,13 @@ function BarRow({ label, value, share, width }) {
         className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted"
         role="progressbar"
         aria-label={`${label}: ${value}`}
-        aria-valuenow={value}
+        // The scale is 0–100 percent, so the value announced has to be the
+        // percentage — announcing the raw head count against a max of 100 told
+        // a screen reader "1 out of 100" for a bar drawn at 50%.
+        aria-valuenow={width}
         aria-valuemin={0}
         aria-valuemax={100}
+        aria-valuetext={share != null ? `${value} (${share}%)` : String(value)}
       >
         <div
           className="h-full rounded-full bg-primary transition-[width] duration-150"
@@ -258,10 +286,7 @@ export default function TeamStats() {
     const r = e?.role || "unknown";
     roleCounts.set(r, (roleCounts.get(r) || 0) + 1);
   }
-  const roleRows = Array.from(roleCounts.entries())
-    .map(([role, count]) => ({ role, count }))
-    .sort((a, b) => b.count - a.count);
-  const maxRoleCount = roleRows.reduce((m, r) => Math.max(m, r.count), 0);
+  const roleRows = distributionRows(roleCounts, headcount);
 
   // By department (join via departmentId, fall back to departmentName; the rest
   // are "Unassigned").
@@ -278,10 +303,7 @@ export default function TeamStats() {
     }
     deptCounts.set(label, (deptCounts.get(label) || 0) + 1);
   }
-  const deptRows = Array.from(deptCounts.entries())
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count);
-  const maxDeptCount = deptRows.reduce((m, r) => Math.max(m, r.count), 0);
+  const deptRows = distributionRows(deptCounts, headcount);
 
   // Aggregate productivity metrics per developer_id.
   const metricAgg = new Map(); // devId -> { scoreSum, scoreN, activeSum }
@@ -349,7 +371,7 @@ export default function TeamStats() {
 
   const header = (
     <PageHeader
-      title="Team stats"
+      title={sectionTitle("team-stats", "admin")}
       description="Organization-wide team, department, attendance & performance overview."
       actions={
         <Button
@@ -524,11 +546,10 @@ export default function TeamStats() {
             <ul className="space-y-4">
               {roleRows.map((r) => (
                 <BarRow
-                  key={r.role}
-                  label={prettyLabel(r.role)}
+                  key={r.key}
+                  label={prettyLabel(r.key)}
                   value={r.count}
-                  share={pct(r.count, headcount)}
-                  width={pct(r.count, maxRoleCount)}
+                  share={r.share}
                 />
               ))}
             </ul>
@@ -550,11 +571,10 @@ export default function TeamStats() {
             <ul className="space-y-4">
               {deptRows.map((d) => (
                 <BarRow
-                  key={d.name}
-                  label={d.name}
+                  key={d.key}
+                  label={d.key}
                   value={d.count}
-                  share={pct(d.count, headcount)}
-                  width={pct(d.count, maxDeptCount)}
+                  share={d.share}
                 />
               ))}
             </ul>

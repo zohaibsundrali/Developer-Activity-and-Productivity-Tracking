@@ -4,6 +4,7 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 import { EmptyState } from "@/components/ui/empty-state"
+import { ScrollStrip } from "@/components/ui/scroll-strip"
 import { SkeletonTable } from "@/components/ui/skeleton"
 
 const ALIGN = {
@@ -79,8 +80,12 @@ function DataTable({
       )}
       {...props}
     >
-      {/* A table is the single most common cause of mobile horizontal overflow. */}
-      <div className="w-full overflow-x-auto">
+      {/* A table is the single most common cause of mobile horizontal overflow.
+          ScrollStrip keeps the same overflow-x-auto viewport and adds an edge
+          fade on whichever side still has columns behind it, so a table cut at
+          the viewport edge reads as "there is more this way" rather than as a
+          column that simply vanished. */}
+      <ScrollStrip fadeFrom="from-card" fadeWidth="w-6">
         <table className={cn("w-full caption-bottom text-sm", tableClassName)}>
           {caption && (
             <caption className="px-4 py-3 text-left text-xs text-muted-foreground">
@@ -148,7 +153,7 @@ function DataTable({
             })}
           </tbody>
         </table>
-      </div>
+      </ScrollStrip>
     </div>
   )
 }

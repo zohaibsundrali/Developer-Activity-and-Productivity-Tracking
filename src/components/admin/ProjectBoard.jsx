@@ -19,7 +19,9 @@ import { loadEmployees } from "@/utils/employeesData";
 import TaskDetailDrawer from "@/components/admin/TaskDetailDrawer";
 import { showError } from "@/utils/alerts";
 import { Board, SELECT_CLASS, TaskCard } from "@/components/admin/views/viewKit";
-import { Button, EmptyState, Input, Skeleton, Toolbar } from "@/components/ui";
+// The page <h1> reads the same string the sidebar and topbar do.
+import { sectionTitle } from "@/components/shell/navConfig";
+import { Button, EmptyState, Input, PageHeader, Skeleton, Toolbar } from "@/components/ui";
 import { Plus, RefreshCw, LayoutGrid, Loader2 } from "lucide-react";
 
 /* -------------------------------------------------------------------------- */
@@ -328,28 +330,55 @@ export default function ProjectBoard() {
     </div>
   );
 
+  // One header for every state, so the screen always owns its <h1>.
+  const header = (
+    <PageHeader
+      title={sectionTitle("board", "admin")}
+      description="Drag work across the pipeline for one project."
+      actions={
+        <Button
+          variant="outline"
+          onClick={reload}
+          disabled={loadingBoard || loadingProjects || !projects.length}
+        >
+          <RefreshCw
+            className={loadingBoard ? "animate-spin motion-reduce:animate-none" : undefined}
+            aria-hidden="true"
+          />
+          Refresh
+        </Button>
+      }
+    />
+  );
+
   if (loadingProjects) {
     return (
-      <div className="space-y-6">
-        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-          <div className="flex flex-wrap items-center gap-3">
-            <Skeleton className="h-8 w-48" />
-            <Skeleton className="h-8 w-64" />
-            <Skeleton className="ml-auto h-8 w-28" />
+      <div>
+        {header}
+        <div className="space-y-6">
+          <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
+            <div className="flex flex-wrap items-center gap-3">
+              <Skeleton className="h-8 w-48" />
+              <Skeleton className="h-8 w-64" />
+              <Skeleton className="ml-auto h-8 w-28" />
+            </div>
           </div>
+          {boardSkeleton}
         </div>
-        {boardSkeleton}
       </div>
     );
   }
 
   if (!projects.length) {
     return (
-      <EmptyState
-        icon={LayoutGrid}
-        title="No projects yet"
-        description="Create a project first to start planning work on the board."
-      />
+      <div>
+        {header}
+        <EmptyState
+          icon={LayoutGrid}
+          title="No projects yet"
+          description="Create a project first to start planning work on the board."
+        />
+      </div>
     );
   }
 
@@ -389,118 +418,113 @@ export default function ProjectBoard() {
 
   /* ---- main render ---------------------------------------------------- */
   return (
-    <div className="space-y-6">
-      {/* Toolbar */}
-      <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-        <Toolbar
-          search={{
-            value: search,
-            onChange: (value) => setSearch(value),
-            placeholder: "Search tasks…",
-            label: "Search tasks",
-          }}
-          filters={
-            <>
-              <label htmlFor="board-project" className="sr-only">
-                Select project
-              </label>
-              <select
-                id="board-project"
-                value={projectId || ""}
-                onChange={(e) => setProjectId(e.target.value || null)}
-                className={`${SELECT_CLASS} font-medium`}
-              >
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name || "Untitled project"}
-                  </option>
-                ))}
-              </select>
+    <div>
+      {header}
 
-              <label htmlFor="board-priority" className="sr-only">
-                Filter by priority
-              </label>
-              <select
-                id="board-priority"
-                value={priorityFilter}
-                onChange={(e) => setPriorityFilter(e.target.value)}
-                className={SELECT_CLASS}
-              >
-                <option value="all">All priorities</option>
-                {PRIORITIES.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
+      <div className="space-y-6">
+        {/* Toolbar */}
+        <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
+          <Toolbar
+            search={{
+              value: search,
+              onChange: (value) => setSearch(value),
+              placeholder: "Search tasks…",
+              label: "Search tasks",
+            }}
+            filters={
+              <>
+                <label htmlFor="board-project" className="sr-only">
+                  Select project
+                </label>
+                <select
+                  id="board-project"
+                  value={projectId || ""}
+                  onChange={(e) => setProjectId(e.target.value || null)}
+                  className={`${SELECT_CLASS} font-medium`}
+                >
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name || "Untitled project"}
+                    </option>
+                  ))}
+                </select>
 
-              <label htmlFor="board-assignee" className="sr-only">
-                Filter by assignee
-              </label>
-              <select
-                id="board-assignee"
-                value={assigneeFilter}
-                onChange={(e) => setAssigneeFilter(e.target.value)}
-                className={SELECT_CLASS}
-              >
-                <option value="all">All assignees</option>
-                <option value="unassigned">Unassigned</option>
-                {(employees || []).map((emp) => (
-                  <option key={emp.userId || emp.membershipId} value={emp.userId}>
-                    {emp.name}
-                  </option>
-                ))}
-              </select>
+                <label htmlFor="board-priority" className="sr-only">
+                  Filter by priority
+                </label>
+                <select
+                  id="board-priority"
+                  value={priorityFilter}
+                  onChange={(e) => setPriorityFilter(e.target.value)}
+                  className={SELECT_CLASS}
+                >
+                  <option value="all">All priorities</option>
+                  {PRIORITIES.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
 
-              <label htmlFor="board-sprint" className="sr-only">
-                Filter by sprint
-              </label>
-              <select
-                id="board-sprint"
-                value={sprintFilter}
-                onChange={(e) => setSprintFilter(e.target.value)}
-                className={SELECT_CLASS}
-              >
-                <option value="all">All sprints</option>
-                {(sprints || []).map((s) => (
-                  <option key={s.id} value={String(s.id)}>
-                    {s.name || `Sprint ${s.id}`}
-                  </option>
-                ))}
-              </select>
-            </>
-          }
-          actions={
-            <Button variant="outline" size="default" onClick={reload} disabled={loadingBoard}>
-              <RefreshCw
-                className={loadingBoard ? "animate-spin" : undefined}
-                aria-hidden="true"
-              />
-              Refresh
-            </Button>
-          }
-        />
+                <label htmlFor="board-assignee" className="sr-only">
+                  Filter by assignee
+                </label>
+                <select
+                  id="board-assignee"
+                  value={assigneeFilter}
+                  onChange={(e) => setAssigneeFilter(e.target.value)}
+                  className={SELECT_CLASS}
+                >
+                  <option value="all">All assignees</option>
+                  <option value="unassigned">Unassigned</option>
+                  {(employees || []).map((emp) => (
+                    <option key={emp.userId || emp.membershipId} value={emp.userId}>
+                      {emp.name}
+                    </option>
+                  ))}
+                </select>
+
+                <label htmlFor="board-sprint" className="sr-only">
+                  Filter by sprint
+                </label>
+                <select
+                  id="board-sprint"
+                  value={sprintFilter}
+                  onChange={(e) => setSprintFilter(e.target.value)}
+                  className={SELECT_CLASS}
+                >
+                  <option value="all">All sprints</option>
+                  {(sprints || []).map((s) => (
+                    <option key={s.id} value={String(s.id)}>
+                      {s.name || `Sprint ${s.id}`}
+                    </option>
+                  ))}
+                </select>
+              </>
+            }
+          />
+        </div>
+
+        {/* Board */}
+        {loadingBoard && !tasks.length ? (
+          boardSkeleton
+        ) : (
+          <Board columns={boardColumns} ariaLabel="Project board" />
+        )}
+
+        {/* Detail drawer */}
+        {selectedTask && (
+          <TaskDetailDrawer
+            task={selectedTask}
+            members={employees}
+            sprints={sprints}
+            epics={epics}
+            allTasks={tasks}
+            onClose={() => setSelectedTask(null)}
+            onChanged={reload}
+          />
+        )}
       </div>
-
-      {/* Board */}
-      {loadingBoard && !tasks.length ? (
-        boardSkeleton
-      ) : (
-        <Board columns={boardColumns} ariaLabel="Project board" />
-      )}
-
-      {/* Detail drawer */}
-      {selectedTask && (
-        <TaskDetailDrawer
-          task={selectedTask}
-          members={employees}
-          sprints={sprints}
-          epics={epics}
-          allTasks={tasks}
-          onClose={() => setSelectedTask(null)}
-          onChanged={reload}
-        />
-      )}
     </div>
   );
 }

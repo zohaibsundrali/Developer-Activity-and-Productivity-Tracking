@@ -9,7 +9,9 @@ import { showError } from "@/utils/alerts";
 import SprintPlanning from "@/components/admin/SprintPlanning";
 import SprintBoard from "@/components/admin/SprintBoard";
 import { SELECT_CLASS, ViewSkeleton } from "@/components/admin/views/viewKit";
-import { EmptyState, Skeleton, SkeletonCard, Tabs } from "@/components/ui";
+// The page <h1> reads the same string the sidebar and topbar do.
+import { sectionTitle } from "@/components/shell/navConfig";
+import { EmptyState, PageHeader, Skeleton, SkeletonCard, Tabs } from "@/components/ui";
 import { LayoutList, Kanban, FolderOpen } from "lucide-react";
 
 /* Agile workspace: project picker + tabbed Backlog/Planning and Sprint Board.
@@ -95,96 +97,116 @@ export default function AgileWorkspace() {
     reload();
   }, [reload]);
 
+  // One header for every state, so the screen always owns its <h1>.
+  // No refresh action: this screen never had one, and adding a control that
+  // triggers a fetch is a behaviour change, not a header restyle.
+  const header = (
+    <PageHeader
+      title={sectionTitle("sprints", "admin")}
+      description="Backlog, epics and the sprint board for one project."
+    />
+  );
+
   if (loadingProjects) {
     return (
-      <div className="space-y-6">
-        <div className="rounded-xl border border-border bg-card shadow-card">
-          <div className="px-4 pt-4">
-            <Skeleton className="h-8 w-52" />
+      <div>
+        {header}
+        <div className="space-y-6">
+          <div className="rounded-xl border border-border bg-card shadow-card">
+            <div className="px-4 pt-4">
+              <Skeleton className="h-8 w-52" />
+            </div>
+            <Skeleton className="mx-4 mb-3 mt-3 h-9" />
           </div>
-          <Skeleton className="mx-4 mb-3 mt-3 h-9" />
+          <SkeletonCard lines={5} />
         </div>
-        <SkeletonCard lines={5} />
       </div>
     );
   }
 
   if (!projects.length) {
     return (
-      <EmptyState
-        icon={FolderOpen}
-        title="No projects yet"
-        description="Create a project first to plan sprints and epics."
-      />
+      <div>
+        {header}
+        <EmptyState
+          icon={FolderOpen}
+          title="No projects yet"
+          description="Create a project first to plan sprints and epics."
+        />
+      </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Toolbar — same frame as the Views screen: picker, then a tab row. */}
-      <div className="rounded-xl border border-border bg-card shadow-card">
-        <div className="flex flex-wrap items-center gap-2 px-4 pt-4">
-          <label htmlFor="agile-project" className="sr-only">
-            Select project
-          </label>
-          <select
-            id="agile-project"
-            value={projectId || ""}
-            onChange={(e) => setProjectId(e.target.value || null)}
-            className={`${SELECT_CLASS} font-medium`}
-          >
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name || "Untitled project"}
-              </option>
-            ))}
-          </select>
+    <div>
+      {header}
+
+      <div className="space-y-6">
+        {/* Toolbar — same frame as the Views screen: picker, then a tab row. */}
+        <div className="rounded-xl border border-border bg-card shadow-card">
+          <div className="flex flex-wrap items-center gap-2 px-4 pt-4">
+            <label htmlFor="agile-project" className="sr-only">
+              Select project
+            </label>
+            <select
+              id="agile-project"
+              value={projectId || ""}
+              onChange={(e) => setProjectId(e.target.value || null)}
+              className={`${SELECT_CLASS} font-medium`}
+            >
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name || "Untitled project"}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <Tabs
+            className="mt-3 px-4"
+            aria-label="Agile workspace"
+            active={tab}
+            onChange={(id) => setTab(id)}
+            tabs={TABS.map((t) => {
+              const Icon = t.icon;
+              return {
+                id: t.id,
+                label: (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Icon className="h-4 w-4" aria-hidden="true" />
+                    {t.label}
+                  </span>
+                ),
+              };
+            })}
+          />
         </div>
 
-        <Tabs
-          className="mt-3 px-4"
-          aria-label="Agile workspace"
-          active={tab}
-          onChange={(id) => setTab(id)}
-          tabs={TABS.map((t) => {
-            const Icon = t.icon;
-            return {
-              id: t.id,
-              label: (
-                <span className="inline-flex items-center gap-1.5">
-                  <Icon className="h-4 w-4" aria-hidden="true" />
-                  {t.label}
-                </span>
-              ),
-            };
-          })}
-        />
-      </div>
-
-      {loading ? (
-        tab === "planning" ? (
-          <SkeletonCard lines={6} />
+        {loading ? (
+          tab === "planning" ? (
+            <SkeletonCard lines={6} />
+          ) : (
+            <ViewSkeleton viewType="kanban" />
+          )
+        ) : tab === "planning" ? (
+          <SprintPlanning
+            projectId={projectId}
+            sprints={sprints}
+            epics={epics}
+            tasks={tasks}
+            employees={employees}
+            onChanged={reload}
+          />
         ) : (
-          <ViewSkeleton viewType="kanban" />
-        )
-      ) : tab === "planning" ? (
-        <SprintPlanning
-          projectId={projectId}
-          sprints={sprints}
-          epics={epics}
-          tasks={tasks}
-          employees={employees}
-          onChanged={reload}
-        />
-      ) : (
-        <SprintBoard
-          projectId={projectId}
-          sprints={sprints}
-          tasks={tasks}
-          employees={employees}
-          onChanged={reload}
-        />
-      )}
+          <SprintBoard
+            projectId={projectId}
+            sprints={sprints}
+            tasks={tasks}
+            employees={employees}
+            onChanged={reload}
+          />
+        )}
+      </div>
     </div>
   );
 }

@@ -11,6 +11,8 @@ import {
   Badge, StatusPill, EmptyState, Skeleton, SkeletonTable, SkeletonCard,
   ErrorState, Tabs, Field, Button, Input,
 } from "@/components/ui";
+// The page <h1> reads the same string the sidebar and topbar do.
+import { sectionTitle } from "@/components/shell/navConfig";
 import {
   Building2, Users, UserCog, Mail, Plus, Trash2, Copy, RefreshCw, Shield,
 } from "lucide-react";
@@ -60,7 +62,12 @@ const FOCUS_RING =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 const CONTROL = `w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors duration-150 ${FOCUS_RING}`;
 const CONTROL_SM = `rounded-lg border border-input bg-background px-2 py-1 text-xs text-foreground transition-colors duration-150 ${FOCUS_RING}`;
-const DANGER_ICON_BTN = `text-muted-foreground hover:bg-destructive/10 hover:text-destructive ${FOCUS_RING}`;
+/* Icon-only row actions. `icon-sm` is a 28px box — under any touch minimum, on
+   controls that copy a live invite link and irreversibly revoke an invitation.
+   44px on touch, 40px from sm up; the glyph itself is unchanged. */
+const ICON_BTN_SIZE = "size-11 sm:size-10";
+const ICON_BTN = `${ICON_BTN_SIZE} text-muted-foreground hover:text-foreground ${FOCUS_RING}`;
+const DANGER_ICON_BTN = `${ICON_BTN_SIZE} text-muted-foreground hover:bg-destructive/10 hover:text-destructive ${FOCUS_RING}`;
 
 /**
  * supabase-js RESOLVES with `{ data, error }` — it does not reject — so a
@@ -250,7 +257,7 @@ export default function OrganizationManagement() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Organization"
+        title={sectionTitle("organization", "admin")}
         description={`${ctx?.organizationName || "Your workspace"} · manage departments, teams, members & invitations`}
         actions={
           <Button variant="outline" onClick={loadAll} disabled={loading}>
@@ -758,7 +765,7 @@ function InvitationsTab({ orgId, invitations, teams, departments, reload, loadin
                         <div className="flex items-center justify-end gap-1">
                           <Button type="button" variant="ghost" size="icon-sm" onClick={() => copyLink(inv)}
                             title="Copy invite link" aria-label={`Copy invite link for ${inv.email}`}
-                            className={`text-muted-foreground hover:text-foreground ${FOCUS_RING}`}>
+                            className={ICON_BTN}>
                             <Copy aria-hidden="true" className="h-4 w-4" />
                           </Button>
                           {inv.status === "pending" && (

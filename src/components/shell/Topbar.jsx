@@ -75,11 +75,13 @@ export default function Topbar({
 
   return (
     <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-2 border-b border-border bg-card/80 px-4 backdrop-blur-md sm:gap-3 sm:px-6">
-      {/* Mobile menu */}
+      {/* Mobile menu. Explicit 44px box rather than padding around a 20px
+          glyph: `p-2` made this a 36px target, and it is the only way into
+          navigation on a phone. */}
       <button
         type="button"
         onClick={onOpenMobile}
-        className="-ml-1 rounded-lg p-2 text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 lg:hidden"
+        className="-ml-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 lg:hidden"
         aria-label="Open menu"
         aria-controls="app-sidebar"
       >
@@ -104,7 +106,7 @@ export default function Topbar({
             type="button"
             onClick={() => setMenuOpen((open) => !open)}
             className={cn(
-              "flex items-center gap-2 rounded-lg p-1 pr-1.5 transition-colors duration-150 hover:bg-muted",
+              "flex min-h-11 items-center gap-2 rounded-lg p-1 pr-1.5 transition-colors duration-150 hover:bg-muted",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
               menuOpen && "bg-muted"
             )}

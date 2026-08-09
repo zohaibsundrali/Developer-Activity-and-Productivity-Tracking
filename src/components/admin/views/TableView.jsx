@@ -47,7 +47,11 @@ const STATUS_ORDER = Object.keys(STATUS_META).reduce((acc, id, i) => {
 }, {});
 
 const COLUMNS = [
-  { key: "title", label: "Title", type: "string" },
+  // The widest thing in the table and the only cell that identifies the row, so
+  // it gets a real allocation instead of an equal eleventh of the width. Without
+  // it every title clipped to a single word — "Authenticati…", "Dashboard…",
+  // "Database…" — while ~450px of the same table was em dashes.
+  { key: "title", label: "Title", type: "string", width: "28rem" },
   // Sits next to the title on purpose: the title is the thing the portal
   // actually publishes, so the marker belongs against the words being exposed.
   { key: "clientVisible", label: "Client", type: "flag", align: "center", width: "72px" },
@@ -200,6 +204,35 @@ export default function TableView({ tasks, employees, sprints, epics, onOpenTask
     return [...(tasks || [])].sort(cmp).map(rowOf);
   }, [tasks, sort, empById, sprintById, epicById, rowOf]);
 
+  /**
+   * Columns that are an em dash in EVERY row. On a project where nobody uses
+   * sprints, epics, story points or client approvals, five of the eleven
+   * columns are pure width — ~450px of nothing — and they are what squeezed the
+   * title down to one word. They carry no information, so below `xl` they are
+   * dropped and their width goes back to the title. Nothing is hidden that any
+   * row actually fills, and on a wide screen every column still appears.
+   */
+  const emptyColumns = useMemo(() => {
+    const empty = new Set();
+    if (!sortedRows.length) return empty;
+    // Only the columns that CAN be empty. Title, status and priority always
+    // render something, so they are never candidates.
+    const isFilled = {
+      clientVisible: (r) => r.task.client_visible === true || r.task.client_visible === false,
+      clientApproval: (r) => Boolean(CLIENT_APPROVAL_META[r.task.client_approval_status]),
+      type: (r) => Boolean(r.type),
+      assignee: (r) => Boolean(r.assignee),
+      points: (r) => r.points != null,
+      due: (r) => Boolean(r.task.due_date),
+      sprint: (r) => r.sprint !== "—",
+      epic: (r) => r.epic !== "—",
+    };
+    for (const [key, filled] of Object.entries(isFilled)) {
+      if (!sortedRows.some(filled)) empty.add(key);
+    }
+    return empty;
+  }, [sortedRows]);
+
   const toggleSort = (key) =>
     setSort((prev) => (prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
 
@@ -255,15 +288,22 @@ export default function TableView({ tasks, employees, sprints, epics, onOpenTask
     epic: (row) => <span className="truncate text-muted-foreground">{row.epic}</span>,
   };
 
-  const columns = COLUMNS.map((col) => ({
-    key: col.key,
-    header: <SortHeader col={col} />,
-    align: col.align,
-    width: col.width,
-    render: renderers[col.key],
-  }));
+  const columns = COLUMNS.map((col) => {
+    const hideWhenNarrow = emptyColumns.has(col.key) ? "hidden xl:table-cell" : undefined;
+    return {
+      key: col.key,
+      header: <SortHeader col={col} />,
+      align: col.align,
+      width: col.width,
+      headerClassName: hideWhenNarrow,
+      cellClassName: hideWhenNarrow,
+      render: renderers[col.key],
+    };
+  });
 
   const total = (tasks || []).length;
+
+  const hiddenLabels = COLUMNS.filter((c) => emptyColumns.has(c.key)).map((c) => c.label);
 
   return (
     <div className="space-y-4">
@@ -279,6 +319,16 @@ export default function TableView({ tasks, employees, sprints, epics, onOpenTask
         columns={columns}
         rows={sortedRows}
         keyField="id"
+        // The title alone is allotted 28rem, so the table needs a floor to hold
+        // that against ten other columns; the shell scrolls (and now says so).
+        tableClassName="min-w-[58rem]"
+        caption={
+          hiddenLabels.length
+            ? `${hiddenLabels.join(", ")} ${
+                hiddenLabels.length === 1 ? "is" : "are"
+              } empty for every task here and hidden below extra-large screens.`
+            : undefined
+        }
         onRowClick={(row) => onOpenTask && onOpenTask(row.task)}
         empty={<ViewEmpty />}
       />

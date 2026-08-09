@@ -142,7 +142,9 @@ export default function NotificationCenter({ audience = "admin", userId = null, 
       {/* Bell */}
       <button
         onClick={() => setIsOpen((prev) => !prev)}
-        className="relative rounded-lg border border-border bg-card p-2 text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none"
+        // 44px square on touch, 40px from sm up. `p-2` around a 20px bell gave
+        // a 38px target on a control that is on every single screen.
+        className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none sm:h-10 sm:w-10"
         title="Notifications"
         aria-label={unreadCount > 0 ? `Notifications, ${badgeLabel} unread` : "Notifications"}
         aria-expanded={isOpen}

@@ -20,11 +20,14 @@ import {
 } from "lucide-react";
 import StatCard from "@/components/shell/StatCard";
 import { authFetch } from "@/utils/authFetch";
+// The page <h1> reads the same string the sidebar and topbar do.
+import { sectionTitle } from "@/components/shell/navConfig";
 import {
   Badge,
   Button,
   EmptyState,
   ErrorState,
+  PageHeader,
   Section,
   Skeleton,
   StatusPill,
@@ -293,65 +296,81 @@ export default function SystemHealth() {
     setSeverityFilter("all");
   };
 
+  // The one page header, shared by every state below so the screen always has
+  // its <h1> — loading and error included.
+  const header = (
+    <PageHeader
+      title={sectionTitle("system-health", "admin")}
+      description={`What the server itself recorded — scheduled jobs, automations, email, billing and auth.${
+        data?.checkedAt ? ` Checked ${relativeTime(data.checkedAt)}.` : ""
+      }`}
+      actions={
+        <Button variant="outline" onClick={() => load({ silent: true })} disabled={refreshing || loading}>
+          <RefreshCw
+            className={cn(refreshing && "animate-spin motion-reduce:animate-none")}
+            aria-hidden="true"
+          />
+          Refresh
+        </Button>
+      }
+    />
+  );
+
   // ── Loading ───────────────────────────────────────────────────────────────
   // Shaped like the screen it precedes: banner, three counters, five tiles and
   // an event list. Nothing here renders null while the fetch is out.
   if (loading) {
     return (
-      <div className="space-y-6" role="status" aria-busy="true">
+      <div role="status" aria-busy="true">
         <span className="sr-only">Checking system health…</span>
 
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-2">
-            <Skeleton className="h-6 w-40" />
-            <Skeleton className="h-4 w-80" />
-          </div>
-          <Skeleton className="h-8 w-24" />
-        </div>
+        {header}
 
-        <Skeleton className="h-24 w-full rounded-xl" />
+        <div className="space-y-6">
+          <Skeleton className="h-24 w-full rounded-xl" />
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-32 w-full rounded-xl" />
-          ))}
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {CHECK_META.map((meta) => (
-            <div key={meta.key} className="space-y-3 rounded-xl border border-border bg-card p-5 shadow-card">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <Skeleton className="h-10 w-10 shrink-0 rounded-xl" />
-                  <div className="space-y-2">
-                    <Skeleton className="h-3.5 w-24" />
-                    <Skeleton className="h-3 w-32" />
-                  </div>
-                </div>
-                <Skeleton className="h-6 w-24 rounded-full" />
-              </div>
-              <Skeleton className="h-3 w-full" />
-              <Skeleton className="h-3 w-40" />
-            </div>
-          ))}
-        </div>
-
-        <div className="rounded-xl border border-border bg-card shadow-card">
-          <div className="border-b border-border px-5 py-4">
-            <Skeleton className="h-4 w-40" />
-          </div>
-          <ul className="divide-y divide-border">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <li key={i} className="flex gap-3 px-5 py-4">
-                <Skeleton className="h-3 w-4 shrink-0" />
-                <div className="min-w-0 flex-1 space-y-2">
-                  <Skeleton className="h-4 w-56" />
-                  <Skeleton className="h-3 w-3/4" />
-                </div>
-                <Skeleton className="h-3 w-12 shrink-0" />
-              </li>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-32 w-full rounded-xl" />
             ))}
-          </ul>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {CHECK_META.map((meta) => (
+              <div key={meta.key} className="space-y-3 rounded-xl border border-border bg-card p-5 shadow-card">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <Skeleton className="h-10 w-10 shrink-0 rounded-xl" />
+                    <div className="space-y-2">
+                      <Skeleton className="h-3.5 w-24" />
+                      <Skeleton className="h-3 w-32" />
+                    </div>
+                  </div>
+                  <Skeleton className="h-6 w-24 rounded-full" />
+                </div>
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-40" />
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-xl border border-border bg-card shadow-card">
+            <div className="border-b border-border px-5 py-4">
+              <Skeleton className="h-4 w-40" />
+            </div>
+            <ul className="divide-y divide-border">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <li key={i} className="flex gap-3 px-5 py-4">
+                  <Skeleton className="h-3 w-4 shrink-0" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <Skeleton className="h-4 w-56" />
+                    <Skeleton className="h-3 w-3/4" />
+                  </div>
+                  <Skeleton className="h-3 w-12 shrink-0" />
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </div>
     );
@@ -360,231 +379,221 @@ export default function SystemHealth() {
   // ── Error ─────────────────────────────────────────────────────────────────
   if (error) {
     return (
-      <ErrorState title="Couldn't load system health" description={error} onRetry={() => load()} />
+      <div>
+        {header}
+        <ErrorState title="Couldn't load system health" description={error} onRetry={() => load()} />
+      </div>
     );
   }
 
   const overallMeta = statusMeta(overall);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight text-foreground">System Health</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            What the server itself recorded — scheduled jobs, automations, email, billing and auth.
-            {data?.checkedAt ? ` Checked ${relativeTime(data.checkedAt)}.` : ""}
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => load({ silent: true })} disabled={refreshing}>
-          <RefreshCw
-            className={cn(refreshing && "animate-spin motion-reduce:animate-none")}
-            aria-hidden="true"
-          />
-          Refresh
-        </Button>
-      </div>
+    <div>
+      {header}
 
-      {/* Overall verdict, in words. The pill carries the shape; the sentence
-          carries the meaning — neither one is doing it with colour. */}
-      <div
-        className={cn(
-          "flex flex-wrap items-start gap-4 rounded-xl border bg-card p-5 shadow-card",
-          overallMeta.ring
-        )}
-      >
-        <StatusPill status={overallMeta.pill} label={overallMeta.label} />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-foreground">{overallMeta.headline}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{overallMeta.blurb}</p>
-        </div>
-      </div>
+      <div className="space-y-6">
 
-      {/* Headline numbers */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <StatCard
-          title="Subsystems reporting"
-          value={`${checkTiles.filter((c) => c.status !== "unknown").length} of ${checkTiles.length}`}
-          icon={Activity}
-          tone={overallMeta.tone}
-        />
-        <StatCard
-          title="Errors (last 24h)"
-          value={counts.errorsLast24h ?? 0}
-          icon={XCircle}
-          tone={counts.errorsLast24h > 0 ? "destructive" : "success"}
-          badge={counts.errorsLast24h > 0 ? "Needs attention" : undefined}
-          badgeTone="destructive"
-        />
-        <StatCard
-          title="Warnings (last 24h)"
-          value={counts.warningsLast24h ?? 0}
-          icon={AlertTriangle}
-          tone={counts.warningsLast24h > 0 ? "warning" : "success"}
-        />
-      </div>
-
-      {/* Status tiles */}
-      <Section
-        title="Subsystems"
-        description="Each tile shows the last thing the server recorded for that subsystem."
-        contentClassName="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
-      >
-        {checkTiles.map((tile) => {
-          const meta = statusMeta(tile.status);
-          const TileIcon = tile.icon;
-          const last = relativeTime(tile.lastRunAt);
-          const isUnknown = tile.status === "unknown" || !STATUS_META[tile.status];
-          return (
-            <div
-              key={tile.key}
-              className={cn(
-                "flex flex-col rounded-xl border bg-card p-5 shadow-card transition-shadow duration-150 hover:shadow-elevated motion-reduce:transition-none",
-                meta.ring
-              )}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
-                    <TileIcon className="h-5 w-5" aria-hidden="true" />
-                  </span>
-                  <div className="min-w-0">
-                    <h3 className="truncate text-sm font-semibold tracking-tight text-foreground">
-                      {tile.label}
-                    </h3>
-                    <p className="truncate text-xs text-muted-foreground">{tile.blurb}</p>
-                  </div>
-                </div>
-                <StatusPill status={meta.pill} label={meta.label} className="shrink-0" />
-              </div>
-
-              <p className="mt-4 flex-1 text-sm leading-relaxed text-muted-foreground">{tile.detail}</p>
-
-              {/* Said in words on the tile itself, because "no data" is the one
-                  state a glance is most likely to misread as "bad". */}
-              {isUnknown && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  No signal either way — this is not a failure.
-                </p>
-              )}
-
-              <p className="mt-4 border-t border-border pt-3 text-xs text-muted-foreground">
-                {last ? (
-                  <>
-                    Last activity{" "}
-                    <span className="font-semibold text-foreground" title={absoluteTime(tile.lastRunAt)}>
-                      {last}
-                    </span>
-                  </>
-                ) : (
-                  "No activity recorded yet"
-                )}
-              </p>
-            </div>
-          );
-        })}
-      </Section>
-
-      {/* Event feed */}
-      <section className="rounded-xl border border-border bg-card shadow-card">
-        <div className="space-y-3 border-b border-border px-5 py-4">
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <Activity className="h-4 w-4 text-primary" aria-hidden="true" />
-            Recent events
-            <Badge variant="secondary" size="sm">
-              {filteredEvents.length}
-              {filtersActive ? ` of ${events.length}` : ""}
-            </Badge>
-          </h3>
-
-          <Toolbar
-            aria-label="Event filters"
-            filters={
-              <>
-                <label className="sr-only" htmlFor="health-source">
-                  Filter by source
-                </label>
-                <select
-                  id="health-source"
-                  value={sourceFilter}
-                  onChange={(e) => setSourceFilter(e.target.value)}
-                  disabled={sourceOptions.length === 0}
-                  className={selectClasses}
-                >
-                  <option value="all">All sources</option>
-                  {sourceOptions.map((s) => (
-                    <option key={s} value={s}>
-                      {SOURCE_LABELS[s] || s}
-                    </option>
-                  ))}
-                </select>
-
-                <label className="sr-only" htmlFor="health-severity">
-                  Filter by severity
-                </label>
-                <select
-                  id="health-severity"
-                  value={severityFilter}
-                  onChange={(e) => setSeverityFilter(e.target.value)}
-                  disabled={severityOptions.length === 0}
-                  className={selectClasses}
-                >
-                  <option value="all">All severities</option>
-                  {severityOptions.map((s) => (
-                    <option key={s} value={s}>
-                      {severityMeta(s).label}
-                    </option>
-                  ))}
-                </select>
-
-              </>
-            }
-            actions={
-              filtersActive ? (
-                <Button variant="ghost" size="sm" onClick={clearFilters}>
-                  <Ban aria-hidden="true" />
-                  Clear filters
-                </Button>
-              ) : null
-            }
-          />
-        </div>
-
-        {/* Empty — nothing has ever been recorded. This is the good outcome, so
-            it is worded as reassurance rather than as a missing-data error. */}
-        {events.length === 0 ? (
-          <div className="p-5">
-            <EmptyState
-              icon={CheckCircle2}
-              className="border-0 bg-transparent"
-              title="No events recorded"
-              description="Nothing on the server has reported a failure for this organization. Events appear here when a scheduled job, automation, webhook or sign-in attempt goes wrong."
-            />
+        {/* Overall verdict, in words. The pill carries the shape; the sentence
+            carries the meaning — neither one is doing it with colour. */}
+        <div
+          className={cn(
+            "flex flex-wrap items-start gap-4 rounded-xl border bg-card p-5 shadow-card",
+            overallMeta.ring
+          )}
+        >
+          <StatusPill status={overallMeta.pill} label={overallMeta.label} />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-foreground">{overallMeta.headline}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{overallMeta.blurb}</p>
           </div>
-        ) : filteredEvents.length === 0 ? (
-          /* Empty — but only because of the filters. Different problem, different copy. */
-          <div className="p-5">
-            <EmptyState
-              icon={Bell}
-              className="border-0 bg-transparent"
-              title="No events match these filters"
-              description="Every event is still here — the two filters above are just hiding them."
-              action={
-                <Button variant="outline" size="sm" onClick={clearFilters}>
-                  Clear filters
-                </Button>
+        </div>
+
+        {/* Headline numbers */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <StatCard
+            title="Subsystems reporting"
+            value={`${checkTiles.filter((c) => c.status !== "unknown").length} of ${checkTiles.length}`}
+            icon={Activity}
+            tone={overallMeta.tone}
+          />
+          <StatCard
+            title="Errors (last 24h)"
+            value={counts.errorsLast24h ?? 0}
+            icon={XCircle}
+            tone={counts.errorsLast24h > 0 ? "destructive" : "success"}
+            badge={counts.errorsLast24h > 0 ? "Needs attention" : undefined}
+            badgeTone="destructive"
+          />
+          <StatCard
+            title="Warnings (last 24h)"
+            value={counts.warningsLast24h ?? 0}
+            icon={AlertTriangle}
+            tone={counts.warningsLast24h > 0 ? "warning" : "success"}
+          />
+        </div>
+
+        {/* Status tiles */}
+        <Section
+          title="Subsystems"
+          description="Each tile shows the last thing the server recorded for that subsystem."
+          contentClassName="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
+        >
+          {checkTiles.map((tile) => {
+            const meta = statusMeta(tile.status);
+            const TileIcon = tile.icon;
+            const last = relativeTime(tile.lastRunAt);
+            const isUnknown = tile.status === "unknown" || !STATUS_META[tile.status];
+            return (
+              <div
+                key={tile.key}
+                className={cn(
+                  "flex flex-col rounded-xl border bg-card p-5 shadow-card transition-shadow duration-150 hover:shadow-elevated motion-reduce:transition-none",
+                  meta.ring
+                )}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+                      <TileIcon className="h-5 w-5" aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0">
+                      <h3 className="truncate text-sm font-semibold tracking-tight text-foreground">
+                        {tile.label}
+                      </h3>
+                      <p className="truncate text-xs text-muted-foreground">{tile.blurb}</p>
+                    </div>
+                  </div>
+                  <StatusPill status={meta.pill} label={meta.label} className="shrink-0" />
+                </div>
+
+                <p className="mt-4 flex-1 text-sm leading-relaxed text-muted-foreground">{tile.detail}</p>
+
+                {/* Said in words on the tile itself, because "no data" is the one
+                    state a glance is most likely to misread as "bad". */}
+                {isUnknown && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    No signal either way — this is not a failure.
+                  </p>
+                )}
+
+                <p className="mt-4 border-t border-border pt-3 text-xs text-muted-foreground">
+                  {last ? (
+                    <>
+                      Last activity{" "}
+                      <span className="font-semibold text-foreground" title={absoluteTime(tile.lastRunAt)}>
+                        {last}
+                      </span>
+                    </>
+                  ) : (
+                    "No activity recorded yet"
+                  )}
+                </p>
+              </div>
+            );
+          })}
+        </Section>
+
+        {/* Event feed */}
+        <section className="rounded-xl border border-border bg-card shadow-card">
+          <div className="space-y-3 border-b border-border px-5 py-4">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <Activity className="h-4 w-4 text-primary" aria-hidden="true" />
+              Recent events
+              <Badge variant="secondary" size="sm">
+                {filteredEvents.length}
+                {filtersActive ? ` of ${events.length}` : ""}
+              </Badge>
+            </h3>
+
+            <Toolbar
+              aria-label="Event filters"
+              filters={
+                <>
+                  <label className="sr-only" htmlFor="health-source">
+                    Filter by source
+                  </label>
+                  <select
+                    id="health-source"
+                    value={sourceFilter}
+                    onChange={(e) => setSourceFilter(e.target.value)}
+                    disabled={sourceOptions.length === 0}
+                    className={selectClasses}
+                  >
+                    <option value="all">All sources</option>
+                    {sourceOptions.map((s) => (
+                      <option key={s} value={s}>
+                        {SOURCE_LABELS[s] || s}
+                      </option>
+                    ))}
+                  </select>
+
+                  <label className="sr-only" htmlFor="health-severity">
+                    Filter by severity
+                  </label>
+                  <select
+                    id="health-severity"
+                    value={severityFilter}
+                    onChange={(e) => setSeverityFilter(e.target.value)}
+                    disabled={severityOptions.length === 0}
+                    className={selectClasses}
+                  >
+                    <option value="all">All severities</option>
+                    {severityOptions.map((s) => (
+                      <option key={s} value={s}>
+                        {severityMeta(s).label}
+                      </option>
+                    ))}
+                  </select>
+
+                </>
+              }
+              actions={
+                filtersActive ? (
+                  <Button variant="ghost" size="sm" onClick={clearFilters}>
+                    <Ban aria-hidden="true" />
+                    Clear filters
+                  </Button>
+                ) : null
               }
             />
           </div>
-        ) : (
-          <ul className="divide-y divide-border">
-            {filteredEvents.map((event) => (
-              <EventRow key={event.id} event={event} />
-            ))}
-          </ul>
-        )}
-      </section>
+
+          {/* Empty — nothing has ever been recorded. This is the good outcome, so
+              it is worded as reassurance rather than as a missing-data error. */}
+          {events.length === 0 ? (
+            <div className="p-5">
+              <EmptyState
+                icon={CheckCircle2}
+                className="border-0 bg-transparent"
+                title="No events recorded"
+                description="Nothing on the server has reported a failure for this organization. Events appear here when a scheduled job, automation, webhook or sign-in attempt goes wrong."
+              />
+            </div>
+          ) : filteredEvents.length === 0 ? (
+            /* Empty — but only because of the filters. Different problem, different copy. */
+            <div className="p-5">
+              <EmptyState
+                icon={Bell}
+                className="border-0 bg-transparent"
+                title="No events match these filters"
+                description="Every event is still here — the two filters above are just hiding them."
+                action={
+                  <Button variant="outline" size="sm" onClick={clearFilters}>
+                    Clear filters
+                  </Button>
+                }
+              />
+            </div>
+          ) : (
+            <ul className="divide-y divide-border">
+              {filteredEvents.map((event) => (
+                <EventRow key={event.id} event={event} />
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { LogOut, ChevronLeft, X } from "lucide-react";
+import { LogOut, ChevronLeft, ChevronDown, X } from "lucide-react";
 // The same hook Modal/Drawer use: focus trap, Escape, focus restore and body
 // scroll lock. The rail can't be a <Drawer> — its panel is a padded bg-card
 // box and this is flush dark chrome — but the dialog behaviour must not be a
@@ -47,6 +47,55 @@ export default function Sidebar({
   onCloseMobile,
 }) {
   const asideRef = useRef(null);
+  const navRef = useRef(null);
+
+  // Whether the nav still has sections above / below the visible slice.
+  //
+  // The rail is taller than the viewport as soon as the admin nav is rendered
+  // (scrollHeight 999 against clientHeight 711 at 1440x900), so the last row on
+  // screen is severed mid-glyph by the footer's top edge with nothing saying
+  // that five more sections — Team Stats, Organization, Clients, Billing,
+  // System Health — exist below it. These two booleans drive a fade at each
+  // overflowing edge plus a "more below" cue, so the cut is legible as a scroll
+  // position rather than as a rendering bug. Presentation only: nothing here
+  // changes what is in `navItems`.
+  const [navAtTop, setNavAtTop] = useState(true);
+  const [navAtBottom, setNavAtBottom] = useState(true);
+
+  const measureNav = useCallback(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const max = el.scrollHeight - el.clientHeight;
+    setNavAtTop(el.scrollTop <= 1);
+    setNavAtBottom(max <= 1 || el.scrollTop >= max - 1);
+  }, []);
+
+  // No dependency array: re-measures after every render, so collapsing to the
+  // rail or swapping nav lists re-evaluates the edges immediately.
+  useEffect(measureNav);
+
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el) return undefined;
+    el.addEventListener("scroll", measureNav, { passive: true });
+    let observer;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(measureNav);
+      observer.observe(el);
+    }
+    window.addEventListener("resize", measureNav);
+    return () => {
+      el.removeEventListener("scroll", measureNav);
+      observer?.disconnect();
+      window.removeEventListener("resize", measureNav);
+    };
+  }, [measureNav]);
+
+  const scrollNavDown = () => {
+    const el = navRef.current;
+    if (!el) return;
+    el.scrollBy({ top: Math.round(el.clientHeight * 0.8), behavior: "smooth" });
+  };
 
   // Pretty role word (owner/admin/manager/developer/employee/client).
   const roleWord = role ? role.charAt(0).toUpperCase() + role.slice(1) : "Developer";
@@ -137,66 +186,113 @@ export default function Sidebar({
           </button>
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Sections">
-          {groups.map((group, groupIndex) => (
-            <div
-              key={`${group.name}-${groupIndex}`}
+        {/* Nav.
+            `min-h-0` on the wrapper is what actually lets the nav shrink below
+            its content height inside the flex column; without it a flex item
+            floors at its content size and the overflow lands on the footer
+            instead of inside the scroller. */}
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <nav
+            ref={navRef}
+            // pb-8 keeps the last row clear of the bottom fade, so a nav item is
+            // never half-legible under the gradient.
+            className="flex-1 overflow-y-auto px-3 pb-8 pt-4 [scrollbar-gutter:stable]"
+            aria-label="Sections"
+          >
+            {groups.map((group, groupIndex) => (
+              <div
+                key={`${group.name}-${groupIndex}`}
+                className={cn(
+                  groupIndex > 0 && "mt-5",
+                  // Collapsed to a rail there is no room for a heading, so the
+                  // sections are separated by a rule instead.
+                  groupIndex > 0 && isRail && "border-t border-sidebar-border pt-4"
+                )}
+              >
+                {!isRail && (
+                  <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-sidebar-muted">
+                    {group.name}
+                  </p>
+                )}
+                <ul className="space-y-1">
+                  {group.items.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = activeSection === item.id;
+                    return (
+                      <li key={item.id}>
+                        <button
+                          type="button"
+                          onClick={() => handleNav(item.id)}
+                          title={isRail ? item.label : undefined}
+                          aria-current={isActive ? "page" : undefined}
+                          className={cn(
+                            "group relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors duration-150",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
+                            isRail && "justify-center px-0",
+                            isActive
+                              ? // Active is carried by three signals at once —
+                                // fill, weight and the rail marker — so it does
+                                // not depend on colour perception alone.
+                                "bg-sidebar-primary font-semibold text-sidebar-primary-foreground shadow-card"
+                              : "font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-primary-foreground"
+                          )}
+                        >
+                          {isActive && (
+                            <span
+                              aria-hidden="true"
+                              // Stays inside the button: `nav` scrolls on the Y
+                              // axis, which clips the X axis too, so a marker
+                              // hung outside the button would be cut off.
+                              className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-sidebar-primary-foreground/80"
+                            />
+                          )}
+                          {Icon && <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />}
+                          {!isRail && <span className="truncate">{item.label}</span>}
+                          {isRail && <span className="sr-only">{item.label}</span>}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </nav>
+
+          {/* Scroll affordances. Both are inert decoration except the bottom
+              cue, which is a real button so the sections below are reachable
+              by click as well as by scrolling. */}
+          <span
+            aria-hidden="true"
+            className={cn(
+              "pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-sidebar to-transparent transition-opacity duration-150 motion-reduce:transition-none",
+              navAtTop ? "opacity-0" : "opacity-100"
+            )}
+          />
+          <span
+            aria-hidden="true"
+            className={cn(
+              "pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-sidebar to-transparent transition-opacity duration-150 motion-reduce:transition-none",
+              navAtBottom ? "opacity-0" : "opacity-100"
+            )}
+          />
+          {!navAtBottom && (
+            <button
+              type="button"
+              onClick={scrollNavDown}
+              // Sits over the fade, centred, so it reads as the edge of the
+              // list rather than as another nav item.
               className={cn(
-                groupIndex > 0 && "mt-5",
-                // Collapsed to a rail there is no room for a heading, so the
-                // sections are separated by a rule instead.
-                groupIndex > 0 && isRail && "border-t border-sidebar-border pt-4"
+                "absolute bottom-1 left-1/2 flex h-8 -translate-x-1/2 items-center gap-1 rounded-full border border-sidebar-border bg-sidebar-accent px-3 text-[11px] font-semibold text-sidebar-foreground shadow-card transition-colors duration-150 hover:text-sidebar-primary-foreground motion-reduce:transition-none",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
+                isRail && "px-0 h-8 w-8 justify-center"
               )}
+              aria-label="Scroll navigation down for more sections"
             >
-              {!isRail && (
-                <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-sidebar-muted">
-                  {group.name}
-                </p>
-              )}
-              <ul className="space-y-1">
-                {group.items.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = activeSection === item.id;
-                  return (
-                    <li key={item.id}>
-                      <button
-                        type="button"
-                        onClick={() => handleNav(item.id)}
-                        title={isRail ? item.label : undefined}
-                        aria-current={isActive ? "page" : undefined}
-                        className={cn(
-                          "group relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors duration-150",
-                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
-                          isRail && "justify-center px-0",
-                          isActive
-                            ? // Active is carried by three signals at once —
-                              // fill, weight and the rail marker — so it does
-                              // not depend on colour perception alone.
-                              "bg-sidebar-primary font-semibold text-sidebar-primary-foreground shadow-card"
-                            : "font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-primary-foreground"
-                        )}
-                      >
-                        {isActive && (
-                          <span
-                            aria-hidden="true"
-                            // Stays inside the button: `nav` scrolls on the Y
-                            // axis, which clips the X axis too, so a marker
-                            // hung outside the button would be cut off.
-                            className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-sidebar-primary-foreground/80"
-                          />
-                        )}
-                        {Icon && <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />}
-                        {!isRail && <span className="truncate">{item.label}</span>}
-                        {isRail && <span className="sr-only">{item.label}</span>}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ))}
-        </nav>
+              <ChevronDown className="h-4 w-4 shrink-0" aria-hidden="true" />
+              {!isRail && <span>More</span>}
+            </button>
+          )}
+        </div>
 
         {/* User + logout */}
         <div className="shrink-0 border-t border-sidebar-border p-3">

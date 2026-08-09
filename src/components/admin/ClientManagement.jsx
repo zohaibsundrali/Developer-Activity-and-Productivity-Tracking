@@ -10,6 +10,8 @@ import {
   Badge, StatusPill, EmptyState, Skeleton, SkeletonTable, SkeletonList,
   ErrorState, Tabs, Field, Button, Input,
 } from "@/components/ui";
+// The page <h1> reads the same string the sidebar and topbar do.
+import { sectionTitle } from "@/components/shell/navConfig";
 import {
   Handshake, Link2, Megaphone, Receipt, CheckSquare, LifeBuoy, Mail, Plus,
   Trash2, Copy, RefreshCw, Send, Building2, MessageSquare, Upload, FileText, Check,
@@ -51,7 +53,24 @@ const TR = "h-12 transition-colors duration-150 hover:bg-muted/40";
 const FOCUS_RING =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 const CONTROL = `w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors duration-150 ${FOCUS_RING}`;
-const DANGER_ICON_BTN = `text-muted-foreground hover:bg-destructive/10 hover:text-destructive ${FOCUS_RING}`;
+/* Icon-only row actions. The kit's `icon-sm` is a 28px box, which is the
+   densest size it offers and far under any touch minimum — and two of the three
+   controls it was used for here (revoke an invitation, unlink a client) are
+   irreversible. These pin a 44px target on touch, relaxing to 40px from sm up
+   where a mouse is likely. Only the box grows; the glyph is unchanged. */
+const ICON_BTN_SIZE = "size-11 sm:size-10";
+const ICON_BTN = `${ICON_BTN_SIZE} text-muted-foreground hover:text-foreground ${FOCUS_RING}`;
+const DANGER_ICON_BTN = `${ICON_BTN_SIZE} text-muted-foreground hover:bg-destructive/10 hover:text-destructive ${FOCUS_RING}`;
+
+/** One labelled fact inside a mobile card — the same shape the Employees
+ *  directory uses, which is the only table on this portal that already reads
+ *  correctly at 375px. */
+const CardFact = ({ label, children }) => (
+  <div className="min-w-0">
+    <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
+    <dd className="mt-0.5 truncate text-sm text-foreground">{children}</dd>
+  </div>
+);
 
 /**
  * supabase-js RESOLVES with `{ data, error }` — it does not reject — so a
@@ -280,7 +299,7 @@ export default function ClientManagement() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Clients"
+        title={sectionTitle("clients", "admin")}
         description={`${ctx?.organizationName || "Your workspace"} · invite clients, link projects & manage portal content`}
         actions={
           <Button variant="outline" onClick={loadAll} disabled={loading}>
@@ -416,10 +435,13 @@ function ClientsTab({ clients, invites, projects, reload, loading, loadError, in
                 className="max-h-44 space-y-1 overflow-y-auto rounded-lg border border-input bg-background p-2">
                 {projects.length === 0 ? (
                   <p className="px-1 py-2 text-xs text-muted-foreground">No projects yet.</p>
-                ) : projects.map((p) => (
-                  <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors duration-150 hover:bg-muted">
+                ) : /* The <label> is the tap target, so it — not just the box —
+                       has to clear 44px: a 16px checkbox in a 34px row was the
+                       smallest control in the portal. */
+                projects.map((p) => (
+                  <label key={p.id} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm transition-colors duration-150 hover:bg-muted">
                     <input type="checkbox" checked={selected.includes(p.id)} onChange={() => toggle(p.id)}
-                      className={`h-4 w-4 rounded border-input text-primary ${FOCUS_RING}`} />
+                      className={`h-5 w-5 shrink-0 rounded border-input text-primary ${FOCUS_RING}`} />
                     <span className="truncate text-foreground">{p.name}</span>
                   </label>
                 ))}
@@ -442,35 +464,62 @@ function ClientsTab({ clients, invites, projects, reload, loading, loadError, in
           {loadError ? (
             <ErrorState title="Couldn't load clients" description={loadError} onRetry={reload} />
           ) : loading ? (
-            <div className={TABLE_SHELL}><SkeletonTable rows={4} cols={4} /></div>
+            <>
+              <div className={`${TABLE_SHELL} hidden md:block`}><SkeletonTable rows={4} cols={4} /></div>
+              <div className="md:hidden"><SkeletonList rows={3} /></div>
+            </>
           ) : clients.length === 0 ? (
             <EmptyState icon={Handshake} title="No clients yet"
               description="Invite a client with the form on the left — they appear here once they accept." />
           ) : (
-            <div className={TABLE_SHELL}>
-              <table className="w-full min-w-[560px] divide-y divide-border">
-                <thead>
-                  <tr className="bg-muted/40">
-                    <th scope="col" className={TH}>Name</th>
-                    <th scope="col" className={TH}>Email</th>
-                    <th scope="col" className={TH}>Company</th>
-                    <th scope="col" className={TH}>Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {clients.map((c) => (
-                    <tr key={c.id} className={TR}>
-                      <td className="px-4 text-sm font-medium text-foreground">{c.name || "—"}</td>
-                      <td className="px-4 text-sm text-muted-foreground">{c.email}</td>
-                      <td className="px-4 text-sm text-muted-foreground">{c.company || "—"}</td>
-                      <td className="px-4">
-                        <StatusPill status={pillStatus(c.status)} label={c.status || "active"} size="sm" className="capitalize" />
-                      </td>
+            <>
+              {/* Table — md and up. Below md its 560px minimum hid 219px of a
+                  375px viewport, taking COMPANY and STATUS off-screen. */}
+              <div className={`${TABLE_SHELL} hidden md:block`}>
+                <table className="w-full min-w-[560px] divide-y divide-border">
+                  <thead>
+                    <tr className="bg-muted/40">
+                      <th scope="col" className={TH}>Name</th>
+                      <th scope="col" className={TH}>Email</th>
+                      <th scope="col" className={TH}>Company</th>
+                      <th scope="col" className={TH}>Status</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {clients.map((c) => (
+                      <tr key={c.id} className={TR}>
+                        <td className="px-4 text-sm font-medium text-foreground">{c.name || "—"}</td>
+                        <td className="px-4 text-sm text-muted-foreground">{c.email}</td>
+                        <td className="px-4 text-sm text-muted-foreground">{c.company || "—"}</td>
+                        <td className="px-4">
+                          <StatusPill status={pillStatus(c.status)} label={c.status || "active"} size="sm" className="capitalize" />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Card list — below md. Name, email, company, status: every
+                  field the row carried. */}
+              <div className="space-y-3 md:hidden">
+                {clients.map((c) => (
+                  <div key={c.id} className="rounded-xl border border-border bg-card p-4 shadow-card">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="break-words text-sm font-semibold text-foreground">{c.name || "—"}</p>
+                        <p className="mt-0.5 break-all text-xs text-muted-foreground">{c.email}</p>
+                      </div>
+                      <StatusPill status={pillStatus(c.status)} label={c.status || "active"} size="sm"
+                        className="shrink-0 capitalize" />
+                    </div>
+                    <dl className="mt-4 border-t border-border pt-4">
+                      <CardFact label="Company">{c.company || "—"}</CardFact>
+                    </dl>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </Section>
 
@@ -482,47 +531,84 @@ function ClientsTab({ clients, invites, projects, reload, loading, loadError, in
           {loadError || invitesError ? (
             <ErrorState title="Couldn't load invitations" description={loadError || invitesError} onRetry={reload} />
           ) : loading ? (
-            <div className={TABLE_SHELL}><SkeletonTable rows={3} cols={4} /></div>
+            <>
+              <div className={`${TABLE_SHELL} hidden md:block`}><SkeletonTable rows={3} cols={4} /></div>
+              <div className="md:hidden"><SkeletonList rows={3} /></div>
+            </>
           ) : pendingInvites.length === 0 ? (
             <EmptyState icon={Mail} title="No pending client invitations"
               description="Every invitation you've sent has been accepted or revoked." />
           ) : (
-            <div className={TABLE_SHELL}>
-              <table className="w-full min-w-[560px] divide-y divide-border">
-                <thead>
-                  <tr className="bg-muted/40">
-                    <th scope="col" className={TH}>Email</th>
-                    <th scope="col" className={TH}>Project</th>
-                    <th scope="col" className={TH}>Status</th>
-                    <th scope="col" className={TH_RIGHT}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {pendingInvites.map((inv) => (
-                    <tr key={inv.id} className={TR}>
-                      <td className="px-4 text-sm font-medium text-foreground">{inv.email}</td>
-                      <td className="px-4 text-sm text-muted-foreground">{inv.project_id ? projName(inv.project_id) : "—"}</td>
-                      <td className="px-4">
-                        <StatusPill status={pillStatus(inv.status)} label={inv.status} size="sm" className="capitalize" />
-                      </td>
-                      <td className="px-4">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button type="button" variant="ghost" size="icon-sm" onClick={() => copyLink(inv)}
-                            title="Copy invite link" aria-label={`Copy invite link for ${inv.email}`}
-                            className={`text-muted-foreground hover:text-foreground ${FOCUS_RING}`}>
-                            <Copy aria-hidden="true" className="h-4 w-4" />
-                          </Button>
-                          <Button type="button" variant="ghost" size="icon-sm" onClick={() => revoke(inv)}
-                            title="Revoke" aria-label={`Revoke invitation for ${inv.email}`} className={DANGER_ICON_BTN}>
-                            <Trash2 aria-hidden="true" className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
+            <>
+              {/* Table — md and up. Below md its 560px minimum hid 219px of a
+                  375px viewport, taking STATUS and both row actions with it. */}
+              <div className={`${TABLE_SHELL} hidden md:block`}>
+                <table className="w-full min-w-[560px] divide-y divide-border">
+                  <thead>
+                    <tr className="bg-muted/40">
+                      <th scope="col" className={TH}>Email</th>
+                      <th scope="col" className={TH}>Project</th>
+                      <th scope="col" className={TH}>Status</th>
+                      <th scope="col" className={TH_RIGHT}>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {pendingInvites.map((inv) => (
+                      <tr key={inv.id} className={TR}>
+                        <td className="px-4 text-sm font-medium text-foreground">{inv.email}</td>
+                        <td className="px-4 text-sm text-muted-foreground">{inv.project_id ? projName(inv.project_id) : "—"}</td>
+                        <td className="px-4">
+                          <StatusPill status={pillStatus(inv.status)} label={inv.status} size="sm" className="capitalize" />
+                        </td>
+                        <td className="px-4">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button type="button" variant="ghost" size="icon-sm" onClick={() => copyLink(inv)}
+                              title="Copy invite link" aria-label={`Copy invite link for ${inv.email}`}
+                              className={ICON_BTN}>
+                              <Copy aria-hidden="true" className="h-4 w-4" />
+                            </Button>
+                            <Button type="button" variant="ghost" size="icon-sm" onClick={() => revoke(inv)}
+                              title="Revoke" aria-label={`Revoke invitation for ${inv.email}`} className={DANGER_ICON_BTN}>
+                              <Trash2 aria-hidden="true" className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Card list — below md. Email, project, status and BOTH actions.
+                  On a card the two actions carry their labels: an unlabelled
+                  28px bin icon was the control that revoked an invitation. */}
+              <div className="space-y-3 md:hidden">
+                {pendingInvites.map((inv) => (
+                  <div key={inv.id} className="rounded-xl border border-border bg-card p-4 shadow-card">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="min-w-0 break-all text-sm font-semibold text-foreground">{inv.email}</p>
+                      <StatusPill status={pillStatus(inv.status)} label={inv.status} size="sm"
+                        className="shrink-0 capitalize" />
+                    </div>
+                    <dl className="mt-4 border-t border-border pt-4">
+                      <CardFact label="Project">{inv.project_id ? projName(inv.project_id) : "—"}</CardFact>
+                    </dl>
+                    <div className="mt-4 flex items-center gap-2">
+                      <Button type="button" variant="outline" size="sm" onClick={() => copyLink(inv)}
+                        className="min-h-11 flex-1"
+                        aria-label={`Copy invite link for ${inv.email}`}>
+                        <Copy aria-hidden="true" className="h-4 w-4" /> Copy link
+                      </Button>
+                      <Button type="button" variant="destructive" size="sm" onClick={() => revoke(inv)}
+                        className="min-h-11 flex-1"
+                        aria-label={`Revoke invitation for ${inv.email}`}>
+                        <Trash2 aria-hidden="true" className="h-4 w-4" /> Revoke
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </Section>
       </div>
