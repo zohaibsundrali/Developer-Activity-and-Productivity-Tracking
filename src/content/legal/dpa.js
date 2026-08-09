@@ -604,8 +604,9 @@ const sections = [
         text:
           "Not engaged at all, though the integrations exist in the software and are therefore worth " +
           "declaring rather than leaving for an auditor to find: Resend, supported as an alternative " +
-          "email provider but not enabled; and EmailJS, whose browser library is initialised on the " +
-          "signup page but is never called to send anything, so no data reaches it. If either is " +
+          "email provider but not enabled; and EmailJS, whose browser library is still listed as a " +
+          "dependency but is no longer loaded or initialised anywhere, and was never called to send " +
+          "anything even when it was, so no data reaches it. If either is " +
           "switched on, this Annex will be updated and notice given under the sub-processing section " +
           "above.",
       },

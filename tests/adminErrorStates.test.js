@@ -278,34 +278,51 @@ describe("fetchOrganizationSections: failed vs empty", () => {
   });
 });
 
-describe("deleteTeamWithMembers: the non-atomic pair", () => {
-  it("detaches before deleting and reports success", async () => {
-    results.set("memberships:update", { data: null, error: null });
-    results.set("teams:delete", { data: null, error: null });
-    await expect(deleteTeamWithMembers({ id: "t1", name: "Frontend" })).resolves.toEqual({
-      ok: true, detached: true, message: null,
+/**
+ * This block used to pin the two-round-trip pair — detach, then delete, with
+ * the half-applied state reported rather than prevented. There is no such pair
+ * any more: both writes moved into one Postgres transaction behind
+ * DELETE /api/admin/teams/[id] (migration 043), so there is no ordering to
+ * assert and no orphaned-members case to report. What is left to check HERE is
+ * only the browser half of that move — that it goes through authFetch and not
+ * through supabase, and that it never claims a success the server did not give.
+ * The transaction itself, the authorisation rule and both effects are pinned in
+ * tests/teamDelete.test.js.
+ */
+describe("deleteTeamWithMembers: one round trip to a transactional route", () => {
+  const team = { id: "t1", name: "Frontend" };
+  const response = (status, body) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
+
+  it("calls the server route and issues NO supabase statement of its own", async () => {
+    authFetch.mockResolvedValue(response(200, { success: true, teamId: "t1", detached: 2 }));
+    await expect(deleteTeamWithMembers(team)).resolves.toEqual({
+      ok: true, detachedCount: 2, message: null,
     });
-    expect(calls.map((c) => `${c.table}:${c.op}`)).toEqual(["memberships:update", "teams:delete"]);
+    expect(authFetch).toHaveBeenCalledWith("/api/admin/teams/t1", { method: "DELETE" });
+    // The browser no longer writes either table — that is the whole point.
+    expect(calls).toEqual([]);
   });
 
-  it("changes nothing when the detach itself fails", async () => {
-    results.set("memberships:update", failure("permission denied for table memberships"));
-    const res = await deleteTeamWithMembers({ id: "t1", name: "Frontend" });
-    expect(res.ok).toBe(false);
-    expect(res.detached).toBe(false);
-    // The recoverable failure comes first: the team delete was never attempted.
-    expect(calls.some((c) => c.table === "teams")).toBe(false);
+  it("reports a refusal without claiming anything was detached", async () => {
+    authFetch.mockResolvedValue(response(403, { error: "Forbidden: your role cannot delete teams" }));
+    const res = await deleteTeamWithMembers(team);
+    expect(res).toEqual({
+      ok: false, detachedCount: 0, message: "Forbidden: your role cannot delete teams",
+    });
   });
 
-  it("reports orphaned members when the delete fails after the detach landed", async () => {
-    results.set("memberships:update", { data: null, error: null });
-    results.set("teams:delete", failure("update or delete violates foreign key constraint"));
-    const res = await deleteTeamWithMembers({ id: "t1", name: "Frontend" });
+  it("treats a 200 without `success` as a failure rather than a delete", async () => {
+    authFetch.mockResolvedValue(response(200, {}));
+    const res = await deleteTeamWithMembers(team);
     expect(res.ok).toBe(false);
-    // `detached: true` is what lets the caller say the members were unassigned
-    // — the old code swallowed both results and orphaned them silently.
-    expect(res.detached).toBe(true);
-    expect(res.message).toMatch(/foreign key/);
+    expect(res.detachedCount).toBe(0);
+  });
+
+  it("reports a network failure as a failure — fetch REJECTS, it does not resolve", async () => {
+    authFetch.mockRejectedValue(new Error("Failed to fetch"));
+    const res = await deleteTeamWithMembers(team);
+    expect(res.ok).toBe(false);
+    expect(res.message).toMatch(/failed to fetch/i);
   });
 });
 

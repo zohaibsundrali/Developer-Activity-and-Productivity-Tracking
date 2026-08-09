@@ -1,9 +1,8 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import emailjs from "@emailjs/browser";
 import { showInfo, showPre, showSuccess } from "@/utils/alerts";
 import { SESSION_MAX_AGE_DAYS } from "@/utils/sessionPolicy";
 import { authFetch } from "@/utils/authFetch";
@@ -187,11 +186,13 @@ export default function AdminRegistration() {
     router.push("/");
   };
 
-  useEffect(() => {
-    if (process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY) {
-      emailjs.init(process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY);
-    }
-  }, []);
+  // The EmailJS SDK used to be initialised here with NEXT_PUBLIC_EMAILJS_PUBLIC_KEY.
+  // Nothing on this page — or anywhere in src/ — ever called emailjs.send(), so
+  // the only effect was loading a third-party SDK into the signup bundle and
+  // handing it a key. Verification codes go through /api/send-verification
+  // (see src/utils/emailService.js). Removed rather than left for an auditor to
+  // find; the @emailjs/browser dependency is still in package.json and should
+  // be dropped too.
 
   const validateEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

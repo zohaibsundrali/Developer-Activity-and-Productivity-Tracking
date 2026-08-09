@@ -1,0 +1,317 @@
+-- =====================================================================
+--  044 - activity_logs: the same per-person rule 040 installed on the
+--        seven desktop-tracking tables
+-- =====================================================================
+--  WHY THIS IS A SEPARATE FILE FROM 040
+--
+--  040 rewrote `track_read` on the seven tables that 014's loop created it
+--  on. activity_logs is not one of them. 013's two loops (Group A "website-
+--  owned", Group B "desktop-written tracking") both skip it, and so does
+--  014's 7f client-denial loop. It got its first and only policy from 018:
+--
+--    -- 018, lines 61-64
+--    alter table public.activity_logs enable row level security;
+--    drop policy if exists org_isolation on public.activity_logs;
+--    drop policy if exists activity_logs_read on public.activity_logs;
+--    create policy activity_logs_read on public.activity_logs for select
+--      to authenticated
+--      using (organization_id = public.auth_org() and not public.auth_is_client());
+--
+--  Note the name: activity_logs_read, NOT org_isolation and NOT track_read.
+--  018's `drop policy if exists org_isolation` on the line above it is
+--  defensive only - 018 says in its own comment that this table "never had an
+--  org policy at all". Anyone extending 040 by copying a `drop policy if
+--  exists track_read` line onto this table would drop nothing, create a
+--  SECOND permissive select policy, and change no one's access, because
+--  PostgreSQL ORs permissive policies together and 018's org-wide one would
+--  still admit every row. That is the trap this file exists to avoid: the
+--  statement below drops and recreates activity_logs_read BY NAME.
+--
+--  WHAT WAS ACTUALLY LEAKING
+--
+--  activity_logs is the per-task audit trail: who started, submitted, had
+--  approved or had rejected which task, when, with the old and new values,
+--  plus the actor's ip_address and user_agent. Under 018's policy every
+--  non-client member of the organisation could read every colleague's row -
+--  their rejection history, their IP addresses, their working pattern by
+--  timestamp - through PostgREST with the anon key in the browser bundle.
+--  Same shape as the leak 040 closed, one table further out.
+--
+--  THE MODEL INSTALLED HERE - identical to 040, deliberately
+--
+--    owner, admin, hr          -> all activity_logs rows in the organisation
+--    manager, team_lead        -> their own, plus their reporting subtree
+--                                 via memberships.reports_to, transitively
+--    developer, employee       -> their own record only
+--    anything else / no role   -> their own record only  (fail closed)
+--    client                    -> nothing  (unchanged; 018 already denies it)
+--
+--  Every clause of 018's policy is kept and one conjunct is added. Nothing
+--  widens: owner/admin/hr keep exactly what they had, everyone else loses
+--  rows, clients were denied before and are denied after. There is no role
+--  for which 018 was narrower than this, so there is nothing to preserve.
+--
+--  This file adds NO insert, update or delete policy. activity_logs has none
+--  and therefore denies all three to every authenticated caller; the writers
+--  (see below) are service-role and unaffected. Adding one here would be a
+--  widening, so none is added.
+--
+--  WHO READS THIS TABLE - grepped, not assumed
+--
+--  Every reference to activity_logs anywhere in src/ is one of these five,
+--  and all five are in server-side API routes holding
+--  SUPABASE_SERVICE_ROLE_KEY, which bypasses RLS entirely:
+--
+--    READS
+--    api/admin-review/route.js:515      select * .eq(developer_id).eq(project_id)
+--                                       - enriches each submission with its
+--                                         last 10 log rows
+--    api/developer/delete/route.js:328  select count head .eq(developer_id)
+--                                       - the pre-delete impact preview
+--
+--    WRITES (listed so the next reader does not have to grep again)
+--    api/admin-review/route.js:243      insert  task_approved / task_rejected
+--    api/task-submission/route.js:193   insert  task_submitted
+--    api/developer/delete/route.js:202  delete  by project_id
+--    api/developer/delete/route.js:212  delete  by developer_id
+--
+--  No browser-side code touches this table - no component, no hook, no
+--  client-side supabase call. 040's author wrote that the readers were
+--  api/admin-review and api/developer/delete; that is confirmed exactly, and
+--  api/task-submission joins the list as a writer only.
+--
+--  So: THIS POLICY CHANGE IS INVISIBLE TO THE RUNNING APPLICATION. Nothing a
+--  user can see through the UI changes. What changes is what a member can
+--  fetch directly from PostgREST with their own session, which is the entire
+--  point. That also means the risk of this migration is close to zero - there
+--  is no screen that can go blank because of it, unlike 040, whose hr
+--  amendment was written after TeamStats.jsx did exactly that.
+--
+--  One caveat on those routes: all three construct their client as
+--  `SUPABASE_SERVICE_ROLE_KEY || NEXT_PUBLIC_SUPABASE_ANON_KEY`. On a
+--  deployment where the service-role variable is unset they fall back to the
+--  anon key, which is not `authenticated`, so auth_org() is null and 018's
+--  policy already returns nothing. That path is broken today and is neither
+--  fixed nor worsened here.
+--
+--  THE THING TO KNOW BEFORE YOU EXPECT THIS TO DO ANYTHING - READ PART 0d
+--
+--  activity_logs.organization_id was added by 010 (line 117) and is populated
+--  by NOTHING. 013 installs the trg_stamp_org backstop trigger on twenty-odd
+--  tables across its two loops and on twelve more in 016_017; activity_logs
+--  is in none of those lists. 011 does not backfill it. Neither insert site
+--  in src/ sets it. So on a deployment that has run 010-042 in order, every
+--  activity_logs row written since 010 has organization_id = NULL, the
+--  `organization_id = public.auth_org()` clause is false for every row and
+--  every caller, and the table is ALREADY unreadable by every authenticated
+--  user - reachable only by the service role.
+--
+--  That does not make this migration pointless. The clause is one trigger
+--  away from switching on, and when it does, the correct policy needs to be
+--  the one already in place rather than 018's org-wide one. It does mean
+--  PART 0d is the query that tells you which situation your database is in.
+--
+--  What this file deliberately does NOT do is add that trigger. Stamping
+--  organization_id would make rows visible that are invisible today - a
+--  widening - and this migration only narrows. If the audit feed is wanted on
+--  screen, add the stamper in its own migration, on purpose, with 018's
+--  policy already replaced by the one below so the rows land behind the
+--  per-person rule rather than in front of it.
+--
+--  WHY THE ROW PREDICATE IS WRITTEN AGAINST to_jsonb(row) AND NOT COLUMNS
+--
+--  For 040's reason, restated because it applies here too and the failure
+--  mode is unforgiving. The `drop policy if exists` on the line above the
+--  `create policy` has already succeeded when the create runs. If the create
+--  names a column the table does not have, it fails, and activity_logs is
+--  left with RLS enabled and NO select policy - deny everything, for
+--  everyone, including the owner. Worse than the leak.
+--
+--  activity_logs is less exotic than developer_logins: schema.sql line 208
+--  defines it with developer_id, project_id and task_id and no email column
+--  at all, so a policy naming developer_id would probably have worked. But
+--  "probably" is what 022 and 025 already burned this repository on - this
+--  table predates the SaaS work, 010 had to guard its own ALTER with
+--  to_regclass, and nobody has confirmed that every deployment's copy matches
+--  schema.sql. PART 0b asks the database rather than trusting the file.
+--  Using the identical predicate as all seven tables in 040 also means there
+--  is one rule to reason about instead of two, and that a deployment whose
+--  activity_logs carries an extra user_email or employee_id column - it would
+--  not be the first table here to - keeps working with no edit.
+--
+--  monitoring_row_visible recognises developer_id in its uuid list, and
+--  developer_id is a uuid FK to developers(id). auth_monitoring_subjects()
+--  returns memberships.user_id values, and 011 populates memberships.user_id
+--  from developers.id and admin_users.id (lines 36 and 53). Same id space, so
+--  the match is real and not a coincidence of both being uuids.
+--
+--  WHAT THIS MEANS PER ROW, IN PLAIN TERMS
+--
+--  activity_logs attributes a row to the developer whose TASK it is, not to
+--  the person who acted: api/admin-review writes task_approved rows with
+--  developer_id = task.developer_id, so the subject of the row is the
+--  developer being reviewed. That is the right subject for this rule. A
+--  developer sees the approval and rejection history of their own tasks -
+--  including the admin's actions on them - and nobody else's. A manager sees
+--  their reports'. An admin's own audit trail is never hidden from them
+--  because admins are in the sees-all branch.
+--
+--  A row whose developer_id is null carries no identity this rule
+--  recognises, so it is visible to owner, admin and hr only. developer_id is
+--  nullable (schema.sql line 210: no NOT NULL) and both insert sites take it
+--  from a task that could in principle have none. Fail closed is the right
+--  default, but for an audit trail it means a log entry about your own task
+--  can become invisible to you if the writer did not record you. PART 0d
+--  counts those rows; if the count is not 0, decide before running PART 1.
+--
+--  WHY THE SET-RETURNING HELPERS ARE WRAPPED IN (select ...)
+--
+--  040's point, unchanged. A bare stable function call in a policy qual is
+--  re-evaluated per row, so the recursive walk down memberships.reports_to
+--  would run once per log row. Wrapped in a scalar subquery with no outer
+--  reference the planner hoists it to an InitPlan and runs it once per query.
+--  It matters more here than on most of 040's tables: activity_logs is an
+--  append-only feed, 022 indexed it (organization_id, created_at desc)
+--  precisely because it is read newest-first in bulk, and admin-review reads
+--  it once per submission in a Promise.all fan-out.
+--
+--  auth_monitoring_subject_emails() is passed even though this table has no
+--  email column. It costs one InitPlan per query and keeps the predicate
+--  byte-identical to 040's seven, which is the property that makes the rule
+--  auditable in one grep. Do not "optimise" it to array[]::text[] - that is
+--  the edit that silently stops working the day the table grows an email.
+--
+--  Depends on: 010 (activity_logs.organization_id), 012 (auth_org),
+--  014 (auth_role, auth_is_client, auth_app_user_id), 015 (reports_to,
+--  team_lead + hr), 018 (activity_logs_read, the policy replaced here),
+--  040 (auth_monitoring_sees_all, auth_monitoring_subjects,
+--       auth_monitoring_subject_emails, monitoring_row_visible, try_uuid,
+--       idx_memberships_org_reports_to).
+--  Defines no function - every function it calls belongs to 040 and is not
+--  redefined here, so this file cannot drift from 040's rule. Creates no
+--  table, drops no column, rewrites no row, adds no index.
+--
+--  Idempotent: PART 1 is drop-if-exists + create, so it may be re-run.
+--
+--  FORMAT NOTE: one statement per physical line, no DO blocks, no dollar
+--  quoting, no double-quoted identifiers. 018's legacy policy name
+--  "Allow all access to activity_logs" is the one thing on this table that
+--  would need double quotes; 018 line 46 already dropped it, so it is not
+--  repeated here. PART 0c is what proves it is gone on YOUR database. The
+--  editor shows only the LAST statement's result, so run each PART as its own
+--  query, in order.
+-- =====================================================================
+
+
+-- ---------------------------------------------------------------------
+--  PART 0 - READ-ONLY pre-flight. Run these four FIRST, one at a time.
+--           Nothing here changes anything.
+-- ---------------------------------------------------------------------
+--  0a. Does the table exist, and what is its FULL column list? 010 guarded
+--      its own ALTER with to_regclass because this table is not created by
+--      any migration - it comes from schema.sql, which predates the SaaS
+--      work. If this returns nothing, stop: there is nothing to police.
+
+-- select column_name, data_type, is_nullable from information_schema.columns where table_schema = 'public' and table_name = 'activity_logs' order by ordinal_position;
+
+--  0b. Which identity columns does it actually carry? 040's PART 6 helper
+--      recognises developer_id, user_id, employee_id, member_id, dev_id (as
+--      uuids) and developer_email, user_email, email, user_login,
+--      login_email (as emails). schema.sql line 210 says this table has
+--      developer_id and nothing else, which is inside that set. If this
+--      query lists a column that identifies a PERSON and is not in that set,
+--      it must be added to 040's PART 6 - in a migration that amends 040,
+--      not here - before PART 1 goes on, or those rows become
+--      owner/admin/hr-only.
+
+-- select column_name, data_type from information_schema.columns where table_schema = 'public' and table_name = 'activity_logs' and (column_name like '%user%' or column_name like '%dev%' or column_name like '%email%' or column_name like '%member%' or column_name like '%employee%' or column_name like '%login%' or column_name like '%admin%' or column_name like '%actor%' or column_name like '%author%') order by column_name;
+
+--  0c. What policies are on it right now? Expect exactly one:
+--      activity_logs_read, SELECT, {authenticated}, with 018's qual. If you
+--      see a second permissive SELECT policy - a dashboard-created one, or a
+--      track_read someone copied over from 040 - PART 1 will NOT narrow
+--      anything, because permissive policies are OR-ed. Drop the extra one
+--      first, deliberately, in a migration of its own.
+
+-- select policyname, cmd, permissive, roles, qual as using_expr, with_check from pg_policies where schemaname = 'public' and tablename = 'activity_logs' order by policyname;
+
+--  0d. THE ONE THAT DECIDES WHETHER THIS DOES ANYTHING TODAY. See the header.
+--      org_null_rows counts rows the org clause already hides from every
+--      authenticated caller because nothing ever stamped organization_id;
+--      if that equals total_rows, this table is currently service-role-only
+--      and PART 1 is a correctness fix for later rather than a live change.
+--      unattributable_rows counts rows that PART 1 will restrict to
+--      owner/admin/hr because they name no person. Expect 0.
+
+-- select count(*) as total_rows, count(*) filter (where organization_id is null) as org_null_rows, count(*) filter (where developer_id is null) as unattributable_rows, count(*) filter (where organization_id is not null and developer_id is not null) as rows_this_policy_will_actually_filter from public.activity_logs;
+
+
+-- ---------------------------------------------------------------------
+--  PART 1 - The policy (AFTER 040 has created every function it calls)
+-- ---------------------------------------------------------------------
+--  Read the clauses left to right, because that is the order they cost
+--  anything in:
+--
+--    organization_id = public.auth_org()   unchanged from 018. Still first,
+--                                          still the indexed one (022).
+--    not public.auth_is_client()           unchanged from 018. Clients stay out.
+--    (select ...sees_all())                owner/admin/hr stop here.
+--    monitoring_row_visible(to_jsonb(t))   everyone else.
+--
+--  Replaced BY NAME, so 018's policy is gone rather than sitting beside this
+--  one. If this statement fails, the table is left with no select policy at
+--  all - deny everything - so re-run it before anyone uses the app, and read
+--  PART 0a/0b for why it failed.
+
+drop policy if exists activity_logs_read on public.activity_logs;
+create policy activity_logs_read on public.activity_logs for select to authenticated using (organization_id = public.auth_org() and not public.auth_is_client() and ((select public.auth_monitoring_sees_all()) or public.monitoring_row_visible(to_jsonb(activity_logs), (select public.auth_monitoring_subjects()), (select public.auth_monitoring_subject_emails()))));
+
+
+-- =====================================================================
+--  VERIFY (read-only). Run each on its own - the editor shows only the last.
+-- =====================================================================
+--  1. Exactly one select policy on the table, and it is the new one. The
+--     using_expr must contain auth_monitoring_sees_all.
+-- select policyname, cmd, roles, qual as using_expr from pg_policies where schemaname = 'public' and tablename = 'activity_logs' order by policyname;
+
+--  2. The five functions this policy leans on all exist and are 040's. If
+--     this returns fewer than six rows, 040 has not been applied and PART 1
+--     could not have been created.
+-- select proname, prosecdef, proconfig from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and proname in ('auth_monitoring_sees_all','auth_monitoring_subjects','auth_monitoring_subject_emails','monitoring_row_visible','auth_can_read_member','try_uuid') order by proname;
+
+--  3. The same rule now covers eight tables, not seven. Expect seven
+--     track_read rows plus this one.
+-- select tablename, policyname from pg_policies where schemaname = 'public' and (policyname = 'track_read' or policyname = 'activity_logs_read') order by tablename;
+
+--  4. Spot-check what a given member would see, without logging in as them.
+--     Replace the uuid with a real memberships.user_id. This runs as YOU, so
+--     it reports the SUBTREE, not the row count - to check row visibility you
+--     must impersonate, because the policy reads auth.jwt().
+-- with recursive sub as (select 'REPLACE-WITH-A-MEMBER-USER-ID'::uuid as user_id, 0 as depth union all select c.user_id, s.depth + 1 from public.memberships c join sub s on c.reports_to = s.user_id where c.user_id is not null and c.user_id <> s.user_id and s.depth < 64) select distinct sub.user_id, sub.depth from sub order by sub.depth, sub.user_id;
+
+--  5. Rows that PART 1 hid from everyone below owner/admin/hr. Re-run of 0d,
+--     for the record, after the change.
+-- select count(*) as unattributable_rows from public.activity_logs where developer_id is null;
+
+
+-- =====================================================================
+--  STILL OPEN AFTER THIS FILE - not fixed here, listed so it is not lost
+-- =====================================================================
+--  a. admin_reviews. 018 gave it the identical org-wide policy on the very
+--     next line (lines 66-69, admin_reviews_read) and it holds the reviewer's
+--     verdict and comments per developer. It carries admin_id, admin_email,
+--     developer_id and project_id, so the subject of a row is ambiguous in a
+--     way activity_logs' is not - the same one-line policy would let a
+--     developer read rows naming them AND rows naming an admin whose id
+--     happens to be in their subject set. That needs its own decision about
+--     which column is the subject, so it is deliberately not swept in here.
+--
+--  b. activity_logs.organization_id is stamped by nothing. See the header.
+--     Until that is fixed the table is service-role-only, and this policy is
+--     dormant. Fixing it is a widening and belongs in its own migration.
+--
+--  c. task_time_logs (018 lines 147-155) and pm_activity (018 lines 123-127)
+--     are also org-wide reads that expose per-person working patterns. Same
+--     shape, same helpers would apply, different judgement call about whether
+--     billable hours are meant to be visible team-wide.
+-- =====================================================================

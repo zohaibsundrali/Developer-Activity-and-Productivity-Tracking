@@ -21,7 +21,7 @@
  */
 
 import SceneLoader from "@/components/landing/SceneLoader";
-import { CtaButton, Reveal, stagger } from "@/components/landing/primitives";
+import { Container, CtaButton, Reveal, stagger } from "@/components/landing/primitives";
 import { cta, hero, pick } from "@/components/landing/content";
 
 export default function Hero() {
@@ -61,7 +61,9 @@ export default function Hero() {
         <div className="absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-background to-transparent" />
       </div>
 
-      <div className="mx-auto w-full max-w-6xl px-5 pb-24 pt-14 sm:px-6 sm:pb-28 sm:pt-20 lg:px-8 lg:pb-36 lg:pt-24">
+      <Container className="pb-24 pt-14 sm:pb-28 sm:pt-20 lg:pb-36 lg:pt-24">
+        {/* The hero copy keeps its own measure — the wider band underneath is
+            for layout, and a headline set across 1400px is not a headline. */}
         <div className="mx-auto max-w-4xl text-center">
           {eyebrow ? (
             <Reveal delay={0} distance={16}>
@@ -133,7 +135,7 @@ export default function Hero() {
             </Reveal>
           ) : null}
         </div>
-      </div>
+      </Container>
     </section>
   );
 }

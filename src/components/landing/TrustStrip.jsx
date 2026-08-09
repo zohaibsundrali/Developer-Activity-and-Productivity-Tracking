@@ -19,7 +19,7 @@
 
 import { Quote, ShieldCheck } from "lucide-react";
 
-import { Counter, Reveal, stagger } from "@/components/landing/primitives";
+import { Container, Counter, Reveal, stagger } from "@/components/landing/primitives";
 import { pick, pickList, str, trust } from "@/components/landing/content";
 
 function proofPoints(source) {
@@ -57,7 +57,7 @@ export default function TrustStrip() {
   // simply not exposed as a landmark, which is the correct outcome here.
   return (
     <section className="relative isolate overflow-hidden border-y border-border bg-muted/40 py-14 sm:py-16">
-      <div className="mx-auto w-full max-w-6xl px-5 sm:px-6 lg:px-8">
+      <Container>
         {lead ? (
           <Reveal>
             <p className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -132,7 +132,7 @@ export default function TrustStrip() {
             </figure>
           </Reveal>
         ) : null}
-      </div>
+      </Container>
     </section>
   );
 }

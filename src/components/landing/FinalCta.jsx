@@ -12,7 +12,7 @@
  * reaches an edge.
  */
 
-import { CtaRow, Reveal, stagger } from "@/components/landing/primitives";
+import { Container, CtaRow, Reveal, stagger } from "@/components/landing/primitives";
 import { bullets, ctas, finalCta, pick } from "@/components/landing/content";
 import { useParallax } from "@/hooks/useParallax";
 
@@ -42,7 +42,7 @@ export default function FinalCta() {
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-6xl px-5 sm:px-6 lg:px-8">
+      <Container>
         <div className="mx-auto max-w-3xl text-center">
           {eyebrow ? (
             <Reveal>
@@ -102,7 +102,7 @@ export default function FinalCta() {
             </Reveal>
           ) : null}
         </div>
-      </div>
+      </Container>
     </section>
   );
 }

@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { SESSION_MAX_AGE_DAYS } from "@/utils/sessionPolicy";
 import { loadOrgContext, isMembershipActive } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
-import { verifyLegacyPassword } from "@/app/api/developer/change-password/legacyPassword";
 
 import { ArrowLeft } from "lucide-react";
 import { Button, Field, Input } from "@/components/ui";
@@ -21,20 +20,33 @@ import {
   SubmitButton,
 } from "@/components/auth/AuthParts";
 
-// The legacy fallback below used to be a bare `storedPassword === inputPassword`
-// against a cleartext column. /api/developer/change-password no longer writes
-// cleartext there — it writes a PBKDF2 hash, because RLS on developers /
-// admin_users / clients is `for all to authenticated`, so every logged-in
-// colleague can read that column and a cleartext copy of a just-rotated
-// password is a live exposure.
+// THE LEGACY PASSWORD FALLBACK USED TO LIVE HERE. IT IS GONE, AND WHY IT COULD
+// GO WITHOUT LOCKING ANYONE OUT:
 //
-// This import is what keeps that safe: verifyLegacyPassword accepts EITHER a
-// hash or an untouched cleartext row, so rows written by the new route and rows
-// written by every other (unchanged) writer both still authenticate. Without
-// this one change, anyone who successfully changed their password would be
-// locked out of the fallback path, and this is the population that has no
-// recovery route. Single shared implementation, deliberately — two copies of a
-// password check are two chances for them to disagree.
+// It ran only after supabase.auth.signInWithPassword() had FAILED, and it then
+// compared the submitted password against `profile.password` — the cleartext
+// column on developers / admin_users / clients. A failed sign-in leaves the
+// browser holding no JWT, so the profile SELECT above it ran as the `anon`
+// PostgreSQL role.
+//
+// Every policy on those three tables is `TO authenticated`: org_isolation in
+// 013 (developers, admin_users), clients_admin / clients_self_read in 014, and
+// nothing in 018 or 040 adds an anon grant. The only two policies that named
+// {public} — the hand-made "Users can view own data" / "Users can update own
+// data" on admin_users — used `auth.uid() = id`, which is NULL for an anonymous
+// caller and therefore never true; measured on the live table, 0 of 4 admin
+// rows even have id = auth_user_id, so they matched nothing for anybody either.
+// Migration 042 drops them.
+//
+// So the SELECT returned zero rows for exactly the callers the fallback existed
+// to serve: `profile` was null, the comparison was never reached, and no
+// account could sign in through it. Deleting it removes unreachable code, not a
+// login path. Accounts with no Supabase Auth user at all (auth_user_id null)
+// could not sign in before this change either — they need an administrator to
+// provision sign-in, which is stage 3 of database/041_password_hardening.sql
+// and is counted by GET /api/admin/legacy-auth-audit.
+//
+// Supabase Auth is now the only credential this page consults.
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -59,12 +71,13 @@ export default function LoginPage() {
       const profileTable =
         role === "admin" ? "admin_users" : role === "client" ? "clients" : "developers";
 
-      // 1) Try Supabase Auth first — migrated users get a real JWT session
-      //    (required for DB-level RLS). Falls back to the legacy plaintext
-      //    check so no one is locked out during the transition.
+      // 1) Supabase Auth is the credential. A successful sign-in mints the JWT
+      //    that every RLS policy on the profile tables is written against.
       const { data: authData } = await supabase.auth.signInWithPassword({ email, password });
 
-      // 2) Load the profile row for the selected role/table.
+      // 2) Load the profile row for the selected role/table. This read only
+      //    returns anything once step 1 has succeeded — see the note above the
+      //    component.
       const { data: profile } = await supabase
         .from(profileTable)
         .select('*')
@@ -73,8 +86,6 @@ export default function LoginPage() {
 
       if (authData?.user && profile) {
         loggedInData = profile;                       // authenticated via Supabase Auth
-      } else if (profile && (await verifyLegacyPassword(password, profile.password))) {
-        loggedInData = profile;                       // legacy fallback (hash or cleartext)
       } else {
         if (authData?.user) { try { await supabase.auth.signOut(); } catch {} }
         throw new Error(`Invalid ${role} credentials`);

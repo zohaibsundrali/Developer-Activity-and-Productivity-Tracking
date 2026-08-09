@@ -72,13 +72,20 @@ export async function POST(request) {
     }
 
     // 1) admin_users row
+    //
+    // NO `password` COLUMN. It used to be written here "for the legacy login
+    // fallback" in src/app/login/page.js — that fallback is gone (it could only
+    // run for an anon caller, and no policy on admin_users grants anon a read,
+    // so it never authenticated anybody). The only remaining reader of the
+    // column is GET /api/admin/legacy-auth-audit, which counts rows rather than
+    // using the value. The credential is created in step 4 below, by Supabase
+    // Auth, which stores it hashed.
     const { data: adminRows, error: adminErr } = await admin
       .from("admin_users")
       .insert([{
         full_name: fullName || null,
         company: company || null,
         email,
-        password,               // kept for the legacy login fallback
         is_verified: true,
         role: "admin",
         created_at: new Date().toISOString(),

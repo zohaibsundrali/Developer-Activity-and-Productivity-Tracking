@@ -117,25 +117,48 @@ export async function copyToClipboard(text) {
 }
 
 /**
- * Delete a team, detaching its members first.
+ * Delete a team, detaching its members — as ONE indivisible operation.
  *
- * Two statements over two round-trips cannot be made atomic from the browser:
- * if the delete fails after the detach has landed, the members are already
- * orphaned. Ordering it detach-then-delete keeps the recoverable failure first
- * (nothing has changed yet), and the caller is told exactly which half landed
- * so the damage is never silent. A single transaction needs a server route or
- * a Postgres function — see the note in the delete-failure branch.
+ * This used to be two PostgREST round-trips from here: update the memberships,
+ * then delete the team. Two round-trips are two transactions, and supabase-js
+ * has no client-side transaction to wrap them in, so a failure of the second
+ * left the first committed — every member detached from a team that still
+ * existed, repairable only by hand. Ordering the pair and reporting which half
+ * landed made that visible; it could not prevent it.
+ *
+ * Both writes now happen inside a single Postgres function
+ * (public.delete_team_with_members, migration 043) invoked by
+ * DELETE /api/admin/teams/[id]. A function body is one transaction: both
+ * effects commit together or neither does. The same two effects, in the same
+ * order — the team's members stay in the organisation and simply lose the team.
+ *
+ * So a failure here means NOTHING was changed, and `detachedCount` is a count
+ * the database returned rather than an assumption. The route also re-derives
+ * the organisation from the caller's verified token, so the delete can only
+ * ever reach this org's own teams.
  */
 export async function deleteTeamWithMembers(team) {
-  const { error: detachError } = await supabase.from("memberships").update({ team_id: null }).eq("team_id", team.id);
-  if (detachError) {
-    return { ok: false, detached: false, message: detachError.message || "Could not detach the team's members." };
+  try {
+    const res = await authFetch(`/api/admin/teams/${encodeURIComponent(team.id)}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) {
+      return {
+        ok: false,
+        detachedCount: 0,
+        message: data?.error || `Could not delete the team (HTTP ${res.status}).`,
+      };
+    }
+    return { ok: true, detachedCount: data.detached ?? 0, message: null };
+  } catch (err) {
+    // fetch() rejects on a network failure — the one case where the request may
+    // never have reached the server. The transaction still decides it: either
+    // the function ran and committed both writes, or it did not run at all.
+    return {
+      ok: false,
+      detachedCount: 0,
+      message: err?.message || "Could not reach the server to delete the team.",
+    };
   }
-  const { error: deleteError } = await supabase.from("teams").delete().eq("id", team.id);
-  if (deleteError) {
-    return { ok: false, detached: true, message: deleteError.message || "Could not delete the team." };
-  }
-  return { ok: true, detached: true, message: null };
 }
 
 export default function OrganizationManagement() {
@@ -389,21 +412,19 @@ function TeamsTab({ orgId, teams, departments, members, reload, loading, loadErr
     if (!ok) return;
     const res = await deleteTeamWithMembers(t);
     if (!res.ok) {
-      showError(
-        res.detached ? "Team not deleted" : "Delete failed",
-        res.detached
-          // The detach landed and cannot be undone from here — say so, rather
-          // than leaving the members silently orphaned. A truly atomic delete
-          // needs a server route/RPC that runs both statements in one
-          // transaction.
-          ? `Members were removed from "${t.name}", but the team could not be deleted: ${res.message} Re-assign them from the Members tab, or try again.`
-          : `${res.message} Nothing was changed.`
-      );
-      // Either way the rows on screen are now stale — pull the real state back.
+      // "Nothing was changed" is now a fact, not a hope: the detach and the
+      // delete share one transaction, so a failure rolls both back. There is no
+      // longer a half-applied case to warn about, and no members to re-assign.
+      showError("Delete failed", `${res.message} Nothing was changed — the team and its members are untouched.`);
       reload();
       return;
     }
-    showSuccess("Team deleted", `"${t.name}" removed. Its members stay in the organization.`);
+    showSuccess(
+      "Team deleted",
+      res.detachedCount > 0
+        ? `"${t.name}" removed. ${res.detachedCount} ${res.detachedCount === 1 ? "member stays" : "members stay"} in the organization, without a team.`
+        : `"${t.name}" removed.`
+    );
     reload();
   };
 

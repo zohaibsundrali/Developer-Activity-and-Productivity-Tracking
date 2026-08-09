@@ -2,7 +2,6 @@ import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
 import { recordEvent } from '@/utils/systemEvents';
-import { hashLegacyPassword } from './legacyPassword';
 
 /**
  * POST /api/developer/change-password — change the caller's own password.
@@ -30,8 +29,8 @@ import { hashLegacyPassword } from './legacyPassword';
  *     broken version of this route, so verifying against it would accept a
  *     password the user cannot actually log in with, and reject the one they
  *     can.
- *  3. Changes the real credential with auth.admin.updateUserById().
- *  4. Only then re-syncs the legacy column, as a HASH (see below).
+ *  3. Changes the real credential with auth.admin.updateUserById(). That is the
+ *     whole of the write: no profile-table column is touched at all.
  *
  * LEGACY-ONLY ACCOUNTS
  *  A developer row with auth_user_id null (or pointing at a deleted auth user)
@@ -42,22 +41,22 @@ import { hashLegacyPassword } from './legacyPassword';
  *  message and records a system event so the owner can see it happening.
  *  GET /api/admin/legacy-auth-audit counts this population.
  *
- * WHY THE LEGACY COLUMN IS STILL WRITTEN AT ALL
- *  src/app/login/page.js still has a fallback branch that authenticates against
- *  the column when Supabase Auth fails, and this is a live system where nobody
- *  may be locked out. Leaving the column holding the OLD password after a
- *  successful rotation would mean a leaked password stayed usable through that
- *  branch — the exact failure being fixed. So the column is kept in sync.
+ * WHY THE LEGACY COLUMN IS NO LONGER WRITTEN
+ *  This route used to re-sync `developers.password` with a PBKDF2 hash of the
+ *  new password, so that the fallback branch in src/app/login/page.js would not
+ *  keep accepting the OLD password after a rotation. That fallback has now been
+ *  deleted: it could only ever run for a caller with no JWT, and every policy on
+ *  developers / admin_users / clients is `TO authenticated`, so its profile
+ *  lookup returned nothing and the comparison was unreachable.
  *
- *  It is synced as a PBKDF2 hash, never as cleartext: RLS on `developers` is
- *  `for all to authenticated using (organization_id = auth_org())`, so any
- *  logged-in colleague can read the column, and a cleartext copy of a
- *  just-rotated password is a fresh exposure. The login fallback verifies
- *  hash-or-cleartext, so both this row and every untouched row keep working.
+ *  With no reader left, the sync had no purpose — and a write into a column that
+ *  every authenticated member of the organization can `select *` is a cost with
+ *  no benefit. So the write is gone. Rotating a password now changes exactly one
+ *  thing: the Supabase Auth credential.
  *
- *  DELETE THIS WRITE when stage 3 of database/041_password_hardening.sql runs:
- *  once the fallback branch is gone from src/app/login/page.js, the sync has no
- *  reader left, and the whole block below (and the column) goes with it.
+ *  The column itself still exists and still holds values written before this
+ *  change. Retiring them is stage 5, and dropping the columns is stage 7, of
+ *  database/041_password_hardening.sql.
  */
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -316,46 +315,10 @@ export async function POST(request) {
       return jsonError(`Failed to update password: ${authUpdateError.message}`, 500);
     }
 
-    // ── 4. Re-sync the legacy fallback column, hashed ────────────────────
-    // See the header block: this write exists only to keep the login fallback
-    // in src/app/login/page.js consistent with the credential that just
-    // changed, and it is deleted together with that fallback in stage 3 of
-    // database/041_password_hardening.sql. It is a PBKDF2 hash, never
-    // cleartext, because every authenticated member of the organization can
-    // read this column.
-    //
-    // The real credential is already changed at this point, so a failure here
-    // is reported as a partial success rather than an error: telling the user
-    // it failed would be false and would invite them to try the old password.
-    let legacySynced = true;
-    try {
-      const legacyHash = await hashLegacyPassword(newPassword);
-      const { error: legacyError } = await supabase
-        .from('developers')
-        .update({ password: legacyHash })
-        .eq('id', developerId)
-        .eq('organization_id', auth.orgId);
-      if (legacyError) legacySynced = false;
-    } catch {
-      legacySynced = false;
-    }
-
-    if (!legacySynced) {
-      await recordEvent({
-        orgId: auth.orgId,
-        type: 'auth.legacy_password_sync_failed',
-        severity: 'warning',
-        source: 'auth',
-        message:
-          'The Supabase Auth password changed, but the legacy fallback column could not be re-synced.',
-        context: {
-          userId: developerId,
-          userType: 'developer',
-          route: '/api/developer/change-password',
-          reason: 'legacy_sync_failed',
-        },
-      });
-    }
+    // ── 4. Nothing else is written ───────────────────────────────────────
+    // The legacy `developers.password` re-sync that used to sit here is gone
+    // with the login fallback it existed for — see the header block. The
+    // credential change above is the entire effect of this route.
 
     await recordEvent({
       orgId: auth.orgId,
@@ -367,11 +330,10 @@ export async function POST(request) {
         userId: developerId,
         userType: 'developer',
         route: '/api/developer/change-password',
-        status: legacySynced ? 'synced' : 'auth_only',
       },
     });
 
-    return NextResponse.json({ success: true, legacySynced });
+    return NextResponse.json({ success: true });
   } catch (err) {
     await recordEvent({
       orgId: orgIdForEvents,

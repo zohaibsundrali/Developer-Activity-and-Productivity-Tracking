@@ -17,6 +17,7 @@
 
 import {
   CARD_LIFT,
+  Container,
   IconChip,
   Reveal,
   SectionHeading,
@@ -60,7 +61,7 @@ export default function TwoHalves() {
       aria-labelledby={title ? "two-halves-heading" : undefined}
       className="relative isolate scroll-mt-20 overflow-hidden border-t border-border bg-background py-20 sm:py-24 lg:py-32"
     >
-      <div className="mx-auto w-full max-w-6xl px-5 sm:px-6 lg:px-8">
+      <Container>
         <SectionHeading
           eyebrow={eyebrow}
           title={title}
@@ -126,7 +127,7 @@ export default function TwoHalves() {
             ) : null}
           </div>
         ) : null}
-      </div>
+      </Container>
     </section>
   );
 }

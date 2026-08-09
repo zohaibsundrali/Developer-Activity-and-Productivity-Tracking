@@ -12,13 +12,35 @@
  * page has moved. That is driven by one passive, rAF-throttled scroll listener
  * that flips a single boolean, so it re-renders at most twice per visit rather
  * than once per frame.
+ *
+ * ---------------------------------------------------------------------------
+ * Structure — three parts, borrowed from Hubstaff, minus the bloat
+ * ---------------------------------------------------------------------------
+ *
+ *   [ logo ]   [ section links, left-of-centre ]   [ sign in · secondary · CTA ]
+ *
+ * The bar is 80px at `lg` rather than 64px, which is what makes it read as
+ * chrome rather than as a strip. 80px is also exactly the `scroll-mt-20` every
+ * section carries, so an anchor still lands below the header and not under it.
+ *
+ * The right-hand group is the part this nav previously lacked: one plain text
+ * "Sign in", one outlined secondary, one solid primary. A returning customer
+ * landing on the marketing page had nowhere to go before — every affordance
+ * pointed at signup.
+ *
+ * What is deliberately NOT copied from Hubstaff, per the competitor teardown
+ * done for this project: mega-menus, dropdown panels, and a nav carrying fifty
+ * links. That nav is optimised for crawlable surface area, which is an SEO
+ * position this product has not earned and does not need; it costs the visitor
+ * the one decision the header exists to present. Every link here points at a
+ * section that actually rendered, and there are five of them.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Menu, X } from "lucide-react";
 
 import Logo from "@/components/brand/Logo";
-import { CtaButton } from "@/components/landing/primitives";
+import { Container, CtaButton } from "@/components/landing/primitives";
 import {
   cta,
   ctas,
@@ -76,6 +98,22 @@ function contentLinks() {
 }
 
 /**
+ * Route-level actions the content already offers: the first footer group whose
+ * links are all real routes rather than in-page anchors. On this content that is
+ * the "Account" group — create an organization, join with an invite, sign in —
+ * which is exactly the set the right-hand side of a header needs, written by the
+ * content author rather than invented here.
+ */
+function accountActions() {
+  const groups = pickList(footer, "linkGroups", "columns", "groups", "sections");
+  for (const group of groups) {
+    const links = toLinks(Array.isArray(group?.links) ? group.links : []);
+    if (links.length >= 2 && links.every((link) => link.href.startsWith("/"))) return links;
+  }
+  return [];
+}
+
+/**
  * @param {Object} props
  * @param {Set<string>} props.sections ids of the sections that actually rendered
  */
@@ -89,17 +127,37 @@ export default function SiteNav({ sections }) {
     (link) => !link.href.startsWith("#") || !sections || sections.has(link.href.slice(1)),
   );
 
-  // Nav actions are borrowed from copy that already exists on the page, so the
-  // header can never advertise a destination or a label written here. The
-  // secondary slot prefers the closing section's "sign in" over the hero's long
-  // secondary label, which is a sentence rather than a button.
+  // Every nav action is borrowed from copy that already exists on the page, so
+  // the header can never advertise a destination or a label written here.
   const heroActions = ctas(hero);
+  const account = accountActions();
+
+  // Solid primary — the one decision the header exists to present.
   const navPrimary = cta(navContent?.primaryCta ?? navContent?.cta) ?? heroActions[0] ?? null;
-  const navSecondary =
-    cta(navContent?.secondaryCta ?? navContent?.signIn) ??
+
+  // Plain text, for the visitor who already has an account. The hero's own
+  // secondary is a sentence ("See exactly what the tracker records") and is
+  // never used here; the closing section's is the real sign-in.
+  const navSignIn =
+    cta(navContent?.signIn) ??
     cta(finalCta?.secondaryCta) ??
-    heroActions[1] ??
+    account[account.length - 1] ??
     null;
+
+  // Outlined middle step. The account group's lead entry is the same offer the
+  // primary already makes, so it is skipped; what is left on this content is
+  // the invite path, which is a genuinely different intent. If the content
+  // offers no third route, no third button is invented — the slot is dropped.
+  const navSecondaryRaw =
+    cta(navContent?.secondaryCta) ??
+    account.slice(1).find((link) => link.href !== navSignIn?.href) ??
+    null;
+  const navSecondary =
+    navSecondaryRaw &&
+    navSecondaryRaw.label !== navPrimary?.label &&
+    navSecondaryRaw.label !== navSignIn?.label
+      ? navSecondaryRaw
+      : null;
 
   useEffect(() => {
     let frame = null;
@@ -161,8 +219,8 @@ export default function SiteNav({ sections }) {
           : "border-b border-transparent bg-transparent",
       ].join(" ")}
     >
-      <nav aria-label="Main" className="mx-auto w-full max-w-6xl px-5 sm:px-6 lg:px-8">
-        <div className="flex h-16 items-center justify-between gap-4 lg:h-[4.5rem]">
+      <Container as="nav" aria-label="Main">
+        <div className="flex h-16 items-center gap-4 lg:h-20 lg:gap-6">
           <a
             href="#top"
             className="inline-flex shrink-0 items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
@@ -171,12 +229,19 @@ export default function SiteNav({ sections }) {
             <span className="sr-only">Home</span>
           </a>
 
-          <ul className="hidden items-center gap-1 lg:flex">
+          {/*
+            Section links, grouped against the logo rather than pushed to the
+            far side: the eye reads brand → sections → actions in one sweep
+            instead of hunting three separate corners. Smaller and tighter than
+            body copy — 14px against the page's 16px, on a 2px gap — so the row
+            reads as navigation rather than as a sentence.
+          */}
+          <ul className="hidden items-center gap-0.5 lg:flex lg:ml-2 xl:ml-8">
             {links.map((link) => (
               <li key={link.href}>
                 <a
                   href={link.href}
-                  className="inline-flex h-9 items-center rounded-lg px-3 text-sm font-medium text-muted-foreground transition-colors duration-200 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="inline-flex h-9 items-center rounded-lg px-3 text-sm font-medium tracking-[-0.005em] text-muted-foreground transition-colors duration-200 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   {link.label}
                 </a>
@@ -184,17 +249,33 @@ export default function SiteNav({ sections }) {
             ))}
           </ul>
 
-          <div className="hidden items-center gap-2 lg:flex">
-            {navSecondary ? (
+          {/*
+            Action hierarchy, quietest first: text → outline → solid. The
+            outlined middle step is held back to `xl`; between 1024 and 1279 the
+            five section links and three actions do not both fit on one row, and
+            a wrapping header is worse than a header with two actions.
+          */}
+          <div className="ml-auto hidden items-center gap-1 lg:flex xl:gap-2">
+            {navSignIn ? (
               <a
-                href={navSecondary.href}
-                className="inline-flex h-9 items-center rounded-lg px-3 text-sm font-medium text-foreground transition-colors duration-200 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                href={navSignIn.href}
+                className="inline-flex h-10 items-center rounded-lg px-3 text-sm font-semibold text-foreground transition-colors duration-200 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
-                {navSecondary.label}
+                {navSignIn.label}
               </a>
             ) : null}
+            {navSecondary ? (
+              <CtaButton
+                href={navSecondary.href}
+                variant="ghost"
+                size="sm"
+                className="hidden xl:inline-flex"
+              >
+                {navSecondary.label}
+              </CtaButton>
+            ) : null}
             {navPrimary ? (
-              <CtaButton href={navPrimary.href} variant="primary" size="md" className="shadow-card">
+              <CtaButton href={navPrimary.href} variant="primary" size="sm" className="shadow-card">
                 {navPrimary.label}
               </CtaButton>
             ) : null}
@@ -206,7 +287,7 @@ export default function SiteNav({ sections }) {
             onClick={() => setOpen((value) => !value)}
             aria-expanded={open}
             aria-controls="site-nav-panel"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-card text-foreground transition-colors duration-200 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:hidden"
+            className="ml-auto inline-flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-card text-foreground transition-colors duration-200 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:hidden"
           >
             {open ? (
               <X className="h-5 w-5" aria-hidden="true" />
@@ -216,7 +297,7 @@ export default function SiteNav({ sections }) {
             <span className="sr-only">{open ? "Close menu" : "Open menu"}</span>
           </button>
         </div>
-      </nav>
+      </Container>
 
       {/*
         Unmounted rather than hidden, so its links are never reachable by Tab
@@ -228,7 +309,7 @@ export default function SiteNav({ sections }) {
           ref={panelRef}
           className="border-t border-border bg-background lg:hidden"
         >
-          <ul className="mx-auto w-full max-w-6xl px-5 py-3 sm:px-6">
+          <Container as="ul" className="py-3">
             {links.map((link) => (
               <li key={link.href}>
                 <a
@@ -240,10 +321,14 @@ export default function SiteNav({ sections }) {
                 </a>
               </li>
             ))}
-          </ul>
+          </Container>
 
-          {navPrimary || navSecondary ? (
-            <div className="mx-auto flex w-full max-w-6xl flex-col gap-2 border-t border-border px-5 py-4 sm:px-6">
+          {navPrimary || navSecondary || navSignIn ? (
+            /* Same hierarchy as the bar, stacked: solid, outline, then the
+               plain sign-in. Nothing is dropped at this width — the outlined
+               step is only held back on the desktop row, where it is a space
+               problem rather than a priority one. */
+            <Container className="flex flex-col gap-2 border-t border-border py-4">
               {navPrimary ? (
                 <CtaButton
                   href={navPrimary.href}
@@ -257,14 +342,23 @@ export default function SiteNav({ sections }) {
               {navSecondary ? (
                 <CtaButton
                   href={navSecondary.href}
-                  variant="secondary"
+                  variant="ghost"
                   size="lg"
                   onClick={() => setOpen(false)}
                 >
                   {navSecondary.label}
                 </CtaButton>
               ) : null}
-            </div>
+              {navSignIn ? (
+                <a
+                  href={navSignIn.href}
+                  onClick={() => setOpen(false)}
+                  className="mt-1 inline-flex h-11 items-center justify-center rounded-lg text-sm font-semibold text-foreground transition-colors duration-200 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                >
+                  {navSignIn.label}
+                </a>
+              ) : null}
+            </Container>
           ) : null}
         </div>
       ) : null}

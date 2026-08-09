@@ -5,38 +5,51 @@
  * WHAT THESE COLUMNS ARE
  *  They are a leftover from the pre-Supabase-Auth login. Migration 012 created
  *  a real Supabase Auth user for every existing profile row, and Supabase Auth
- *  has been the authoritative credential ever since. The columns survive only
- *  to feed the legacy fallback branch in src/app/login/page.js.
+ *  has been the authoritative credential ever since.
  *
- * WHY THE VALUES ARE HASHED FROM NOW ON
- *  Migrations 013/014 put an `org_isolation`-style RLS policy on all three
- *  tables: `for all TO AUTHENTICATED using (organization_id = auth_org())`.
- *  That means every logged-in member of an organization can `select *` from
- *  developers / admin_users / clients and read every colleague's password in
- *  cleartext through PostgREST. Storing a one-way hash instead removes the
- *  usable credential from that read without removing the column, so the
- *  fallback keeps working while the exposure goes away for every row we touch.
+ * NOTHING IN THE APPLICATION VERIFIES AGAINST THEM ANY MORE
+ *  The last reader was the fallback branch in src/app/login/page.js, and it has
+ *  been deleted: it ran only after Supabase Auth sign-in had failed, at which
+ *  point the browser is still the `anon` role, and every policy on developers /
+ *  admin_users / clients is `TO authenticated` (013, 014; 018 and 040 add none).
+ *  Its profile lookup returned zero rows, so the comparison was unreachable.
+ *  No writer creates a new value either — signup, invitation-accept and the
+ *  admin "add developer" flow all stopped writing the column, and
+ *  /api/developer/change-password stopped re-syncing it.
  *
- * WHY BOTH SHAPES ARE ACCEPTED ON READ
- *  Rows written before this change hold cleartext, and several writers this
- *  change is not allowed to touch (auth/signup, invitations/accept,
- *  admin/registration, AddDeveloper, ClientManagement) still insert cleartext.
- *  verifyLegacyPassword() therefore accepts a stored hash OR a stored
- *  cleartext value, so no existing row stops working. The cleartext branch is
- *  deleted in stage 3 of the plan in database/041_password_hardening.sql.
+ *  What remains in those columns is the historical values: rows written before
+ *  that change, most of them still cleartext. GET /api/admin/legacy-auth-audit
+ *  counts them (it imports LEGACY_HASH_PREFIX from here to tell the two shapes
+ *  apart, which is the only remaining import of this module in src/).
+ *
+ * WHY THE HASH/VERIFY PAIR IS KEPT
+ *  Stage 5 of database/041_password_hardening.sql is a one-off service-role
+ *  pass that replaces each surviving cleartext value with a PBKDF2 hash of
+ *  itself — pgcrypto cannot produce this format, so it has to be done in JS.
+ *  hashLegacyPassword() is what that script derives with, and
+ *  verifyLegacyPassword() is how the result is checked. Both are exercised by
+ *  tests/changePassword.test.js. Neither is on any request path.
+ *
+ * WHY VERIFY ACCEPTS BOTH SHAPES
+ *  A stored value may be a hash or an untouched cleartext row, and a checker
+ *  that only understood one of them would silently report the other as a
+ *  mismatch. The cleartext branch goes away once stage 5 has run.
  *
  * WHY PBKDF2 AND NOT BCRYPT
- *  This module has to run in BOTH places that verify a legacy password: the
- *  Node route handler and the browser login page. PBKDF2 via Web Crypto is in
- *  Node 20 and every supported browser with no dependency at all, so nothing is
- *  added to package.json and nothing has to be kept in sync between two
- *  implementations. Parameters follow the OWASP recommendation for
- *  PBKDF2-HMAC-SHA256 (210,000 iterations).
+ *  It had to run in the browser as well as in Node when the login page still
+ *  verified against these columns. PBKDF2 via Web Crypto is in Node 20 and every
+ *  supported browser with no dependency at all, so nothing was added to
+ *  package.json and there was never a second implementation to keep in sync.
+ *  That constraint is gone, but so is any reason to change the format: the
+ *  hashes already written by /api/developer/change-password are in it.
+ *  Parameters follow the OWASP recommendation for PBKDF2-HMAC-SHA256
+ *  (210,000 iterations).
  *
  * LOCATION
- *  This belongs in src/utils/. It lives here because this change is scoped to
- *  src/app/api/developer/change-password/**; move it when that fence is lifted.
- *  It imports nothing server-only, so it is safe in the client bundle.
+ *  This belongs in src/utils/. It lives here for historical reasons — the change
+ *  that introduced it was fenced to src/app/api/developer/change-password/**.
+ *  Its one importer in src/ is now src/app/api/admin/legacy-auth-audit/route.js,
+ *  so moving it is a rename plus one import.
  */
 
 export const LEGACY_HASH_SCHEME = "pbkdf2";

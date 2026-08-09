@@ -28,6 +28,7 @@
 import { Check } from "lucide-react";
 
 import {
+  Container,
   CtaButton,
   Eyebrow,
   IconChip,
@@ -222,7 +223,7 @@ export default function RoleStories() {
     >
       <ParallaxField layerRef={layerRef} dark />
 
-      <div className="mx-auto w-full max-w-6xl px-5 sm:px-6 lg:px-8">
+      <Container>
         <SectionHeading
           eyebrow={eyebrow}
           title={title}
@@ -370,7 +371,7 @@ export default function RoleStories() {
             ))}
           </div>
         </div>
-      </div>
+      </Container>
     </section>
   );
 }
