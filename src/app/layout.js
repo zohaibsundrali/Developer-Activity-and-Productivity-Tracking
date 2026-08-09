@@ -1,4 +1,4 @@
-import { Inter, Space_Grotesk } from 'next/font/google';
+import localFont from 'next/font/local';
 import { AuthProvider } from '@/contexts/AuthContext';
 // Plain module, not the "use client" Logo — a Server Component importing from a
 // client module receives opaque client references, not strings.
@@ -22,16 +22,44 @@ import 'sweetalert2/dist/sweetalert2.min.css';
  * wordmark: a geometric grotesk with enough engineering-drawing character to
  * make the brand recognisable without ever being asked to set a data table.
  */
-const inter = Inter({
-  subsets: ['latin'],
+// `next/font/local`, NOT `next/font/google`.
+//
+// The Google loader downloads the woff2 files from fonts.gstatic.com *during
+// the build*. That makes every deploy depend on an outbound connection from
+// the build machine, and it is not hypothetical: the Vercel build failed with
+// three ETIMEDOUTs against fonts.gstatic.com and `Failed to fetch Space Grotesk
+// from Google Fonts`, which is a hard webpack error — the build stops, it does
+// not degrade to a fallback.
+//
+// The files now live in src/app/fonts and are committed, so the build has no
+// network dependency at all. It also removes a build-time third party from the
+// deploy path, which for a product that sells on data handling is worth having
+// regardless of the outage.
+//
+// Latin subset only, matching what the Google loader was already fetching.
+// Adding a weight means adding a file here.
+const inter = localFont({
+  src: [
+    { path: './fonts/Inter-400.woff2', weight: '400', style: 'normal' },
+    { path: './fonts/Inter-500.woff2', weight: '500', style: 'normal' },
+    { path: './fonts/Inter-600.woff2', weight: '600', style: 'normal' },
+    { path: './fonts/Inter-700.woff2', weight: '700', style: 'normal' },
+    { path: './fonts/Inter-800.woff2', weight: '800', style: 'normal' },
+  ],
   display: 'swap',
   variable: '--font-inter',
+  fallback: ['ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
 });
 
-const spaceGrotesk = Space_Grotesk({
-  subsets: ['latin'],
+const spaceGrotesk = localFont({
+  src: [
+    { path: './fonts/SpaceGrotesk-500.woff2', weight: '500', style: 'normal' },
+    { path: './fonts/SpaceGrotesk-600.woff2', weight: '600', style: 'normal' },
+    { path: './fonts/SpaceGrotesk-700.woff2', weight: '700', style: 'normal' },
+  ],
   display: 'swap',
   variable: '--font-space-grotesk',
+  fallback: ['ui-sans-serif', 'system-ui', 'sans-serif'],
 });
 
 // SITE_URL is still the old `devtrack-blush.vercel.app` hostname on purpose —
