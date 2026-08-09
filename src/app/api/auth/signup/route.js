@@ -166,10 +166,43 @@ export async function POST(request) {
       email, password, email_confirm: true,
       app_metadata: { organization_id: orgId, role: "owner", user_type: "admin", app_user_id: newAdmin.id },
     });
-    if (!auErr && au?.user?.id) {
-      authUserId = au.user.id;
-      await admin.from("admin_users").update({ auth_user_id: authUserId }).eq("id", newAdmin.id);
+    // A failure here used to be swallowed: the route returned success, the
+    // screen said the account was created, and `auth_user_id` stayed null.
+    //
+    // The common cause is an email that already has a Supabase Auth account —
+    // from an earlier signup, or one whose profile rows were removed without
+    // the Auth user. What the person then gets is an organization with no
+    // credential attached to it, while their old Auth account still signs them
+    // in and still carries the OLD organization in its JWT claim. Every write
+    // afterwards is rejected by RLS with "new row violates row-level security
+    // policy", because auth_org() and the org the app is holding are two
+    // different organizations. That is a genuinely baffling failure, and it is
+    // reported as a permissions bug rather than the duplicate signup it is.
+    //
+    // So: fail loudly, and roll back everything this request created. Same
+    // shape as the organization rollback above — a half-made account is worse
+    // than no account, because nothing tells the user which half is missing.
+    if (auErr || !au?.user?.id) {
+      await admin.from("memberships").delete().eq("user_id", newAdmin.id);
+      await admin.from("organizations").delete().eq("id", orgId);
+      await admin.from("admin_users").delete().eq("id", newAdmin.id);
+
+      const duplicate =
+        auErr?.status === 422 ||
+        /already (been )?registered|already exists|duplicate/i.test(auErr?.message || "");
+
+      return NextResponse.json(
+        {
+          error: duplicate
+            ? "An account with this email already exists. Sign in instead, or use a different email address."
+            : auErr?.message || "Could not create the sign-in account.",
+        },
+        { status: duplicate ? 409 : 500 }
+      );
     }
+
+    authUserId = au.user.id;
+    await admin.from("admin_users").update({ auth_user_id: authUserId }).eq("id", newAdmin.id);
 
     return NextResponse.json({
       success: true,
