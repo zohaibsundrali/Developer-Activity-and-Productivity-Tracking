@@ -94,6 +94,7 @@ import {
   fetchNotificationPreferences,
   setNotificationPreference,
   CATEGORY_KEYS,
+  categoryMeta,
 } from "@/utils/notifications";
 import { mentionsPhrase, resolveMentions } from "@/utils/pmData";
 import { mergeRows, upsertRow } from "@/hooks/useNotifications";
@@ -723,5 +724,50 @@ describe("setNotificationPreference", () => {
     const { error } = await setNotificationPreference("mention", false);
     expect(error).toBeInstanceOf(Error);
     expect(db.queries).toHaveLength(0);
+  });
+});
+
+/**
+ * Signals in the notification centre.
+ *
+ * The engine that writes these lives in src/utils/signals.js and the delivery
+ * in job 4 of /api/cron. What is tested here is only the seam: that a signal
+ * row is recognised as its own thing rather than quietly becoming "General".
+ */
+describe("the signal category", () => {
+  it("exists, so signals can be filtered and switched off on their own", () => {
+    // Falling through to `general` would have looked like it worked while
+    // making both impossible: no filter, and no preference row to toggle.
+    expect(CATEGORY_KEYS).toContain("signal");
+    expect(categoryMeta("signal").label).toBe("Needs attention");
+    expect(categoryMeta("signal")).not.toEqual(categoryMeta("general"));
+  });
+
+  it("carries a tone the semantic classes already define", () => {
+    // The dropdown maps `tone` onto existing colours; an invented one renders
+    // unstyled.
+    const tones = CATEGORY_KEYS.map((k) => categoryMeta(k).tone);
+    expect(new Set(tones)).toEqual(new Set(["info", "primary", "muted", "warning", "success"]));
+  });
+
+  it("links a signal to somewhere that exists", () => {
+    // A project signal goes to the project…
+    expect(notificationHref({ category: "signal", project_id: "p1" }, { audience: "admin" })).toBe(
+      "/admin/project-details/p1"
+    );
+    // …a sprint signal to the sprints board…
+    expect(
+      notificationHref({ category: "signal", entity_type: "sprint" }, { audience: "admin" })
+    ).toMatch(/section=sprints/);
+    // …and everything else to the overview, where the panel is.
+    expect(notificationHref({ category: "signal" }, { audience: "admin" })).toMatch(
+      /section=overview/
+    );
+  });
+
+  it("gives a developer audience no signal link at all", () => {
+    // Signals are addressed only to owner, admin, hr and managers. A developer
+    // reaching this is already a bug elsewhere; it must not become a link.
+    expect(notificationHref({ category: "signal" }, { audience: "developer" })).toBeNull();
   });
 });

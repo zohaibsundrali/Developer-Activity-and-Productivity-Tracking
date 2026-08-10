@@ -34,6 +34,14 @@ export const CATEGORIES = {
   project: { label: "Projects", tone: "info", icon: "FolderKanban" },
   team: { label: "Team & employees", tone: "muted", icon: "Users" },
   automation: { label: "Automation", tone: "muted", icon: "Zap" },
+  // Written by job 4 in /api/cron — see src/utils/signals.js. It gets its own
+  // category rather than falling through to `general` for two reasons: these
+  // are the only notifications that assert something about a named person's
+  // working pattern, so they must be filterable on their own; and the
+  // preference row keyed on this category is the switch that turns the whole
+  // feature off for someone who does not want it. Landing in `general` would
+  // have made both impossible while looking like it worked.
+  signal: { label: "Needs attention", tone: "warning", icon: "Siren" },
   general: { label: "General", tone: "muted", icon: "Bell" },
 };
 
@@ -81,6 +89,14 @@ export function notificationHref(n, { audience = "admin" } = {}) {
   if (n.entity_type === "sprint") return audience === "admin" ? `${adminBase}?section=sprints` : null;
   if (n.entity_type === "employee") return audience === "admin" ? `${adminBase}?section=employees` : null;
   if (n.entity_type === "team") return audience === "admin" ? `${adminBase}?section=team-stats` : null;
+  // Signals land on the overview, where the panel that produced them lives —
+  // and last, so a signal that names a project or a sprint still goes to the
+  // specific screen via the branches above. There is deliberately no developer
+  // destination: signals are only ever addressed to owner, admin, hr and
+  // managers, so a developer audience reaching this line is already wrong.
+  if (n.category === "signal" || n.type === "signal") {
+    return audience === "admin" ? `${adminBase}?section=overview` : null;
+  }
   return null;
 }
 

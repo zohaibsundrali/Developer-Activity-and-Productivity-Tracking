@@ -2,10 +2,26 @@ import { NextResponse } from "next/server";
 import { serviceClient } from "@/utils/serverAuth";
 import { recordEvent } from "@/utils/systemEvents";
 import { daysUntil, reminderMessage, REMINDER_FROM_DAYS } from "@/utils/billingAccess";
+import {
+  runDetectors,
+  filterForViewer,
+  SIGNAL_ROLES as SIGNAL_NOTIFY_ROLES,
+  DEFAULTS as SIGNAL_DEFAULTS,
+} from "@/utils/signals";
+// The identical query set the dashboard uses. Two copies of "what the detectors
+// need" would drift, and the first symptom would be the nightly notification
+// disagreeing with the panel it links to.
+import { collect as collectSignals } from "@/app/api/signals/route";
 
 // Who hears about a trial running out. The two roles that can enter a card —
 // see the note on job 3.
 const TRIAL_NOTIFY_ROLES = ["owner", "admin"];
+
+// Signal delivery uses the role list and the filter from src/utils/signals.js,
+// so this job and the dashboard cannot disagree about who is told what.
+const SIGNAL_LOOKBACK_DAYS = (SIGNAL_DEFAULTS.baselineWeeks + 1) * SIGNAL_DEFAULTS.windowDays;
+/** Organizations processed per run. Exceeding it is reported, never silent. */
+const SIGNAL_ORG_CAP = 1000;
 
 export const dynamic = "force-dynamic";
 
@@ -63,7 +79,7 @@ async function runJobs() {
   const svc = serviceClient();
   const today = ymd(new Date());
   const tomorrow = ymd(new Date(Date.now() + 86400000));
-  const summary = { remindersSent: 0, recurringSpawned: 0, trialReminders: 0, errors: [] };
+  const summary = { remindersSent: 0, recurringSpawned: 0, trialReminders: 0, signalsRaised: 0, errors: [] };
 
   /* ── 1. Due-date reminders ─────────────────────────────────────── */
   try {
@@ -317,6 +333,153 @@ async function runJobs() {
     }
   } catch (err) {
     summary.errors.push({ job: "trial_reminders", message: err?.message || String(err) });
+  }
+
+  /* ── 4. Signals ────────────────────────────────────────────────── */
+  //
+  // The nightly pass of the detectors in src/utils/signals.js, delivered to the
+  // people who can act on them.
+  //
+  // ONLY critical AND warning ARE DELIVERED. `info` signals — "nine tasks have
+  // not moved in a week" — belong on the dashboard panel, where somebody goes
+  // looking. Pushing them into a notification every night is how the whole
+  // feature gets muted in a fortnight, and a muted signal is worse than none
+  // because everybody believes it is still working.
+  //
+  // DEDUPE is the signal's own `dedupeKey`, which carries the calendar day, and
+  // `notifications` has a unique index on it (migration 029). So a second run
+  // in the same day collides rather than duplicating, which is why the insert
+  // below goes one row at a time and treats 23505 as success — a batch insert
+  // would lose every row in the batch to one collision.
+  //
+  // WHO IS TOLD: the same rule the API uses. Person-level signals go to owner,
+  // admin and hr, and to that person's own manager via `reports_to`. Nothing
+  // person-level is broadcast to the whole company.
+  try {
+    // `error` is checked, unlike the first version. A failed read left `orgs`
+    // undefined, skipped the loop, and answered `{ok:true, signalsRaised:0}`
+    // with an empty error array — indistinguishable from a quiet night.
+    const { data: orgs, error: orgErr } = await svc
+      .from("organizations")
+      .select("id")
+      .limit(SIGNAL_ORG_CAP);
+    if (orgErr) throw orgErr;
+    // No silent truncation: if there are more organizations than this run will
+    // look at, say so rather than letting org 1001 never receive a signal.
+    if ((orgs || []).length === SIGNAL_ORG_CAP) {
+      summary.errors.push({
+        job: "signals",
+        message: `Capped at ${SIGNAL_ORG_CAP} organizations; some were not processed this run.`,
+      });
+    }
+
+    for (const org of orgs || []) {
+      const auth = { orgId: org.id, role: "owner", userType: "admin", appUserId: null };
+      const since = new Date(Date.now() - SIGNAL_LOOKBACK_DAYS * 86400000).toISOString();
+
+      let bundle;
+      try {
+        bundle = await collectSignals(svc, auth, new Date(), since);
+      } catch (err) {
+        summary.errors.push({ job: "signals", org: org.id, message: err?.message || String(err) });
+        continue;
+      }
+
+      const worth = runDetectors(bundle, new Date()).filter((s) => s.severity !== "info");
+      if (!worth.length) continue;
+
+      const { data: recipients, error: recErr } = await svc
+        .from("memberships")
+        .select("user_id, email, role, reports_to")
+        .eq("organization_id", org.id)
+        .eq("status", "active")
+        .in("role", SIGNAL_NOTIFY_ROLES);
+      if (recErr) {
+        summary.errors.push({ job: "signals", org: org.id, message: recErr.message });
+        continue;
+      }
+
+      // Collected first, inserted as one batch per organization. One awaited
+      // INSERT per signal per recipient is ~1,700 serial round trips at 50 orgs
+      // × 5 signals × 5 recipients, on top of jobs 1-3 in the same invocation —
+      // which is how a serverless function times out and loses the entire run,
+      // including the failure record.
+      const rows = [];
+
+      for (const s of worth) {
+        for (const member of recipients || []) {
+          // A manager hears only about their own reports; owner/admin/hr hear
+          // everything. Team-level signals go to all of them.
+          // THE SAME FUNCTION the dashboard applies, not a second copy of the
+          // rule. The first version reimplemented it here, and the review found
+          // that both implementations were wrong in the same way while the
+          // tests covering them could not tell — because they matched the text
+          // of the filter instead of running it.
+          //
+          // `visiblePeople` for this recipient: everyone whose `reports_to`
+          // points at them, under either spelling of their identifier.
+          const theirIds = [member.user_id, member.email]
+            .filter(Boolean)
+            .map((v) => String(v).trim().toLowerCase());
+          const visiblePeople = new Set(
+            Object.entries(bundle.reportsTo || {})
+              .filter(([, manager]) => theirIds.includes(manager))
+              .map(([subject]) => subject)
+          );
+
+          if (!filterForViewer([s], { role: member.role, visiblePeople }).length) continue;
+
+          rows.push({
+            organization_id: org.id,
+            admin_id: member.user_id,
+            admin_email: member.email || null,
+            type: "signal",
+            category: "signal",
+            title: s.title,
+            message: s.message,
+            // The organization is IN the key. Org-level signals use constant
+            // subject ids ("review-backlog", "stalled", a plan meter name), and
+            // the unique index on `dedupe_key` in migration 029 is global
+            // rather than per-organization. One person can legitimately be a
+            // member of several organizations — so without this, org B's
+            // review-backlog notification collides with org A's, comes back
+            // 23505, is counted as a successful dedupe, and that person is
+            // simply never told about org B.
+            dedupe_key: `${org.id}:${s.dedupeKey}:${member.user_id}`,
+            metadata: { kind: s.kind, severity: s.severity, subject: s.subject, metric: s.metric },
+            // `project_id` and `entity_type` are what make the row clickable —
+            // notificationHref resolves a project signal to that project and a
+            // sprint signal to the sprints board, and everything else falls
+            // through to the overview where the panel is.
+            project_id: s.subject?.type === "project" ? s.subject.id : null,
+            entity_type: s.subject?.type === "sprint" ? "sprint" : null,
+            entity_id: s.subject?.type === "sprint" ? s.subject.id : null,
+            task_id: null,
+          });
+        }
+      }
+
+      // One statement per organization. `ignoreDuplicates` makes the unique
+      // index on `dedupe_key` skip rows already sent today instead of failing
+      // the batch — which is the behaviour the row-at-a-time version was
+      // emulating with a 23505 check, at the cost of a round trip per row.
+      //
+      // `select()` returns only the rows that were actually written, so the
+      // count is honest: migration 034 installs a BEFORE INSERT trigger that
+      // returns NULL for a category a person has muted, and that produces no
+      // error. Counting intent rather than result would have reported signals
+      // raised for notifications nobody ever received.
+      for (const batch of chunk(rows, INSERT_CHUNK)) {
+        const { data: written, error: insErr } = await svc
+          .from("notifications")
+          .upsert(batch, { onConflict: "dedupe_key", ignoreDuplicates: true })
+          .select("id");
+        if (insErr) summary.errors.push({ job: "signals", org: org.id, message: insErr.message });
+        else summary.signalsRaised += (written || []).length;
+      }
+    }
+  } catch (err) {
+    summary.errors.push({ job: "signals", message: err?.message || String(err) });
   }
 
   // Monitoring (best effort, never throws — see src/utils/systemEvents.js).

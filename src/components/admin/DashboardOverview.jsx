@@ -6,6 +6,7 @@ import { PageHeader, Section, Card, CardContent, Button, ErrorState } from "@/co
 import { sectionTitle } from "@/components/shell/navConfig";
 import { getOrgId } from "@/utils/orgContext";
 import { setVisibleInterval } from "@/hooks/useVisibleInterval";
+import SignalsPanel from "@/components/admin/SignalsPanel";
 
 export default function DashboardOverview({ user, onRefresh, supabase }) {
   const [realTimeStats, setRealTimeStats] = useState({
@@ -155,6 +156,14 @@ export default function DashboardOverview({ user, onRefresh, supabase }) {
           </Button>
         }
       />
+
+      {/* ABOVE the counters, deliberately.
+          Everything below this line reports a number; this reads the numbers
+          and says what needs doing. Putting it under three rows of stat cards
+          would mean the one thing on the page that asks for an action sits
+          below the things that do not. It renders nothing at all when there is
+          nothing to flag and the caller's role does not see signals. */}
+      <SignalsPanel />
 
       {error && !loading ? (
         <ErrorState
