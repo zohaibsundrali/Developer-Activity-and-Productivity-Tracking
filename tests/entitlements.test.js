@@ -343,3 +343,101 @@ describe("checkFeatureAccess", () => {
     expect(blocked).toMatchObject({ status: 402, feature: "api_access" });
   });
 });
+
+/**
+ * The lock (database/053 + src/utils/billingAccess.js).
+ *
+ * `entitled` and `locked` answer different questions: the first shrinks an
+ * organization to free limits, the second closes it. These tests pin the
+ * boundary between them, because collapsing the two in either direction is a
+ * production incident — one gives the product away, the other takes a paying
+ * customer's workspace off them.
+ */
+describe("the trial lock, as enforced by the limit checks", () => {
+  const expiredTrial = { plan_code: "business", status: "trialing", trial_end: days(-1) };
+
+  it("refuses a resource the plan would otherwise allow", async () => {
+    const svc = fakeService({ subscription: expiredTrial, counts: { projects: 0 } });
+    const blocked = await checkResourceLimit(svc, "org", "projects", NOW);
+    expect(blocked).toBeTruthy();
+    expect(blocked.status).toBe(402);
+    expect(blocked.billingLocked).toBe(true);
+    expect(blocked.lockReason).toBe("trial_expired");
+  });
+
+  it("refuses even where the lapsed plan's limit is UNLIMITED", async () => {
+    // The regression this exists to catch: `active_tasks` is -1 on business, and
+    // checkResourceLimit returns early for an unlimited limit. A lock checked
+    // after that short-circuit would never fire for the most expensive plans.
+    const svc = fakeService({ subscription: expiredTrial, counts: { developer_tasks: 5 } });
+    const blocked = await checkResourceLimit(svc, "org", "active_tasks", NOW);
+    expect(blocked?.billingLocked).toBe(true);
+
+    // And the same resource on a LIVE business trial is allowed, so the
+    // assertion above is about the lock and not about active_tasks being
+    // refused for some unrelated reason.
+    const live = fakeService({
+      subscription: { plan_code: "business", status: "trialing", trial_end: days(3) },
+      counts: { developer_tasks: 5 },
+    });
+    expect(await checkResourceLimit(live, "org", "active_tasks", NOW)).toBeNull();
+  });
+
+  it("refuses a seat, through the same path", async () => {
+    const svc = fakeService({ subscription: expiredTrial, counts: { developers: 0 } });
+    const blocked = await checkSeatLimitForRole(svc, "org", "developer", NOW);
+    expect(blocked?.billingLocked).toBe(true);
+  });
+
+  it("refuses a feature the plan grants, because the workspace is shut", async () => {
+    const svc = fakeService({ subscription: expiredTrial });
+    const blocked = await checkFeatureAccess(svc, "org", "reports", "Reports", NOW);
+    expect(blocked?.billingLocked).toBe(true);
+  });
+
+  it("does NOT lock the free plan, however long it has been expired", async () => {
+    const svc = fakeService({
+      subscription: { plan_code: "free", status: "trialing", trial_end: days(-400) },
+      counts: { projects: 0 },
+    });
+    expect(await checkResourceLimit(svc, "org", "projects", NOW)).toBeNull();
+  });
+
+  it("does NOT lock a deliberately cancelled plan — it shrinks to free", async () => {
+    // /api/billing/cancel promises on screen that the plan "reverts to Free".
+    // A lock here would break that promise and punish the honest exit.
+    const svc = fakeService({
+      subscription: { plan_code: "business", status: "canceled" },
+      counts: { projects: 0 },
+    });
+    const result = await checkResourceLimit(svc, "org", "projects", NOW);
+    expect(result).toBeNull(); // 0 projects, free allows 2
+  });
+
+  it("still enforces the ordinary free limit after a cancellation", async () => {
+    const svc = fakeService({
+      subscription: { plan_code: "business", status: "canceled" },
+      counts: { projects: 2 },
+    });
+    const blocked = await checkResourceLimit(svc, "org", "projects", NOW);
+    expect(blocked?.limitReached).toBe(true);
+    expect(blocked?.billingLocked).toBeUndefined();
+  });
+
+  it("does NOT lock an organization with no subscription row", async () => {
+    const svc = fakeService({ subscription: null, counts: { projects: 0 } });
+    expect(await checkResourceLimit(svc, "org", "projects", NOW)).toBeNull();
+  });
+
+  it("reports the countdown alongside the limits while a trial is running", async () => {
+    const svc = fakeService({
+      subscription: { plan_code: "business", status: "trialing", trial_end: days(6) },
+    });
+    const entitlement = await resolveEntitlement(svc, "org", NOW);
+    expect(entitlement.locked).toBe(false);
+    expect(entitlement.onTrial).toBe(true);
+    expect(entitlement.daysRemaining).toBe(6);
+    // Business limits, not free — a running trial is the full plan.
+    expect(entitlement.limits.projects).toBe(150);
+  });
+});

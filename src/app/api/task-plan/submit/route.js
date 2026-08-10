@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getAuthedOrg } from '@/utils/serverAuth';
+import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
+import { requireUnlocked } from '@/utils/entitlements';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -15,6 +16,12 @@ export async function POST(request) {
     }
     if (auth.userType === 'client') {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
+
+    // Billing lock — see the note in src/app/api/task-submission/route.js.
+    const billingBlocked = await requireUnlocked(serviceClient(), auth.orgId);
+    if (billingBlocked) {
+      return NextResponse.json({ success: false, ...billingBlocked }, { status: billingBlocked.status });
     }
 
     const body = await request.json().catch(() => ({}));

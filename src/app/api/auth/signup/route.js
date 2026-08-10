@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { meta as termsMeta } from "@/content/legal/terms";
+import { FREE_PLAN_CODE, trialEndFor } from "@/utils/billingAccess";
 
 // Server-side admin signup — creates the admin_users row, the organization, the
 // owner membership, and the Supabase Auth account, all with the service_role
@@ -47,10 +48,88 @@ function acceptanceIp(request) {
   return null;
 }
 
+/**
+ * Resolve the plan this signup is actually allowed to start on.
+ *
+ * THE CODE FROM THE BROWSER IS A REQUEST, NOT A DECISION. It is looked up in
+ * `billing_plans` and must be active; anything unknown, inactive or absent
+ * falls back to free. Trusting it would let a caller POST
+ * `{"planCode":"enterprise"}` and hand themselves the unlimited plan.
+ *
+ * `trial_days` is read from the row rather than from a constant, so changing
+ * the trial length is one UPDATE and not a deploy. Free never gets a trial —
+ * it is a plan you can stay on, and a free tier that expires is not free.
+ *
+ * Returns the row shape to insert, so the caller does no billing arithmetic.
+ */
+async function resolvePlanForSignup(admin, requestedCode, hasPaymentMethod) {
+  const requested = String(requestedCode || "").trim().toLowerCase();
+
+  let plan = null;
+  if (requested && requested !== FREE_PLAN_CODE) {
+    const { data } = await admin
+      .from("billing_plans")
+      .select("code, name, trial_days, is_active")
+      .eq("code", requested)
+      .eq("is_active", true)
+      .maybeSingle();
+    plan = data || null;
+  }
+
+  // A PAID PLAN WITH NO TRIAL IS NOT SELF-SERVE, AND MUST NOT BE GRANTED HERE.
+  //
+  // `trial_days = 0` is how database/053 marks Enterprise: sold, not signed up
+  // for. Without this check the plan was reachable anyway — `trialEndFor`
+  // treats 0 as a nonsensical value and falls back to the 7-day default, so
+  // POSTing {"planCode":"enterprise"} (or simply clicking the Enterprise card,
+  // which /api/billing/plans happily returns) minted a 7-day trial of the
+  // unlimited plan with every feature on and no payment of any kind.
+  //
+  // Falling back to free is the conservative direction: the person gets a
+  // working workspace and has to talk to somebody to get Enterprise.
+  if (plan && !(Number(plan.trial_days) > 0)) {
+    console.warn("[signup] plan %s has no self-serve trial; starting on free", plan.code);
+    plan = null;
+  }
+
+  if (!plan) {
+    return { plan_code: FREE_PLAN_CODE, status: "active" };
+  }
+
+  const now = new Date();
+  return {
+    plan_code: plan.code,
+    status: "trialing",
+    trial_start: now.toISOString(),
+    trial_end: trialEndFor(plan.trial_days, now).toISOString(),
+    // A marker, not a credential. See the note in the route below: no card
+    // number, expiry or CVC reaches this server, so there is nothing else to
+    // record and nothing here worth stealing.
+    last_payment_status: hasPaymentMethod ? "demo_card_on_file" : null,
+  };
+}
+
 export async function POST(request) {
   try {
     const body = await request.json();
     const { fullName, company, industry, companySize, country, email, password, timezone, termsAccepted } = body;
+
+    // BILLING INPUT — the only two billing values this route reads.
+    //
+    // `planCode` is validated against the catalogue by resolvePlanForSignup.
+    //
+    // `paymentMethodProvided` is a BOOLEAN, deliberately. The registration
+    // screen shows a card form and validates it in the browser, but the card
+    // number, expiry and CVC never leave the tab: they are not sent here, not
+    // logged, and not stored. That is what keeps this server out of PCI scope
+    // while the flow is still a demo — the only thing recorded is THAT a card
+    // step was completed, which is all the demo needs to mean.
+    //
+    // When real payments are switched on, this is replaced by a Stripe
+    // Checkout session or a PaymentMethod id minted by Stripe Elements in the
+    // browser. Neither of those is a card number either.
+    const planCode = typeof body.planCode === "string" ? body.planCode : "";
+    const paymentMethodProvided = body.paymentMethodProvided === true;
     if (!email || !password) {
       return NextResponse.json({ error: "email and password are required" }, { status: 400 });
     }
@@ -132,6 +211,32 @@ export async function POST(request) {
       email: newAdmin.email, role: "owner", status: "active",
     }]);
 
+    // 3a) the subscription.
+    //
+    // EVERY organization gets a row, including free ones. `resolveEntitlement`
+    // treats a missing row as "free, always usable", so an org without one is
+    // not broken — but it is also invisible to the trial reminder job and to
+    // the billing screen, and it means the shape of the data depends on when
+    // the account was made. One row per organization, always.
+    //
+    // A failure here does NOT fail the signup: falling back to no row lands
+    // exactly on that already-safe default, and refusing to create an account
+    // because a billing row could not be written would be a worse trade. It is
+    // logged so the gap is findable.
+    const subscriptionRow = await resolvePlanForSignup(admin, planCode, paymentMethodProvided);
+    const { error: subErr } = await admin
+      .from("organization_subscriptions")
+      .insert([{ organization_id: orgId, ...subscriptionRow }]);
+    if (subErr) {
+      console.error("[signup] subscription not created", orgId, subErr.message);
+    }
+    // What the response is allowed to claim. If the insert failed there is no
+    // subscription, so reporting the trial we MEANT to create would tell
+    // someone "you're on a Professional trial until 17 August" and then hand
+    // them free limits — they would hit "your free plan allows 3 employees" on
+    // day one with no idea why.
+    const subscriptionCreated = !subErr;
+
     // 3b) record the acceptance — see database/039_terms_acceptance.sql.
     //
     // The version, not a boolean: "terms_accepted: true" cannot answer "who
@@ -184,6 +289,10 @@ export async function POST(request) {
     // than no account, because nothing tells the user which half is missing.
     if (auErr || !au?.user?.id) {
       await admin.from("memberships").delete().eq("user_id", newAdmin.id);
+      // Deleted explicitly, before the organization. `organization_subscriptions`
+      // is ON DELETE CASCADE so the row would go anyway — but the rollback must
+      // not depend on a constraint declared in another file to be correct.
+      await admin.from("organization_subscriptions").delete().eq("organization_id", orgId);
       await admin.from("organizations").delete().eq("id", orgId);
       await admin.from("admin_users").delete().eq("id", newAdmin.id);
 
@@ -209,6 +318,18 @@ export async function POST(request) {
       admin: newAdmin,
       organizationId: orgId,
       organizationName: org?.name || null,
+      // What the account actually started on — the resolved plan, not the one
+      // that was asked for. The two differ whenever the browser sent something
+      // unknown, and the screen must show what is true.
+      plan: subscriptionCreated
+        ? {
+            code: subscriptionRow.plan_code,
+            status: subscriptionRow.status,
+            trialEndsAt: subscriptionRow.trial_end || null,
+          }
+        : // No row was written. `resolveEntitlement` treats a missing
+          // subscription as free-and-usable, so that is what to report.
+          { code: FREE_PLAN_CODE, status: "active", trialEndsAt: null },
     });
   } catch (e) {
     return NextResponse.json({ error: "Signup failed" }, { status: 500 });

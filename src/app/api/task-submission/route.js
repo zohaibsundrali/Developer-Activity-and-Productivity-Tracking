@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getAuthedOrg } from '@/utils/serverAuth';
+import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
+import { requireUnlocked } from '@/utils/entitlements';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +28,16 @@ export async function POST(request) {
     }
     if (auth.userType === 'client') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // Billing lock. This route has no plan METER to check, so neither
+    // checkResourceLimit nor checkFeatureAccess ever ran here and a workspace
+    // whose paid trial had ended kept accepting submitted work indefinitely.
+    // `requireUnlocked` fails open on any lookup error, so it can refuse only a
+    // genuinely locked organization.
+    const billingBlocked = await requireUnlocked(serviceClient(), auth.orgId);
+    if (billingBlocked) {
+      return NextResponse.json(billingBlocked, { status: billingBlocked.status });
     }
 
     const body = await request.json();

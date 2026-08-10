@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getAuthedOrg } from '@/utils/serverAuth';
+import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
+import { requireUnlocked } from '@/utils/entitlements';
 
 // Roles allowed to review task submissions (matches permissions.js `review_tasks`).
 const REVIEWER_ROLES = ['owner', 'admin', 'manager'];
@@ -24,6 +25,11 @@ export async function POST(request) {
     }
     if (auth.userType === 'client') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    // Billing lock — see the note in src/app/api/task-submission/route.js.
+    const billingBlocked = await requireUnlocked(serviceClient(), auth.orgId);
+    if (billingBlocked) {
+      return NextResponse.json(billingBlocked, { status: billingBlocked.status });
     }
     if (!REVIEWER_ROLES.includes(auth.role)) {
       return NextResponse.json(

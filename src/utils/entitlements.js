@@ -13,6 +13,8 @@
  * the free plan is the most restrictive, not the least.
  */
 
+import { accessState, lockMessage } from "@/utils/billingAccess";
+
 // -1 means unlimited. Keys match the `limits` jsonb seeded in migration 027;
 // a key present there but missing here is simply not enforced, which is the
 // safe direction to be wrong in.
@@ -171,6 +173,11 @@ export async function resolveEntitlement(svc, orgId, now = new Date()) {
     .eq("code", effectiveCode)
     .maybeSingle();
 
+  // The second question, alongside "how much can they do": may they do
+  // anything at all? See src/utils/billingAccess.js for why these are separate
+  // — a lapsed trial closes the workspace, a cancelled plan merely shrinks it.
+  const access = accessState(subscription, now);
+
   return {
     subscription: subscription || null,
     plan: plan || null,
@@ -179,7 +186,61 @@ export async function resolveEntitlement(svc, orgId, now = new Date()) {
     limits: plan?.limits || FALLBACK_FREE_LIMITS,
     features: plan?.features || {},
     trialDaysRemaining: trialDaysRemaining(subscription, now),
+    locked: access.locked,
+    lockReason: access.reason,
+    onTrial: access.onTrial,
+    daysRemaining: access.daysRemaining,
   };
+}
+
+/**
+ * The refusal a locked organization gets from every enforcement call.
+ *
+ * 402 with `billingLocked: true`, which is what the client gate keys off to
+ * send someone to the payment screen rather than showing a generic error. The
+ * shape otherwise matches the limit and feature refusals so routes that already
+ * return those verbatim need no new branch.
+ */
+export function lockedRefusal(entitlement) {
+  return {
+    status: 402,
+    error: "Subscription required",
+    detail: lockMessage({ reason: entitlement?.lockReason }),
+    billingLocked: true,
+    lockReason: entitlement?.lockReason || null,
+    planCode: entitlement?.subscription?.plan_code || entitlement?.planCode || null,
+    upgradeRequired: true,
+  };
+}
+
+/**
+ * The lock on its own, for write routes that have no plan LIMIT to check.
+ *
+ * `checkResourceLimit` and `checkFeatureAccess` already refuse a locked
+ * organization, but they only run where a meter or a feature flag applies.
+ * Submitting work, reviewing it and uploading a screenshot are none of those —
+ * they were completely ungated, so a locked workspace carried on producing
+ * work indefinitely and only "invite a member" actually stopped.
+ *
+ * Returns null when the caller may proceed, or the same { status, error, … }
+ * object the other two return, so a route can hand it straight back.
+ *
+ * NOT A COMPLETE ANSWER, and the gap is worth stating: a large amount of this
+ * product writes to Supabase DIRECTLY from the browser (see src/utils/pmData.js
+ * — projects, tasks, sprints, epics), where there is no server route to put
+ * this in. Closing that needs an RLS predicate on those tables, which is a
+ * migration and a deliberate decision, not something to slip in here.
+ */
+export async function requireUnlocked(svc, orgId, now = new Date()) {
+  try {
+    const entitlement = await resolveEntitlement(svc, orgId, now);
+    return entitlement.locked ? lockedRefusal(entitlement) : null;
+  } catch {
+    // Fails OPEN, like every other uncertain path in this file. A lookup
+    // failure must never present itself to a paying customer as "your
+    // subscription has ended".
+    return null;
+  }
 }
 
 /** True when the plan grants a named feature flag. */
@@ -198,6 +259,9 @@ export function hasFeature(entitlement, feature) {
  */
 export async function checkFeatureAccess(svc, orgId, feature, label, now = new Date()) {
   const entitlement = await resolveEntitlement(svc, orgId, now);
+  // Checked before the feature flag: a locked workspace is shut regardless of
+  // which plan's features it used to carry.
+  if (entitlement.locked) return lockedRefusal(entitlement);
   if (hasFeature(entitlement, feature)) return null;
 
   const name = label || feature;
@@ -263,6 +327,13 @@ export async function checkResourceLimit(svc, orgId, resourceKey, now = new Date
   if (!resource) return null; // unknown resource is not enforced
 
   const entitlement = await resolveEntitlement(svc, orgId, now);
+
+  // BEFORE the unlimited short-circuit, not after. An organization locked out
+  // of an expired enterprise trial has `limit === -1` on every resource, so a
+  // lock check placed below this line would never run for exactly the plan
+  // that costs the most.
+  if (entitlement.locked) return lockedRefusal(entitlement);
+
   const limit = entitlement.limits?.[resourceKey];
   if (limit === undefined || limit === null || limit === -1) return null;
 

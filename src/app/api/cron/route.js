@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { serviceClient } from "@/utils/serverAuth";
 import { recordEvent } from "@/utils/systemEvents";
+import { daysUntil, reminderMessage, REMINDER_FROM_DAYS } from "@/utils/billingAccess";
+
+// Who hears about a trial running out. The two roles that can enter a card —
+// see the note on job 3.
+const TRIAL_NOTIFY_ROLES = ["owner", "admin"];
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +63,7 @@ async function runJobs() {
   const svc = serviceClient();
   const today = ymd(new Date());
   const tomorrow = ymd(new Date(Date.now() + 86400000));
-  const summary = { remindersSent: 0, recurringSpawned: 0, errors: [] };
+  const summary = { remindersSent: 0, recurringSpawned: 0, trialReminders: 0, errors: [] };
 
   /* ── 1. Due-date reminders ─────────────────────────────────────── */
   try {
@@ -201,6 +206,117 @@ async function runJobs() {
     summary.recurringSpawned += spawned.length;
   } catch (err) {
     summary.errors.push({ job: "recurring", message: err?.message || String(err) });
+  }
+
+  /* ── 3. Trial reminders ────────────────────────────────────────── */
+  //
+  // One message per organization per day while a paid trial is running, to the
+  // people who can actually do something about it.
+  //
+  // WHO GETS IT: owner and admin only. A developer cannot enter a card, and
+  // telling twenty engineers that their employer's trial expires on Friday is
+  // noise for nineteen of them and an awkward question for the twentieth.
+  //
+  // DEDUPE: `notifications` already has one row per recipient per day for this
+  // type, so the day's existing rows are read once for the whole batch and
+  // used as the filter. Without it, a cron that runs hourly — or twice because
+  // a deploy overlapped — sends the same warning six times, which is how people
+  // learn to ignore it.
+  //
+  // The free plan never appears here: it has no trial to run out.
+  try {
+    const nowTs = new Date();
+
+    const { data: trialing, error } = await svc
+      .from("organization_subscriptions")
+      .select("organization_id, plan_code, status, trial_end, grace_period_ends_at")
+      .eq("status", "trialing")
+      .neq("plan_code", "free")
+      .not("trial_end", "is", null);
+    if (error) throw error;
+
+    // Only trials still running. An already-expired one is not a reminder, it
+    // is a lock, and the workspace is telling them so on every screen.
+    const live = (trialing || []).filter((s) => new Date(s.trial_end) > nowTs);
+
+    if (live.length) {
+      const orgIds = live.map((s) => s.organization_id);
+
+      const { data: plans } = await svc.from("billing_plans").select("code, name");
+      const planName = new Map((plans || []).map((p) => [p.code, p.name]));
+
+      const { data: recipients } = await svc
+        .from("memberships")
+        .select("organization_id, user_id, email, role")
+        .in("organization_id", orgIds)
+        .in("role", TRIAL_NOTIFY_ROLES)
+        .eq("status", "active");
+
+      // One read for the whole batch — see the dedupe note above. Scoped to the
+      // organizations in THIS batch and bounded, so a large deployment cannot
+      // silently truncate the result into under-deduping.
+      const { data: sentToday } = await svc
+        .from("notifications")
+        .select("admin_id, organization_id")
+        .eq("type", "trial_reminder")
+        .in("organization_id", orgIds)
+        .gte("created_at", `${today}T00:00:00.000Z`)
+        .limit(5000);
+      const already = new Set(
+        (sentToday || []).map((n) => `${n.organization_id}:${n.admin_id}`)
+      );
+
+      const byOrg = new Map(live.map((s) => [s.organization_id, s]));
+      const rows = [];
+      for (const member of recipients || []) {
+        const sub = byOrg.get(member.organization_id);
+        if (!sub) continue;
+        if (already.has(`${member.organization_id}:${member.user_id}`)) continue;
+
+        const left = daysUntil(sub.trial_end, nowTs);
+        if (left === null || left > REMINDER_FROM_DAYS) continue;
+
+        // ADDRESSED WITH `admin_id` / `admin_email`, NOT `developer_id`.
+        //
+        // Job 1 above writes `developer_id` because its recipients are
+        // developers. These are owners and admins, whose `memberships.user_id`
+        // is an `admin_users.id` — and two things go wrong if that is written
+        // to `developer_id`:
+        //
+        //   1. `notifications.developer_id` references `developers(id)`, so an
+        //      admin id fails the foreign key and takes the whole batch insert
+        //      down. The error lands in `summary.errors` and the route still
+        //      answers 200, so the run reports success having sent nothing.
+        //   2. Even if it inserted, nobody would see it. `recipientClauses` in
+        //      src/utils/notifications.js queries the admin bell as
+        //      `admin_id.eq.<id>` OR `admin_email.eq.<email>`, and the realtime
+        //      matcher in useNotifications.js agrees. A row with neither is
+        //      invisible for ever.
+        //
+        // `src/utils/notifications.js` already encodes this rule in `notify()`
+        // — admin audience writes admin_id/admin_email, developer audience
+        // writes developer_id. This follows it.
+        rows.push({
+          organization_id: member.organization_id,
+          admin_id: member.user_id,
+          admin_email: member.email || null,
+          type: "trial_reminder",
+          category: "billing",
+          title: left <= 1 ? "Trial ending" : `${left} days left on your trial`,
+          message: reminderMessage(planName.get(sub.plan_code) || sub.plan_code, left),
+          project_id: null,
+          task_id: null,
+        });
+      }
+
+      for (const batch of chunk(rows, INSERT_CHUNK)) {
+        const { error: insErr } = await svc.from("notifications").insert(batch);
+        if (insErr) summary.errors.push({ job: "trial_reminders", message: insErr.message });
+        else summary.trialReminders += batch.length;
+      }
+    }
+  } catch (err) {
+    summary.errors.push({ job: "trial_reminders", message: err?.message || String(err) });
   }
 
   // Monitoring (best effort, never throws — see src/utils/systemEvents.js).

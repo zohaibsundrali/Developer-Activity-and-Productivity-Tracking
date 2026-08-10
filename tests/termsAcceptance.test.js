@@ -52,6 +52,9 @@ function resetState(overrides = {}) {
       expires_at: new Date(Date.now() + 86400000).toISOString(),
     },
     insertErrors: {},
+    // The row `billing_plans` returns for a plan lookup. null means "no such
+    // active plan", which is what an unknown or inactive code looks like.
+    plan: null,
     ...overrides,
   };
   return state;
@@ -93,15 +96,23 @@ function fakeClient() {
           return { eq: async () => ({ data: null, error: null }) };
         },
         select() {
-          return {
-            eq: () => ({
-              maybeSingle: async () => ({
-                data: table === "invitations" ? state.invitation : null,
-                error: null,
-              }),
+          // `eq` returns a builder that carries `eq` again, so a two-filter
+          // chain resolves. `resolvePlanForSignup` looks a plan up with
+          // `.eq("code", …).eq("is_active", true).maybeSingle()`, which the
+          // single-level version could not express — it returned an object
+          // with only `maybeSingle`, so the second `.eq` threw.
+          const builder = {
+            eq: () => builder,
+            maybeSingle: async () => ({
+              data:
+                table === "invitations" ? state.invitation
+                : table === "billing_plans" ? state.plan
+                : null,
+              error: null,
             }),
             limit: async () => ({ data: [], error: null }),
           };
+          return builder;
         },
       };
     },
@@ -401,10 +412,15 @@ describe("invitation accept records the acceptance", () => {
 describe("nothing else about signup or accept changed", () => {
   it("signup still creates admin, organization, membership and auth user in order", async () => {
     await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true }));
+    // `organization_subscriptions` sits between the membership and the terms
+    // record: every organization gets exactly one subscription row from the
+    // moment it exists, so the shape of the data does not depend on when the
+    // account was created. The acceptance is still written, and still last.
     expect(state.inserts.map((i) => i.table)).toEqual([
       "admin_users",
       "organizations",
       "memberships",
+      "organization_subscriptions",
       "terms_acceptances",
     ]);
     expect(state.createdUsers).toHaveLength(1);
@@ -518,5 +534,99 @@ describe("the consent checkbox defaults to unchecked", () => {
 
   it.each(PAGES)("%s links to the Terms so the user can actually read them", (_label, src) => {
     expect(src).toMatch(/href="\/terms"/);
+  });
+});
+
+/**
+ * Which plan a signup is allowed to start on.
+ *
+ * The browser sends a plan code; the server decides what it means. Every test
+ * here is about the server ignoring what it was told when what it was told
+ * would hand out something valuable.
+ */
+describe("the plan a signup starts on", () => {
+  const subRow = () => state.inserts.find((i) => i.table === "organization_subscriptions")?.row;
+
+  it("starts on free when no plan is asked for", async () => {
+    await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true }));
+    expect(subRow()).toMatchObject({ plan_code: "free", status: "active" });
+    expect(subRow().trial_end).toBeUndefined();
+  });
+
+  it("starts a 7-day trial on a paid plan that has one", async () => {
+    resetState({ plan: { code: "business", name: "Business", trial_days: 7, is_active: true } });
+    const before = Date.now();
+    await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true, planCode: "business" }));
+
+    const row = subRow();
+    expect(row).toMatchObject({ plan_code: "business", status: "trialing" });
+    const days = (new Date(row.trial_end) - before) / 86400000;
+    expect(days).toBeGreaterThan(6.9);
+    expect(days).toBeLessThan(7.1);
+  });
+
+  it("REFUSES a paid plan that has no self-serve trial, and falls back to free", async () => {
+    // database/053 seeds enterprise with trial_days = 0, meaning "sold, not
+    // signed up for". `trialEndFor` treats 0 as a nonsensical value and falls
+    // back to its 7-day default, so without an explicit check this granted a
+    // free 7-day trial of the unlimited plan — every limit -1, every feature
+    // on, no payment of any kind — to anyone who clicked the Enterprise card.
+    resetState({ plan: { code: "enterprise", name: "Enterprise", trial_days: 0, is_active: true } });
+    const res = await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true, planCode: "enterprise" }));
+
+    expect(subRow()).toMatchObject({ plan_code: "free", status: "active" });
+    const body = await res.json();
+    expect(body.plan.code).toBe("free");
+  });
+
+  it("falls back to free for a plan code that does not exist", async () => {
+    resetState({ plan: null });
+    await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true, planCode: "made-up-plan" }));
+    expect(subRow()).toMatchObject({ plan_code: "free", status: "active" });
+  });
+
+  it("records the card step only when it actually happened", async () => {
+    resetState({ plan: { code: "business", name: "Business", trial_days: 7, is_active: true } });
+    await signupPOST(
+      req({ ...SIGNUP_BODY, termsAccepted: true, planCode: "business", paymentMethodProvided: true })
+    );
+    expect(subRow().last_payment_status).toBe("demo_card_on_file");
+
+    resetState({ plan: { code: "business", name: "Business", trial_days: 7, is_active: true } });
+    await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true, planCode: "business" }));
+    expect(subRow().last_payment_status).toBeNull();
+  });
+
+  it("never reports a trial it failed to create", async () => {
+    // The response used to be built from the row it MEANT to insert, so a
+    // failed insert still told the user "you're on a Business trial until the
+    // 17th" — and then handed them free limits on day one.
+    resetState({
+      plan: { code: "business", name: "Business", trial_days: 7, is_active: true },
+      insertErrors: { organization_subscriptions: { message: "nope" } },
+    });
+    const res = await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true, planCode: "business" }));
+    const body = await res.json();
+
+    expect(body.success).toBe(true); // the account still exists
+    expect(body.plan).toEqual({ code: "free", status: "active", trialEndsAt: null });
+  });
+
+  it("carries no card data into the subscription row", async () => {
+    resetState({ plan: { code: "business", name: "Business", trial_days: 7, is_active: true } });
+    await signupPOST(
+      req({
+        ...SIGNUP_BODY,
+        termsAccepted: true,
+        planCode: "business",
+        paymentMethodProvided: true,
+        // Even if a caller sends these by hand, nothing may read them.
+        cardNumber: "4242424242424242",
+        cvc: "123",
+      })
+    );
+    const serialized = JSON.stringify(state.inserts);
+    expect(serialized).not.toContain("4242");
+    expect(serialized).not.toContain("123");
   });
 });

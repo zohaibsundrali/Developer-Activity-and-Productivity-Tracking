@@ -190,7 +190,10 @@ describe("the verification code is four separate boxes", () => {
 
   it("verifies automatically once the last box is filled, and only once per code", () => {
     expect(REGISTRATION_CODE).toMatch(/if \(!codeComplete \|\| verificationLoading \|\| codeExpired\) return;/);
-    expect(REGISTRATION_CODE).toMatch(/if \(attemptedCode\.current === code\) return;\s*attemptedCode\.current = code;\s*verifyCodeAndRegister\(\);/);
+    // `verifyCodeAndContinue`, not the old `verifyCodeAndRegister`: filling the
+    // last box now advances to the plan step. The account itself is created at
+    // the END of the flow, so an abandoned checkout leaves no half-built tenant.
+    expect(REGISTRATION_CODE).toMatch(/if \(attemptedCode\.current === code\) return;\s*attemptedCode\.current = code;\s*verifyCodeAndContinue\(\);/);
   });
 
   it("gives a wrong code and an expired code different messages", () => {
@@ -417,5 +420,47 @@ describe("what must not have changed", () => {
   it("keeps the page on design tokens — no literal colours", () => {
     expect(REGISTRATION).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
     expect(REGISTRATION).not.toMatch(/\bbg-white\b|\btext-gray-\d|\bbg-gray-\d/);
+  });
+});
+
+/**
+ * The step that turns a created account into a usable session.
+ *
+ * This was missing entirely, and it did not show until the middleware started
+ * running: the account is created SERVER-side by `admin.auth.admin.createUser`,
+ * which leaves this tab with no Supabase session, so `authFetch` had no token,
+ * /api/auth/session answered 401 inside an empty catch, and no signed cookie
+ * was written. `router.push("/admin/dashboard")` then bounced the brand-new
+ * user straight to /login, having just told them their workspace was ready.
+ */
+describe("registration signs the browser in before opening the dashboard", () => {
+  it("calls signInWithPassword with the credentials just chosen", () => {
+    expect(REGISTRATION_CODE).toMatch(
+      /supabase\.auth\.signInWithPassword\(\{\s*email: formData\.email,\s*password: formData\.password,?\s*\}\)/
+    );
+  });
+
+  it("mints the signed session cookie AFTER signing in, not before", () => {
+    const signIn = REGISTRATION_CODE.indexOf("signInWithPassword");
+    const session = REGISTRATION_CODE.indexOf('authFetch("/api/auth/session"');
+    expect(signIn).toBeGreaterThan(-1);
+    expect(session).toBeGreaterThan(signIn);
+  });
+
+  it("does not swallow a failure — it says so and sends them to sign in", () => {
+    // The account EXISTS by this point. Presenting it as a failed registration
+    // would send them round again to collide on the email they just used.
+    expect(REGISTRATION_CODE).toMatch(/if \(signInError\) throw signInError;/);
+    expect(REGISTRATION_CODE).toMatch(/if \(!sessionRes\.ok\) throw new Error/);
+    expect(REGISTRATION).toMatch(/Workspace created — please sign in/);
+  });
+
+  it("passes the card flag as an argument rather than reading it from state", () => {
+    // `setCardConfirmed(true); completeRegistration();` read the value from the
+    // render the closure was created in, so it was always the previous one —
+    // and the request always claimed no card step had happened.
+    expect(REGISTRATION_CODE).toMatch(/completeRegistration\(true\)/);
+    expect(REGISTRATION_CODE).toMatch(/completeRegistration = async \(cardWasEntered = false\)/);
+    expect(REGISTRATION_CODE).not.toMatch(/setCardConfirmed/);
   });
 });

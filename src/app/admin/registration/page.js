@@ -25,6 +25,14 @@ import {
   SegmentedControl,
   SubmitButton,
 } from "@/components/auth/AuthParts";
+import {
+  DemoCardFields,
+  PlanChoice,
+  emptyCard,
+  formatPrice,
+  validateCard,
+} from "@/components/billing/PlanChoice";
+import { FREE_PLAN_CODE } from "@/utils/billingAccess";
 
 /**
  * Create-organization fields in the order they appear, paired with the element
@@ -42,6 +50,14 @@ const CREATE_FIELD_ORDER = [
 ];
 
 // ── Verification code ────────────────────────────────────────────────
+
+/** The short name under the heading, one per step of the create flow. */
+const STEP_LABELS = {
+  1: "your details",
+  2: "verify your email",
+  3: "choose a plan",
+  4: "payment details",
+};
 
 const OTP_LENGTH = 4;
 /** Must match `CODE_TTL_MINUTES` in src/app/api/send-verification/route.js —
@@ -309,6 +325,22 @@ export default function AdminRegistration() {
   // The code the auto-submit has already tried, so filling the last box fires
   // verification exactly once instead of on every re-render.
   const attemptedCode = useRef("");
+  // ── Billing (steps 3 and 4) ──────────────────────────────────────
+  //
+  // `selectedPlan` starts on free so that a catalogue that fails to load, or a
+  // person who never reaches step 3, still produces a valid signup. The server
+  // resolves the code again anyway.
+  const [plans, setPlans] = useState([]);
+  const [plansLoading, setPlansLoading] = useState(true);
+  const [demoCheckout, setDemoCheckout] = useState(true);
+  const [selectedPlan, setSelectedPlan] = useState(FREE_PLAN_CODE);
+  const [card, setCard] = useState(emptyCard);
+  const [cardErrors, setCardErrors] = useState({});
+  // NOTE: there is deliberately no `cardConfirmed` state. Whether the card step
+  // was completed is passed straight into `completeRegistration` as an
+  // argument — holding it in state meant the submit handler read the value
+  // from the render it was created in, which was always the previous one.
+
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [verificationLoading, setVerificationLoading] = useState(false);
@@ -644,7 +676,15 @@ export default function AdminRegistration() {
     }
   };
 
-  const verifyCodeAndRegister = async (e) => {
+  /**
+   * Step 2 → step 3. Checks the code and moves on; it no longer registers.
+   *
+   * The account is created at the END of the flow, by `completeRegistration`,
+   * so that the plan and the card step happen BEFORE anything exists. Creating
+   * the organization here and collecting billing afterwards would mean every
+   * abandoned checkout left a real, half-configured tenant behind.
+   */
+  const verifyCodeAndContinue = async (e) => {
     // Called both by the form's submit and, with no event, by the effect that
     // fires as soon as the fourth box is filled.
     if (e) e.preventDefault();
@@ -676,6 +716,30 @@ export default function AdminRegistration() {
       return;
     }
 
+    // The code is good. Everything from here is billing.
+    setVerificationLoading(false);
+    setStep(3);
+  };
+
+  /**
+   * The end of the flow: create the account on the plan that was chosen.
+   *
+   * Reached from step 3 (Free — no card) or step 4 (a paid plan, after the card
+   * form validates). `paymentMethodProvided` is a boolean and the card values
+   * are not in this request — read the note at the top of
+   * src/components/billing/PlanChoice.jsx for why.
+   */
+  //
+  // `cardWasEntered` is an ARGUMENT, not read from state. It used to read the
+  // `cardConfirmed` state, which this closure captures from the render it was
+  // created in — so `setCardConfirmed(true); completeRegistration();` always
+  // saw the previous value, `false`. The request therefore always claimed no
+  // card step had happened, and the `demo_card_on_file` marker on the
+  // subscription row was dead code that could never be written.
+  const completeRegistration = async (cardWasEntered = false) => {
+    setVerificationLoading(true);
+    setErrors({});
+
     try {
       const { error: testError } = await supabase
         .from('admin_users')
@@ -702,6 +766,11 @@ export default function AdminRegistration() {
           password: formData.password,
           timezone: (typeof Intl !== "undefined" && Intl.DateTimeFormat().resolvedOptions().timeZone) || "UTC",
           termsAccepted,
+          // The server validates this against the catalogue and falls back to
+          // free — it is a request, not a decision.
+          planCode: selectedPlan,
+          // A boolean. Not the card. See PlanChoice.jsx.
+          paymentMethodProvided: selectedPlan !== FREE_PLAN_CODE && cardWasEntered,
         }),
       });
       const signupData = await signupRes.json().catch(() => ({}));
@@ -735,14 +804,67 @@ export default function AdminRegistration() {
       } catch {
       }
 
-      // Issue the signed, HttpOnly session cookie the middleware validates.
-      // Without it the new admin would be bounced straight back to /login.
+      // SIGN THE BROWSER IN, THEN issue the signed session cookie.
+      //
+      // This step was missing, and the comment below it has always described
+      // something the code did not do. The account is created SERVER-side by
+      // `admin.auth.admin.createUser`, which creates no session in this tab —
+      // so `authFetch` had no access token to attach, /api/auth/session
+      // answered 401, and no `dt_session` cookie was ever written. The call was
+      // wrapped in an empty catch, so the failure was invisible.
+      //
+      // It did not matter while `middleware.ts` sat at the repository root and
+      // was never compiled: nothing checked for the cookie. The moment the
+      // middleware started running, `router.push("/admin/dashboard")` below
+      // began bouncing every brand-new signup to /login — after telling them
+      // their workspace was ready.
+      //
+      // This is the same two-step /login performs (see the calls to
+      // signInWithPassword and then authFetch in src/app/login/page.js): the
+      // Supabase session is what proves identity, and the signed HttpOnly
+      // cookie is what the middleware reads.
+      //
+      // A failure here is reported rather than swallowed. Landing on the login
+      // screen holding correct credentials is recoverable; being told the
+      // workspace is ready and then silently bounced is not.
       try {
-        await authFetch("/api/auth/session", { method: "POST" });
-      } catch {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: formData.email,
+          password: formData.password,
+        });
+        if (signInError) throw signInError;
+
+        const sessionRes = await authFetch("/api/auth/session", { method: "POST" });
+        if (!sessionRes.ok) throw new Error("Could not start your session.");
+      } catch (sessionErr) {
+        // The account EXISTS at this point — do not present this as a failed
+        // registration, or they will try to sign up again and collide on the
+        // email they just used.
+        await showInfo(
+          "Workspace created — please sign in",
+          "Your workspace is ready. Sign in with the email and password you just chose to open it."
+        );
+        router.push("/login");
+        return;
       }
 
-      showSuccess("Registration complete", "Registration successful. Redirecting to dashboard.");
+      // The plan the SERVER settled on, not the one that was clicked — they
+      // differ whenever the catalogue rejected the request, and the message has
+      // to describe what actually happened.
+      const startedOn = signupData.plan || null;
+      const trialEnds = startedOn?.trialEndsAt
+        ? new Date(startedOn.trialEndsAt).toLocaleDateString(undefined, {
+            day: "numeric",
+            month: "long",
+          })
+        : null;
+
+      showSuccess(
+        "Workspace created",
+        trialEnds
+          ? `You're on a free trial until ${trialEnds}. Taking you to your dashboard.`
+          : "Registration successful. Redirecting to dashboard."
+      );
       router.push("/admin/dashboard");
 
     } catch (error) {
@@ -788,11 +910,66 @@ export default function AdminRegistration() {
     if (!codeComplete || verificationLoading || codeExpired) return;
     if (attemptedCode.current === code) return;
     attemptedCode.current = code;
-    verifyCodeAndRegister();
-    // verifyCodeAndRegister is re-created on every render; listing it would run
+    verifyCodeAndContinue();
+    // verifyCodeAndContinue is re-created on every render; listing it would run
     // this on every render. The trigger is the code being complete.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, code, codeComplete, codeExpired, verificationLoading]);
+
+  /**
+   * The plan catalogue.
+   *
+   * Fetched once on mount rather than when step 3 arrives, so the cards are
+   * already there when someone gets to them — the alternative is a spinner
+   * appearing immediately after a successful code, which reads as a stall in
+   * the one moment the flow should feel fast.
+   *
+   * A failure is not fatal: `plans` stays empty, PlanChoice says so, and the
+   * signup proceeds on free.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/billing/plans");
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        setPlans(Array.isArray(data.plans) ? data.plans : []);
+        setDemoCheckout(data.demo !== false);
+      } catch {
+        if (!cancelled) setPlans([]);
+      } finally {
+        if (!cancelled) setPlansLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const chosenPlan = plans.find((p) => p.code === selectedPlan) || null;
+  const planIsPaid = Boolean(chosenPlan) && Number(chosenPlan.amount_cents || 0) > 0;
+
+  /** Step 3 → step 4, or straight to the account when the plan is free. */
+  const handlePlanContinue = (e) => {
+    e.preventDefault();
+    if (!planIsPaid) {
+      completeRegistration(false);
+      return;
+    }
+    setCardErrors({});
+    setStep(4);
+  };
+
+  /** Step 4. Validates the card here, then sends a boolean and nothing else. */
+  const handleCardSubmit = (e) => {
+    e.preventDefault();
+    const problems = validateCard(card, { demo: demoCheckout });
+    setCardErrors(problems);
+    if (Object.keys(problems).length > 0) return;
+    // Passed as an argument rather than set-then-read: see completeRegistration.
+    completeRegistration(true);
+  };
 
   const pwVal = validatePassword(formData.password);
 
@@ -816,22 +993,33 @@ export default function AdminRegistration() {
       </div>
 
       <AuthCard>
+        {/* The total moves from 3 to 4 the moment a paid plan is chosen, which
+            is exactly when the card step becomes real. Showing "of 4" to
+            someone who picks Free would promise a step they never see. */}
         {mode === "create" && (
           <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Step {step} of 2 — {step === 2 ? "verify your email" : "your details"}
+            Step {step} of {planIsPaid ? 4 : 3} — {STEP_LABELS[step] || "your details"}
           </p>
         )}
 
         <AuthHeading
           title={
-            step === 2
+            step === 4
+              ? "Payment details"
+              : step === 3
+              ? "Choose your plan"
+              : step === 2
               ? "Verify your email"
               : mode === "join"
               ? "Join an organization"
               : "Create your workspace"
           }
           description={
-            step === 2
+            step === 4
+              ? `Start your ${chosenPlan?.trial_days || 7}-day free trial of ${chosenPlan?.name || "this plan"}. You won't be charged today.`
+              : step === 3
+              ? "Every paid plan starts with a free trial. You can change plan at any time from Billing."
+              : step === 2
               ? "We sent a 4-digit verification code to your inbox."
               : mode === "join"
               ? "Enter the invite code your organization sent you."
@@ -1096,8 +1284,81 @@ export default function AdminRegistration() {
               </form>
             )}
           </>
+        ) : step === 3 ? (
+          /* ── Step 3 — choose a plan ─────────────────────────────── */
+          <form onSubmit={handlePlanContinue} className="mt-6 space-y-5">
+            <PlanChoice
+              plans={plans}
+              value={selectedPlan}
+              onChange={setSelectedPlan}
+              loading={plansLoading}
+              disabled={verificationLoading}
+            />
+
+            <AuthNotice>
+              {planIsPaid
+                ? `Your ${chosenPlan.trial_days || 7}-day trial starts as soon as your workspace is created. We'll remind you each day before it ends, and nothing is charged until you say so.`
+                : "The Free plan has no time limit and needs no card. You can upgrade whenever you outgrow it."}
+            </AuthNotice>
+
+            <SubmitButton
+              loading={verificationLoading}
+              loadingLabel={planIsPaid ? "Continuing…" : "Creating your workspace…"}
+              status={errors.general ? "error" : "idle"}
+              disabled={verificationLoading || plansLoading}
+            >
+              {planIsPaid ? "Continue to payment" : "Create workspace on Free"}
+            </SubmitButton>
+
+            <button
+              type="button"
+              onClick={() => setStep(2)}
+              disabled={verificationLoading}
+              className="mx-auto block rounded text-sm font-medium text-muted-foreground underline-offset-4 transition-colors duration-150 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed"
+            >
+              Back
+            </button>
+          </form>
+        ) : step === 4 ? (
+          /* ── Step 4 — payment details (paid plans only) ─────────── */
+          <form onSubmit={handleCardSubmit} className="mt-6 space-y-5">
+            <div className="flex items-baseline justify-between rounded-lg border border-border bg-muted/40 px-4 py-3">
+              <span className="text-sm font-medium text-foreground">{chosenPlan?.name}</span>
+              <span className="text-sm text-muted-foreground">
+                {chosenPlan?.trial_days || 7} days free, then{" "}
+                {formatPrice(chosenPlan?.amount_cents, chosenPlan?.currency)}/
+                {chosenPlan?.billing_interval || "month"}
+              </span>
+            </div>
+
+            <DemoCardFields
+              card={card}
+              onChange={setCard}
+              errors={cardErrors}
+              disabled={verificationLoading}
+              demo={demoCheckout}
+            />
+
+            <SubmitButton
+              loading={verificationLoading}
+              loadingLabel="Creating your workspace…"
+              status={errors.general ? "error" : "idle"}
+              disabled={verificationLoading}
+            >
+              Start {chosenPlan?.trial_days || 7}-day free trial
+            </SubmitButton>
+
+            <button
+              type="button"
+              onClick={() => setStep(3)}
+              disabled={verificationLoading}
+              className="mx-auto block rounded text-sm font-medium text-muted-foreground underline-offset-4 transition-colors duration-150 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed"
+            >
+              Choose a different plan
+            </button>
+          </form>
         ) : (
-          <form onSubmit={verifyCodeAndRegister} className="mt-6 space-y-5">
+          <form onSubmit={verifyCodeAndContinue} className="mt-6 space-y-5">
             <AuthNotice>
               Enter the {OTP_LENGTH}-digit code we emailed to{" "}
               <span className="font-medium text-foreground">{formData.email}</span>. It expires{" "}
