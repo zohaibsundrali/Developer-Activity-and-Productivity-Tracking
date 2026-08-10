@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { LogOut, ChevronLeft, ChevronDown, X } from "lucide-react";
+import { ChevronLeft, X } from "lucide-react";
 // The same hook Modal/Drawer use: focus trap, Escape, focus restore and body
 // scroll lock. The rail can't be a <Drawer> — its panel is a padded bg-card
 // box and this is flush dark chrome — but the dialog behaviour must not be a
@@ -40,7 +40,6 @@ export default function Sidebar({
   activeSection,
   onNavigate,
   user,
-  onLogout,
   collapsed = false,
   onToggleCollapse,
   mobileOpen = false,
@@ -51,14 +50,17 @@ export default function Sidebar({
 
   // Whether the nav still has sections above / below the visible slice.
   //
-  // The rail is taller than the viewport as soon as the admin nav is rendered
-  // (scrollHeight 999 against clientHeight 711 at 1440x900), so the last row on
-  // screen is severed mid-glyph by the footer's top edge with nothing saying
-  // that five more sections — Team Stats, Organization, Clients, Billing,
-  // System Health — exist below it. These two booleans drive a fade at each
-  // overflowing edge plus a "more below" cue, so the cut is legible as a scroll
-  // position rather than as a rendering bug. Presentation only: nothing here
-  // changes what is in `navItems`.
+  // The rail is taller than the viewport as soon as the admin nav is rendered,
+  // so the list has to scroll. The old fix was a "More" button hung over the
+  // bottom edge, which treated the symptom: the real defect was that the last
+  // row was drawn UNDER the 40px bottom fade while the scroller only reserved
+  // 32px of bottom padding, so the final item was severed mid-glyph even at the
+  // very end of the scroll. The scroller now reserves more bottom padding than
+  // the fade is tall (`pb-12` vs `h-10`), so scrolling to the end always lands
+  // the last item fully clear of the gradient and the button has nothing left
+  // to do. These two booleans still drive the fades, which are the honest cue
+  // that the list continues. Presentation only: nothing here changes what is in
+  // `navItems`.
   const [navAtTop, setNavAtTop] = useState(true);
   const [navAtBottom, setNavAtBottom] = useState(true);
 
@@ -91,17 +93,8 @@ export default function Sidebar({
     };
   }, [measureNav]);
 
-  const scrollNavDown = () => {
-    const el = navRef.current;
-    if (!el) return;
-    el.scrollBy({ top: Math.round(el.clientHeight * 0.8), behavior: "smooth" });
-  };
-
   // Pretty role word (owner/admin/manager/developer/employee/client).
   const roleWord = role ? role.charAt(0).toUpperCase() + role.slice(1) : "Developer";
-  const displayName = user?.full_name || user?.name || roleWord;
-  const displayEmail = user?.email || "";
-  const initial = (displayName || "U").charAt(0).toUpperCase();
   // Multi-tenant: show the role alongside the organization/workspace name so
   // Manager/Employee (and every other role) is visible in the sidebar.
   const roleLabel = user?.organization_name
@@ -165,7 +158,16 @@ export default function Sidebar({
         >
           {/* The mark is its own tile — no wrapper box. `text-sidebar-primary`
               is the indigo lightened for dark ground, and the check is a true
-              knockout, so the navy sidebar shows straight through it. */}
+              knockout, so the navy sidebar shows straight through it.
+
+              This one deliberately does NOT move to the exact brand indigo.
+              It is a graphic drawn IN indigo on the navy ground rather than a
+              fill with text on top, so the contrast that matters is mark
+              against sidebar: #7670eb on #0d1a21 measures 4.46:1, while
+              #4840dd on the same navy is 2.57:1 — under the 3:1 that
+              non-text graphics need. The brand fill belongs on the selected
+              nav row, where white/near-black ink sits on top of it; the logo
+              stays on the lightened step. */}
           <LogoMark className="h-9 w-9 shrink-0 text-sidebar-primary" />
           {!isRail && (
             <div className="min-w-0">
@@ -189,14 +191,18 @@ export default function Sidebar({
         {/* Nav.
             `min-h-0` on the wrapper is what actually lets the nav shrink below
             its content height inside the flex column; without it a flex item
-            floors at its content size and the overflow lands on the footer
-            instead of inside the scroller. */}
+            floors at its content size and the overflow escapes the scroller
+            instead of scrolling inside it. */}
         <div className="relative flex min-h-0 flex-1 flex-col">
           <nav
             ref={navRef}
-            // pb-8 keeps the last row clear of the bottom fade, so a nav item is
-            // never half-legible under the gradient.
-            className="flex-1 overflow-y-auto px-3 pb-8 pt-4 [scrollbar-gutter:stable]"
+            // `pb-12` (48px) is deliberately taller than the bottom fade
+            // (`h-10`, 40px). That inequality is the whole fix for the clipped
+            // last item: at full scroll the final row is pushed 8px clear of
+            // where the gradient starts, so it is never drawn half-faded. The
+            // old `pb-8` was 8px SHORTER than the fade, which is what made the
+            // bottom of the list look severed and forced the "More" button.
+            className="flex-1 overflow-y-auto px-3 pb-12 pt-4 [scrollbar-gutter:stable]"
             aria-label="Sections"
           >
             {groups.map((group, groupIndex) => (
@@ -233,7 +239,15 @@ export default function Sidebar({
                               ? // Active is carried by three signals at once —
                                 // fill, weight and the rail marker — so it does
                                 // not depend on colour perception alone.
-                                "bg-sidebar-primary font-semibold text-sidebar-primary-foreground shadow-card"
+                                //
+                                // `bg-primary`, not `bg-sidebar-primary`: the
+                                // selected row is the one place in the rail that
+                                // carries the brand fill, and it must be the
+                                // exact brand indigo (#4840DD) rather than the
+                                // lightened step the navy-ground GRAPHICS use.
+                                // It is also the accessible choice — see the
+                                // measurements on the logo mark below.
+                                "bg-primary font-semibold text-primary-foreground shadow-card"
                               : "font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-primary-foreground"
                           )}
                         >
@@ -243,7 +257,7 @@ export default function Sidebar({
                               // Stays inside the button: `nav` scrolls on the Y
                               // axis, which clips the X axis too, so a marker
                               // hung outside the button would be cut off.
-                              className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-sidebar-primary-foreground/80"
+                              className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary-foreground/80"
                             />
                           )}
                           {Icon && <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />}
@@ -258,9 +272,13 @@ export default function Sidebar({
             ))}
           </nav>
 
-          {/* Scroll affordances. Both are inert decoration except the bottom
-              cue, which is a real button so the sections below are reachable
-              by click as well as by scrolling. */}
+          {/* Scroll affordances — both inert decoration now. The "More" button
+              that used to sit on the bottom fade is gone: it was a control
+              invented to work around a padding bug, and it competed with the
+              nav items it was pointing at. The list is a plain scroller, which
+              wheel, trackpad, touch, scrollbar and keyboard (Tab moves focus
+              down the buttons and the browser scrolls each into view) all
+              already know how to drive. */}
           <span
             aria-hidden="true"
             className={cn(
@@ -275,62 +293,14 @@ export default function Sidebar({
               navAtBottom ? "opacity-0" : "opacity-100"
             )}
           />
-          {!navAtBottom && (
-            <button
-              type="button"
-              onClick={scrollNavDown}
-              // Sits over the fade, centred, so it reads as the edge of the
-              // list rather than as another nav item.
-              className={cn(
-                "absolute bottom-1 left-1/2 flex h-8 -translate-x-1/2 items-center gap-1 rounded-full border border-sidebar-border bg-sidebar-accent px-3 text-[11px] font-semibold text-sidebar-foreground shadow-card transition-colors duration-150 hover:text-sidebar-primary-foreground motion-reduce:transition-none",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
-                isRail && "px-0 h-8 w-8 justify-center"
-              )}
-              aria-label="Scroll navigation down for more sections"
-            >
-              <ChevronDown className="h-4 w-4 shrink-0" aria-hidden="true" />
-              {!isRail && <span>More</span>}
-            </button>
-          )}
         </div>
 
-        {/* User + logout */}
-        <div className="shrink-0 border-t border-sidebar-border p-3">
-          <div
-            className={cn(
-              "flex items-center gap-3 rounded-lg px-2 py-2",
-              isRail && "justify-center px-0"
-            )}
-          >
-            <div
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sidebar-primary text-sm font-bold text-sidebar-primary-foreground"
-              title={isRail ? displayName : undefined}
-            >
-              {initial}
-            </div>
-            {!isRail && (
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-sidebar-primary-foreground">
-                  {displayName}
-                </p>
-                <p className="truncate text-[11px] text-sidebar-muted">{displayEmail}</p>
-              </div>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={onLogout}
-            title={isRail ? "Logout" : undefined}
-            className={cn(
-              "mt-2 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground transition-colors duration-150 hover:bg-destructive hover:text-destructive-foreground",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
-              isRail && "justify-center px-0"
-            )}
-          >
-            <LogOut className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
-            {isRail ? <span className="sr-only">Logout</span> : <span>Logout</span>}
-          </button>
-        </div>
+        {/* The name / email / avatar / Logout footer that used to live here is
+            gone. All four were duplicates of the Topbar's account menu, which
+            shows the same name and email and owns the ONLY remaining sign-out
+            control ("Sign out", Topbar.jsx). Removing this block is also what
+            gives the nav its space back: it was 92px of permanently reserved
+            chrome at the bottom of a rail that was already overflowing. */}
 
         {/* Desktop collapse toggle */}
         <button

@@ -24,6 +24,8 @@ const AuthContext = createContext({
   isLoggedIn: false,
   user: null,
   isLoading: true,
+  // 'pending' | 'authenticated' | 'unauthenticated' — derived, see below.
+  authStatus: 'pending',
   login: () => {},
   logout: () => {},
   checkAuth: () => {}
@@ -139,8 +141,20 @@ export function AuthProvider({ children }) {
     
     // Dispatch event for all components to update
     window.dispatchEvent(new Event('auth-state-changed'));
-    
-    // Redirect to home page
+
+    // DELIBERATE HARD NAVIGATION — DO NOT CONVERT THIS TO router.push.
+    //
+    // Everywhere else in the app a `window.location.href` assignment is a bug:
+    // it throws away the React tree and re-downloads the bundle to render a
+    // route the client router could have rendered in place. Here that is
+    // precisely the intent. Clearing sessionStorage does not clear what the
+    // running document is still holding: component state that closed over the
+    // signed-in user, in-flight fetches, timers, and — the one that actually
+    // matters — the live Supabase realtime channels this session opened, which
+    // stay subscribed with the old JWT until the document dies.
+    //
+    // A client-side push would leave every one of those alive on the landing
+    // page. Destroying the document is what makes "log out" mean it.
     window.location.href = '/';
   }, []);
 
@@ -184,6 +198,20 @@ export function AuthProvider({ children }) {
         try {
           const path = window.location?.pathname || '';
           if (path.startsWith('/admin') || path.startsWith('/developer')) {
+            // DELIBERATE HARD NAVIGATION — DO NOT CONVERT THIS TO router.push.
+            //
+            // Same reasoning as logout() above, and it applies with more force
+            // here. This branch fires on a page that has been sitting open past
+            // the inactivity window: it is exactly the case where the document
+            // has accumulated the most live state — polling intervals, open
+            // Supabase realtime subscriptions, cached rows fetched under a JWT
+            // that is now stale. A client-side push would swap the view for the
+            // login form while leaving every one of those subscriptions running
+            // underneath it.
+            //
+            // Reloading the document is the cheap, total way to guarantee the
+            // expired session leaves no residue. The cost — one full page load,
+            // for a user who has been idle for days — is not a cost.
             window.location.href = '/login';
           }
         } catch {
@@ -210,10 +238,18 @@ export function AuthProvider({ children }) {
   }, [isLoggedIn, user, maybeTouch]);
 
   // Context value
+  //
+  // `authStatus` is a derived read of the two flags already here — no new
+  // decision about who is signed in, and nothing above it changed. It exists so
+  // a guard (src/components/auth/ProtectedRoute.jsx) can distinguish "still
+  // checking" from "checked, and no" without re-deriving the same boolean pair
+  // in every consumer, which is how one screen ends up bouncing a user the
+  // others let through.
   const contextValue = {
     isLoggedIn,
     user,
     isLoading,
+    authStatus: isLoading ? 'pending' : isLoggedIn ? 'authenticated' : 'unauthenticated',
     login,
     logout,
     checkAuth

@@ -26,6 +26,8 @@
  * the RAW values (text/plain must not carry HTML entities).
  */
 
+import { BRAND_NAME } from "@/components/brand/brand";
+
 // ── Escaping / sanitising ────────────────────────────────────────────
 
 /**
@@ -92,7 +94,11 @@ const BRAND_DARK = "#00795f";
 const TEXT = "#1f2933";
 const MUTED = "#6b7280";
 const BORDER = "#e5e7eb";
-const PRODUCT_NAME = "Developer Activity Tracking System";
+// The product name comes from the brand module, never from a literal here.
+// It used to be the string "Developer Activity Tracking System", which is the
+// pre-rename name: every template footer and every text/plain signature was
+// signing mail with a product that no longer exists.
+const PRODUCT_NAME = BRAND_NAME;
 
 /**
  * The one layout every template renders through: header bar, body, optional
@@ -189,6 +195,66 @@ function name(value, fallback = "there") {
 // runs inside a best-effort send path.
 
 export const TEMPLATES = {
+  /**
+   * Email-address confirmation, sent while an account is being set up.
+   *
+   * It replaces the inline markup that used to live in
+   * src/app/api/send-verification/route.js, which called itself "Login
+   * Verification" — the wrong claim twice over. Nobody is logging in (the
+   * account does not exist yet) and the recipient may not have asked for
+   * anything at all, so the copy has to say what the code is for, how long it
+   * lasts, and what to do if it was not requested. There is deliberately no
+   * CTA button: the code is typed into the tab the person already has open,
+   * and a "confirm" link in a mail like this trains people to click links in
+   * mail like this.
+   *
+   * `code` is filtered to alphanumerics and then escaped anyway — it is the
+   * one value rendered outside `paragraphs()`.
+   */
+  email_verification(d = {}) {
+    const who = name(d.userName || d.recipientName || d.fullName, "there");
+    const code = String(d.code ?? "").replace(/[^A-Za-z0-9]/g, "").slice(0, 12);
+    const minutes = Number(d.expiresInMinutes) > 0 ? Math.round(Number(d.expiresInMinutes)) : 10;
+    const org = sanitizeHeader(d.orgName || d.company, 120);
+    const address = sanitizeHeader(d.email, 254);
+
+    const intro = [
+      `Hello ${who},`,
+      `Someone entered this email address while setting up a ${BRAND_NAME} account. Enter the code below on the page you started to confirm the address belongs to you. This confirms an email address only — it is not a sign-in, and on its own it gives nobody access to anything.`,
+    ];
+    const outro = [
+      `The code expires ${minutes} minutes after this email was sent. After that it stops working and you can ask for a new one from the same page.`,
+      `If you did not request this, you do not need to do anything: no account is created until the code is entered. Do not forward the code to anyone — ${BRAND_NAME} will never ask you for it.`,
+    ];
+
+    const codeHtml = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0;"><tr><td style="background:#f8fafc;border:1px dashed ${BRAND};border-radius:10px;padding:18px 26px;text-align:center;">
+      <div style="color:${MUTED};font-size:12px;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;">Your confirmation code</div>
+      <div style="color:${TEXT};font-family:'Courier New',Courier,monospace;font-size:30px;font-weight:bold;letter-spacing:8px;text-indent:8px;">${escapeHtml(code, 12)}</div>
+    </td></tr></table>`;
+
+    return {
+      subject: sanitizeHeader(
+        code
+          ? `${code} is your ${BRAND_NAME} confirmation code`
+          : `Confirm your email address for ${BRAND_NAME}`
+      ),
+      html: renderLayout({
+        title: "Confirm your email address",
+        orgName: org,
+        preheader: `Your ${BRAND_NAME} confirmation code expires in ${minutes} minutes.`,
+        heading: "Confirm your email address",
+        bodyHtml: paragraphs(...intro) + codeHtml + paragraphs(...outro),
+        details: [
+          { label: "Address", value: address },
+          { label: "Organization", value: org },
+          { label: "Expires", value: `${minutes} minutes after sending` },
+        ],
+        footerNote: `Sent by ${BRAND_NAME} because this address was entered during account setup. If that was not you, ignore this email.`,
+      }),
+      text: textBlock([...intro, `Confirmation code: ${code}`, ...outro]),
+    };
+  },
+
   invitation(d = {}) {
     const org = sanitizeHeader(d.orgName, 120);
     const role = sanitizeHeader(d.roleLabel || d.role, 40) || "member";

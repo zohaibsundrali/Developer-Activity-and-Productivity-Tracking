@@ -37,6 +37,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { Menu, X } from "lucide-react";
 
 import Logo from "@/components/brand/Logo";
@@ -63,6 +64,68 @@ const DEFAULT_LINKS = [
   { label: "Pricing", href: "#pricing" },
   { label: "FAQ", href: "#faq" },
 ];
+
+/**
+ * Scrolls to an in-page section **without** pushing a hash onto the URL.
+ *
+ * The link stays a real `<a href="#id">`: middle-click, right-click → "open in
+ * new tab", copy-link, and the no-JS case all keep working, and the element is
+ * still a link for the keyboard and for assistive tech. All this does is take
+ * over the plain left-click, where the default behaviour would rewrite the
+ * address bar and leave `#pricing` sitting there for the rest of the visit.
+ *
+ * Guards, in order:
+ *   - not an in-page target, or the section did not render → do nothing, let
+ *     the browser resolve the href as it normally would;
+ *   - a modified click (cmd/ctrl/shift/alt) or a non-primary button → that is
+ *     the visitor asking for a new tab or window, so it is left alone.
+ *
+ * `prefers-reduced-motion` downgrades the smooth scroll to an instant jump
+ * rather than removing the scroll, so the destination is still reached.
+ */
+function scrollToSection(event, href) {
+  if (typeof href !== "string" || !href.startsWith("#") || href.length < 2) return;
+  if (event.defaultPrevented) return;
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  if (typeof event.button === "number" && event.button !== 0) return;
+
+  const target = document.getElementById(href.slice(1));
+  if (!target) return;
+
+  event.preventDefault();
+
+  const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
+  target.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+
+  // Keyboard and screen-reader users continue *from the section they asked
+  // for* rather than from wherever the link was. `preventScroll` means moving
+  // focus does not fight the smooth scroll that just started.
+  if (!target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
+  target.focus({ preventScroll: true });
+}
+
+/**
+ * True for an in-app route. Those must be client transitions — a raw `<a>` to
+ * `/login` throws away the whole document and reloads the framework to move one
+ * route. Protocol-relative (`//host`) and absolute URLs are somebody else's.
+ */
+function isInternalRoute(href) {
+  return typeof href === "string" && href.startsWith("/") && !href.startsWith("//");
+}
+
+/**
+ * One nav destination. `next/link` for an in-app route, a plain anchor for an
+ * in-page section or an external URL. Same props either way, so callers do not
+ * have to know which they got.
+ */
+function NavAnchor({ href, children, ...rest }) {
+  const Tag = isInternalRoute(href) ? Link : "a";
+  return (
+    <Tag href={href} {...rest}>
+      {children}
+    </Tag>
+  );
+}
 
 function toLinks(entries) {
   return entries
@@ -214,15 +277,23 @@ export default function SiteNav({ sections }) {
         // Opaque enough that the navy and indigo bands underneath cannot be
         // read through the header — a blurred pane you can still read text
         // through looks like a rendering bug, not a material.
-        scrolled || open
-          ? "border-b border-border bg-background/95 backdrop-blur-lg supports-[backdrop-filter]:bg-background/85"
-          : "border-b border-transparent bg-transparent",
+        //
+        // While the mobile panel is open the header goes fully solid with *no*
+        // backdrop filter. That is not only taste: `backdrop-filter` makes an
+        // element a containing block for its fixed descendants, which would
+        // pin the full-height panel to the 64px header instead of the viewport.
+        open
+          ? "border-b border-border bg-background"
+          : scrolled
+            ? "border-b border-border bg-background/95 backdrop-blur-lg supports-[backdrop-filter]:bg-background/85"
+            : "border-b border-transparent bg-transparent",
       ].join(" ")}
     >
       <Container as="nav" aria-label="Main">
         <div className="flex h-16 items-center gap-4 lg:h-20 lg:gap-6">
           <a
             href="#top"
+            onClick={(event) => scrollToSection(event, "#top")}
             className="inline-flex shrink-0 items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <Logo variant="full" className="text-lg text-foreground" />
@@ -241,6 +312,7 @@ export default function SiteNav({ sections }) {
               <li key={link.href}>
                 <a
                   href={link.href}
+                  onClick={(event) => scrollToSection(event, link.href)}
                   className="inline-flex h-9 items-center rounded-lg px-3 text-sm font-medium tracking-[-0.005em] text-muted-foreground transition-colors duration-200 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   {link.label}
@@ -257,12 +329,13 @@ export default function SiteNav({ sections }) {
           */}
           <div className="ml-auto hidden items-center gap-1 lg:flex xl:gap-2">
             {navSignIn ? (
-              <a
+              <NavAnchor
                 href={navSignIn.href}
+                onClick={(event) => scrollToSection(event, navSignIn.href)}
                 className="inline-flex h-10 items-center rounded-lg px-3 text-sm font-semibold text-foreground transition-colors duration-200 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 {navSignIn.label}
-              </a>
+              </NavAnchor>
             ) : null}
             {navSecondary ? (
               <CtaButton
@@ -281,18 +354,32 @@ export default function SiteNav({ sections }) {
             ) : null}
           </div>
 
+          {/*
+            The control changes *material*, not just its glyph. Closed it is a
+            quiet outlined chip carrying a heavier three-bar rule than the
+            default hairline hamburger; open it fills with the brand navy and
+            the mark goes white — so the close reads as a deliberate second
+            state of the same control, rather than as a stray × parked in the
+            corner of the screen.
+          */}
           <button
             ref={toggleRef}
             type="button"
             onClick={() => setOpen((value) => !value)}
             aria-expanded={open}
             aria-controls="site-nav-panel"
-            className="ml-auto inline-flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-card text-foreground transition-colors duration-200 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:hidden"
+            className={[
+              "ml-auto inline-flex h-11 w-11 items-center justify-center rounded-xl border transition-colors duration-200",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:hidden",
+              open
+                ? "border-sidebar bg-sidebar text-sidebar-primary-foreground hover:bg-sidebar-accent"
+                : "border-border bg-card text-foreground hover:bg-muted",
+            ].join(" ")}
           >
             {open ? (
-              <X className="h-5 w-5" aria-hidden="true" />
+              <X className="h-5 w-5" strokeWidth={2.5} aria-hidden="true" />
             ) : (
-              <Menu className="h-5 w-5" aria-hidden="true" />
+              <Menu className="h-5 w-5" strokeWidth={2.25} aria-hidden="true" />
             )}
             <span className="sr-only">{open ? "Close menu" : "Open menu"}</span>
           </button>
@@ -302,20 +389,36 @@ export default function SiteNav({ sections }) {
       {/*
         Unmounted rather than hidden, so its links are never reachable by Tab
         while the panel is closed.
+
+        Full height, pinned below the 64px bar: a menu that stops two thirds of
+        the way down the screen leaves a strip of the page showing underneath
+        and reads as a dropdown that failed to finish. `top-16` is the mobile
+        bar height — the `lg:h-20` step never applies here, since the panel is
+        `lg:hidden`. `overflow-y-auto` is the safety net for a long link list on
+        a short landscape phone; it is the panel that scrolls, not the page.
       */}
       {open ? (
         <div
           id="site-nav-panel"
           ref={panelRef}
-          className="border-t border-border bg-background lg:hidden"
+          className="fixed inset-x-0 bottom-0 top-16 flex flex-col overflow-y-auto bg-background lg:hidden"
         >
-          <Container as="ul" className="py-3">
+          {/*
+            The link stack takes the free height and centres itself in it, so
+            the menu reads as its own screen rather than as a list that fell to
+            the top. Bold and centred: at this size the labels are the content,
+            not a sidebar of them.
+          */}
+          <Container as="ul" className="flex flex-1 flex-col items-center justify-center gap-1 py-8">
             {links.map((link) => (
-              <li key={link.href}>
+              <li key={link.href} className="w-full">
                 <a
                   href={link.href}
-                  onClick={() => setOpen(false)}
-                  className="flex h-12 items-center rounded-lg px-3 text-base font-medium text-foreground transition-colors duration-200 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  onClick={(event) => {
+                    scrollToSection(event, link.href);
+                    setOpen(false);
+                  }}
+                  className="flex h-14 w-full items-center justify-center rounded-lg px-3 text-center text-lg font-bold tracking-[-0.01em] text-foreground transition-colors duration-200 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   {link.label}
                 </a>
@@ -327,8 +430,13 @@ export default function SiteNav({ sections }) {
             /* Same hierarchy as the bar, stacked: solid, outline, then the
                plain sign-in. Nothing is dropped at this width — the outlined
                step is only held back on the desktop row, where it is a space
-               problem rather than a priority one. */
-            <Container className="flex flex-col gap-2 border-t border-border py-4">
+               problem rather than a priority one.
+
+               `mt-auto` keeps this block on the floor of the panel however
+               short the link list is, and the rule above it is drawn in the
+               brand navy (`sidebar-border`) rather than the page hairline, so
+               the foot of the menu is a deliberate edge you can see. */
+            <Container className="mt-auto flex flex-col gap-2 border-t-2 border-sidebar-border py-6">
               {navPrimary ? (
                 <CtaButton
                   href={navPrimary.href}
@@ -350,13 +458,16 @@ export default function SiteNav({ sections }) {
                 </CtaButton>
               ) : null}
               {navSignIn ? (
-                <a
+                <NavAnchor
                   href={navSignIn.href}
-                  onClick={() => setOpen(false)}
+                  onClick={(event) => {
+                    scrollToSection(event, navSignIn.href);
+                    setOpen(false);
+                  }}
                   className="mt-1 inline-flex h-11 items-center justify-center rounded-lg text-sm font-semibold text-foreground transition-colors duration-200 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   {navSignIn.label}
-                </a>
+                </NavAnchor>
               ) : null}
             </Container>
           ) : null}

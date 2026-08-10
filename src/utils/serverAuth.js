@@ -55,7 +55,31 @@ export async function getAuthedOrg(request) {
 
   const meta = data.user.app_metadata || {};
   const orgId = meta.organization_id || null;
-  if (!orgId) return null;
+  if (!orgId) {
+    // CLAIM DRIFT, detected at the point of failure (see
+    // database/052_repair_auth_claims.sql). A verified token with no
+    // organization claim is an account whose app_metadata was never stamped or
+    // was overwritten shallowly. Every admin route it touches answers 401, and
+    // the 401 looks like a bug in whichever screen the person was on — so the
+    // condition is recorded here, where it is unambiguous, instead of being
+    // invisible until somebody reports a broken page.
+    //
+    // Platform-scoped (orgId null): there is no trustworthy org to file it
+    // under. Best effort, never throws — see src/utils/systemEvents.js.
+    await recordDriftOnce(data.user.id, {
+      orgId: null,
+      type: "auth.claims_drift_detected",
+      severity: "warning",
+      source: "auth",
+      message: "A verified token carried no organization claim.",
+      context: {
+        userId: data.user.id,
+        reason: "missing_org_claim",
+        route: "/api/auth/repair-claims",
+      },
+    });
+    return null;
+  }
 
   // Deactivated / offboarded members lose API access immediately, not merely
   // at token expiry. memberships.status used to be written and never read, so
@@ -71,6 +95,38 @@ export async function getAuthedOrg(request) {
       .eq("user_id", appUserId)
       .eq("user_type", userType)
       .maybeSingle();
+    if (!membership) {
+      // CLAIM DRIFT, the second signature and the expensive one. The token
+      // names an (organization_id, app_user_id, user_type) triple that has no
+      // membership row behind it — the exact state
+      // database/052_repair_auth_claims.sql repairs by hand. Downstream this
+      // shows up as 401 "Unauthorized" on admin routes and as "new row violates
+      // row-level security policy" on writes, because auth_org() and
+      // auth_app_user_id() disagree with what the app is holding. Neither
+      // symptom points here.
+      //
+      // RECORDED, NOT REPAIRED. Repairing inside this function would make a
+      // read path write, and would silently change the caller's identity
+      // mid-request. The repair is POST /api/auth/repair-claims, which the
+      // affected user can reach precisely because it does not depend on these
+      // claims. The return value below is deliberately unchanged: an absent
+      // membership row is still treated as active, so legacy accounts keep
+      // working exactly as before.
+      await recordDriftOnce(data.user.id, {
+        orgId,
+        type: "auth.claims_drift_detected",
+        severity: "warning",
+        source: "auth",
+        message: "A verified token named a membership that does not exist.",
+        context: {
+          userId: appUserId,
+          userType,
+          role: meta.role || null,
+          reason: "membership_not_found",
+          route: "/api/auth/repair-claims",
+        },
+      });
+    }
     if (membership && !isActiveStatus(membership.status)) {
       // Monitoring (best effort, never throws). This one IS org-scoped: the
       // token verified, so the org claim is trustworthy, and a suspended member
@@ -97,6 +153,33 @@ export async function getAuthedOrg(request) {
     userType,
     appUserId,
   };
+}
+
+// ── Drift telemetry ───────────────────────────────────────────────────
+// A drifted account keeps drifting: every request it makes hits the same
+// condition, so recording one row per request would bury System Health under a
+// single broken user. One row per (account, reason) per window is enough to
+// show the condition and to see it clear once the claims are repaired.
+//
+// Deliberately a plain in-process Map: this is monitoring, so losing the memo
+// on a cold start costs one extra row, and nothing here may add a round trip to
+// an auth path. Bounded so a burst of distinct ids cannot grow it without limit.
+const DRIFT_WINDOW_MS = 10 * 60 * 1000;
+const DRIFT_MEMO_MAX = 500;
+const driftMemo = new Map();
+
+async function recordDriftOnce(key, event) {
+  try {
+    const memoKey = `${key || "anon"}:${event?.context?.reason || "drift"}`;
+    const now = Date.now();
+    const last = driftMemo.get(memoKey);
+    if (last && now - last < DRIFT_WINDOW_MS) return false;
+    if (driftMemo.size >= DRIFT_MEMO_MAX) driftMemo.clear();
+    driftMemo.set(memoKey, now);
+  } catch {
+    // Never let the memo itself break an auth path; fall through and record.
+  }
+  return recordEvent(event);
 }
 
 // Mirrors isMembershipActive() in src/utils/orgContext.js. Kept inline so the

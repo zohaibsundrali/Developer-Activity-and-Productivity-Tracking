@@ -27,6 +27,11 @@ export default function AppShell({
   onNavigate,
   user,
   onLogout,
+  // Still accepted, no longer rendered. The Topbar used to echo `title` as a
+  // second copy of the page's own <h1>, and `subtitle` as "Signed in as …" /
+  // "Welcome back, …" — the name is already in the topbar account menu. All
+  // four callers still pass both; keeping the props means none of them had to
+  // change, and re-introducing a topbar title later is a one-line edit here.
   title,
   subtitle,
   notificationSlot,
@@ -97,7 +102,6 @@ export default function AppShell({
         activeSection={activeSection}
         onNavigate={onNavigate}
         user={user}
-        onLogout={onLogout}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapse}
         mobileOpen={mobileOpen}
@@ -110,9 +114,10 @@ export default function AppShell({
           collapsed ? "lg:pl-[76px]" : "lg:pl-64"
         )}
       >
+        {/* `onLogout` now reaches the user ONLY through here — the Topbar
+            account menu's "Sign out" is the single exit from the app. The
+            sidebar's duplicate Logout button is gone. */}
         <Topbar
-          title={title}
-          subtitle={subtitle}
           user={user}
           role={role}
           notificationSlot={notificationSlot}

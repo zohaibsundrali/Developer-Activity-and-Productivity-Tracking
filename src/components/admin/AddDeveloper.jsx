@@ -23,6 +23,21 @@ import { showError, showSuccess, showWarning } from "@/utils/alerts";
 import { getOrgId } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
 
+/**
+ * The name rule — pattern, bounds and messages — now lives in
+ * src/utils/nameValidation.js, because the create-organization form takes the
+ * same field and two copies of a rule is how two forms come to disagree about
+ * whether "O'Brien" is a name. Behaviour is unchanged; the exports are kept
+ * (under the same names) so existing importers do not move.
+ */
+import {
+  validatePersonName as validateDeveloperName,
+  NAME_MIN_LENGTH,
+  NAME_MAX_LENGTH,
+} from "@/utils/nameValidation";
+
+export { validateDeveloperName, NAME_MIN_LENGTH, NAME_MAX_LENGTH };
+
 const formatDate = (dateString) => {
   if (!dateString) return 'Recently';
   return new Date(dateString).toLocaleDateString('en-US', {
@@ -34,13 +49,31 @@ const formatDate = (dateString) => {
 
 const DeveloperForm = ({
   newDeveloper,
+  nameError,
   handleInputChange,
   handleAddDeveloper,
   isAddingDeveloper,
   currentAdmin
 }) => (
-  <form onSubmit={handleAddDeveloper} className="space-y-4 max-w-md">
-    <Field label="Full Name" htmlFor="developer-name" required>
+  /* autoComplete matters on every field here, and on the form itself.
+     These three inputs are called name / email / password and sit in that
+     order, which is exactly the shape a browser reads as "sign up" — so Chrome
+     and Safari filled them with the SIGNED-IN ADMIN's own saved name, email and
+     password. Nothing in this component ever seeded them: the state starts as
+     three empty strings and only handleInputChange writes to it. The autofilled
+     admin credentials are also why this must not be "fixed" by blanking state
+     after mount — the values are put there by the browser after paint, so the
+     user would watch them appear and then vanish, and a browser that re-fills
+     on focus would simply do it again. `off` on the identity fields and
+     `new-password` on the credential (this IS a new credential, for someone
+     else) is the only thing that stops the fill happening at all. */
+  <form onSubmit={handleAddDeveloper} className="space-y-4 max-w-md" autoComplete="off">
+    <Field
+      label="Full Name"
+      htmlFor="developer-name"
+      error={nameError || undefined}
+      required
+    >
       <Input
         id="developer-name"
         type="text"
@@ -49,6 +82,7 @@ const DeveloperForm = ({
         onChange={handleInputChange}
         placeholder="Enter developer's full name"
         required
+        autoComplete="off"
         disabled={isAddingDeveloper || !currentAdmin}
       />
     </Field>
@@ -62,6 +96,7 @@ const DeveloperForm = ({
         onChange={handleInputChange}
         placeholder="Enter developer's email"
         required
+        autoComplete="off"
         disabled={isAddingDeveloper || !currentAdmin}
       />
     </Field>
@@ -81,6 +116,7 @@ const DeveloperForm = ({
         placeholder="Set developer password"
         required
         minLength="6"
+        autoComplete="new-password"
         disabled={isAddingDeveloper || !currentAdmin}
       />
     </Field>
@@ -353,6 +389,12 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
       return;
     }
 
+    const nameProblem = validateDeveloperName(newDeveloper.name);
+    if (nameProblem) {
+      showWarning("Validation error", nameProblem);
+      return;
+    }
+
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(newDeveloper.email)) {
       showWarning("Validation error", "Please enter a valid email address.");
@@ -578,6 +620,10 @@ export default function AddDeveloper({ user, developers: initialDevelopers, onRe
     }));
   };
 
+  // Derived, not stored: re-checked on every keystroke, so the message appears
+  // while the user is still in the field rather than after a failed submit.
+  const nameError = validateDeveloperName(newDeveloper.name);
+
   const pageHeader = (
     <PageHeader
       title={sectionTitle("add-developer", "admin")}
@@ -636,6 +682,7 @@ ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
             <CardContent className="sm:px-5">
               <DeveloperForm
                 newDeveloper={newDeveloper}
+                nameError={nameError}
                 handleInputChange={handleInputChange}
                 handleAddDeveloper={handleAddDeveloper}
                 isAddingDeveloper={isAddingDeveloper}
@@ -697,6 +744,7 @@ ADD COLUMN IF NOT EXISTS added_by_name TEXT;`}
           <CardContent className="sm:px-5">
             <DeveloperForm
               newDeveloper={newDeveloper}
+              nameError={nameError}
               handleInputChange={handleInputChange}
               handleAddDeveloper={handleAddDeveloper}
               isAddingDeveloper={isAddingDeveloper}

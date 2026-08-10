@@ -27,6 +27,20 @@ import SystemHealth from "@/components/admin/SystemHealth";
 import AdminAccount from "@/components/admin/AdminAccount";
 import { isSessionExpired, clearAdminSession } from "@/utils/sessionPolicy";
 import { Skeleton } from "@/components/ui";
+// The app's one dialog pattern (sweetalert2, wrapped). No second toast library.
+import { showSuccess } from "@/utils/alerts";
+
+// Written by src/app/admin/registration/page.js the moment an organization is
+// created, and — verified across src/, tests/, e2e/ and middleware.ts — read
+// by nothing else in the codebase. Its presence in sessionStorage therefore
+// means exactly one thing: "this browser session began by completing signup",
+// which is the signal the welcome needs. A plain login never writes it, so a
+// returning admin never sees the message.
+//
+// It is deliberately NOT removed here. It is somebody else's key and it looks
+// like an auth token; the once-only guard is our own separate marker below.
+const SIGNUP_MARKER_KEY = "adminToken";
+const WELCOME_SHOWN_KEY = "devtrack.orgWelcomeShown";
 
 // Presentational only: labels the sidebar groups the nav items into. Keys are
 // the same section ids the switch below uses; it changes no ordering, no
@@ -214,6 +228,41 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
     };
   }, [router]);
 
+  // "Organization created" confirmation, shown the first time the admin portal
+  // is reached after signup and never again.
+  //
+  // Two guards, both required. The signup marker is sessionStorage-scoped and
+  // only signup writes it, so a later login in a fresh tab cannot trigger this.
+  // Our own WELCOME_SHOWN_KEY then makes it once *per* signup, so reloading
+  // /admin/dashboard or switching sections does not re-fire it — sessionStorage
+  // survives a reload, which `useEffect([])` alone would not.
+  //
+  // Presentation only: reads two flags, fetches nothing, decides nothing.
+  useEffect(() => {
+    if (!user) return;
+
+    let firstArrival = false;
+    try {
+      firstArrival =
+        sessionStorage.getItem(SIGNUP_MARKER_KEY) === "admin-authenticated" &&
+        !sessionStorage.getItem(WELCOME_SHOWN_KEY);
+      // Marked before showing, so a double-invoked effect (React StrictMode in
+      // development) still produces exactly one dialog.
+      if (firstArrival) sessionStorage.setItem(WELCOME_SHOWN_KEY, "1");
+    } catch {
+      return; /* storage unavailable — skip the welcome rather than guess */
+    }
+    if (!firstArrival) return;
+
+    const orgName = user?.organization_name;
+    showSuccess(
+      "Organization created",
+      orgName
+        ? `${orgName} is ready. Your workspace is set up — add your team and projects whenever you like.`
+        : "Your organization is ready. Add your team and projects whenever you like."
+    );
+  }, [user]);
+
   // `initial` is the *first* load, the only one that has nothing to show yet.
   // Every later call is a refresh triggered from inside a section (after adding
   // a developer, say), and those used to flip `loading` back on — which swapped
@@ -371,8 +420,11 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
       onNavigate={handleNavigate}
       user={user}
       onLogout={handleLogout}
+      // Still passed, no longer rendered: the Topbar no longer echoes the
+      // section title, because the screen's own <h1> already says it and that
+      // <h1> is the canonical one. The "Signed in as …" subtitle is gone
+      // outright — the name and email are in the topbar account menu.
       title={sectionTitle(activeSection, "admin")}
-      subtitle={user?.full_name ? `Signed in as ${user.full_name}` : undefined}
       navPending={isNavigating}
       notificationSlot={<NotificationDropdown user={user} />}
     >

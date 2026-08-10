@@ -10,6 +10,7 @@
  */
 
 import { forwardRef, useState } from "react";
+import Link from "next/link";
 import {
   Activity,
   AlarmClock,
@@ -375,6 +376,13 @@ const BUTTON_SIZES = {
  * The page's only link-button. `showArrow` adds the nudge-on-hover arrow, which
  * is `motion-safe:` gated so reduced motion gets a static arrow rather than an
  * instant jump.
+ *
+ * Every CTA on this page points at an in-app route — `/admin/registration`,
+ * `/login`, `/pricing` — and a hardcoded `<a>` made each of them a full
+ * document load: the whole framework torn down and rebooted to move one route,
+ * which is the single most expensive thing the landing page did. In-app hrefs
+ * therefore render as `next/link`; in-page anchors (`#monitoring`) and absolute
+ * URLs stay plain anchors, because `Link` has nothing to offer either.
  */
 export const CtaButton = forwardRef(function CtaButton(
   { href, children, variant = "primary", size = "md", showArrow = false, className = "", ...rest },
@@ -382,8 +390,11 @@ export const CtaButton = forwardRef(function CtaButton(
 ) {
   if (!href || !children) return null;
 
+  const internal = typeof href === "string" && href.startsWith("/") && !href.startsWith("//");
+  const Tag = internal ? Link : "a";
+
   return (
-    <a
+    <Tag
       ref={ref}
       href={href}
       className={[
@@ -403,7 +414,7 @@ export const CtaButton = forwardRef(function CtaButton(
           aria-hidden="true"
         />
       ) : null}
-    </a>
+    </Tag>
   );
 });
 

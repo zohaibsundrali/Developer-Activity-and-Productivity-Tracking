@@ -553,7 +553,7 @@ export const footer = {
       title: "Account",
       links: [
         { label: "Create an organization", href: "/admin/registration" },
-        { label: "Join with an invite", href: "/admin/registration" },
+        { label: "Join with an invite", href: "/join" },
         { label: "Sign in", href: "/login" },
       ],
     },

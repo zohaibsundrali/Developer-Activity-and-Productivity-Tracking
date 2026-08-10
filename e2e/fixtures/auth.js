@@ -53,9 +53,16 @@ export async function login(page, credentials) {
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 }
 
-/** Sign out via the sidebar control and confirm we are back on /login. */
+/**
+ * Sign out and confirm we are back on /login.
+ *
+ * Signing out moved: the sidebar's duplicate Logout button was removed, so the
+ * Topbar account menu is now the single exit from the app. That makes this two
+ * clicks — open the menu, then the item inside it.
+ */
 export async function logout(page) {
-  await page.getByRole('button', { name: 'Logout', exact: true }).click();
+  await page.getByRole('button', { name: /^Account menu/ }).click();
+  await page.getByRole('menuitem', { name: 'Sign out' }).click();
   await page.waitForURL((url) => url.pathname === '/login');
 }
 

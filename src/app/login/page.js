@@ -48,6 +48,21 @@ import {
 //
 // Supabase Auth is now the only credential this page consults.
 
+// NAVIGATION ON THIS SCREEN IS ENTIRELY CLIENT-SIDE.
+//
+// Every departure from this page goes through `next/link` or `router.push`:
+// "Back to home", the post-sign-in hand-off to the three dashboards, "Forgot
+// password?", "Join with an Invite" and "Create an Organization". There is no
+// `window.location` assignment and no `<a href="/…">` anywhere in the file, so
+// signing in never tears down the React tree and re-downloads the application
+// to render the next screen.
+//
+// The two hard loads that DO remain in the codebase are both in
+// src/contexts/AuthContext.jsx — logout and session expiry — and both are
+// deliberate: there, throwing the document away is the point, because that is
+// what destroys the stale in-memory session and the live Supabase realtime
+// subscriptions hanging off it. They are commented as such at their sites.
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -239,6 +254,21 @@ export default function LoginPage() {
             />
           </Field>
 
+          {/* The reset entry point sits directly under the field it is about.
+              A <Link>, so it navigates client-side: whatever has already been
+              typed above survives, and the app is not re-downloaded to show a
+              one-field form. The flow it opens uses Supabase's own
+              resetPasswordForEmail / updateUser — see src/app/forgot-password
+              and src/app/reset-password. */}
+          <div className="-mt-2 flex justify-end">
+            <Link
+              href="/forgot-password"
+              className="text-sm font-medium text-primary underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              Forgot password?
+            </Link>
+          </div>
+
           {error && <AuthError message={error} />}
 
           <SubmitButton
@@ -251,18 +281,38 @@ export default function LoginPage() {
           </SubmitButton>
         </form>
 
-        <p
-          className="auth-enter mt-7 border-t border-border pt-5 text-center text-sm text-muted-foreground"
+        {/* THE TWO ENTRY PATHS, NOW ACTUALLY TWO.
+            "Create one" was a single link to /admin/registration — the
+            org-creation form with a mode toggle hidden inside it — so the only
+            two ways to get an account were presented as one, under a label that
+            said neither. They are different acts: joining a workspace someone
+            else already set up (the invite decided your organization, your
+            email and your role) versus creating one from nothing. Each now
+            names itself and each has its own route: /join and
+            /admin/registration. Both are <Link>s, so neither costs a page load. */}
+        <div
+          className="auth-enter mt-7 space-y-2 border-t border-border pt-5 text-center text-sm text-muted-foreground"
           style={enterDelay(220)}
         >
-          Don&apos;t have an account?{" "}
-          <Link
-            href="/admin/registration"
-            className="font-medium text-primary underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          >
-            Create one
-          </Link>
-        </p>
+          <p>
+            Been invited to a workspace?{" "}
+            <Link
+              href="/join"
+              className="font-medium text-primary underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              Join with an Invite
+            </Link>
+          </p>
+          <p>
+            Starting from scratch?{" "}
+            <Link
+              href="/admin/registration"
+              className="font-medium text-primary underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              Create an Organization
+            </Link>
+          </p>
+        </div>
       </AuthCard>
     </AuthShell>
   );

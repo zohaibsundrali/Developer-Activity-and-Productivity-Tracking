@@ -2,7 +2,85 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { Menu, ChevronDown, LogOut } from "lucide-react";
+import { Menu, ChevronDown, LogOut, Moon, Sun } from "lucide-react";
+
+// Same namespace as `devtrack.sidebarCollapsed` in AppShell, and the same key
+// the pre-paint script in src/app/layout.js reads. If you rename it here you
+// must rename it there too — the script runs before any of this module exists.
+const THEME_KEY = "devtrack.theme";
+
+/**
+ * Toggles the `.dark` class on <html>, which is what `darkMode: ["class"]` in
+ * tailwind.config.js keys every dark token off.
+ *
+ * The icon is driven by the `dark:` variant rather than by React state, so it
+ * is correct in the very first server-rendered byte: the pre-paint script in
+ * layout.js has already put the class on <html> by the time this HTML is
+ * parsed, so there is no wrong-icon flash and no hydration mismatch to
+ * suppress. React state is used only for `aria-pressed`, which CSS cannot
+ * express — it starts absent and is filled in after mount.
+ */
+function ThemeToggle() {
+  const [isDark, setIsDark] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    setIsDark(document.documentElement.classList.contains("dark"));
+  }, []);
+
+  // Follow the OS until the user states a preference. Once they have chosen,
+  // their choice wins and this listener stops applying.
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return undefined;
+    const query = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = (event) => {
+      let stored = null;
+      try {
+        stored = window.localStorage.getItem(THEME_KEY);
+      } catch {
+        /* storage unavailable — fall through and follow the OS */
+      }
+      if (stored === "dark" || stored === "light") return;
+      document.documentElement.classList.toggle("dark", event.matches);
+      document.documentElement.style.colorScheme = event.matches ? "dark" : "light";
+      // SweetAlert2 reads this, not our class — see layout.js.
+      document.documentElement.setAttribute("data-swal2-theme", event.matches ? "dark" : "light");
+      setIsDark(event.matches);
+    };
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+
+  const toggle = () => {
+    const next = !document.documentElement.classList.contains("dark");
+    document.documentElement.classList.toggle("dark", next);
+    document.documentElement.setAttribute("data-swal2-theme", next ? "dark" : "light");
+    // Keeps form controls, scrollbars and the caret in step with the palette.
+    document.documentElement.style.colorScheme = next ? "dark" : "light";
+    setIsDark(next);
+    try {
+      window.localStorage.setItem(THEME_KEY, next ? "dark" : "light");
+    } catch {
+      /* non-fatal — the theme still applies for this page view */
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      // 44px target, matching the mobile menu button.
+      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      aria-label="Toggle dark theme"
+      aria-pressed={mounted ? isDark : undefined}
+      title="Toggle dark theme"
+    >
+      <Moon className="h-5 w-5 dark:hidden" aria-hidden="true" />
+      <Sun className="hidden h-5 w-5 dark:block" aria-hidden="true" />
+    </button>
+  );
+}
 
 /**
  * Sticky top bar for the dashboard shell. The notification bell is passed in
@@ -10,10 +88,17 @@ import { Menu, ChevronDown, LogOut } from "lucide-react";
  * NotificationDropdown (with its existing props) unchanged. `searchSlot` works
  * the same way for the global search control, which AppShell owns because the
  * palette it opens lives there.
+ *
+ * There is deliberately no section title here any more. It was a verbatim
+ * repeat of the page's own <h1> — the same string from sectionTitles.js
+ * rendered twice, 24px apart — and the <h1> is the canonical one (the e2e
+ * suite addresses screens by `getByRole('heading', { level: 1 })`). Nothing
+ * referenced this element: it carried no `id`, so no `aria-labelledby` could
+ * point at it, and no test or QA script selected it. AppShell still ACCEPTS
+ * `title`/`subtitle` — all four callers pass them and they are outside this
+ * change — it just no longer forwards them here.
  */
 export default function Topbar({
-  title = "Dashboard",
-  subtitle,
   user,
   role = "developer",
   notificationSlot,
@@ -88,16 +173,13 @@ export default function Topbar({
         <Menu className="h-5 w-5" aria-hidden="true" />
       </button>
 
-      {/* Deliberately not an <h1>: every screen now opens with a PageHeader,
-          which owns the page's single h1. This is sticky context, not the
-          document heading. */}
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-base font-semibold text-foreground sm:text-lg">{title}</p>
-        {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
-      </div>
+      {/* Pushes the account controls to the trailing edge. The title that used
+          to fill this space is gone — see the note on the component. */}
+      <div className="min-w-0 flex-1" />
 
       <div className="flex items-center gap-1 sm:gap-2">
         {searchSlot}
+        <ThemeToggle />
         {notificationSlot}
 
         <div ref={wrapperRef} className="relative ml-1 sm:ml-2 sm:border-l sm:border-border sm:pl-2">

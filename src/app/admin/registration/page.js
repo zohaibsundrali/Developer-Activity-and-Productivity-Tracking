@@ -1,11 +1,14 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { showInfo, showPre, showSuccess } from "@/utils/alerts";
 import { SESSION_MAX_AGE_DAYS } from "@/utils/sessionPolicy";
 import { authFetch } from "@/utils/authFetch";
+// One name rule for the whole product — the same module the Add Developer form
+// validates against, so the two forms cannot disagree about what a name is.
+import { validatePersonName } from "@/utils/nameValidation";
 
 import { ArrowLeft } from "lucide-react";
 import { BRAND_NAME } from "@/components/brand";
@@ -22,6 +25,197 @@ import {
   SegmentedControl,
   SubmitButton,
 } from "@/components/auth/AuthParts";
+
+/**
+ * Create-organization fields in the order they appear, paired with the element
+ * the caret goes to. Used to send the user to the first thing they must fix —
+ * including the terms box, which is the one problem that is easy to scroll
+ * past without noticing.
+ */
+const CREATE_FIELD_ORDER = [
+  ["fullName", "reg-name"],
+  ["company", "reg-company"],
+  ["email", "reg-email"],
+  ["password", "reg-password"],
+  ["confirmPassword", "reg-confirm"],
+  ["terms", "reg-terms"],
+];
+
+// ── Verification code ────────────────────────────────────────────────
+
+const OTP_LENGTH = 4;
+/** Must match `CODE_TTL_MINUTES` in src/app/api/send-verification/route.js —
+ *  that is the number the email states, this is the one the page counts down. */
+const CODE_TTL_MINUTES = 10;
+const CODE_TTL_MS = CODE_TTL_MINUTES * 60 * 1000;
+
+const emptyDigits = () => Array(OTP_LENGTH).fill("");
+
+/** m:ss, never negative. */
+function formatCountdown(ms) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+/**
+ * One box per digit.
+ *
+ * Rendered as the single child of a `Field`, which clones it to inject `id`,
+ * `aria-describedby`, `aria-invalid` and `aria-required` — so the error message
+ * Field renders is announced on the boxes without repeating the wiring here.
+ * The injected `id` lands on the FIRST box, which is what the visible label's
+ * htmlFor points at; every box additionally carries its own accessible name,
+ * because "Verification code" said four times tells a screen reader user
+ * nothing about where they are.
+ *
+ * Keyboard behaviour is the boring, expected one: a digit advances, Backspace
+ * clears the current box or steps back into the previous one, arrows move,
+ * Home/End jump to the ends. A paste anywhere spreads its digits across the
+ * boxes from that point on, so pasting "1234" into the first box fills all four
+ * instead of putting "1234" in one box and dropping three characters.
+ */
+function OtpInput({
+  id,
+  digits,
+  onChange,
+  disabled = false,
+  focusSignal = 0,
+  "aria-describedby": describedBy,
+  "aria-invalid": invalid,
+  "aria-required": required,
+}) {
+  const boxes = useRef([]);
+  const length = digits.length;
+
+  const focusBox = (index) => {
+    const el = boxes.current[Math.max(0, Math.min(length - 1, index))];
+    if (!el) return;
+    el.focus();
+    if (typeof el.select === "function") el.select();
+  };
+
+  // Focus the first box when the group appears and again whenever the caller
+  // bumps the signal (a resend, or a wrong code being cleared).
+  useEffect(() => {
+    if (disabled) return;
+    focusBox(0);
+    // focusBox is recreated each render; re-running on every render is not the
+    // intent — the signal is.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusSignal, disabled]);
+
+  /** Write `chars` from `index` onwards; returns the index after the last. */
+  const writeFrom = (index, chars) => {
+    const next = digits.slice();
+    let cursor = index;
+    for (const ch of chars) {
+      if (cursor >= length) break;
+      next[cursor] = ch;
+      cursor += 1;
+    }
+    onChange(next);
+    return cursor;
+  };
+
+  const handleChange = (index) => (event) => {
+    let typed = event.target.value.replace(/\D/g, "");
+    // A box that already held a digit can report "old+new" when the caret sat
+    // after the old one; the new character is the one the user meant.
+    if (typed.length > 1 && typed[0] === digits[index]) typed = typed.slice(1);
+    if (!typed) {
+      const next = digits.slice();
+      next[index] = "";
+      onChange(next);
+      return;
+    }
+    const cursor = writeFrom(index, typed);
+    focusBox(cursor);
+  };
+
+  const handleKeyDown = (index) => (event) => {
+    if (event.key === "Backspace") {
+      event.preventDefault();
+      const next = digits.slice();
+      if (next[index]) {
+        next[index] = "";
+        onChange(next);
+      } else if (index > 0) {
+        next[index - 1] = "";
+        onChange(next);
+        focusBox(index - 1);
+      }
+      return;
+    }
+    if (event.key === "Delete") {
+      event.preventDefault();
+      const next = digits.slice();
+      next[index] = "";
+      onChange(next);
+      return;
+    }
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      focusBox(index - 1);
+      return;
+    }
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      focusBox(index + 1);
+      return;
+    }
+    if (event.key === "Home") {
+      event.preventDefault();
+      focusBox(0);
+      return;
+    }
+    if (event.key === "End") {
+      event.preventDefault();
+      focusBox(length - 1);
+    }
+  };
+
+  const handlePaste = (index) => (event) => {
+    const pasted = (event.clipboardData?.getData("text") || "").replace(/\D/g, "");
+    if (!pasted) return;
+    event.preventDefault();
+    const cursor = writeFrom(index, pasted.slice(0, length - index));
+    focusBox(cursor);
+  };
+
+  return (
+    <div className="flex items-center gap-2 sm:gap-3" role="group" aria-label="Verification code">
+      {digits.map((digit, index) => (
+        <input
+          key={index}
+          id={index === 0 ? id : `${id}-${index + 1}`}
+          ref={(el) => {
+            boxes.current[index] = el;
+          }}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete={index === 0 ? "one-time-code" : "off"}
+          maxLength={1}
+          value={digit}
+          disabled={disabled}
+          aria-label={`Verification code, digit ${index + 1} of ${length}`}
+          aria-describedby={describedBy}
+          aria-invalid={invalid}
+          aria-required={required}
+          onChange={handleChange(index)}
+          onKeyDown={handleKeyDown(index)}
+          onPaste={handlePaste(index)}
+          onFocus={(event) => event.target.select()}
+          className={`h-14 w-12 rounded-lg border bg-transparent text-center font-mono text-2xl font-semibold text-foreground outline-none transition-colors duration-150 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-14 ${
+            invalid ? "border-destructive" : "border-input"
+          }`}
+        />
+      ))}
+    </div>
+  );
+}
 
 /**
  * Terms consent. Both registration paths on this page need it — creating a new
@@ -74,7 +268,7 @@ function TermsConsent({ id, checked, onChange, error, disabled }) {
         />
       </Field>
       {error && (
-        <p id={`${id}-error`} className="text-xs font-medium text-destructive">
+        <p id={`${id}-error`} role="alert" className="text-xs font-medium text-destructive">
           {error}
         </p>
       )}
@@ -93,9 +287,19 @@ export default function AdminRegistration() {
     password: "",
     confirmPassword: ""
   });
-  const [code, setCode] = useState("");
+  // One entry per box. Holding the digits positionally rather than as a single
+  // string is what lets box 3 be cleared without box 4 sliding into its place.
+  const [codeDigits, setCodeDigits] = useState(emptyDigits);
   const [generatedCode, setGeneratedCode] = useState("");
   const [codeExpiry, setCodeExpiry] = useState(null);
+  // Ticks the countdown. Only runs while step 2 is on screen and the code is
+  // still alive, and stops itself the moment it expires.
+  const [nowTs, setNowTs] = useState(() => Date.now());
+  // Bumped to put the caret back in the first box (resend, cleared attempt).
+  const [otpFocusSignal, setOtpFocusSignal] = useState(0);
+  // The code the auto-submit has already tried, so filling the last box fires
+  // verification exactly once instead of on every re-render.
+  const attemptedCode = useRef("");
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [verificationLoading, setVerificationLoading] = useState(false);
@@ -120,6 +324,30 @@ export default function AdminRegistration() {
     confirmPassword: "",
   });
   const [joinLoading, setJoinLoading] = useState(false);
+
+  // ── Derived verification state ──
+  const code = codeDigits.join("");
+  const codeComplete = codeDigits.every((digit) => digit !== "");
+  const msLeft = codeExpiry ? Math.max(0, codeExpiry - nowTs) : 0;
+  const codeExpired = step === 2 && Boolean(codeExpiry) && msLeft === 0;
+
+  /**
+   * What the code field says. Expiry outranks a wrong code: once the code is
+   * dead, "that code isn't right" is the wrong advice — there is nothing to
+   * correct, only a new code to ask for. The two messages are deliberately
+   * different, and both reach the input through Field's `error` prop, which is
+   * what puts them in aria-describedby.
+   */
+  const codeMessage = codeExpired
+    ? "That code has expired. Ask for a new one and we'll email a fresh code."
+    : errors.code;
+
+  /** Clear the boxes and put the caret back in the first one. */
+  const resetCodeBoxes = () => {
+    setCodeDigits(emptyDigits());
+    attemptedCode.current = "";
+    setOtpFocusSignal((n) => n + 1);
+  };
 
   const handleJoinChange = (field, value) => {
     const v = field === "token" ? value.trim() : sanitizeInput(value);
@@ -229,6 +457,17 @@ export default function AdminRegistration() {
       [field]: sanitizedValue
     }));
 
+    // The name is checked on every keystroke, not only on submit: finding out
+    // that "Ali 2" is not a name after filling in six more fields and waiting
+    // for a round trip is the thing this avoids. An empty box is not an error
+    // — `validatePersonName` returns "" for it — so nobody is scolded before
+    // they have typed. The required case is caught by `validateForm` below.
+    if (field === "fullName") {
+      const message = validatePersonName(sanitizedValue);
+      setErrors(prev => ({ ...prev, fullName: message }));
+      return;
+    }
+
     if (errors[field]) {
       setErrors(prev => ({
         ...prev,
@@ -242,6 +481,9 @@ export default function AdminRegistration() {
 
     if (!formData.fullName || formData.fullName.trim() === "") {
       newErrors.fullName = "Full name is required";
+    } else {
+      const nameProblem = validatePersonName(formData.fullName);
+      if (nameProblem) newErrors.fullName = nameProblem;
     }
 
     if (!formData.company || formData.company.trim() === "") {
@@ -272,20 +514,41 @@ export default function AdminRegistration() {
     // Checked at step 1, before the verification code is even sent: there is no
     // point emailing a code for an account the server will refuse to create.
     // The flag survives into step 2, which is where the signup POST happens.
+    //
+    // This is the CLIENT half only. /api/auth/signup refuses without the flag
+    // and creates nothing when it does (400), and that check is the one that
+    // counts — anyone can POST past this form. What this adds is that the
+    // browser never gets that far: submitting with the box unticked stops
+    // here, says why next to the box, and moves the caret to it.
     if (!termsAccepted) {
       newErrors.terms = "Please accept the Terms of Service to continue";
     }
 
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    return newErrors;
+  };
+
+  /** Move the caret to the first field the user has to fix. */
+  const focusFirstProblem = (problems) => {
+    for (const [field, elementId] of CREATE_FIELD_ORDER) {
+      if (problems[field]) {
+        document.getElementById(elementId)?.focus();
+        return;
+      }
+    }
   };
 
   const sendVerificationCode = async (userEmail) => {
-    try {
-      const code = Math.floor(1000 + Math.random() * 9000).toString();
-      setGeneratedCode(code);
-      setCodeExpiry(Date.now() + 10 * 60 * 1000);
+    // A fresh code means a fresh deadline and empty boxes; leaving the old
+    // digits sitting there after a resend is how people verify with the code
+    // that has just been superseded.
+    const nextCode = Math.floor(1000 + Math.random() * 9000).toString();
+    setGeneratedCode(nextCode);
+    setCodeExpiry(Date.now() + CODE_TTL_MS);
+    setNowTs(Date.now());
+    resetCodeBoxes();
 
+    try {
       const response = await fetch('/api/send-verification', {
         method: 'POST',
         headers: {
@@ -295,7 +558,7 @@ export default function AdminRegistration() {
           email: userEmail,
           userName: formData.fullName,
           company: formData.company,
-          code: code
+          code: nextCode
         }),
       });
 
@@ -309,9 +572,13 @@ export default function AdminRegistration() {
       }
 
     } catch (error) {
+      // `generatedCode` here used to read the PREVIOUS code out of the closure
+      // — state set two lines earlier is not visible until the next render —
+      // so the fallback offered a code that no longer verified (and, on the
+      // first send, an empty one). It has to be the local.
       showPre(
         "Email service unavailable",
-        `EMAIL SERVICE TEMPORARILY UNAVAILABLE\n\nUse this code for testing: ${generatedCode}\n\nThis would be sent to: ${formData.email}`,
+        `EMAIL SERVICE TEMPORARILY UNAVAILABLE\n\nUse this code for testing: ${nextCode}\n\nThis would be sent to: ${formData.email}`,
         "warning"
       );
 
@@ -325,8 +592,10 @@ export default function AdminRegistration() {
     setLoading(true);
     setErrors({});
 
-    if (!validateForm()) {
+    const problems = validateForm();
+    if (Object.keys(problems).length > 0) {
       setLoading(false);
+      focusFirstProblem(problems);
       return;
     }
 
@@ -367,19 +636,34 @@ export default function AdminRegistration() {
   };
 
   const verifyCodeAndRegister = async (e) => {
-    e.preventDefault();
+    // Called both by the form's submit and, with no event, by the effect that
+    // fires as soon as the fourth box is filled.
+    if (e) e.preventDefault();
     setVerificationLoading(true);
     setErrors({});
 
-    if (Date.now() > codeExpiry) {
-      setErrors({ code: "Verification code has expired. Please request a new one." });
+    // Three outcomes, three messages. "Something went wrong" here would leave
+    // the user retyping a code that can never work.
+    if (!codeExpiry || Date.now() > codeExpiry) {
+      setErrors({ code: "That code has expired. Ask for a new one and we'll email a fresh code." });
+      setVerificationLoading(false);
+      return;
+    }
+
+    if (!codeComplete) {
+      setErrors({ code: `Enter all ${OTP_LENGTH} digits of the code.` });
       setVerificationLoading(false);
       return;
     }
 
     if (code !== generatedCode) {
-      setErrors({ code: "Incorrect verification code. Please try again." });
+      setErrors({
+        code: "That code isn't right. Check the digits in the email, or ask for a new code.",
+      });
       setVerificationLoading(false);
+      // Clearing beats making them delete four boxes by hand, and it puts the
+      // caret back where the next attempt starts.
+      resetCodeBoxes();
       return;
     }
 
@@ -461,6 +745,46 @@ export default function AdminRegistration() {
     }
   };
 
+  /**
+   * The countdown.
+   *
+   * It ticks once a second while step 2 is on screen and stops itself the
+   * moment the deadline passes, so an abandoned tab is not re-rendering for
+   * ever. Read the honest version of what it measures in the report and in
+   * src/app/api/send-verification/route.js: the code is minted in this browser
+   * and compared in this browser, so this deadline is enforced here and
+   * nowhere else.
+   */
+  useEffect(() => {
+    if (step !== 2 || !codeExpiry) return undefined;
+    setNowTs(Date.now());
+    if (Date.now() >= codeExpiry) return undefined;
+
+    const timer = setInterval(() => {
+      const now = Date.now();
+      setNowTs(now);
+      if (now >= codeExpiry) clearInterval(timer);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [step, codeExpiry]);
+
+  /**
+   * Filling the last box IS the submit. `attemptedCode` makes that fire once
+   * per distinct code rather than on every render that happens to see four
+   * full boxes, and `resetCodeBoxes` clears it so a retry of the same digits
+   * is still allowed to run.
+   */
+  useEffect(() => {
+    if (step !== 2) return;
+    if (!codeComplete || verificationLoading || codeExpired) return;
+    if (attemptedCode.current === code) return;
+    attemptedCode.current = code;
+    verifyCodeAndRegister();
+    // verifyCodeAndRegister is re-created on every render; listing it would run
+    // this on every render. The trigger is the code being complete.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, code, codeComplete, codeExpired, verificationLoading]);
+
   const pwVal = validatePassword(formData.password);
 
   return (
@@ -533,6 +857,7 @@ export default function AdminRegistration() {
                     onChange={(e) => handleInputChange('fullName', e.target.value)}
                     className={AUTH_INPUT}
                     aria-invalid={errors.fullName ? true : undefined}
+                    autoComplete="name"
                     required
                   />
                 </Field>
@@ -765,32 +1090,46 @@ export default function AdminRegistration() {
         ) : (
           <form onSubmit={verifyCodeAndRegister} className="mt-6 space-y-5">
             <AuthNotice>
-              Enter the 4-digit code we emailed to{" "}
-              <span className="font-medium text-foreground">{formData.email}</span>. It expires in
-              10 minutes.
+              Enter the {OTP_LENGTH}-digit code we emailed to{" "}
+              <span className="font-medium text-foreground">{formData.email}</span>. It expires{" "}
+              {CODE_TTL_MINUTES} minutes after it was sent.
             </AuthNotice>
 
-            <Field label="Verification code" htmlFor="reg-code" error={errors.code} required>
-              <Input
-                id="reg-code"
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                placeholder="0000"
-                value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                className="h-14 text-center font-mono text-2xl font-semibold tracking-[0.5em] rounded-lg"
-                aria-invalid={errors.code ? true : undefined}
-                required
-                maxLength={4}
+            <Field
+              label="Verification code"
+              htmlFor="reg-code"
+              error={codeMessage}
+              required
+            >
+              <OtpInput
+                digits={codeDigits}
+                onChange={setCodeDigits}
+                disabled={verificationLoading || codeExpired}
+                focusSignal={otpFocusSignal}
               />
             </Field>
+
+            {/* The countdown. `role="timer"` with aria-live off on purpose: a
+                screen reader reciting the seconds would drown out everything
+                else on the step. The expiry itself is announced, once. */}
+            {codeExpired ? (
+              <p role="status" className="text-sm font-medium text-destructive">
+                Code expired — use the Resend code link below to get a new one.
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Code expires in{" "}
+                <span role="timer" aria-live="off" className="font-mono font-medium text-foreground">
+                  {formatCountdown(msLeft)}
+                </span>
+              </p>
+            )}
 
             <SubmitButton
               loading={verificationLoading}
               loadingLabel="Verifying…"
-              status={errors.code || errors.general ? "error" : "idle"}
-              disabled={verificationLoading}
+              status={codeMessage || errors.general ? "error" : "idle"}
+              disabled={verificationLoading || codeExpired}
             >
               Verify &amp; complete
             </SubmitButton>

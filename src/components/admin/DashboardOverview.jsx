@@ -15,7 +15,6 @@ export default function DashboardOverview({ user, onRefresh, supabase }) {
     pendingNotifications: 0
   });
   const [loading, setLoading] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState(null);
   // Presentation state only. `hasLoaded` separates "no data yet" from "the
   // counts really are zero" so the tiles can show a skeleton instead of a
   // confident row of zeroes, and `error` surfaces the failure the catch block
@@ -106,8 +105,6 @@ export default function DashboardOverview({ user, onRefresh, supabase }) {
         activeDevelopers,
         pendingNotifications
       });
-
-      setLastUpdated(new Date());
     } catch (error) {
       // Was silently swallowed — still not rethrown, just shown.
       setError(error?.message || "Could not load your workspace statistics.");
@@ -135,27 +132,19 @@ export default function DashboardOverview({ user, onRefresh, supabase }) {
     }, 30000);
   }, [supabase, user]);
 
-  const formatTime = (date) => {
-    return date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
-  };
-
   // First paint has no counts yet — a row of zeroes reads as real data, so the
   // tiles wait on their own skeletons instead.
   const showSkeleton = !hasLoaded;
 
   return (
     <div className="space-y-6">
+      {/* No `description`. It read "Your workspace at a glance · last updated
+          04:15:03 PM": the first half restates the word "Overview" above it,
+          and the second was a clock ticking every 30 seconds that told you
+          when a counter was refreshed rather than anything about the work.
+          The Refresh button beside it already says the data can be re-read. */}
       <PageHeader
         title={sectionTitle("overview", "admin")}
-        description={
-          lastUpdated
-            ? `Your workspace at a glance · last updated ${formatTime(lastUpdated)}`
-            : "Your workspace at a glance"
-        }
         actions={
           <Button variant="outline" onClick={fetchRealTimeData} disabled={loading}>
             <RefreshCw

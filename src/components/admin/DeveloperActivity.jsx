@@ -1162,20 +1162,11 @@ export default function DeveloperActivity() {
               </div>
             )}
             {currentAdmin && fetchingDevelopers && <p className="text-xs text-muted-foreground mt-2">Loading developers...</p>}
-            {currentAdmin && !fetchingDevelopers && developers.length === 0 && (
-              <div className="mt-2">
-                <p className="text-xs text-warning">No developers added by you yet</p>
-                <button
-                  // In-app route change: router.push keeps the shell mounted.
-                  // A window.location assignment here reloaded the whole
-                  // document — flash, lost scroll, shell rebuilt from scratch.
-                  onClick={() => router.push("/admin/dashboard?section=add-developer")}
-                  className="text-xs text-success hover:text-success/80 underline"
-                >
-                  Add Developers
-                </button>
-              </div>
-            )}
+            {/* "No developers added by you yet" used to be repeated here as a
+                warning line with an underlined pseudo-link beside it. The
+                empty state below now says it once, in the place the eye
+                already goes when the screen has nothing on it, and carries the
+                one action as a real primary Button. */}
             {currentAdmin && !fetchingDevelopers && developers.length > 0 && (
               <p className="text-xs text-muted-foreground mt-2">Showing {developers.length} developer{developers.length !== 1 ? "s" : ""} added by you</p>
             )}
@@ -1638,13 +1629,11 @@ export default function DeveloperActivity() {
                 <h3 className="text-lg font-semibold text-foreground mb-4">Developer Login Activity ({loginRecords.length})</h3>
 
                 {loginRecords.length === 0 ? (
-                  <div className="bg-card rounded-lg border p-8 text-center">
-                    <div className="mb-4 flex justify-center">
-                      <LockKeyhole className="h-10 w-10 text-muted-foreground" aria-hidden="true" />
-                    </div>
-                    <h4 className="text-lg font-semibold text-foreground mb-2">No Login Activity Recorded</h4>
-                    <p className="text-muted-foreground">No login records found for this developer on {selectedDate}.</p>
-                  </div>
+                  <EmptyState
+                    icon={LockKeyhole}
+                    title="No login activity recorded"
+                    description={`No login records found for this developer on ${selectedDate}.`}
+                  />
                 ) : (
                   <div className="overflow-x-auto max-h-96 overflow-y-auto">
                     <table className="min-w-full divide-y divide-border">
@@ -1680,14 +1669,11 @@ export default function DeveloperActivity() {
             <div className="space-y-6">
               {/* No Data Fallback */}
               {keyboardData.length === 0 && (
-                <div className="bg-muted/50 border border-border rounded-lg p-8 text-center">
-                  <div className="mb-4 flex justify-center">
-                    <Keyboard className="h-10 w-10 text-muted-foreground" aria-hidden="true" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-foreground mb-2">No Keyboard Activity Recorded</h3>
-                  <p className="text-muted-foreground">No keyboard activity data found for this session or date range.</p>
-                  <p className="text-sm text-muted-foreground mt-2">Keyboard stats will appear here once the desktop tracker records typing activity.</p>
-                </div>
+                <EmptyState
+                  icon={Keyboard}
+                  title="No keyboard activity recorded"
+                  description="Keyboard stats appear here once the desktop tracker records typing activity for this session or date range."
+                />
               )}
 
               {/* Keyboard Activity Summary Card */}
@@ -2504,11 +2490,32 @@ export default function DeveloperActivity() {
       {/* No Developer Selected */}
       {!selectedDeveloper && !loading && (
         currentAdmin ? (
-          <EmptyState
-            icon={User}
-            title="Select a developer to view activity data"
-            description="Pick someone from the Select Developer list above to see their sessions, input and screenshots."
-          />
+          fetchingDevelopers ? null : developers.length === 0 ? (
+            /* Nothing to choose from, so "pick someone from the list above" is
+               not the message — adding the first developer is. It is the only
+               action on the screen, so it is the default (primary) Button. */
+            <EmptyState
+              icon={User}
+              title="No developers yet"
+              description="Add a developer to this organization and their tracked sessions, input and screenshots will show up here."
+              action={
+                <Button
+                  // In-app route change: router.push keeps the shell mounted.
+                  // A window.location assignment here reloaded the whole
+                  // document — flash, lost scroll, shell rebuilt from scratch.
+                  onClick={() => router.push("/admin/dashboard?section=add-developer")}
+                >
+                  Add a Developer
+                </Button>
+              }
+            />
+          ) : (
+            <EmptyState
+              icon={User}
+              title="Select a developer to view activity data"
+              description="Pick someone from the Select Developer list above to see their sessions, input and screenshots."
+            />
+          )
         ) : (
           <EmptyState
             icon={LockKeyhole}
