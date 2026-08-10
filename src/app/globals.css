@@ -19,7 +19,9 @@
     --popover: 0 0% 100%;
     --popover-foreground: 200 25% 12%;
 
-    /* Brand — refined teal (evolved from #009578) */
+    /* Brand — indigo #4840DD, the logo tile colour (src/app/icon.svg).
+       This comment used to say "refined teal (evolved from #009578)", which
+       stopped being true when the palette moved to indigo. */
     --primary: 243 70% 56%;
     --primary-foreground: 0 0% 100%;
 

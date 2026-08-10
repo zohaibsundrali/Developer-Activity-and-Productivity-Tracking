@@ -1302,7 +1302,9 @@ export default function DeveloperActivity() {
                   <EChart
                     height={300}
                     option={{
-                      color: ["#0c8f6e", "#0ea5e9", "#ef4444"],
+                      // #4840DD is the logo tile colour (src/app/icon.svg),
+                      // replacing #0c8f6e — the pre-rename green.
+                      color: ["#4840DD", "#0ea5e9", "#ef4444"],
                       textStyle,
                       grid: baseGrid,
                       tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, ...baseTooltip },
@@ -1316,7 +1318,7 @@ export default function DeveloperActivity() {
                       },
                       yAxis: { type: "value", axisLabel, splitLine },
                       series: [
-                        { name: "Productivity %", type: "bar", data: sessionChartData.map((d) => d.score), itemStyle: { color: "#0c8f6e", borderRadius: [4, 4, 0, 0] } },
+                        { name: "Productivity %", type: "bar", data: sessionChartData.map((d) => d.score), itemStyle: { color: "#4840DD", borderRadius: [4, 4, 0, 0] } },
                         { name: "Active (min)", type: "bar", data: sessionChartData.map((d) => d.active), itemStyle: { color: "#0ea5e9", borderRadius: [4, 4, 0, 0] } },
                         { name: "Idle (min)", type: "bar", data: sessionChartData.map((d) => d.idle), itemStyle: { color: "#ef4444", borderRadius: [4, 4, 0, 0] } },
                       ],

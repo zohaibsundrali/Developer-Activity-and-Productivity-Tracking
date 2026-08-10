@@ -47,7 +47,13 @@ describe("full name validation on the create-organization form", () => {
     // …and the form imports it rather than declaring a rule of its own.
     expect(REGISTRATION).toContain('import { validatePersonName } from "@/utils/nameValidation"');
     expect(REGISTRATION_CODE).not.toMatch(/const \w*NAME_PATTERN\s*=/);
-  });
+    // 20s, not the 5s default. This is the only test in the file that pulls a
+    // real admin component through the transformer, and AddDeveloper's import
+    // graph is large enough that under full-suite parallelism it intermittently
+    // crossed 5s — passing alone, failing in the suite. A flaky failure here
+    // reads as "the name rule was forked again", which is exactly the alarm
+    // that must stay trustworthy.
+  }, 20000);
 
   it("accepts a name", () => {
     for (const good of ["Ali Raza", "Jo Ann", "José Martínez", "Müller", "O'Brien", "Anne-Marie"]) {

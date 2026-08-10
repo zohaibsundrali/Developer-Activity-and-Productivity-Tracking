@@ -43,7 +43,14 @@ export const showConfirm = async (title, text, options = {}) => {
     showCancelButton: true,
     confirmButtonText: options.confirmButtonText || "Confirm",
     cancelButtonText: options.cancelButtonText || "Cancel",
-    confirmButtonColor: options.confirmButtonColor || "#0c8f6e",
+    // The logo's tile colour — the same #4840DD that src/app/icon.svg paints
+    // the favicon with, and the resolved value of `--primary`. It was #0c8f6e,
+    // the green from before the rename, so every confirm button in the product
+    // was a colour that appears nowhere else on the site any more.
+    //
+    // Literal hex rather than the token: SweetAlert2 writes this straight into
+    // an inline style, and `hsl(var(--primary))` does not resolve there.
+    confirmButtonColor: options.confirmButtonColor || "#4840DD",
     cancelButtonColor: options.cancelButtonColor || "#64748b",
   });
   return result.isConfirmed;
