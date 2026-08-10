@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 
 import { ArrowLeft, MailCheck } from "lucide-react";
 
-import { supabase } from "@/utils/supabaseClient";
 import { showError } from "@/utils/alerts";
 import { Button, Field, Input } from "@/components/ui";
 import AuthShell, { BrandLockup, enterDelay } from "@/components/auth/AuthShell";
@@ -18,31 +17,34 @@ import {
   AuthNotice,
   SubmitButton,
 } from "@/components/auth/AuthParts";
-import { currentResetRedirectUrl } from "@/components/auth/resetRedirect";
-
 /**
  * /forgot-password — request a reset link.
  *
- * IT USES SUPABASE'S OWN PRIMITIVE, AND ONLY THAT.
- *  `supabase.auth.resetPasswordForEmail()` mints a single-use recovery token,
- *  emails it, and expires it. There is deliberately no token table, no
- *  `reset_tokens` column, no nonce of our own invention and no new API route:
- *  a hand-rolled reset scheme is one of the easiest things in web software to
- *  get quietly, catastrophically wrong, and Supabase Auth is already the only
- *  credential this product authenticates against. /api/auth/signup and the
- *  change-password route are not involved and were not touched.
+ * THE TOKEN IS SUPABASE'S. THE EMAIL IS OURS.
+ *  This form used to call `supabase.auth.resetPasswordForEmail()` directly from
+ *  the browser, which also made Supabase SEND the message — its template, its
+ *  sender name, its wording. The recipient got mail naming a service they have
+ *  never heard of, about an account they hold with us.
+ *
+ *  It now posts to /api/auth/forgot-password, which mints the identical
+ *  single-use recovery link with `auth.admin.generateLink()` and delivers it
+ *  through the product's own branded template and From address. There is still
+ *  no reset table, no code of our own invention and no second idea of what a
+ *  valid link is — a hand-rolled reset scheme is one of the easiest things in
+ *  web software to get quietly, catastrophically wrong. Only the envelope
+ *  changed. /api/auth/signup and the change-password route are untouched.
  *
  * WE DO NOT SAY WHETHER THE ADDRESS EXISTS.
- *  The confirmation below is identical whether or not an account was found.
- *  Telling an anonymous visitor "no account with that email" turns this form
- *  into an account-enumeration oracle for anybody with a list of addresses.
- *  Supabase's own response is deliberately uninformative for the same reason,
- *  so the only failures we surface are the ones about the REQUEST — a
- *  malformed address, or its rate limit.
+ *  The confirmation below is identical whether or not an account was found, and
+ *  so is the route's response. Telling an anonymous visitor "no account with
+ *  that email" turns this form into an account-enumeration oracle for anybody
+ *  with a list of addresses. The only failures surfaced are the ones about the
+ *  REQUEST — a malformed address, or the rate limit.
  *
- * THE REDIRECT TARGET IS NEVER HARDCODED.
- *  It comes from NEXT_PUBLIC_APP_URL, falling back to the origin the visitor is
- *  actually standing on. See src/components/auth/resetRedirect.js.
+ * THE REDIRECT TARGET NEVER LEAVES THE SERVER.
+ *  The route builds it from NEXT_PUBLIC_APP_URL / its own origin and refuses to
+ *  read one from this request body, so nobody can have a real reset link mailed
+ *  to a victim pointing at a host they control.
  */
 export default function ForgotPasswordPage() {
   const router = useRouter();
@@ -65,13 +67,23 @@ export default function ForgotPasswordPage() {
     setError("");
 
     try {
-      const redirectTo = currentResetRedirectUrl();
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-        address,
-        { redirectTo }
-      );
+      const response = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // The address and nothing else. In particular NOT a redirect target:
+        // the server builds that itself and ignores anything sent here.
+        body: JSON.stringify({ email: address }),
+      });
 
-      if (resetError) throw new Error(resetError.message);
+      const payload = await response.json().catch(() => ({}));
+
+      // A non-2xx here is only ever a bad address or the rate limit — the route
+      // answers 200 for "no such account" on purpose.
+      if (!response.ok) {
+        throw new Error(
+          payload?.error || "We couldn't send the reset email. Please try again."
+        );
+      }
 
       // Same screen either way — see the enumeration note above.
       setSent(true);

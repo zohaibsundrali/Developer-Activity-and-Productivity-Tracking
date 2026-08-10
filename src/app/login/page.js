@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/utils/supabaseClient";
 import { useRouter } from "next/navigation";
@@ -7,7 +7,7 @@ import { SESSION_MAX_AGE_DAYS } from "@/utils/sessionPolicy";
 import { loadOrgContext, isMembershipActive } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
 
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CheckCircle2 } from "lucide-react";
 import { Button, Field, Input } from "@/components/ui";
 import AuthShell, { BrandLockup, enterDelay } from "@/components/auth/AuthShell";
 import {
@@ -70,7 +70,29 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [justReset, setJustReset] = useState(false);
   const router = useRouter();
+
+  /**
+   * `?reset=1`, set by /reset-password after a successful change, shows the
+   * banner below and nothing else. It is a piece of COPY, not a claim: it
+   * grants no access, is not read by any handler, and a stranger appending it
+   * to the URL gets a sentence and still has to sign in.
+   *
+   * Read from `window.location` in an effect rather than with
+   * `useSearchParams()` deliberately — that hook forces this page under a
+   * Suspense boundary at build time, and a query string used only for a
+   * confirmation line does not justify restructuring the sign-in screen.
+   */
+  useEffect(() => {
+    try {
+      if (new URLSearchParams(window.location.search).get("reset") === "1") {
+        setJustReset(true);
+      }
+    } catch {
+      /* no URL to read — the banner simply does not appear */
+    }
+  }, []);
 
   const handleGoToHome = () => {
     router.push("/");
@@ -206,6 +228,26 @@ export default function LoginPage() {
           title="Welcome back"
           description="Use your workspace credentials to continue to the dashboard."
         />
+
+        {justReset && (
+          <div
+            role="status"
+            className="mt-6 flex items-start gap-3 rounded-lg border border-success/30 bg-success/10 p-3.5"
+          >
+            <CheckCircle2
+              className="mt-0.5 h-4 w-4 shrink-0 text-success"
+              aria-hidden="true"
+            />
+            {/* `text-foreground`, not a `success` shade: there is no
+                `--success-on-tint` token (only warning and info have one), and
+                inventing a colour here would mean picking a contrast ratio by
+                eye in two themes. The tint is 10% opacity, so body ink reads
+                cleanly on it in both. */}
+            <p className="text-sm leading-relaxed text-foreground">
+              Your password has been updated. Sign in with your new password to continue.
+            </p>
+          </div>
+        )}
 
         <div className="mt-7 space-y-2">
           <p className="text-sm font-medium text-foreground">I&apos;m signing in as</p>

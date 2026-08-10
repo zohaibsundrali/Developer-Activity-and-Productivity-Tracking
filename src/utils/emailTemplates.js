@@ -89,8 +89,17 @@ function toText(value, maxLen = 2000) {
 
 // ── Shared layout ────────────────────────────────────────────────────
 
-const BRAND = "#009578";
-const BRAND_DARK = "#00795f";
+// The brand indigo, not the teal these templates shipped with. `--primary` in
+// src/app/globals.css is `243 70% 56%`, which is exactly #4840DD; BRAND_DARK is
+// the same hue at 44% lightness, used for the pressed edge under the CTA.
+//
+// Written as literal hex on purpose: email clients do not evaluate CSS custom
+// properties, and Outlook does not support hsl() at all, so the token cannot be
+// referenced here — it has to be resolved. If `--primary` ever changes, this
+// pair changes with it. That is the whole coupling, and it is stated here so
+// the next person finds it.
+const BRAND = "#4840DD";
+const BRAND_DARK = "#2A22BF";
 const TEXT = "#1f2933";
 const MUTED = "#6b7280";
 const BORDER = "#e5e7eb";
@@ -138,7 +147,7 @@ export function renderLayout({
     <tr>
       <td style="background:${BRAND};padding:20px 28px;">
         <div style="color:#ffffff;font-size:18px;font-weight:bold;">${escapeHtml(title, 120) || PRODUCT_NAME}</div>
-        ${orgName ? `<div style="color:#e8f7f2;font-size:13px;margin-top:4px;">${escapeHtml(orgName, 120)}</div>` : ""}
+        ${orgName ? `<div style="color:#dedcfa;font-size:13px;margin-top:4px;">${escapeHtml(orgName, 120)}</div>` : ""}
       </td>
     </tr>
     <tr>
@@ -252,6 +261,67 @@ export const TEMPLATES = {
         footerNote: `Sent by ${BRAND_NAME} because this address was entered during account setup. If that was not you, ignore this email.`,
       }),
       text: textBlock([...intro, `Confirmation code: ${code}`, ...outro]),
+    };
+  },
+
+  /**
+   * Password reset link.
+   *
+   * WHY THIS TEMPLATE EXISTS AT ALL
+   *  /forgot-password used to call `supabase.auth.resetPasswordForEmail()` from
+   *  the browser, which makes SUPABASE send the mail: its default template, its
+   *  sender, its wording. The recipient got a message that named a service they
+   *  have never heard of, about an account they hold with us — which reads
+   *  exactly like phishing, and is the one email in the product where looking
+   *  untrustworthy is most expensive.
+   *
+   *  The token is still Supabase's. Nothing here invents a reset scheme: the
+   *  route mints the recovery link with `auth.admin.generateLink()` and this
+   *  template only carries it. What changed is who addresses the envelope.
+   *
+   * COPY RULES FOR THIS PARTICULAR MESSAGE
+   *  It has to survive being read by someone who did NOT request it, because
+   *  anyone can type anyone's address into the form. So it says plainly that
+   *  ignoring it leaves the password untouched, and it never states or implies
+   *  whether an account exists beyond the fact that this address received mail.
+   *  It also never includes the password, old or new — there is none to include.
+   */
+  password_reset(d = {}) {
+    const who = name(d.userName || d.recipientName || d.fullName, "there");
+    const minutes = Number(d.expiresInMinutes) > 0 ? Math.round(Number(d.expiresInMinutes)) : 60;
+    const address = sanitizeHeader(d.email, 254);
+    const link = d.resetUrl || d.url;
+
+    const intro = [
+      `Hi ${who},`,
+      `We received a request to reset the password for the ${BRAND_NAME} account that uses ${address || "this address"}. Choose a new password with the button below — it takes you straight to a page on our site where you set it and confirm it.`,
+    ];
+    const outro = [
+      `The link works once and expires about ${minutes} minutes after this email was sent. If it has already expired, request a new one from the sign-in page.`,
+      `If you did not ask for this, you can ignore this email — your password stays exactly as it is, and nothing changes until the link is opened. ${BRAND_NAME} will never email you asking for your password.`,
+    ];
+
+    return {
+      subject: sanitizeHeader(`Reset your ${BRAND_NAME} password`),
+      html: renderLayout({
+        title: `Reset your ${BRAND_NAME} password`,
+        preheader: `Set a new password for your ${BRAND_NAME} account. This link expires in ${minutes} minutes.`,
+        heading: "Reset your password",
+        // Both halves go in the body, above the button: renderLayout emits the
+        // CTA last, so anything passed after it would be dropped entirely, and
+        // the "you can ignore this" sentence is the one line in the message
+        // that must reach a recipient who did not request the reset.
+        bodyHtml: paragraphs(...intro, ...outro),
+        details: [
+          { label: "Account", value: address },
+          { label: "Link expires", value: `${minutes} minutes after sending` },
+          { label: "Uses", value: "Once" },
+        ],
+        ctaLabel: "Set a new password",
+        ctaUrl: link,
+        footerNote: `Sent by ${BRAND_NAME} because a password reset was requested for this address. If that was not you, no action is needed.`,
+      }),
+      text: textBlock([...intro, ...outro], "Set a new password", link),
     };
   },
 

@@ -185,7 +185,16 @@ function OtpInput({
   };
 
   return (
-    <div className="flex items-center gap-2 sm:gap-3" role="group" aria-label="Verification code">
+    // `justify-center`, and a bigger gap. The boxes used to sit flush left
+    // under a left-aligned label, which on a 4-digit code left most of the card
+    // empty to their right and read as an unfinished row rather than a code
+    // entry. Centring is what every OTP screen does, and it is also what makes
+    // the group look deliberate at both breakpoints.
+    <div
+      className="flex items-center justify-center gap-3 sm:gap-4"
+      role="group"
+      aria-label="Verification code"
+    >
       {digits.map((digit, index) => (
         <input
           key={index}
@@ -1095,11 +1104,16 @@ export default function AdminRegistration() {
               {CODE_TTL_MINUTES} minutes after it was sent.
             </AuthNotice>
 
+            {/* The whole step is centred on the boxes: `text-center` on the
+                wrapper carries the error line, `justify-center` handles the
+                label (Label is a flex row, so text-align does not move it). */}
             <Field
               label="Verification code"
               htmlFor="reg-code"
               error={codeMessage}
               required
+              className="space-y-3 text-center"
+              labelClassName="justify-center"
             >
               <OtpInput
                 digits={codeDigits}
@@ -1113,11 +1127,11 @@ export default function AdminRegistration() {
                 screen reader reciting the seconds would drown out everything
                 else on the step. The expiry itself is announced, once. */}
             {codeExpired ? (
-              <p role="status" className="text-sm font-medium text-destructive">
+              <p role="status" className="text-center text-sm font-medium text-destructive">
                 Code expired — use the Resend code link below to get a new one.
               </p>
             ) : (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-center text-sm text-muted-foreground">
                 Code expires in{" "}
                 <span role="timer" aria-live="off" className="font-mono font-medium text-foreground">
                   {formatCountdown(msLeft)}

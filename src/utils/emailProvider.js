@@ -31,6 +31,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { sanitizeHeader } from "@/utils/emailTemplates";
+import { BRAND_NAME } from "@/components/brand/brand";
 
 // ── Mode ─────────────────────────────────────────────────────────────
 
@@ -63,7 +64,12 @@ export function providerStatus() {
   };
 }
 
-const DEFAULT_FROM_NAME = "Developer Activity Tracking System";
+// The display name on every outbound message when EMAIL_FROM_NAME is not set.
+// It was the literal "Developer Activity Tracking System" — the pre-rename
+// product — so every email in the inbox was signed by something that no longer
+// exists. It now comes from the brand module, which is the same string the site
+// header, the footer and the email templates use.
+const DEFAULT_FROM_NAME = BRAND_NAME;
 
 /** The From address for the active mode. */
 export function fromAddress() {

@@ -46,6 +46,7 @@ const LOGIN = "src/app/login/page.js";
 const JOIN = "src/app/join/page.jsx";
 const FORGOT = "src/app/forgot-password/page.jsx";
 const RESET = "src/app/reset-password/page.jsx";
+const FORGOT_ROUTE = "src/app/api/auth/forgot-password/route.js";
 const CONTEXT = "src/contexts/AuthContext.jsx";
 const GUARD = "src/components/auth/ProtectedRoute.jsx";
 const LOADING = "src/components/auth/AuthLoadingScreen.jsx";
@@ -316,18 +317,38 @@ describe("reset redirect origin", () => {
 describe("forgot-password", () => {
   const code = stripComments(read(FORGOT));
 
-  it("uses Supabase's own primitive and no invented token scheme", () => {
-    expect(code).toMatch(/supabase\.auth\.resetPasswordForEmail\(/);
+  // WHAT CHANGED HERE, AND WHY THESE ASSERTIONS MOVED
+  //
+  // This page used to call `supabase.auth.resetPasswordForEmail()` in the
+  // browser, and these tests asserted "no API route" to pin that down. That
+  // also meant SUPABASE sent the email — its template, its sender, its wording
+  // — so what arrived in the inbox named a service the recipient has never
+  // heard of, about an account they hold with us.
+  //
+  // Delivery now goes through /api/auth/forgot-password, which mints the same
+  // recovery link with `auth.admin.generateLink()` and mails it through the
+  // product's own branded template. The invariant that mattered was never
+  // "no API route" — it was "no token scheme of our own". That one is asserted
+  // harder than before, on BOTH files.
+  it("invents no token scheme of its own", () => {
     expect(code).not.toMatch(/crypto\.|randomUUID|token_hash|reset_token/);
-    // No new API route, and specifically not the two that were off-limits.
+    // Still off-limits: neither of the two routes this flow must not touch.
     expect(code).not.toMatch(/\/api\/auth\/signup/);
     expect(code).not.toMatch(/change-password/);
-    expect(code).not.toMatch(/\/api\//);
   });
 
-  it("derives redirectTo rather than naming a host", () => {
-    expect(code).toMatch(/redirectTo/);
-    expect(code).toMatch(/currentResetRedirectUrl\(\)/);
+  it("posts to the branded send route rather than mailing from the browser", () => {
+    expect(code).toMatch(/\/api\/auth\/forgot-password/);
+    // The browser no longer triggers Supabase's own email.
+    expect(code).not.toMatch(/resetPasswordForEmail/);
+  });
+
+  it("sends the address and nothing else — never a redirect target", () => {
+    expect(code).toMatch(/JSON\.stringify\(\{\s*email:\s*address\s*\}\)/);
+    // A caller-chosen redirectTo is how a real reset link gets mailed to a
+    // victim pointing at a host the attacker controls. The server builds it.
+    expect(code).not.toMatch(/redirectTo/);
+    expect(code).not.toMatch(/currentResetRedirectUrl/);
   });
 
   it("does not leak whether an account exists", () => {
@@ -339,6 +360,122 @@ describe("forgot-password", () => {
   it("reports failures through the shared alert helpers", () => {
     expect(code).toMatch(/from "@\/utils\/alerts"/);
     expect(code).toMatch(/showError\(/);
+  });
+});
+
+/**
+ * The route that actually sends the mail.
+ *
+ * It exists for one reason: to move the ENVELOPE off Supabase without moving
+ * the TOKEN. Everything asserted below is about keeping that line in place —
+ * Supabase still owns what a valid link is, we own what the message looks like.
+ */
+describe("the branded reset-link route", () => {
+  const source = read(FORGOT_ROUTE);
+  const code = stripComments(source);
+
+  it("exists", () => {
+    expect(existsSync(path.join(root, FORGOT_ROUTE))).toBe(true);
+  });
+
+  it("mints Supabase's own recovery link instead of inventing one", () => {
+    expect(code).toMatch(/generateLink\(/);
+    expect(code).toMatch(/type:\s*"recovery"/);
+    expect(code).toMatch(/action_link/);
+    // No home-grown token, nowhere to store one, and no second idea of expiry.
+    expect(code).not.toMatch(/randomUUID|token_hash|reset_token|createHash/);
+  });
+
+  it("builds the redirect target itself and never reads one from the body", () => {
+    expect(code).toMatch(/resolveAppOrigin\(/);
+    expect(code).toMatch(/RESET_PASSWORD_PATH/);
+    expect(code).toMatch(/NEXT_PUBLIC_APP_URL/);
+    // `body.redirectTo` in any form is the open-redirect-by-email bug.
+    expect(code).not.toMatch(/body\.redirectTo|body\.redirect_to|body\["redirectTo"\]/);
+  });
+
+  it("answers identically whether or not the account exists", () => {
+    // One helper produces the happy-path body, and every success path returns
+    // it — including the branch where no link could be minted at all.
+    expect(code).toMatch(/function accepted\(\)/);
+    expect(code).toMatch(/return accepted\(\);/);
+    expect(code).not.toMatch(/no account|not found|does not exist|user not found/i);
+    // The link itself must never appear in a response body.
+    expect(code).not.toMatch(/json\([^)]*action_link/);
+  });
+
+  it("keeps the service-role key server-side and reports nothing back about it", () => {
+    expect(code).toMatch(/SUPABASE_SERVICE_ROLE_KEY/);
+    expect(source).not.toMatch(/NEXT_PUBLIC_SUPABASE_SERVICE/);
+    // Transport errors are logged, never returned — an SMTP client will quote
+    // the credential it just tried inside its own error string.
+    expect(code).not.toMatch(/details:\s*(result\.error|e\.message|error\.message)/);
+  });
+
+  it("rate-limits by address and by caller", () => {
+    expect(code).toMatch(/rateLimited\(`ip:/);
+    expect(code).toMatch(/rateLimited\(`to:/);
+    expect(code).toMatch(/status:\s*429/);
+  });
+
+  it("sends through the product's own template and send path", () => {
+    expect(code).toMatch(/renderTemplate\("password_reset"/);
+    expect(code).toMatch(/sendEmail\(/);
+    // Mock mode reports ok:true with delivered:false. Treating that as sent is
+    // how a reset flow goes silently dead in an unconfigured deploy.
+    expect(code).toMatch(/!result\.delivered/);
+  });
+});
+
+describe("the reset email is ours, not Supabase's", () => {
+  const templates = read("src/utils/emailTemplates.js");
+
+  it("has a password_reset template", async () => {
+    const { TEMPLATE_NAMES, renderTemplate } = await import("@/utils/emailTemplates");
+    expect(TEMPLATE_NAMES).toContain("password_reset");
+
+    const { subject, html, text } = renderTemplate("password_reset", {
+      userName: "Zohaib",
+      email: "person@example.com",
+      resetUrl: "https://example.com/reset-password#access_token=abc",
+      expiresInMinutes: 60,
+    });
+
+    // Branded by the product name, not by the auth vendor.
+    expect(subject).toMatch(/Verisade/);
+    expect(html).not.toMatch(/[Ss]upabase/);
+    expect(text).not.toMatch(/[Ss]upabase/);
+
+    // The link survives into both parts, and the button says what it does.
+    expect(html).toContain("https://example.com/reset-password");
+    expect(text).toContain("https://example.com/reset-password");
+    expect(html).toMatch(/Set a new password/);
+
+    // The line that has to reach someone who did not request the reset.
+    expect(html).toMatch(/did not ask for this/i);
+    expect(html).toMatch(/never email you asking for your password/i);
+  });
+
+  it("refuses a link that is not http(s)", async () => {
+    const { renderTemplate } = await import("@/utils/emailTemplates");
+    const { html } = renderTemplate("password_reset", {
+      email: "person@example.com",
+      resetUrl: "javascript:alert(1)",
+    });
+    expect(html).not.toMatch(/javascript:/i);
+  });
+
+  it("uses the brand indigo, not the pre-rename teal", () => {
+    expect(templates).toMatch(/#4840DD/i);
+    expect(templates).not.toMatch(/#009578/i);
+  });
+
+  it("signs mail with the current product name", () => {
+    // Comments stripped: the old name survives in the note explaining why it
+    // was replaced, which is exactly where it belongs.
+    const provider = stripComments(read("src/utils/emailProvider.js"));
+    expect(provider).not.toMatch(/"Developer Activity Tracking System"/);
+    expect(provider).toMatch(/DEFAULT_FROM_NAME = BRAND_NAME/);
   });
 });
 
@@ -392,7 +529,9 @@ describe("reset-password is unreachable without a live session", () => {
     // The app session is minted by /login (org context + membership check +
     // signed cookie). A recovery session must not be a shortcut past that.
     expect(code).toMatch(/supabase\.auth\.signOut\(\)/);
-    expect(code).toMatch(/router\.push\("\/login"\)/);
+    // `?reset=1` is copy only — /login reads it to show a confirmation banner
+    // and nothing else keys off it.
+    expect(code).toMatch(/router\.push\("\/login\?reset=1"\)/);
     expect(code).not.toMatch(/\/api\/auth\/session/);
     expect(code).not.toMatch(/sessionStorage\.setItem/);
     expect(code).not.toMatch(/document\.cookie/);

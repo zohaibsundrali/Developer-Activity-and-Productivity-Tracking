@@ -139,6 +139,20 @@ describe("the verification code is four separate boxes", () => {
     expect(REGISTRATION).not.toContain("tracking-[0.5em]");
   });
 
+  it("centres the boxes, and the label and error above and below them", () => {
+    // They used to sit flush left under a left-aligned label, which on a
+    // 4-digit code left most of the card empty to their right.
+    expect(REGISTRATION).toContain(
+      'className="flex items-center justify-center gap-3 sm:gap-4"'
+    );
+    // Field's wrapper carries the error line; Label is a flex row, so it needs
+    // justify-center rather than text-align.
+    expect(REGISTRATION).toMatch(/className="space-y-3 text-center"/);
+    expect(REGISTRATION).toMatch(/labelClassName="justify-center"/);
+    // The countdown under them is centred on the same axis.
+    expect(REGISTRATION).toContain('className="text-center text-sm text-muted-foreground"');
+  });
+
   it("gives every box its own accessible name", () => {
     expect(REGISTRATION).toContain(
       "aria-label={`Verification code, digit ${index + 1} of ${length}`}"

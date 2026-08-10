@@ -150,23 +150,34 @@ function ResetPasswordForm() {
       if (updateError) throw new Error(updateError.message);
 
       setDone(true);
-      showSuccess(
-        "Password updated",
-        "Your new password is active. Sign in with it to continue."
-      );
 
       // End the recovery session deliberately. It was minted by an emailed link
       // and is not the session the app runs on: signing in through /login is
       // what resolves the organization context, checks the membership is still
       // active and mints the signed session cookie. Leaving the recovery
       // session in place would let someone skip all three.
+      //
+      // Done BEFORE the confirmation dialog, so the session is gone whether or
+      // not the person ever dismisses it.
       try {
         await supabase.auth.signOut();
       } catch {
         // Already gone — the redirect below is what matters.
       }
 
-      router.push("/login");
+      // Awaited, unlike before. Firing the dialog and navigating in the same
+      // tick raced them: the router swapped the tree out from under an open
+      // modal, and which one the user actually saw came down to timing. Now the
+      // sign-in screen is what appears when they click OK.
+      await showSuccess(
+        "Password updated",
+        "Your new password is active. Sign in with it to continue."
+      );
+
+      // `?reset=1` is read by /login purely to show a one-line confirmation
+      // banner. It grants nothing and is not trusted for anything — see the
+      // note at its reader in src/app/login/page.js.
+      router.push("/login?reset=1");
     } catch (err) {
       const message =
         err?.message || "We couldn't update your password. Please try again.";
