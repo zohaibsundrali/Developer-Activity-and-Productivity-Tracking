@@ -605,7 +605,15 @@ describe("authentication logic is untouched", () => {
   });
 
   it("the middleware matcher and its area rules are unchanged", () => {
-    const source = read("middleware.ts");
+    // `src/middleware.ts`, moved there from the repository root — where Next
+    // never compiled it, because this project keeps its app under `src/`.
+    //
+    // Worth noticing what this assertion was worth before the move: it read a
+    // file that was not part of the build and confirmed its rules were intact.
+    // They were. They simply never ran. Checking that code is CORRECT says
+    // nothing about whether it is REACHED — tests/middlewareGate.test.js now
+    // covers that separately, by asserting the build manifest is not empty.
+    const source = read("src/middleware.ts");
     expect(source).toMatch(/'\/developer\/:path\*'/);
     expect(source).toMatch(/'\/admin\/:path\*'/);
     expect(source).toMatch(/'\/client\/:path\*'/);
