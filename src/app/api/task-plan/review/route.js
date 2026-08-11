@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { getAuthedOrg } from '@/utils/serverAuth';
 
 // Roles allowed to review task plans (matches permissions.js `review_tasks`).
-const REVIEWER_ROLES = ['owner', 'admin', 'manager'];
+const REVIEWER_ROLES = ['owner', 'admin', 'manager', 'team_lead', 'qa'];
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

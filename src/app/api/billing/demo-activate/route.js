@@ -36,7 +36,7 @@ export const dynamic = "force-dynamic";
  *  for. A developer cannot upgrade the company's plan.
  */
 
-const BILLING_ROLES = ["owner", "admin"];
+const BILLING_ROLES = ["owner", "admin", "finance"];
 
 // One month, matching the `billing_interval` on every seeded plan. The demo
 // grant is a period like any other rather than an unbounded one, so a demo

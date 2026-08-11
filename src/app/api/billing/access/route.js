@@ -75,7 +75,7 @@ export async function GET(request) {
       // server already knows the role and the browser should not be the one
       // deciding who may pay.
       canPay: !auth.userType || auth.userType !== "client"
-        ? ["owner", "admin"].includes(auth.role)
+        ? ["owner", "admin", "finance"].includes(auth.role)
         : false,
       // Where the UI should send a locked user who can pay. One place, so the
       // screen and the route cannot disagree about the destination.

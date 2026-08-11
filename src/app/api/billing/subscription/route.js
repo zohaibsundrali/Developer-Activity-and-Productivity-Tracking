@@ -7,7 +7,9 @@ export const dynamic = "force-dynamic";
 
 // Billing is an account-level concern: only the two roles that can be held
 // responsible for a bill may see one, and a client never can.
-const BILLING_ROLES = ["owner", "admin"];
+// Finance too: reading the subscription is the job, and it carries none of
+// the monitoring access that making an accountant an admin used to.
+const BILLING_ROLES = ["owner", "admin", "finance"];
 
 // Columns of the plan catalogue that are safe to hand to a browser. The Stripe
 // price id is withheld deliberately — Checkout resolves it server-side from the

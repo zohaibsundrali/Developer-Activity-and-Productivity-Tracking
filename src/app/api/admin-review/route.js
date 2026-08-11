@@ -4,7 +4,10 @@ import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
 import { requireUnlocked } from '@/utils/entitlements';
 
 // Roles allowed to review task submissions (matches permissions.js `review_tasks`).
-const REVIEWER_ROLES = ['owner', 'admin', 'manager'];
+// QA and team_lead join the reviewers. Reviewing submitted work is the whole
+// reason the QA role exists; without this the role would be a label with no
+// power, which is worse than not having it.
+const REVIEWER_ROLES = ['owner', 'admin', 'manager', 'team_lead', 'qa'];
 
 // Already-scored outcomes. Reviewing one again would re-award points and
 // overwrite the record of what actually happened.

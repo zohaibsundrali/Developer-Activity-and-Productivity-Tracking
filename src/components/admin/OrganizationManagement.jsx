@@ -18,14 +18,37 @@ import {
 } from "lucide-react";
 import OrganizationSettings from "@/components/admin/OrganizationSettings";
 
-const ROLES = ["owner", "admin", "manager", "team_lead", "hr", "developer", "employee", "client"];
+// Ordered highest → lowest, matching ROLE_RANK in src/utils/permissions.js and
+// the CHECK constraint in database/058. A picker that lists roles in a
+// different order from the one the product ranks them in is a small thing that
+// makes people pick the wrong one.
+const ROLES = [
+  "owner",
+  "admin",
+  "manager",
+  "hr",
+  "finance",
+  "team_lead",
+  "qa",
+  "developer",
+  "designer",
+  "employee",
+  "client",
+];
+
+// Slugs whose display form is not just Title Case. "Qa" reads as a name; the
+// role is QA.
+const ROLE_LABEL_OVERRIDES = { hr: "HR", qa: "QA" };
 
 // Human label for a role slug (team_lead -> "Team Lead").
-export const roleLabel = (role) =>
-  String(role || "")
+export const roleLabel = (role) => {
+  const slug = String(role || "");
+  if (ROLE_LABEL_OVERRIDES[slug]) return ROLE_LABEL_OVERRIDES[slug];
+  return slug
     .split("_")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
+};
 
 // Role -> Badge variant. Token palette only; the badge always carries the role
 // text as well, so the role is never communicated by colour alone.
@@ -33,7 +56,7 @@ const roleVariant = (role) => {
   const r = String(role || "").toLowerCase();
   if (r === "owner") return "default";
   if (r === "admin") return "info";
-  if (r === "manager" || r === "team_lead" || r === "hr") return "secondary";
+  if (r === "manager" || r === "team_lead" || r === "hr" || r === "finance") return "secondary";
   if (r === "client") return "warning";
   return "outline";
 };
