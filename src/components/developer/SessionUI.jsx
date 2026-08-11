@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AppWindow, CameraOff, Keyboard, MousePointer2 } from "lucide-react";
+import { AppWindow, CameraOff, Globe, Keyboard, MousePointer2 } from "lucide-react";
 import EChart from "@/components/charts/EChart";
 import {
   PALETTE,
@@ -426,6 +426,78 @@ export function AppUsageList({ topApps, topBrowser, loading = false, error = nul
         ))}
       </ul>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Website usage                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Time per domain for one session.
+ *
+ * Deliberately shaped like AppUsageList — same row height, same truncation
+ * rule, same tabular figures — because the two sit next to each other and a
+ * second visual language for the same kind of list would just be noise.
+ *
+ * The bar is proportional to the longest entry rather than to the session
+ * length: session length is not in this data, and scaling to something we do
+ * not have would silently misstate how much of the day a domain accounted for.
+ */
+export function WebsiteUsageList({ sites, loading = false, error = null, onRetry }) {
+  const rows = Array.isArray(sites) ? sites : [];
+
+  if (loading) {
+    return (
+      <div className="space-y-2" aria-busy="true">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div key={i} className="flex h-11 items-center justify-between gap-3 rounded-lg border border-border px-3">
+            <Skeleton className="h-3 w-40" />
+            <Skeleton className="h-3 w-14" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return <ErrorState title="Couldn't load website usage" description={error} onRetry={onRetry} />;
+  }
+
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        icon={Globe}
+        title="No website time recorded"
+        description="Domains visited in a browser during this session are listed here, longest first."
+      />
+    );
+  }
+
+  const max = rows.reduce((m, r) => Math.max(m, r.totalMinutes || 0), 0) || 1;
+
+  return (
+    <ul className="divide-y divide-border rounded-lg border border-border">
+      {rows.map((s) => (
+        <li key={s.site} className="flex h-11 items-center gap-3 px-3 text-sm">
+          <span className="min-w-0 flex-1 truncate text-foreground" title={s.site}>
+            {s.site}
+          </span>
+          <span
+            className="hidden h-1.5 w-24 shrink-0 overflow-hidden rounded-full bg-muted sm:block"
+            aria-hidden="true"
+          >
+            <span
+              className="block h-full rounded-full bg-info"
+              style={{ width: `${Math.max(4, ((s.totalMinutes || 0) / max) * 100)}%` }}
+            />
+          </span>
+          <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+            {(s.totalMinutes || 0).toFixed(1)} m
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

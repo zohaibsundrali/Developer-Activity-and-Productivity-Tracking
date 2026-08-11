@@ -8,6 +8,7 @@ import {
   useKeyboardRealtime,
   useMouseRealtime,
   useAppUsageRealtime,
+  useWebsiteUsageRealtime,
   useScreenshotsRealtime,
 } from "../../../hooks/activityHooks.js";
 import { supabase } from "../../../utils/supabaseClient";
@@ -15,6 +16,7 @@ import {
   KeyboardActivityChart,
   MouseActivityChart,
   AppUsageList,
+  WebsiteUsageList,
   ScreenshotGrid,
 } from "../../../components/developer/SessionUI.jsx";
 import {
@@ -102,6 +104,11 @@ export default function SessionDetailPage() {
   });
 
   const apps = useAppUsageRealtime({
+    sessionId,
+    userEmail,
+  });
+
+  const websites = useWebsiteUsageRealtime({
     sessionId,
     userEmail,
   });
@@ -280,6 +287,21 @@ export default function SessionDetailPage() {
             />
           </Section>
 
+          <Section
+            title="Websites"
+            description="Time per domain in this session, longest first. Domains only — no page addresses are recorded."
+            className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5"
+          >
+            <WebsiteUsageList
+              sites={websites.topSites}
+              loading={websites.loading}
+              error={websites.error}
+              onRetry={websites.refresh}
+            />
+          </Section>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Section
             title="Screenshots"
             description="Three most recent captures."

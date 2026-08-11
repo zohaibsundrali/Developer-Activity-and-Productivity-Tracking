@@ -69,7 +69,7 @@ export const entity = {
  * changes — the pages render it, and a stale "last updated" is itself a
  * misleading statement.
  */
-export const lastUpdated = "2026-08-09";
+export const lastUpdated = "2026-08-11";
 
 /**
  * Rendered at the top of every legal page. These documents were written by

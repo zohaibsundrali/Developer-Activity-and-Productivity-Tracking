@@ -21,7 +21,12 @@
  *   app usage columns (no URL column) ...... src/components/admin/DeveloperActivity.jsx:329
  *   mouse = active/idle only ............... src/components/admin/DeveloperActivity.jsx:545,893
  *   sessions + logins ...................... src/components/admin/DeveloperActivity.jsx:321,373
- *   browser_usage never read or written .... grep: only 010/013/014/018 DDL, no app code
+ *   browser domains (NOT full URLs) ........ developer-tracker/app_monitor.py:504
+ *                                            (upsert into browser_usage), and
+ *                                            developer-tracker/site_detector.py
+ *                                            (_domain() keeps urlparse().netloc
+ *                                            only, so path and query never leave
+ *                                            the machine)
  *   developer_activities does not exist .... src/app/api/track-activity/route.js:104-122
  *   tenant isolation ....................... database/013_saas_rls.sql,
  *                                            database/018_security_hardening.sql
@@ -43,7 +48,8 @@
  *   the only scheduled job ................. vercel.json, src/app/api/cron/route.js:8-18
  *
  * DELIBERATELY NOT CLAIMED, because the code does not support it:
- *   - that we record visited URLs (we do not — `browser_usage` is dead weight)
+ *   - that we record full visited URLs (we do not — only the domain survives;
+ *     see site_detector._domain, which throws away path and query string)
  *   - that we record keystroke content (we do not)
  *   - that we record mouse clicks or cursor position (we do not)
  *   - that passwords are hashed by this application (see section 12 — three
@@ -230,7 +236,23 @@ export const sections = [
         tone: "warning",
         title: "Window titles reveal more than application names do",
         text:
-          "The title bar of a document window is usually the document's filename. The title bar of a browser window is usually the title of the page being read. So although this product does not record web addresses, a browser window title can still show which page someone had open. This is the single most under-appreciated field in the whole system, and it is why it is called out here rather than buried in the list above.",
+          "The title bar of a document window is usually the document's filename. The title bar of a browser window is usually the title of the page being read. So on top of the domain recorded separately below, a browser window title can still show which particular page someone had open. This is the single most under-appreciated field in the whole system, and it is why it is called out here rather than buried in the list above.",
+      },
+      {
+        type: "subheading",
+        text: "Websites — the domain, and how long",
+      },
+      {
+        type: "paragraph",
+        text:
+          "When the foreground application is a browser, the desktop agent works out which site is open and records the domain — for example \"github.com\" or \"youtube.com\" — together with how long it was open, when it was first seen and when it was last seen in that session. Time is totalled per domain per session, so the record shows that someone spent forty minutes on a domain, not the order in which they moved between pages.",
+      },
+      {
+        type: "callout",
+        tone: "warning",
+        title: "The domain only — but the domain is not nothing",
+        text:
+          "The address is cut down to its domain before anything is stored: the path, the query string and the page identifier are discarded on the machine and never sent. So a specific article, video, message thread or search term is not recorded. The domain by itself can still be revealing — a medical site, a job board, a dating service or a lender says something about a person even with no page attached — and that is the honest limit of what \"domain only\" protects.",
       },
       {
         type: "subheading",
@@ -287,7 +309,7 @@ export const sections = [
         type: "list",
         items: [
           "Keystroke content. No characters, no words, no passwords, no messages. Only counts and rates.",
-          "Websites and web addresses. There is no browsing history in this product. Browsers appear in the application list by their name, exactly like any other program, and the figure the dashboard labels as browser time is worked out by matching application names against a short list of known browser executables — not by reading anything from the browser itself.",
+          "Full web addresses. The domain is recorded and described above; the rest of the address is not. No path, no query string, no search terms, no page or video or message identifier — those are discarded on the machine before anything is sent, so they never reach the database. There is also no page-by-page history: time is totalled per domain per session, not kept as an ordered trail of visits.",
           "Cursor position and mouse clicks.",
           "Camera, microphone, location, files on disk, clipboard contents, or the content of email and chat other than as it appears in a screen capture.",
           "Anything on a device without the agent installed, and anything at all while the agent is not running.",
@@ -296,9 +318,9 @@ export const sections = [
       {
         type: "callout",
         tone: "plain",
-        title: "Two pieces of unused plumbing, disclosed for completeness",
+        title: "One piece of unused plumbing, disclosed for completeness",
         text:
-          "The database contains a table named `browser_usage`, which sounds as though it stores browsing history. It does not: no code in this product reads from it or writes to it, and no part of the system can populate it. Separately, an endpoint named `track-activity` accepts batches of activity from the desktop agent, validates them, and then deliberately stores nothing, because the table it was written for has never existed. Both are mentioned because someone auditing the schema will find them and reasonably want an explanation.",
+          "An endpoint named `track-activity` accepts batches of activity from the desktop agent, validates them, and then deliberately stores nothing, because the table it was written for has never existed. It is mentioned because someone auditing the schema will find it and reasonably want an explanation. An earlier version of this policy also listed `browser_usage` here as an empty table that nothing could populate. That is no longer true: the desktop agent writes domain-level browsing time to it, as described under \"Websites — the domain, and how long\". The claim has been corrected rather than removed, because a policy that quietly drops a promise is worse than one that admits it changed.",
       },
     ],
   },
