@@ -205,13 +205,20 @@ export default function TeamStats() {
       failed.push("attendance");
     }
 
-    // Productivity metrics — aggregate per developer_id. Columns may be absent,
-    // so read whatever of productivity_score / active_time / total_time exists.
+    // Productivity metrics — aggregate per developer_id.
+    //
+    // The columns are `productivity_percentage` and `productivity_points`.
+    // This used to ask for productivity_score / active_time / total_time,
+    // none of which exist on this table, and PostgREST rejects the whole
+    // request over any one of them. The try/catch did not help: supabase-js
+    // RETURNS an error object rather than throwing, so `data` was null,
+    // `metricRows` was [], and the panel reported "No productivity data yet"
+    // no matter how much data the organization had.
     let metricRows = [];
     try {
       const { data } = await supabase
         .from("productivity_metrics")
-        .select("developer_id, productivity_score, active_time, total_time")
+        .select("developer_id, productivity_percentage, productivity_points")
         .eq("organization_id", orgId)
         .limit(5000);
       metricRows = data || [];
@@ -306,18 +313,21 @@ export default function TeamStats() {
   const deptRows = distributionRows(deptCounts, headcount);
 
   // Aggregate productivity metrics per developer_id.
-  const metricAgg = new Map(); // devId -> { scoreSum, scoreN, activeSum }
+  const metricAgg = new Map(); // devId -> { scoreSum, scoreN, pointsSum }
   for (const row of metrics) {
     const id = row?.developer_id != null ? String(row.developer_id) : null;
     if (!id) continue;
-    const agg = metricAgg.get(id) || { scoreSum: 0, scoreN: 0, activeSum: 0 };
-    const score = Number(row?.productivity_score);
+    const agg = metricAgg.get(id) || { scoreSum: 0, scoreN: 0, pointsSum: 0 };
+    const score = Number(row?.productivity_percentage);
     if (Number.isFinite(score)) {
       agg.scoreSum += score;
       agg.scoreN += 1;
     }
-    const active = Number(row?.active_time);
-    if (Number.isFinite(active)) agg.activeSum += active;
+    // Points, not time. This table records no duration at all, so the
+    // tiebreaker is named for what it actually holds rather than for the
+    // column the query used to imagine.
+    const points = Number(row?.productivity_points);
+    if (Number.isFinite(points)) agg.pointsSum += points;
     metricAgg.set(id, agg);
   }
   const hasMetrics = metricAgg.size > 0;
@@ -328,9 +338,9 @@ export default function TeamStats() {
     if (!agg || agg.scoreN === 0) return null;
     return agg.scoreSum / agg.scoreN;
   };
-  const activeTimeFor = (devId) => {
+  const pointsFor = (devId) => {
     const agg = metricAgg.get(String(devId));
-    return agg ? agg.activeSum : 0;
+    return agg ? agg.pointsSum : 0;
   };
 
   // Team performance: member count + optional avg score.
@@ -346,19 +356,19 @@ export default function TeamStats() {
     return { id: t.id, name: t.name || "Team", count: members.length, avg };
   });
 
-  // Productivity ranking: top 5 employees by aggregated score, else active time.
+  // Productivity ranking: top 5 employees by aggregated score, else points.
   const rankRows = employees
     .map((e) => {
       const score = avgScoreFor(e.userId);
-      const active = activeTimeFor(e.userId);
-      return { name: e.name, score, active };
+      const points = pointsFor(e.userId);
+      return { name: e.name, score, points };
     })
-    .filter((r) => r.score != null || r.active > 0)
+    .filter((r) => r.score != null || r.points > 0)
     .sort((a, b) => {
       const as = a.score != null ? a.score : -1;
       const bs = b.score != null ? b.score : -1;
       if (bs !== as) return bs - as;
-      return b.active - a.active;
+      return b.points - a.points;
     })
     .slice(0, 5);
 
@@ -640,7 +650,7 @@ export default function TeamStats() {
         {/* Productivity ranking */}
         <Section
           title="Productivity ranking"
-          description="Top five by average score, falling back to active time."
+          description="Top five by average score, falling back to productivity points."
         >
           {rankRows.length === 0 ? (
             <EmptyState

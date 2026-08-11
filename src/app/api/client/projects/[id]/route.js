@@ -129,13 +129,30 @@ export async function GET(request, { params }) {
       memberIds.push(project.assigned_to);
     }
 
+    // `designation` is NOT a column on `developers` — it lives on
+    // `employee_profiles`, keyed by user_id (which for a developer holds
+    // developers.id; see profByKey in src/utils/employeesData.js). Asking
+    // `developers` for it made PostgREST reject the whole select, which set
+    // developersError, which returned a 500 — so this endpoint failed
+    // outright for EVERY project that had even one team member. The page
+    // showed "Failed to load project" and the cause never appeared in it.
     const people = new Map();
+    const designationById = new Map();
     if (memberIds.length) {
-      const { data: developerRows, error: developersError } = await svc
-        .from("developers")
-        .select("id, name, designation")
-        .eq("organization_id", auth.orgId)
-        .in("id", memberIds);
+      const [{ data: developerRows, error: developersError }, { data: profileRows }] =
+        await Promise.all([
+          svc
+            .from("developers")
+            .select("id, name")
+            .eq("organization_id", auth.orgId)
+            .in("id", memberIds),
+          svc
+            .from("employee_profiles")
+            .select("user_id, designation")
+            .eq("organization_id", auth.orgId)
+            .eq("user_type", "developer")
+            .in("user_id", memberIds),
+        ]);
 
       if (developersError) {
         console.error("[client/projects/:id] Team error:", developersError);
@@ -146,6 +163,10 @@ export async function GET(request, { params }) {
       }
 
       for (const d of developerRows || []) people.set(d.id, d);
+      // Missing profiles are ordinary, not an error: role simply stays null.
+      for (const p of profileRows || []) {
+        if (p?.user_id) designationById.set(p.user_id, p.designation || null);
+      }
     }
 
     // Order the team the way memberIds was built (task assignees, then lead) so
@@ -155,7 +176,7 @@ export async function GET(request, { params }) {
       .map((id) => ({
         id,
         name: people.get(id).name || null,
-        role: people.get(id).designation || null,
+        role: designationById.get(id) || null,
       }));
 
     // ClientTask: a name for the assignee, never an email; labels default to [].

@@ -193,23 +193,48 @@ export default function ProjectDetailsPage() {
         
         if (user) {
           
-          // Get developer profile from developers table
+          // Get developer profile from developers table.
+          //
+          // `auth_user_id`, not `user_id` - there is no `user_id` column on
+          // this table. Verified against the live schema:
+          //   developers?user_id=eq...       -> 400 column does not exist
+          //   developers?auth_user_id=eq...  -> 200
+          //
+          // This was the root of the identity mismatch running through the
+          // whole product. The query 400'd EVERY time, so devError was
+          // always set and the fallback below always ran - meaning
+          // currentDeveloper.id was permanently auth.uid() and never
+          // developers.id. That id is then handed to TaskCompletionModal,
+          // which builds the storage path from it, and to the desktop
+          // tracker, which stamps it into developer_id on four tables. The
+          // failure was invisible because the fallback produces a
+          // plausible-looking object.
           const { data: developer, error: devError } = await supabase
             .from('developers')
             .select('*')
-            .eq('user_id', user.id)
+            .eq('auth_user_id', user.id)
             .single();
-          
-          if (devError) {
-            // Use user data if developer not found in database
+
+          if (devError || !developer) {
+            // The row can legitimately be unreachable: `developers.auth_user_id`
+            // is NULL on rows created before that column was linked up, and the
+            // query above then matches nothing through no fault of the caller.
+            //
+            // The verified JWT already carries the answer. `app_metadata.
+            // app_user_id` IS developers.id — it is the same value the RLS
+            // helper auth_app_user_id() reads, and it is signed by Supabase,
+            // so it cannot be edited from the browser the way sessionStorage
+            // can. Preferring it over user.id keeps the identity correct even
+            // while the column is still being backfilled (database/055).
+            const claimedId = user.app_metadata?.app_user_id || null;
             const developerData = {
-              id: user.id,
+              id: claimedId || user.id,
               name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Developer',
               email: user.email,
-              user_id: user.id
+              user_id: user.id,
             };
             setCurrentDeveloper(developerData);
-          } else if (developer) {
+          } else {
             setCurrentDeveloper(developer);
           }
           

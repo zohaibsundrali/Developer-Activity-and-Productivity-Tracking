@@ -216,9 +216,16 @@ export async function POST(request) {
 
     // Get project's admin to send notification (don't fail if this doesn't work)
     try {
+      // `created_by`, not `admin_id` — there is no admin_id column on
+      // projects, and one unknown column makes PostgREST reject the whole
+      // select. `project` came back null every time, the `if (project)`
+      // below never ran, and so the "task submitted for review" notification
+      // has never reached an admin. The old expression was
+      // `project.admin_id || project.created_by`, so created_by was always
+      // the intended value anyway.
       const { data: project } = await supabase
         .from('projects')
-        .select('admin_id, created_by, name')
+        .select('created_by, name')
         .eq('id', projectId)
         .single();
 
@@ -234,7 +241,7 @@ export async function POST(request) {
         await supabase
           .from('notifications')
           .insert({
-            admin_id: project.admin_id || project.created_by,
+            admin_id: project.created_by,
             developer_id: actingDeveloperId,
             type: 'review_required',
             title: 'Task Submission for Review',

@@ -133,18 +133,27 @@ export function useKeyboardRealtime({
     setLoading(true);
     setError(null);
     try {
+      // `tracked_at`, not `minute_timestamp`. There is no minute_timestamp
+      // column on keyboard_stats and there never has been, and PostgREST
+      // rejects the WHOLE request over one unknown column — so this panel
+      // has been returning 400 on every load since it was written, for
+      // every user, with or without data. Verified against the live schema:
+      //   order=minute_timestamp -> 400 column does not exist
+      //   order=tracked_at       -> 200
       let query = supabase
         .from("keyboard_stats")
         .select("*")
         .eq("session_id", sessionId)
-        .order("minute_timestamp", { ascending: true })
+        .order("tracked_at", { ascending: true })
         .limit(limit);
 
       if (developerId) {
         query = query.eq("developer_id", developerId);
       }
+      // The email column on this table is `user_email`. `developer_email`
+      // exists on `screenshots`, which is where that spelling came from.
       if (developerEmail) {
-        query = query.eq("developer_email", developerEmail);
+        query = query.eq("user_email", developerEmail);
       }
 
       const { data, error: err } = await query;
@@ -192,17 +201,19 @@ export function useKeyboardRealtime({
         },
         (payload) => {
           setRows((prev) => {
-            const existing = prev.find(
-              (r) => r.minute_timestamp === payload.new.minute_timestamp
-            );
-            if (existing) {
-              return prev.map((r) =>
-                r.minute_timestamp === payload.new.minute_timestamp ? payload.new : r
-              );
+            // Keyed on `id`, and this is not cosmetic. The dedupe used to
+            // compare `minute_timestamp`, a column that does not exist, so
+            // every comparison was `undefined === undefined` — always true.
+            // The first row therefore matched every incoming insert and got
+            // overwritten by it, and the map replaced EVERY row at once,
+            // collapsing the whole panel to N copies of the newest sample.
+            const incoming = payload.new;
+            if (prev.some((r) => r.id === incoming.id)) {
+              return prev.map((r) => (r.id === incoming.id ? incoming : r));
             }
-            return [...prev, payload.new]
+            return [...prev, incoming]
               .sort((a, b) =>
-                String(a.minute_timestamp).localeCompare(String(b.minute_timestamp))
+                String(a.tracked_at || "").localeCompare(String(b.tracked_at || ""))
               )
               .slice(-limit);
           });
@@ -281,7 +292,12 @@ export function useMouseRealtime({
         .limit(limit);
 
       if (developerId) query = query.eq("developer_id", developerId);
-      if (developerEmail) query = query.eq("developer_email", developerEmail);
+      // mouse_activities carries NO email column at all — not
+      // `developer_email`, not `user_email`; only `developer_name`. Filtering
+      // on it made PostgREST reject the entire request with a 400, so this
+      // panel went blank for any caller that passed an email. `session_id`
+      // already scopes the rows to one person's one session, so dropping the
+      // filter narrows nothing: a session cannot span two people.
 
       const { data, error: err } = await query;
       if (err) throw err;
@@ -505,6 +521,142 @@ export function useAppUsageRealtime({
     browsers,
     topBrowser,
     refresh: fetchApps,
+  };
+}
+
+// ────────────────────────────────────────────────────────────────
+// useWebsiteUsageRealtime
+// Live browser_usage for a session: time per DOMAIN, not per page.
+//
+// The desktop agent has always written this table (app_monitor.py, upserting
+// on session_id + site) — nothing on the website had ever read it, so the
+// data was collected and never shown. The privacy policy now discloses it;
+// see "Websites — the domain, and how long" in src/content/legal/privacy.js.
+//
+// Rows arrive by UPSERT, not plain INSERT: the agent keeps re-writing the same
+// (session_id, site) row as the duration grows. So the realtime subscription
+// listens for every event and replaces by id, rather than appending the way
+// the app_usage one does — appending here would show the same domain a dozen
+// times with a dozen different durations.
+// ────────────────────────────────────────────────────────────────
+export function useWebsiteUsageRealtime({
+  sessionId,
+  userEmail,
+  pollIntervalMs = DEFAULT_POLL_INTERVAL,
+  limit = DEFAULT_ROW_LIMIT,
+} = {}) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
+  const channelRef = useRef(null);
+
+  const fetchSites = useCallback(async () => {
+    if (!sessionId || !userEmail) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error: err } = await supabase
+        .from("browser_usage")
+        .select("*")
+        .eq("session_id", sessionId)
+        .eq("user_email", userEmail)
+        .order("duration_seconds", { ascending: false })
+        .limit(limit);
+      if (err) throw err;
+      setRows(data || []);
+      setHasMore((data || []).length >= limit);
+    } catch (e) {
+      setError(e);
+    } finally {
+      setLoading(false);
+    }
+  }, [sessionId, userEmail, limit]);
+
+  useEffect(() => {
+    let stopPolling = null;
+    fetchSites();
+    if (pollIntervalMs && sessionId && userEmail) {
+      stopPolling = setVisibleInterval(fetchSites, pollIntervalMs);
+    }
+    return () => {
+      if (stopPolling) stopPolling();
+    };
+  }, [fetchSites, pollIntervalMs, sessionId, userEmail]);
+
+  useEffect(() => {
+    if (!sessionId || !userEmail) return;
+
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
+
+    const channel = supabase
+      .channel("browser-usage-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "browser_usage",
+          filter: `session_id=eq.${sessionId}`,
+        },
+        (payload) => {
+          const incoming = payload.new;
+          if (!incoming?.id) return;
+          setRows((prev) => {
+            const next = prev.some((r) => r.id === incoming.id)
+              ? prev.map((r) => (r.id === incoming.id ? incoming : r))
+              : [...prev, incoming];
+            return next
+              .sort(
+                (a, b) => (Number(b.duration_seconds) || 0) - (Number(a.duration_seconds) || 0)
+              )
+              .slice(0, limit);
+          });
+        }
+      )
+      .subscribe();
+
+    channelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+      channelRef.current = null;
+    };
+  }, [sessionId, userEmail, limit]);
+
+  // One entry per domain. The agent already upserts per (session_id, site),
+  // so this is a safeguard rather than a real fold — but a duplicate here
+  // would double somebody's reported time, which is worth guarding against.
+  const siteMap = rows.reduce((acc, row) => {
+    const key = row.site || "unknown";
+    const minutes =
+      Number(row.duration_minutes) ||
+      (Number(row.duration_seconds) || 0) / 60 ||
+      0;
+    if (!acc[key]) acc[key] = { site: key, totalMinutes: 0, lastSeen: null };
+    acc[key].totalMinutes += minutes;
+    const seen = row.last_seen || null;
+    if (seen && (!acc[key].lastSeen || seen > acc[key].lastSeen)) {
+      acc[key].lastSeen = seen;
+    }
+    return acc;
+  }, {});
+
+  const sites = Object.values(siteMap).sort((a, b) => b.totalMinutes - a.totalMinutes);
+  const totalMinutes = sites.reduce((sum, s) => sum + s.totalMinutes, 0);
+
+  return {
+    rows,
+    loading,
+    error,
+    hasMore,
+    sites,
+    topSites: sites.slice(0, 8),
+    totalMinutes,
+    refresh: fetchSites,
   };
 }
 

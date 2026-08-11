@@ -391,19 +391,21 @@ export default function DeveloperActivity() {
       const fetchLoginsSafe = async () => {
         const startIso = start;
         const endIso = end;
+        // developer_logins has exactly five columns: developer_id, id,
+        // login_date, login_time, organization_id. There is no email column
+        // of any spelling and no created_at. The six attempts that reached
+        // for those were unreachable dead weight — attempt 1 is valid, and
+        // the loop below returns on the first non-error — but had attempt 1
+        // ever been changed, every remaining fallback would have 400'd and
+        // the panel would have failed with a misleading "column does not
+        // exist" instead of falling back. What is left is what the table
+        // can actually answer.
         const attempts = [
           // Preferred: keyed by developer_id + login_time
           () => supabase.from("developer_logins").select("*").eq("developer_id", devId).gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }).limit(LOGIN_LIMIT),
-          // Fallback: keyed by email + login_time
-          () => supabase.from("developer_logins").select("*").eq("developer_email", devEmail).gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }).limit(LOGIN_LIMIT),
-          () => supabase.from("developer_logins").select("*").eq("user_email", devEmail).gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }).limit(LOGIN_LIMIT),
-          () => supabase.from("developer_logins").select("*").eq("email", devEmail).gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }).limit(LOGIN_LIMIT),
-          // Fallback: some schemas may only have created_at
-          () => supabase.from("developer_logins").select("*").eq("developer_id", devId).gte("created_at", startIso).lt("created_at", endIso).order("created_at", { ascending: true }).limit(LOGIN_LIMIT),
-          () => supabase.from("developer_logins").select("*").eq("developer_email", devEmail).gte("created_at", startIso).lt("created_at", endIso).order("created_at", { ascending: true }).limit(LOGIN_LIMIT),
-          // Last resort: date-bounded fetch then client-side filter
+          // Last resort: date-bounded fetch, then filtered client-side by
+          // matchesDeveloperLoginRow below.
           () => supabase.from("developer_logins").select("*").gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }).limit(LOGIN_LIMIT),
-          () => supabase.from("developer_logins").select("*").gte("created_at", startIso).lt("created_at", endIso).order("created_at", { ascending: true }).limit(LOGIN_LIMIT),
         ];
 
         let lastError = null;
@@ -582,19 +584,10 @@ export default function DeveloperActivity() {
       let rows = Array.isArray(res?.data) ? res.data : [];
       let total = typeof res?.count === "number" ? res.count : rows.length;
 
-      // Fallback: some schemas may use email instead of developer_id.
-      if (!rows.length && dev.email) {
-        res = await supabase
-          .from("mouse_activities")
-          .select(baseSelect, { count: "exact" })
-          .eq("email", dev.email)
-          .gte("timestamp", start)
-          .lt("timestamp", end)
-          .order("timestamp", { ascending: false })
-          .range(from, to);
-        rows = Array.isArray(res?.data) ? res.data : [];
-        total = typeof res?.count === "number" ? res.count : rows.length;
-      }
+      // There is no email fallback to make: mouse_activities has no email
+      // column at all (only developer_name). The query that used to sit here
+      // ran on every empty result and 400'd every time, silently. The
+      // developer_id filter above already tries both id spellings.
 
       setMouseData(rows);
       setMouseTotalCount(total);
@@ -2189,7 +2182,7 @@ export default function DeveloperActivity() {
                       onClick={async () => {
                         const { data, error } = await supabase
                           .from("screenshots")
-                          .select("id, developer_id, developer_email, public_url, image_url, thumbnail_url, storage_path, timestamp, created_at")
+                          .select("id, developer_id, developer_email, public_url, storage_path, timestamp, created_at")
                           .limit(5);
                         showPre(
                           "Screenshot diagnostics",
