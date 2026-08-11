@@ -26,6 +26,7 @@ import {
   Badge,
   Button,
   Field,
+  Input,
   EmptyState,
   ErrorState,
   SkeletonList,
@@ -90,6 +91,7 @@ export default function ProjectRequests() {
   // Per-proposal decision inputs.
   const [reason, setReason] = useState("");
   const [managerId, setManagerId] = useState("");
+  const [est, setEst] = useState({ cost: "", hours: "", days: "", notes: "" });
 
   const me = getOrgContext();
   const canDecide = ["owner", "admin", "manager"].includes(me?.role);
@@ -154,20 +156,37 @@ export default function ProjectRequests() {
           decision,
           reason: reason.trim(),
           managerId: decision === "accepted" ? managerId || null : null,
+          ...(decision === "estimate"
+            ? {
+                estimatedCost: est.cost,
+                estimatedHours: est.hours,
+                estimatedTimelineDays: est.days,
+                internalNotes: est.notes,
+              }
+            : {}),
         }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || json?.detail || "Could not record that.");
 
       showSuccess(
-        decision === "accepted" ? "Accepted" : decision === "rejected" ? "Declined" : "Sent back",
         decision === "accepted"
-          ? "The project has been created and the client can see it."
-          : "The client has been told."
+          ? "Accepted"
+          : decision === "estimate"
+            ? "Costed"
+            : decision === "rejected"
+              ? "Declined"
+              : "Sent back",
+        decision === "accepted"
+          ? "The project has been created from your estimate, and the client can see it."
+          : decision === "estimate"
+            ? "Your figures are recorded. The client has not been told anything yet."
+            : "The client has been told."
       );
       setOpenId(null);
       setReason("");
       setManagerId("");
+      setEst({ cost: "", hours: "", days: "", notes: "" });
       await load();
     } catch (e) {
       showError("Not recorded", e?.message || "Please try again.");
@@ -262,6 +281,12 @@ export default function ProjectRequests() {
                             setOpenId(openId === p.id ? null : p.id);
                             setReason("");
                             setManagerId("");
+                            setEst({
+                              cost: p.estimated_cost ?? "",
+                              hours: p.estimated_hours ?? "",
+                              days: p.estimated_timeline_days ?? "",
+                              notes: p.internal_notes ?? "",
+                            });
                           }}
                         >
                           <Eye aria-hidden="true" className="h-4 w-4" />
@@ -303,6 +328,75 @@ export default function ProjectRequests() {
                         </p>
                       ) : (
                         <div className="space-y-4">
+                          {/* THE ESTIMATE. Placed above the accept controls
+                              because it is what accepting should be based on:
+                              without it the project inherits whatever the
+                              client hoped to spend. */}
+                          <div className="space-y-3 rounded-lg border border-border p-3">
+                            <p className="text-sm font-medium text-foreground">
+                              What would this cost us?
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              They asked for{" "}
+                              {money(p.budget, p.currency) ?? "no particular figure"}
+                              {p.desired_deadline ? `, by ${when(p.desired_deadline)}` : ""}. Your
+                              numbers are what the project gets built with.
+                            </p>
+                            <div className="grid gap-3 sm:grid-cols-3">
+                              <Field label="Our price" htmlFor={`est-cost-${p.id}`}>
+                                <Input
+                                  id={`est-cost-${p.id}`}
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={est.cost}
+                                  onChange={(e) => setEst((v) => ({ ...v, cost: e.target.value }))}
+                                />
+                              </Field>
+                              <Field label="Hours" htmlFor={`est-hours-${p.id}`}>
+                                <Input
+                                  id={`est-hours-${p.id}`}
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={est.hours}
+                                  onChange={(e) => setEst((v) => ({ ...v, hours: e.target.value }))}
+                                />
+                              </Field>
+                              <Field
+                                label="Days to deliver"
+                                htmlFor={`est-days-${p.id}`}
+                                hint="Counted from the day it is accepted."
+                              >
+                                <Input
+                                  id={`est-days-${p.id}`}
+                                  type="number"
+                                  min="0"
+                                  step="1"
+                                  value={est.days}
+                                  onChange={(e) => setEst((v) => ({ ...v, days: e.target.value }))}
+                                />
+                              </Field>
+                            </div>
+                            <Field
+                              label="Internal notes"
+                              htmlFor={`est-notes-${p.id}`}
+                              hint="Never shown to the client."
+                            >
+                              <textarea
+                                id={`est-notes-${p.id}`}
+                                rows={2}
+                                className={`${CONTROL} w-full resize-y`}
+                                value={est.notes}
+                                onChange={(e) => setEst((v) => ({ ...v, notes: e.target.value }))}
+                                maxLength={5000}
+                              />
+                            </Field>
+                            <Button variant="outline" onClick={() => decide("estimate")} disabled={busy}>
+                              Save estimate
+                            </Button>
+                          </div>
+
                           <Field
                             label="Assign a project manager"
                             htmlFor={`mgr-${p.id}`}
@@ -342,7 +436,11 @@ export default function ProjectRequests() {
                           <div className="flex flex-wrap gap-2">
                             <Button onClick={() => decide("accepted")} disabled={busy}>
                               <Check aria-hidden="true" className="h-4 w-4" />
-                              <span className="ml-1.5">Accept &amp; create project</span>
+                              <span className="ml-1.5">
+                                {p.estimated_cost != null || p.estimated_timeline_days != null
+                                  ? "Accept on your estimate"
+                                  : "Accept & create project"}
+                              </span>
                             </Button>
                             <Button
                               variant="outline"

@@ -245,3 +245,94 @@ describe("client accounts can be created and then self-managed", () => {
     expect(FORMS).not.toMatch(/authFetch\([^)]*password/);
   });
 });
+
+describe("the company's own numbers, not the client's hopes", () => {
+  const MIGRATION = read("database/062_proposal_estimates.sql");
+  const DECIDE = read("src/app/api/proposals/[id]/decide/route.js");
+  const LIST = read("src/app/api/proposals/route.js");
+  const UI = read("src/components/admin/ProjectRequests.jsx");
+
+  it("keeps the client's figures AND adds ours", () => {
+    // The gap between what they asked for and what it costs IS the
+    // conversation; collapsing them into one column loses it.
+    expect(MIGRATION).toContain("estimated_cost");
+    expect(MIGRATION).toContain("estimated_hours");
+    expect(MIGRATION).toContain("estimated_timeline_days");
+    expect(MIGRATION).toMatch(/column_name in \('budget','currency','desired_deadline'\)/);
+  });
+
+  it("makes every new column nullable", () => {
+    // A proposal exists before anyone has costed it; requiring these would
+    // refuse the client's submission.
+    expect(MIGRATION).not.toMatch(/add column if not exists \w+ \w+ not null/i);
+  });
+
+  it("changes no policy", () => {
+    expect(MIGRATION).not.toMatch(/create policy|drop policy/i);
+  });
+
+  it("builds the project from OUR estimate when there is one", () => {
+    // Before this, accepting created a project budgeted at whatever the
+    // customer hoped to spend, and every margin figure downstream was measured
+    // against a number nobody in the company agreed to.
+    expect(DECIDE).toMatch(/budget: proposal\.estimated_cost \?\? proposal\.budget/);
+    expect(DECIDE).toMatch(/deadline: deadlineFor\(proposal\)/);
+  });
+
+  it("uses ?? and not || so a zero estimate is honoured", () => {
+    // "We will do this one free" is a real answer and must not fall through to
+    // the client's figure.
+    expect(DECIDE).not.toMatch(/proposal\.estimated_cost \|\| proposal\.budget/);
+  });
+
+  it("counts our timeline from acceptance, not from the proposal date", () => {
+    // A date on an unaccepted proposal goes stale the moment the client takes
+    // a week to reply; a duration is still true whenever they answer.
+    const fn = DECIDE.match(/function deadlineFor\([\s\S]*?\n\}/)[0];
+    expect(fn).toContain("new Date()");
+    expect(fn).toContain("estimated_timeline_days");
+    expect(fn).toContain("proposal.desired_deadline");
+  });
+
+  it("defines every helper it calls", () => {
+    // Caught by hand once already: numberOrNull and deadlineFor were being
+    // called while their definitions had failed to land.
+    for (const fn of ["deadlineFor", "numberOrNull"]) {
+      expect(DECIDE, `${fn} is called but not defined`).toMatch(
+        new RegExp(`function ${fn}\\(`)
+      );
+    }
+  });
+
+  it("refuses an estimate with neither a cost nor hours", () => {
+    expect(DECIDE).toMatch(/that is what an estimate is/i);
+  });
+
+  it("tells nobody outside when something is merely costed", () => {
+    // Costing is internal. The client hears on a decision, not while somebody
+    // is still thinking.
+    // Anchored on code, not on a comment: read() strips comments, so a
+    // comment marker gives indexOf(-1) and the "branch" becomes the whole
+    // file. That is how this assertion passed for the wrong reason first time.
+    const start = DECIDE.indexOf('decision === "estimate"');
+    const end = DECIDE.indexOf('if (decision !== "accepted")');
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    expect(DECIDE.slice(start, end)).not.toContain("notifyClient");
+  });
+
+  it("strips internal_notes from what a client receives", () => {
+    expect(LIST).toMatch(/const \{ internal_notes, \.\.\.rest \} = row/);
+    expect(LIST).toMatch(/isStaff\(auth\) \? data \|\| \[\] : \(data \|\| \[\]\)\.map\(CLIENT_SAFE\)/);
+  });
+
+  it("shows the asker's figure beside the estimate box", () => {
+    // Somebody pricing the work should see what was hoped for without leaving
+    // the field they are typing into.
+    expect(UI).toMatch(/They asked for/);
+  });
+
+  it("says on the button that acceptance follows the estimate", () => {
+    expect(UI).toMatch(/Accept on your estimate/);
+  });
+});
