@@ -25,13 +25,32 @@ const ROLES = [
 ];
 
 const PERMISSIONS = read("src/utils/permissions.js");
+// The ranks moved out of permissions.js into a pure module so the SERVER can
+// import them too — provision/route.js kept its own stale copy and could not
+// create a login for designer/qa/finance as a result.
+const ROLES_MODULE = read("src/utils/roles.js");
 const NAV = read("src/components/shell/navConfig.js");
 const ORGMGMT = read("src/components/admin/OrganizationManagement.jsx");
 const MIGRATION = read("database/058_software_house_roles.sql");
 
 describe("every role exists in every list that decides anything", () => {
-  it.each(ROLES)("permissions.js ranks %s", (role) => {
-    expect(PERMISSIONS).toMatch(new RegExp(`\\b${role}:\\s*\\d+`));
+  it.each(ROLES)("roles.js ranks %s", (role) => {
+    expect(ROLES_MODULE).toMatch(new RegExp(`\\b${role}:\\s*\\d+`));
+  });
+
+  it.each(ROLES)("roles.js lists %s in ROLES", (role) => {
+    expect(ROLES_MODULE).toContain(`"${role}"`);
+  });
+
+  it("keeps ONE definition — permissions.js must not redeclare the ranks", () => {
+    expect(PERMISSIONS).not.toMatch(/const ROLE_RANK = \{/);
+    expect(PERMISSIONS).toContain('from "@/utils/roles"');
+  });
+
+  it("the server route must not keep its own copy either", () => {
+    const provision = read("src/app/api/auth/provision/route.js");
+    expect(provision).not.toMatch(/const ROLE_RANK = \{/);
+    expect(provision).toContain('from "@/utils/roles"');
   });
 
   it.each(ROLES)("the member role picker offers %s", (role) => {
@@ -44,7 +63,7 @@ describe("every role exists in every list that decides anything", () => {
 
   it("ranks them strictly highest-to-lowest with no accidental ties", () => {
     const ranks = Object.fromEntries(
-      [...PERMISSIONS.matchAll(/^\s*(\w+):\s*(\d+),/gm)].map((m) => [m[1], Number(m[2])])
+      [...ROLES_MODULE.matchAll(/^\s*(\w+):\s*(\d+),/gm)].map((m) => [m[1], Number(m[2])])
     );
     expect(ranks.owner).toBeGreaterThan(ranks.admin);
     expect(ranks.admin).toBeGreaterThan(ranks.manager);
@@ -58,7 +77,7 @@ describe("every role exists in every list that decides anything", () => {
 
   it("puts designer on the SAME tier as developer, deliberately", () => {
     const ranks = Object.fromEntries(
-      [...PERMISSIONS.matchAll(/^\s*(\w+):\s*(\d+),/gm)].map((m) => [m[1], Number(m[2])])
+      [...ROLES_MODULE.matchAll(/^\s*(\w+):\s*(\d+),/gm)].map((m) => [m[1], Number(m[2])])
     );
     // atLeast("developer") must be true for a designer — they do the same
     // work with the same access.
@@ -189,5 +208,56 @@ describe("widening the rank scale must not break the fail-closed guard", () => {
     expect(PERMISSIONS).not.toMatch(/ROLE_RANK\[role\]\s*\|\|\s*\d+/);
     expect(PERMISSIONS).toContain("POSITIVE_INFINITY");
     expect(PERMISSIONS).toContain("NEGATIVE_INFINITY");
+  });
+});
+
+describe("every role can actually be given a login", () => {
+  const provision = read("src/app/api/auth/provision/route.js");
+
+  it("resolves the profile table from the ROLE, not a caller-supplied hint", () => {
+    // Asking for role "client" while claiming userType "developer" must not
+    // write a developer seat carrying a client's rank.
+    expect(provision).toContain("userTypeForRole(requestedRole)");
+    expect(provision).toContain("PROFILE_TABLE[resolvedUserType]");
+  });
+
+  it("can provision a client, not just admins and developers", () => {
+    expect(provision).not.toMatch(/userType === "admin" \? "admin_users" : "developers"/);
+    expect(read("src/utils/roles.js")).toContain('client: "clients"');
+  });
+
+  it("lets managers and HR provision as well as owner/admin", () => {
+    const m = provision.match(/PROVISIONER_ROLES\s*=\s*\[([^\]]*)\]/);
+    for (const role of ["owner", "admin", "hr", "manager"]) {
+      expect(m?.[1], role).toContain(role);
+    }
+  });
+
+  it("distinguishes rank 0 from an unknown role", () => {
+    // `ROLE_RANK[x] || 0` folded "unknown" and "lowest" together; rankOf()
+    // returns null for unknown so the 400 still fires but a real role never
+    // trips it.
+    expect(provision).toContain("rankOf(");
+    expect(provision).toContain("=== null");
+  });
+});
+
+describe("seat metering knows about the new roles", () => {
+  const ENT = read("src/utils/entitlements.js");
+
+  it("charges designer and qa as delivery seats", () => {
+    const m = ENT.match(/SEAT_RESOURCES_BY_ROLE\s*=\s*\{([\s\S]*?)\n\};/);
+    expect(m?.[1]).toMatch(/designer:\s*\["employees", "developers"\]/);
+    expect(m?.[1]).toMatch(/qa:\s*\["employees", "developers"\]/);
+  });
+
+  it("charges finance as an office seat", () => {
+    const m = ENT.match(/SEAT_RESOURCES_BY_ROLE\s*=\s*\{([\s\S]*?)\n\};/);
+    expect(m?.[1]).toMatch(/finance:\s*\["employees"\]/);
+  });
+
+  it("still does not meter clients", () => {
+    const m = ENT.match(/SEAT_RESOURCES_BY_ROLE\s*=\s*\{([\s\S]*?)\n\};/);
+    expect(m?.[1]).toMatch(/client:\s*\[\]/);
   });
 });

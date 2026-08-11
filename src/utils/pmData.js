@@ -1504,3 +1504,82 @@ export async function uploadTaskAttachment(taskId, file) {
     .single();
   return { attachment: data, error };
 }
+
+/* ------------------------------------------------------------------ */
+/*  Project discussion — the internal thread                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The conversation the founder has with the project manager, and the manager
+ * has with the team, about ONE project.
+ *
+ * It reuses `project_comments`, which already existed for the client portal
+ * and already carries an `internal` flag. Nothing new had to be created: the
+ * table is there, and `project_comments_staff` (migration 032) already lets
+ * every non-client member of the organization read and write it. What was
+ * missing was only that no staff-facing screen ever opened it — the flag was
+ * being written by the client routes and read by nobody on this side.
+ *
+ * INTERNAL MEANS INTERNAL. Everything these helpers write sets
+ * `internal = true`, and the loader filters on it. That is the whole contract
+ * of this thread: a manager discussing a slipping deadline, or a founder
+ * asking why an estimate doubled, must not turn up in the customer's portal.
+ * The client-facing conversation is a different thread with `internal = false`
+ * and its own screen; the two deliberately do not mix, because one accidental
+ * crossover is the kind of mistake that loses a client rather than annoying
+ * them.
+ */
+export async function loadProjectDiscussion(projectId, { limit = 200 } = {}) {
+  const orgId = getOrgId();
+  if (!orgId || !projectId) return [];
+  const { data, error } = await supabase
+    .from("project_comments")
+    .select("*")
+    .eq("organization_id", orgId)
+    .eq("project_id", projectId)
+    .eq("internal", true)
+    // Oldest first: a discussion reads top to bottom. The limit is applied to
+    // the NEWEST end by ordering descending and reversing, so a long thread
+    // shows its recent messages rather than its first ever ones.
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data || []).slice().reverse();
+}
+
+/**
+ * Post to the internal thread.
+ *
+ * `author_id`/`author_name` come from the signed-in context rather than from
+ * the caller, so a message cannot be posted under somebody else's name by
+ * editing the request. The organization and the `internal` flag are set here
+ * for the same reason.
+ */
+export async function postProjectDiscussion(projectId, body) {
+  const orgId = getOrgId();
+  const ctx = getOrgContext();
+  const text = String(body || "").trim();
+  if (!orgId || !projectId) return { error: new Error("Missing project.") };
+  if (!text) return { error: new Error("Write something first.") };
+  // A hard cap so one paste cannot fill the panel — the column is unbounded
+  // text, but a 20k-character "message" is a document, not a remark.
+  if (text.length > 5000) {
+    return { error: new Error("That is too long for a message — keep it under 5000 characters.") };
+  }
+
+  const { data, error } = await supabase
+    .from("project_comments")
+    .insert({
+      organization_id: orgId,
+      project_id: projectId,
+      author_id: ctx?.userId || null,
+      author_type: "staff",
+      author_name: ctx?.name || ctx?.email || "A team member",
+      body: text,
+      internal: true,
+    })
+    .select()
+    .single();
+
+  return { comment: data, error };
+}

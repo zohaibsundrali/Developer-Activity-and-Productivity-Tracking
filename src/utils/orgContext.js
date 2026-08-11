@@ -26,7 +26,17 @@ export function getOrgContext() {
       organizationLogo: s.organization_logo || null,
       organizationTimezone: s.organization_timezone || null,
       role: s.membership_role || s.role || null,
+      // The PROFILE row's id (admin_users.id / developers.id) — the same value
+      // the JWT carries as `app_user_id` and every RLS helper compares against.
+      // Not auth.uid().
       userId: s.id || null,
+      // Display identity, for anywhere a name has to be shown beside something
+      // this person wrote. The session already held both — they were simply
+      // never surfaced, so callers were reaching for `ctx.name` and getting
+      // undefined. Authorship is still decided by `userId` and by RLS; these
+      // two are for the reader, not for the check.
+      name: s.full_name || s.name || null,
+      email: s.email || null,
       userType,
     };
   } catch {
