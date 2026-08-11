@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { rankOf, userTypeForRole, PROFILE_TABLE } from "@/utils/roles";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { checkSeatLimitForRole } from "@/utils/entitlements";
 
@@ -25,19 +26,16 @@ export const dynamic = "force-dynamic";
 
 // Mirrors ROLE_RANK in src/utils/permissions.js. Inlined so the server never
 // depends on a client module.
-const ROLE_RANK = {
-  owner: 8,
-  admin: 7,
-  manager: 6,
-  hr: 5,
-  team_lead: 4,
-  developer: 3,
-  employee: 2,
-  client: 1,
-};
+// ROLE_RANK is NOT redeclared here any more. This file used to keep its own
+// copy, and when designer/qa/finance were added only the other copy was
+// updated — so those three could be assigned in Organization -> Members but
+// could not have a login created, because this lookup found nothing and
+// answered "Unknown role". See src/utils/roles.js.
 
 // Roles permitted to provision an account for someone else.
-const PROVISIONER_ROLES = ["owner", "admin", "hr"];
+// Managers provision too: a project manager onboarding a client for their own
+// project should not have to queue behind an admin for the login.
+const PROVISIONER_ROLES = ["owner", "admin", "hr", "manager"];
 
 export async function POST(request) {
   try {
@@ -67,10 +65,14 @@ export async function POST(request) {
     }
 
     // ── The granted role must rank strictly below the caller's own ──
-    const requestedRole = role || (userType === "admin" ? "admin" : "developer");
-    const callerRank = ROLE_RANK[auth.role] || 0;
-    const requestedRank = ROLE_RANK[requestedRole] || 0;
-    if (!requestedRank) {
+    const requestedRole = role || (userType === "admin" ? "admin" : userType === "client" ? "client" : "developer");
+    // The profile table follows the ROLE, not the caller's `userType` hint:
+    // asking for role "client" and userType "developer" must not write a
+    // developer seat with a client's rank.
+    const resolvedUserType = userTypeForRole(requestedRole);
+    const callerRank = rankOf(auth.role) ?? 0;
+    const requestedRank = rankOf(requestedRole);
+    if (requestedRank === null) {
       return NextResponse.json({ error: "Unknown role" }, { status: 400 });
     }
     if (requestedRank >= callerRank) {
@@ -85,7 +87,7 @@ export async function POST(request) {
     // ── A supplied app user id must belong to the caller's organization ──
     let seatAlreadyWritten = false;
     if (appUserId) {
-      const table = userType === "admin" ? "admin_users" : "developers";
+      const table = PROFILE_TABLE[resolvedUserType];
       const { data: row } = await svc
         .from(table)
         .select("id, organization_id")
@@ -123,7 +125,7 @@ export async function POST(request) {
     const app_metadata = {
       organization_id: auth.orgId,
       role: requestedRole,
-      user_type: userType === "admin" ? "admin" : "developer",
+      user_type: resolvedUserType,
       app_user_id: appUserId || null,
     };
 

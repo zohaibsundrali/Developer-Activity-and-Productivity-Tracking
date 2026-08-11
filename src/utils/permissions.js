@@ -1,4 +1,5 @@
 import { getOrgContext } from "@/utils/orgContext";
+import { ROLE_RANK as SHARED_ROLE_RANK } from "@/utils/roles";
 
 /**
  * Lightweight role-based access control for the multi-tenant SaaS.
@@ -32,22 +33,9 @@ import { getOrgContext } from "@/utils/orgContext";
  * currently reads; this helper is the real app-layer gate, and the RLS
  * policies are the real boundary.
  */
-const ROLE_RANK = {
-  owner: 100,
-  admin: 90,
-  manager: 70,
-  hr: 60,
-  finance: 55,
-  team_lead: 50,
-  qa: 35,
-  // designer and developer are the SAME tier on purpose: `atLeast("developer")`
-  // must be true for a designer, because they do the same kind of work with
-  // the same kind of access.
-  developer: 30,
-  designer: 30,
-  employee: 20,
-  client: 10,
-};
+// Imported, not redeclared — see src/utils/roles.js for why there is only
+// one copy of this now.
+const ROLE_RANK = SHARED_ROLE_RANK;
 
 // Capability groups.
 const ADMINS = ["owner", "admin"];                       // org administration

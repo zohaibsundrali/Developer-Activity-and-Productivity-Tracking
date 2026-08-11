@@ -86,9 +86,18 @@ const SEAT_RESOURCES_BY_ROLE = {
   owner: ["employees"],
   admin: ["employees"],
   hr: ["employees"],
+  // Finance is an office seat, like HR — it does no delivery work and does not
+  // occupy a developer seat.
+  finance: ["employees"],
   manager: ["employees", "developers"],
   team_lead: ["employees", "developers"],
   developer: ["employees", "developers"],
+  // Designer and QA are delivery seats and are charged like developers. The
+  // fallback would have put them on `employees` only, which would have let a
+  // plan sold as "3 developers" carry three developers plus any number of
+  // designers — the meter would have stopped meaning what it is sold as.
+  designer: ["employees", "developers"],
+  qa: ["employees", "developers"],
   employee: ["employees", "developers"],
   client: [],
 };
