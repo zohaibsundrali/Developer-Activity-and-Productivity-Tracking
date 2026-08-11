@@ -5,6 +5,7 @@ import { User, Mail, Building2, LogOut } from "lucide-react";
 import { showConfirm } from "@/utils/alerts";
 import { Button } from "@/components/ui";
 import { ClientPage, Panel, surface } from "./ClientShared";
+import { ClientProfileForm, ClientPasswordForm } from "./ClientAccountForms";
 
 const normalize = (value) => (typeof value === "string" ? value.trim() : "");
 
@@ -44,6 +45,12 @@ export default function ClientAccount({ user, onLogout }) {
         <DetailTile icon={Mail} label="Email" value={email} />
         <DetailTile icon={Building2} label="Company" value={company} />
       </div>
+
+      {/* Editable. This screen used to be read-only: it showed the name and
+          email and offered no way to change either, so an account set up by an
+          admin kept the password that admin had chosen, indefinitely. */}
+      <ClientProfileForm user={user} />
+      <ClientPasswordForm email={normalize(user?.email)} />
 
       {/* Session */}
       <Panel className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

@@ -12,6 +12,7 @@ import {
 } from "@/components/ui";
 // The page <h1> reads the same string the sidebar and topbar do.
 import { sectionTitle } from "@/components/shell/navConfig";
+import CreateClientAccount from "@/components/admin/CreateClientAccount";
 import {
   Handshake, Link2, Megaphone, Receipt, CheckSquare, LifeBuoy, Mail, Plus,
   Trash2, Copy, RefreshCw, Send, Building2, MessageSquare, Upload, FileText, Check,
@@ -415,7 +416,11 @@ function ClientsTab({ clients, invites, projects, reload, loading, loadError, in
 
   return (
     <div className="grid gap-5 lg:grid-cols-3">
-      <Card className="lg:col-span-1">
+      {/* Two ways in, stacked in the same column: create the account outright,
+          or invite and let them choose their own password. */}
+      <div className="space-y-5 lg:col-span-1">
+      <CreateClientAccount reload={reload} />
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Mail aria-hidden="true" className="h-4 w-4 text-primary" /> Invite a client
@@ -457,6 +462,7 @@ function ClientsTab({ clients, invites, projects, reload, loading, loadError, in
           </form>
         </CardContent>
       </Card>
+      </div>
 
       <div className="space-y-6 lg:col-span-2">
         {/* Existing clients */}
