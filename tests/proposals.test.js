@@ -183,3 +183,65 @@ describe("notifications use real categories", () => {
     }
   });
 });
+
+describe("client accounts can be created and then self-managed", () => {
+  const CREATE = read("src/components/admin/CreateClientAccount.jsx");
+  const ACCOUNT_ROUTE = read("src/app/api/client/account/route.js");
+  const FORMS = read("src/components/client/ClientAccountForms.jsx");
+
+  it("never writes the legacy plaintext password column", () => {
+    // `clients.password` exists and is legacy. The credential belongs to
+    // Supabase Auth, which stores it hashed.
+    const insert = CREATE.match(/\.from\("clients"\)\s*\.insert\(\{[\s\S]*?\}\)/);
+    expect(insert?.[0]).not.toMatch(/\bpassword\b/);
+  });
+
+  it("rolls the profile row back when the login cannot be created", () => {
+    // A client profile that can never sign in is worse than no row: it appears
+    // in every picker, can be linked to a project, and silently receives
+    // nothing.
+    expect(CREATE).toMatch(/\.from\("clients"\)\.delete\(\)\.eq\("id", createdId\)/);
+  });
+
+  it("provisions with the client role and user type", () => {
+    expect(CREATE).toMatch(/role: "client"/);
+    expect(CREATE).toMatch(/userType: "client"/);
+  });
+
+  it("uses new-password autocomplete for a credential being set for someone else", () => {
+    expect(CREATE).toMatch(/autoComplete="new-password"/);
+  });
+
+  it("the self-service route whitelists the columns a client may change", () => {
+    expect(ACCOUNT_ROUTE).toMatch(/EDITABLE = \["name", "phone", "company"\]/);
+    // Anything that would let a client move organization or change its own
+    // status must not be reachable.
+    for (const forbidden of ["organization_id", "status", "auth_user_id", "email"]) {
+      const m = ACCOUNT_ROUTE.match(/EDITABLE = \[([^\]]*)\]/);
+      expect(m?.[1], forbidden).not.toContain(forbidden);
+    }
+  });
+
+  it("scopes the update to the caller from the TOKEN, not the body", () => {
+    expect(ACCOUNT_ROUTE).toContain('eq("id", auth.appUserId)');
+    expect(ACCOUNT_ROUTE).toContain('eq("organization_id", auth.orgId)');
+  });
+
+  it("refuses staff on the client self-service route", () => {
+    expect(ACCOUNT_ROUTE).toMatch(/auth\.userType !== "client"/);
+  });
+
+  it("requires the CURRENT password before changing it", () => {
+    // Supabase would let a live session set a new password without it — one
+    // unattended laptop away from someone locking the owner out.
+    expect(FORMS).toContain("signInWithPassword");
+    const idx = FORMS.indexOf("signInWithPassword");
+    const upd = FORMS.indexOf("updateUser");
+    expect(idx).toBeLessThan(upd);
+  });
+
+  it("sends the new password to Supabase Auth, not to our server", () => {
+    expect(FORMS).toContain("supabase.auth.updateUser");
+    expect(FORMS).not.toMatch(/authFetch\([^)]*password/);
+  });
+});
