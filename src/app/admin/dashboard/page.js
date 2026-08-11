@@ -7,6 +7,7 @@ import { adminNavFor, canAccessAdminSection, sectionTitle } from "@/components/s
 import NotificationDropdown from "@/components/admin/NotificationDropdown";
 import DashboardOverview from "@/components/admin/DashboardOverview";
 import AllProjects from "@/components/admin/AllProjects";
+import ProjectRequests from "@/components/admin/ProjectRequests";
 import AddDeveloper from "@/components/admin/AddDeveloper";
 import ViewDevelopers from "@/components/admin/ViewDevelopers";
 import DeveloperActivity from "@/components/admin/DeveloperActivity";
@@ -48,6 +49,7 @@ const WELCOME_SHOWN_KEY = "devtrack.orgWelcomeShown";
 const ADMIN_NAV_GROUPS = {
   overview: "Overview",
   "all-projects": "Delivery",
+  requests: "Delivery",
   "project-hub": "Delivery",
   board: "Delivery",
   views: "Delivery",
@@ -343,6 +345,8 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
     switch (activeSection) {
       case "all-projects":
         return <AllProjects {...contentProps} />;
+      case "requests":
+        return <ProjectRequests />;
       case "board":
         return <ProjectBoard />;
       case "sprints":

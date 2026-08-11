@@ -14,6 +14,7 @@ import {
 
 import ClientOverview from "@/components/client/ClientOverview";
 import ClientProjects from "@/components/client/ClientProjects";
+import ClientProposals from "@/components/client/ClientProposals";
 import ClientProjectDetail from "@/components/client/ClientProjectDetail";
 import ClientProjectComments from "@/components/client/ClientProjectComments";
 import ClientTimeline from "@/components/client/ClientTimeline";
@@ -221,6 +222,8 @@ function ClientDashboardContent() {
           return <ClientProjectComments projectId={projectId} showHeader />;
         }
         return <ClientProjects onViewProject={handleViewProjectIn("comments")} />;
+      case "new-project":
+        return <ClientProposals />;
       case "announcements":
         return <ClientAnnouncements />;
       case "approvals":
