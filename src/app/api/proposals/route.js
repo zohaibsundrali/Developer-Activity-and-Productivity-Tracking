@@ -17,6 +17,23 @@ export const dynamic = "force-dynamic";
  * boundary. If this file disappeared the rules would still hold.
  */
 
+/**
+ * What a client may see of their own proposal.
+ *
+ * `internal_notes` is stripped HERE and not by RLS, and that distinction is
+ * load-bearing: Row Level Security is row-level, so the client_read policy in
+ * 059 correctly grants the whole row and cannot withhold one column. This is
+ * the same arrangement as change_requests.pm_notes, and it carries the same
+ * caveat — a client reading `project_proposals` through PostgREST directly
+ * would still see the notes. The honest fix is a view or a column-level grant;
+ * both are larger than this feature warrants today, so it is written down
+ * rather than assumed away.
+ */
+const CLIENT_SAFE = (row) => {
+  const { internal_notes, ...rest } = row;
+  return rest;
+};
+
 const MAX_TITLE = 200;
 const MAX_DESCRIPTION = 10000;
 
@@ -52,7 +69,9 @@ export async function GET(request) {
     const { data, error } = await q;
     if (error) throw error;
 
-    return NextResponse.json({ proposals: data || [] });
+    return NextResponse.json({
+      proposals: isStaff(auth) ? data || [] : (data || []).map(CLIENT_SAFE),
+    });
   } catch (e) {
     console.error("[proposals GET]", e?.message || e);
     return NextResponse.json({ error: "Could not load proposals." }, { status: 503 });
@@ -180,7 +199,7 @@ export async function POST(request) {
       console.error("[proposals POST] notify failed:", notifyErr?.message || notifyErr);
     }
 
-    return NextResponse.json({ proposal: data }, { status: 201 });
+    return NextResponse.json({ proposal: CLIENT_SAFE(data) }, { status: 201 });
   } catch (e) {
     console.error("[proposals POST]", e?.message || e);
     return NextResponse.json({ error: "Could not submit your proposal." }, { status: 503 });

@@ -26,7 +26,7 @@ export const dynamic = "force-dynamic";
  * project, which is the backstop for the case this ordering misses.
  */
 
-const DECISIONS = ["accepted", "rejected", "needs_info", "in_review"];
+const DECISIONS = ["accepted", "rejected", "needs_info", "in_review", "estimate"];
 const DECIDER_ROLES = ["owner", "admin", "manager"];
 
 export async function POST(request, { params }) {
@@ -74,6 +74,45 @@ export async function POST(request, { params }) {
         { error: "That proposal has already been accepted." },
         { status: 409 }
       );
+    }
+
+    /* ---------- costing it ---------- */
+    if (decision === "estimate") {
+      const cost = numberOrNull(body.estimatedCost);
+      const hours = numberOrNull(body.estimatedHours);
+      const days = numberOrNull(body.estimatedTimelineDays);
+
+      if (cost === null && hours === null) {
+        return NextResponse.json(
+          { error: "Give a cost or an hours figure — that is what an estimate is." },
+          { status: 400 }
+        );
+      }
+
+      const { data, error } = await svc
+        .from("project_proposals")
+        .update({
+          status: "in_review",
+          estimated_cost: cost,
+          estimated_hours: hours,
+          estimated_timeline_days: days === null ? null : Math.round(days),
+          internal_notes:
+            typeof body.internalNotes === "string"
+              ? body.internalNotes.slice(0, 5000)
+              : proposal.internal_notes,
+          estimated_by: auth.appUserId || null,
+          estimated_at: new Date().toISOString(),
+        })
+        .eq("id", proposalId)
+        .eq("organization_id", auth.orgId)
+        .neq("status", "accepted")
+        .select()
+        .single();
+      if (error) throw error;
+
+      // No notification: costing something is internal, and the client hears
+      // about it when a decision is made, not while somebody is thinking.
+      return NextResponse.json({ proposal: data });
     }
 
     /* ---------- the simple decisions ---------- */
@@ -134,8 +173,15 @@ export async function POST(request, { params }) {
         name: proposal.title,
         description: proposal.description,
         status: "pending",
-        budget: proposal.budget,
-        deadline: proposal.desired_deadline,
+        // OUR estimate wins over the client's ask. Before this, accepting a
+        // proposal created a project budgeted at whatever the customer hoped
+        // to spend — and every margin figure downstream was then measured
+        // against a number nobody in the company had agreed to.
+        //
+        // `??` and not `||`: an estimate of 0 is a real answer ("we will do
+        // this one free") and must not fall through to the client's figure.
+        budget: proposal.estimated_cost ?? proposal.budget,
+        deadline: deadlineFor(proposal),
         created_by: auth.appUserId || null,
         manager_id: managerId,
         proposal_id: proposal.id,
@@ -193,6 +239,30 @@ export async function POST(request, { params }) {
     console.error("[proposals decide]", e?.message || e);
     return NextResponse.json({ error: "Could not record that decision." }, { status: 503 });
   }
+}
+
+/**
+ * The deadline the project starts with.
+ *
+ * Our own estimate is a DURATION rather than a date, because a date on an
+ * unaccepted proposal goes stale the moment the client takes a week to reply.
+ * So it is counted from today — the day work is actually agreed — and only
+ * falls back to what the client asked for when we never costed it.
+ */
+function deadlineFor(proposal) {
+  const days = Number(proposal.estimated_timeline_days);
+  if (Number.isFinite(days) && days > 0) {
+    const d = new Date();
+    d.setDate(d.getDate() + Math.round(days));
+    return d.toISOString().slice(0, 10);
+  }
+  return proposal.desired_deadline;
+}
+
+function numberOrNull(value) {
+  if (value === undefined || value === null || String(value).trim() === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
 const CLIENT_COPY = {
