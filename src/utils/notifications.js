@@ -42,6 +42,11 @@ export const CATEGORIES = {
   // feature off for someone who does not want it. Landing in `general` would
   // have made both impossible while looking like it worked.
   signal: { label: "Needs attention", tone: "warning", icon: "Siren" },
+  // Written by the trial-reminder job in /api/cron. It had no entry here, so
+  // the one notification that tells an owner their trial is ending fell
+  // through to `general` — losing its icon, and losing the preference row
+  // keyed on this category that would let someone mute it.
+  billing: { label: "Billing & plan", tone: "warning", icon: "CreditCard" },
   general: { label: "General", tone: "muted", icon: "Bell" },
 };
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ROLE_RANK as SHARED_ROLE_RANK, rankOf } from "@/utils/roles";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { recordEvent } from "@/utils/systemEvents";
 
@@ -295,18 +296,19 @@ async function buildReport(svc, orgId) {
   };
 }
 
-const ROLE_RANK = {
-  owner: 8,
-  admin: 7,
-  manager: 6,
-  hr: 5,
-  team_lead: 4,
-  developer: 3,
-  employee: 2,
-  client: 1,
-};
+// ROLE_RANK is imported, not redeclared. This file kept its own copy, and
+// when designer/qa/finance were added it was not updated — so an unknown
+// role fell to rank 0, the LOWEST, and sailed through every comparison
+// meant to stop someone granting a role at or above their own. See
+// src/utils/roles.js.
+const ROLE_RANK = SHARED_ROLE_RANK;
 function rank(role) {
-  return ROLE_RANK[role] || 0;
+  // An UNKNOWN role must not read as the lowest one — that is how a role this
+  // file has never been taught about becomes safe to grant. Unknown reaches
+  // nothing, and -Infinity cannot be overtaken by any future renumbering.
+  return Object.prototype.hasOwnProperty.call(ROLE_RANK, role)
+    ? ROLE_RANK[role]
+    : Number.NEGATIVE_INFINITY;
 }
 
 async function authorize(request) {

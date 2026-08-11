@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { ROLE_RANK as SHARED_ROLE_RANK, rankOf } from "@/utils/roles";
 import crypto from 'crypto';
 import { sendTemplatedEmail } from '@/utils/emailService';
 import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
@@ -11,10 +12,12 @@ const INVITER_ROLES = ['owner', 'admin', 'hr', 'manager'];
 const ASSIGNABLE_ROLES = ['admin', 'manager', 'team_lead', 'hr', 'developer', 'employee', 'client'];
 // Mirrors ROLE_RANK in src/utils/permissions.js — an inviter can only grant a
 // role that ranks strictly below their own.
-const ROLE_RANK = {
-  owner: 8, admin: 7, manager: 6, hr: 5,
-  team_lead: 4, developer: 3, employee: 2, client: 1,
-};
+// ROLE_RANK is imported, not redeclared. This file kept its own copy, and
+// when designer/qa/finance were added it was not updated — so an unknown
+// role fell to rank 0, the LOWEST, and sailed through every comparison
+// meant to stop someone granting a role at or above their own. See
+// src/utils/roles.js.
+const ROLE_RANK = SHARED_ROLE_RANK;
 
 // Derive the public origin from request headers (works behind proxies).
 function getOrigin(request) {
@@ -70,7 +73,12 @@ export async function POST(request) {
     // An inviter may never grant a role at or above their own rank. Without
     // this an hr (rank 5) or manager (rank 6) could invite a full admin
     // (rank 7) and escalate through the invitation flow (audit finding H3).
-    if ((ROLE_RANK[role] || 0) >= (ROLE_RANK[auth.role] || 0)) {
+    // An unknown role used to fall to 0 and pass this check for the wrong
+    // reason. rankOf() returns null, treated here as ungrantable rather
+    // than as the lowest rank.
+    const wantedRank = rankOf(role);
+    const callerRank = rankOf(auth.role);
+    if (wantedRank === null || callerRank === null || wantedRank >= callerRank) {
       return NextResponse.json(
         { success: false, error: `You cannot invite someone as "${role}".` },
         { status: 403 }

@@ -1,3 +1,5 @@
+import { ROLE_RANK as SHARED_ROLE_RANK, rankOf } from "@/utils/roles";
+
 /**
  * The authorisation matrix for a role change, and the rule that decides which
  * of the two stores is written first.
@@ -22,20 +24,19 @@
 
 // Mirrors ROLE_RANK in src/utils/permissions.js and in the provision route.
 // Inlined so the server never depends on a client module.
-export const ROLE_RANK = {
-  owner: 8,
-  admin: 7,
-  manager: 6,
-  hr: 5,
-  team_lead: 4,
-  developer: 3,
-  employee: 2,
-  client: 1,
-};
+// ROLE_RANK is imported, not redeclared. This file kept its own copy, and
+// when designer/qa/finance were added it was not updated — so an unknown
+// role fell to rank 0, the LOWEST, and sailed through every comparison
+// meant to stop someone granting a role at or above their own. See
+// src/utils/roles.js.
+export const ROLE_RANK = SHARED_ROLE_RANK;
 
-// The 8 roles the `memberships.role` CHECK constraint accepts (010, widened by
-// 015 with team_lead + hr). A value outside this set is rejected here so the
-// caller gets a sentence rather than a raw constraint violation.
+// The roles the `memberships.role` CHECK constraint accepts — 010, widened by
+// 015 (team_lead, hr) and again by 058 (finance, qa, designer). Derived from
+// ROLE_RANK rather than listed again, so the two cannot disagree: while this
+// file kept its own eight-role copy of ROLE_RANK, changing somebody to
+// designer, qa or finance was refused here as an unknown role even though the
+// database would have accepted it.
 export const VALID_ROLES = Object.keys(ROLE_RANK);
 
 // Who may change anyone's role at all. Mirrors the memberships_update policy in
@@ -43,7 +44,12 @@ export const VALID_ROLES = Object.keys(ROLE_RANK);
 export const ROLE_CHANGERS = ["owner", "admin", "hr"];
 
 function rank(role) {
-  return ROLE_RANK[role] || 0;
+  // An UNKNOWN role must not read as the lowest one — that is how a role this
+  // file has never been taught about becomes safe to grant. Unknown reaches
+  // nothing, and -Infinity cannot be overtaken by any future renumbering.
+  return Object.prototype.hasOwnProperty.call(ROLE_RANK, role)
+    ? ROLE_RANK[role]
+    : Number.NEGATIVE_INFINITY;
 }
 
 /**
