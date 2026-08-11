@@ -22,6 +22,7 @@ export const SECTION_TITLES = {
   overview: { admin: "Dashboard Overview", developer: "Dashboard", client: "Overview" },
   "all-projects": { admin: "All Projects" },
   requests: { admin: "Requests" },
+  "change-requests": { admin: "Change Requests", client: "Change Requests" },
   "project-hub": { admin: "Project Hub" },
   board: { admin: "Project Board" },
   views: { admin: "Project Views" },

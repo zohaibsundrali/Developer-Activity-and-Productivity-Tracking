@@ -167,3 +167,60 @@ describe("approval actually moves the project", () => {
     expect(ADVANCE.slice(idx)).toContain("catch");
   });
 });
+
+describe("the screens show each side only what it can act on", () => {
+  const ADMIN_UI = read("src/components/admin/ChangeRequests.jsx");
+  const CLIENT_UI = read("src/components/client/ClientChangeRequests.jsx");
+  const NAV = read("src/components/shell/navConfig.js");
+
+  it("tells a manager that approving is somebody else's call", () => {
+    // A manager priced it; agreeing to sell at that price is owner/admin. A
+    // sentence beats a button that fails.
+    expect(ADMIN_UI).toMatch(/canApprove = \["owner", "admin"\]\.includes/);
+    expect(ADMIN_UI).toMatch(/waiting on an owner or admin to approve it/i);
+  });
+
+  it("only offers pricing to the roles that may price", () => {
+    expect(ADMIN_UI).toMatch(/canPrice = \["owner", "admin", "manager"\]\.includes/);
+  });
+
+  it("defaults the admin queue to what the company still owes an answer on", () => {
+    // A request sitting with the client is not the company's problem, and
+    // putting it in the same pile is how the pile stops being read.
+    expect(ADMIN_UI).toMatch(/const OURS = \["submitted", "estimating", "awaiting_admin", "approved"\]/);
+    expect(ADMIN_UI).toMatch(/useState\("ours"\)/);
+  });
+
+  it("says plainly when there is nothing for staff to do", () => {
+    expect(ADMIN_UI).toMatch(/Nothing to do here until they do/);
+  });
+
+  it("makes the client's decision moment unmissable", () => {
+    expect(CLIENT_UI).toMatch(/waiting for your approval/);
+    expect(CLIENT_UI).toMatch(/Work does not start until you agree/);
+  });
+
+  it("labels the client's buttons with what they do", () => {
+    // "Approve this cost", not "Confirm" — this one moves the project budget.
+    expect(CLIENT_UI).toMatch(/Approve this cost/);
+  });
+
+  it("asks a declining client for a reason before sending it", () => {
+    expect(CLIENT_UI).toMatch(/action === "reject" && !reason\.trim\(\)/);
+    expect(CLIENT_UI).toMatch(/Confirm decline/);
+  });
+
+  it("never renders pm_notes on the client screen", () => {
+    // The route strips it; the screen must not be reaching for it either.
+    expect(CLIENT_UI).not.toMatch(/pm_notes/);
+  });
+
+  it("is reachable from both sidebars", () => {
+    const admin = NAV.match(/"change-requests":\s*\[([^\]]*)\]/);
+    for (const role of ["owner", "admin", "manager", "team_lead"]) {
+      expect(admin?.[1], role).toContain(role);
+    }
+    // The client nav lists it as an entry, not behind a role gate.
+    expect(NAV).toMatch(/id: "change-requests", label: "Change Requests"/);
+  });
+});
