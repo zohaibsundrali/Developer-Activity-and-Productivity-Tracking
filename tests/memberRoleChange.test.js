@@ -146,9 +146,14 @@ beforeEach(() => {
 });
 
 describe('the role vocabulary', () => {
-  it('accepts exactly the 8 roles the memberships CHECK constraint allows', () => {
+  it('accepts exactly the 11 roles the memberships CHECK constraint allows', () => {
+    // Widened by database/058. This assertion used to say eight, and it was
+    // right to fail when the shared role list reached this file: for as long
+    // as it passed, changing somebody to designer/qa/finance was refused here
+    // as an unknown role while the database would have accepted it.
     expect([...VALID_ROLES].sort()).toEqual(
-      ['admin', 'client', 'developer', 'employee', 'hr', 'manager', 'owner', 'team_lead'].sort()
+      ['admin', 'client', 'designer', 'developer', 'employee', 'finance',
+       'hr', 'manager', 'owner', 'qa', 'team_lead'].sort()
     );
   });
 
