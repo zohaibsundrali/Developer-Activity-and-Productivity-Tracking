@@ -13,8 +13,14 @@ import { supabase } from "@/utils/supabaseClient";
  * read that leading folder, so tenant isolation is enforced by the database
  * rather than by callers remembering to pass the right prefix.
  *
- * Organization logos deliberately stay in the public bucket: they are branding,
- * they are embedded in outbound email, and a signed URL would break there.
+ * Organization logos used to be excluded from this on the grounds that they are
+ * branding embedded in outbound email, where a short-lived signed URL would
+ * break. That reasoning did not survive checking: no email template references
+ * the logo, and nothing renders it before sign-in — the only consumers are the
+ * admin settings preview and a value stashed in the session context. Meanwhile
+ * the "public bucket" it was staying in had been made private, so the saved
+ * URL returned 400 and the logo did not render at all. Logos now upload here
+ * under `{organization_id}/branding/` like everything else.
  *
  * BACKWARD COMPATIBILITY: columns such as `employee_profiles.photo_url` and
  * `projects.file_url` previously held a full public URL and now hold a storage

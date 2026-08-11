@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId } from "@/utils/orgContext";
+import { uploadOrgFile, resolveOrgFileUrl } from "@/utils/orgFiles";
 import { showSuccess, showError } from "@/utils/alerts";
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent,
@@ -172,6 +173,11 @@ export default function OrganizationSettings({ readOnly = false }) {
   const [form, setForm] = useState({
     name: "", logo_url: "", industry: "", company_size: "", country: "", timezone: "UTC",
   });
+  // `form.logo_url` holds a storage PATH; this holds the short-lived signed URL
+  // it resolves to. Kept apart so the expiring URL is never what gets saved.
+  // `resolveOrgFileUrl` passes a legacy `http…` value straight through, so
+  // organizations whose logo predates this still render.
+  const [logoSrc, setLogoSrc] = useState(null);
   const [settings, setSettings] = useState(DEFAULTS);
 
   const load = useCallback(async () => {
@@ -190,6 +196,7 @@ export default function OrganizationSettings({ readOnly = false }) {
           company_size: data.company_size || "", country: data.country || "", timezone: data.timezone || "UTC",
         });
         setSettings(mergeOrgSettings(data.settings));
+        setLogoSrc(data.logo_url ? await resolveOrgFileUrl(data.logo_url) : null);
       }
     } catch (err) {
       setLoadError(err?.message || "Could not load your organization settings.");
@@ -213,11 +220,21 @@ export default function OrganizationSettings({ readOnly = false }) {
     if (!file || !orgId) return;
     setUploading(true);
     try {
-      const path = `org-logos/${orgId}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-      const { error } = await supabase.storage.from("documents").upload(path, file, { upsert: true, cacheControl: "3600" });
-      if (error) throw error;
-      const { data } = supabase.storage.from("documents").getPublicUrl(path);
-      setField("logo_url", data?.publicUrl || "");
+      // Into the PRIVATE `org-files` bucket, storing the PATH — not a URL.
+      //
+      // This used to write to `documents` and save `getPublicUrl(path)`.
+      // `getPublicUrl` does not ask the server anything; it just builds a
+      // /object/public/ URL. Once `documents` was made private that URL
+      // started returning 400, so the saved value was a dead link and the
+      // logo silently stopped rendering — the upload still "succeeded", which
+      // is why nothing looked broken.
+      //
+      // org-files already carries per-organization storage policies keyed on
+      // the leading path segment, so this also stops one tenant's logo from
+      // sitting in a bucket root beside everyone else's.
+      const path = await uploadOrgFile({ orgId, category: "branding", file });
+      setField("logo_url", path);
+      setLogoSrc(await resolveOrgFileUrl(path));
       showSuccess("Logo uploaded", "Remember to Save changes.");
     } catch (err) {
       showError("Upload failed", err.message || "Could not upload the logo.");
@@ -285,8 +302,8 @@ export default function OrganizationSettings({ readOnly = false }) {
           <div className="flex flex-col gap-6 md:flex-row">
             <div className="flex flex-col items-center gap-3">
               <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border border-border bg-muted">
-                {form.logo_url
-                  ? <img src={form.logo_url} alt="Organization logo" className="h-full w-full object-cover" />
+                {logoSrc
+                  ? <img src={logoSrc} alt="Organization logo" className="h-full w-full object-cover" />
                   : <Building2 aria-hidden="true" className="h-5 w-5 text-muted-foreground" />}
               </div>
               <label className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors duration-150 hover:bg-muted focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background`}>

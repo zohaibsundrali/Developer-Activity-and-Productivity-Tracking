@@ -315,7 +315,8 @@ export default function AdminRegistration() {
   // One entry per box. Holding the digits positionally rather than as a single
   // string is what lets box 3 be cleared without box 4 sliding into its place.
   const [codeDigits, setCodeDigits] = useState(emptyDigits);
-  const [generatedCode, setGeneratedCode] = useState("");
+  // (There is deliberately no `generatedCode` state any more — this tab must
+  // not know the code. The server mints it, stores a hash, and checks it.)
   const [codeExpiry, setCodeExpiry] = useState(null);
   // Ticks the countdown. Only runs while step 2 is on screen and the code is
   // still alive, and stops itself the moment it expires.
@@ -580,11 +581,15 @@ export default function AdminRegistration() {
   };
 
   const sendVerificationCode = async (userEmail) => {
-    // A fresh code means a fresh deadline and empty boxes; leaving the old
-    // digits sitting there after a resend is how people verify with the code
-    // that has just been superseded.
-    const nextCode = Math.floor(1000 + Math.random() * 9000).toString();
-    setGeneratedCode(nextCode);
+    // The CODE IS NO LONGER MADE HERE. /api/send-verification mints it, stores
+    // a hash of it with an expiry, and emails it; this tab never learns what it
+    // is. Generating it in the browser meant the check could be read out of
+    // devtools, or skipped entirely by posting to /api/auth/signup — see
+    // database/056_email_verification.sql.
+    //
+    // A fresh request still means a fresh deadline and empty boxes; leaving the
+    // old digits sitting there after a resend is how people verify with the
+    // code that has just been superseded.
     setCodeExpiry(Date.now() + CODE_TTL_MS);
     setNowTs(Date.now());
     resetCodeBoxes();
@@ -599,7 +604,6 @@ export default function AdminRegistration() {
           email: userEmail,
           userName: formData.fullName,
           company: formData.company,
-          code: nextCode
         }),
       });
 
@@ -613,18 +617,23 @@ export default function AdminRegistration() {
       }
 
     } catch (error) {
-      // `generatedCode` here used to read the PREVIOUS code out of the closure
-      // — state set two lines earlier is not visible until the next render —
-      // so the fallback offered a code that no longer verified (and, on the
-      // first send, an empty one). It has to be the local.
+      // NO "use this code for testing" ESCAPE HATCH ANY MORE.
+      //
+      // There used to be one: if the send failed, the page printed the code it
+      // had generated and waved the user through to step 2. That was only
+      // possible because the browser knew the code — it does not now, and it
+      // must not, because a fallback that prints the code on screen is a
+      // verification step anyone can trigger by making the email fail.
+      //
+      // A failed send is now a failed send. The user stays on step 1 and can
+      // try again, which is the honest outcome: nothing was verified.
       showPre(
-        "Email service unavailable",
-        `EMAIL SERVICE TEMPORARILY UNAVAILABLE\n\nUse this code for testing: ${nextCode}\n\nThis would be sent to: ${formData.email}`,
-        "warning"
+        "Verification email could not be sent",
+        `We could not send a verification code to ${formData.email}.\n\n` +
+          "Please check the address and try again in a moment.",
+        "error"
       );
-
-      setStep(2);
-      return { success: true };
+      return { success: false };
     }
   };
 
@@ -705,14 +714,36 @@ export default function AdminRegistration() {
       return;
     }
 
-    if (code !== generatedCode) {
-      setErrors({
-        code: "That code isn't right. Check the digits in the email, or ask for a new code.",
+    // THE SERVER DECIDES. This used to be `if (code !== generatedCode)`,
+    // comparing against a number this tab had generated itself — so the check
+    // could be read out of devtools, edited away, or skipped by posting
+    // straight to /api/auth/signup. The digits now go to the server, which
+    // holds the only copy (hashed) and records the attempt.
+    try {
+      const res = await fetch("/api/auth/verify-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: formData.email, code }),
       });
+      const result = await res.json().catch(() => ({}));
+
+      if (!res.ok || !result?.success) {
+        const left = result?.attemptsRemaining;
+        setErrors({
+          code:
+            typeof left === "number" && left > 0
+              ? `That code isn't right. ${left} ${left === 1 ? "try" : "tries"} left before you need a new one.`
+              : "That code isn't right or it has expired. Ask for a new code.",
+        });
+        setVerificationLoading(false);
+        // Clearing beats making them delete the boxes by hand, and it puts the
+        // caret back where the next attempt starts.
+        resetCodeBoxes();
+        return;
+      }
+    } catch {
+      setErrors({ code: "Could not check the code just now. Please try again." });
       setVerificationLoading(false);
-      // Clearing beats making them delete four boxes by hand, and it puts the
-      // caret back where the next attempt starts.
-      resetCodeBoxes();
       return;
     }
 
