@@ -87,7 +87,10 @@ export const ADMIN_SECTION_ROLES = {
   board: ["owner", "admin"],
   views: ["owner", "admin", "manager", "team_lead"],
   sprints: ["owner", "admin", "manager", "team_lead"],
-  "task-reviews": ["owner", "admin"],
+  // QA is here and nowhere else on this map: reviewing submitted work is the
+  // job the role exists for. Manager and team_lead join it because they were
+  // already reviewers everywhere except this sidebar entry.
+  "task-reviews": ["owner", "admin", "manager", "team_lead", "qa"],
   "developer-activity": ["owner", "admin"],
   reports: ["owner", "admin", "manager", "team_lead"],
   automation: ["owner", "admin"],
@@ -96,8 +99,8 @@ export const ADMIN_SECTION_ROLES = {
   employees: ["owner", "admin", "hr"],
   "team-stats": ["owner", "admin", "hr"],
   organization: ["owner", "admin", "hr"],
-  clients: ["owner", "admin"],
-  billing: ["owner", "admin"],
+  clients: ["owner", "admin", "finance"],
+  billing: ["owner", "admin", "finance"],
   // Infrastructure failure detail — same two roles the RLS policy on
   // system_events admits (migration 038).
   "system-health": ["owner", "admin"],

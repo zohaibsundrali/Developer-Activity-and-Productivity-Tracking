@@ -586,7 +586,10 @@ const SEVERITY_ORDER = { critical: 0, warning: 1, info: 2 };
 /** Roles that may be told about any person in the organization. */
 export const ALL_PEOPLE_ROLES = ["owner", "admin", "hr"];
 /** Roles that may be told about the bill. */
-export const BILLING_ROLES = ["owner", "admin"];
+// Plan pressure is money, so finance sees it. It stays out of
+// ALL_PEOPLE_ROLES above: signals about named individuals are not an
+// accountant's business.
+export const BILLING_ROLES = ["owner", "admin", "finance"];
 /** Every role that receives signals at all. */
 export const SIGNAL_ROLES = [...ALL_PEOPLE_ROLES, "manager", "team_lead"];
 
