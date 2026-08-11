@@ -9,6 +9,7 @@ import DashboardOverview from "@/components/admin/DashboardOverview";
 import AllProjects from "@/components/admin/AllProjects";
 import ProjectRequests from "@/components/admin/ProjectRequests";
 import ChangeRequests from "@/components/admin/ChangeRequests";
+import BugQueue from "@/components/admin/BugQueue";
 import AddDeveloper from "@/components/admin/AddDeveloper";
 import ViewDevelopers from "@/components/admin/ViewDevelopers";
 import DeveloperActivity from "@/components/admin/DeveloperActivity";
@@ -52,6 +53,7 @@ const ADMIN_NAV_GROUPS = {
   "all-projects": "Delivery",
   requests: "Delivery",
   "change-requests": "Delivery",
+  bugs: "Delivery",
   "project-hub": "Delivery",
   board: "Delivery",
   views: "Delivery",
@@ -351,6 +353,8 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
         return <ProjectRequests />;
       case "change-requests":
         return <ChangeRequests />;
+      case "bugs":
+        return <BugQueue />;
       case "board":
         return <ProjectBoard />;
       case "sprints":

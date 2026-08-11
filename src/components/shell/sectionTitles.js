@@ -23,6 +23,7 @@ export const SECTION_TITLES = {
   "all-projects": { admin: "All Projects" },
   requests: { admin: "Requests" },
   "change-requests": { admin: "Change Requests", client: "Change Requests" },
+  bugs: { admin: "Bugs" },
   "project-hub": { admin: "Project Hub" },
   board: { admin: "Project Board" },
   views: { admin: "Project Views" },

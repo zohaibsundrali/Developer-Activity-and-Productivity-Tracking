@@ -184,3 +184,49 @@ describe("the migration adds fields without breaking tasks", () => {
     expect(migration).toMatch(/where task_type = 'bug'/);
   });
 });
+
+describe("the bug queue reuses the task machinery rather than writing rows", () => {
+  const UI = read("src/components/admin/BugQueue.jsx");
+
+  it("creates bugs through createTask, so automations and defaults still run", () => {
+    expect(UI).toContain("createTask(");
+    expect(UI).not.toMatch(/\.from\("developer_tasks"\)[\s\S]{0,80}\.insert\(/);
+  });
+
+  it("moves them through changeTaskStatus, so the activity log still records it", () => {
+    expect(UI).toContain("changeTaskStatus(");
+    expect(UI).not.toMatch(/\.from\("developer_tasks"\)[\s\S]{0,80}\.update\(/);
+  });
+
+  it("asks the shared rule before moving, not just its own table", () => {
+    // If the pipeline changes, this refuses rather than writing something the
+    // transition guard would reject anyway.
+    expect(UI).toContain("allowedTransitions(bug.status).includes(next.status)");
+  });
+
+  it("offers no Close button — closing belongs to review", () => {
+    // `completed` carries is_on_time, productivity points, the admin_reviews
+    // row and the developer's notification. Setting it here would produce a
+    // closed bug with none of that, and Reports would stop matching this
+    // screen.
+    expect(UI).not.toMatch(/"completed"[^)]*\)\s*=>\s*move/);
+    const moves = UI.match(/const NEXT_MOVE = \{([\s\S]*?)\n\};/);
+    expect(moves?.[1]).not.toContain("completed");
+  });
+
+  it("says where closing happens instead of leaving someone hunting", () => {
+    expect(UI).toMatch(/Task Reviews/);
+  });
+
+  it("does not set priority as well as severity", () => {
+    // Two columns claiming the same thing can disagree, and then nobody knows
+    // which one the queue is sorted by.
+    const call = UI.match(/createTask\([\s\S]*?\}\)/);
+    expect(call?.[0]).not.toMatch(/\bpriority:/);
+  });
+
+  it("counts Reopened as still open", () => {
+    // A bug that failed its retest is emphatically not closed.
+    expect(UI).toMatch(/b\.status !== "completed"/);
+  });
+});
