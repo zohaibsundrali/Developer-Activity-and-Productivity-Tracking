@@ -13,6 +13,10 @@ import {
   axisLabel,
   axisLine,
   splitLine,
+  endLabel,
+  fmtPct,
+  stackGap,
+  verticalGradient,
 } from "@/components/charts/chartTheme";
 import { EmptyState, ErrorState, Skeleton, StatusPill } from "@/components/ui";
 
@@ -195,71 +199,107 @@ export function SessionCard({ session, onClick }) {
 export function KeyboardActivityChart({ data, loading = false, error = null, onRetry }) {
   const rows = Array.isArray(data) ? data : [];
 
+  // `tracked_at`, not `minute_timestamp` — that column does not exist on
+  // keyboard_stats. Reading it gave String(undefined).slice(11,16) === "", so
+  // every point on the time axis was labelled with an empty string and the
+  // axis rendered as a row of blanks.
   const chartData = rows.map((r) => ({
-    time: String(r.minute_timestamp).slice(11, 16),
+    time: String(r.tracked_at || "").slice(11, 16),
     wpm: Number(r.words_per_minute) || 0,
     activityPct: Number(r.keyboard_activity_percentage) || 0,
   }));
 
+  const times = chartData.map((d) => d.time);
+
+  // SMALL MULTIPLES, NOT A SECOND Y-AXIS.
+  //
+  // This used to plot words-per-minute and keyboard-activity-percent on one
+  // plot with two different y-scales. A dual-axis chart lets whoever chose the
+  // two ranges decide which line appears to be "above" the other — slide one
+  // scale and the crossing points move — so the shape it shows is an artefact
+  // of the axis bounds rather than a fact about the data. There is no correct
+  // pair of bounds, which is why the answer is two plots and not better bounds.
+  //
+  // Stacked, sharing one category axis, with the axis pointer linked so hovering
+  // either panel reads both at the same minute — the comparison the dual axis
+  // was reaching for, without the distortion.
+  const panel = (name, key, color, gridIndex, fmt) => ({
+    name,
+    type: "line",
+    xAxisIndex: gridIndex,
+    yAxisIndex: gridIndex,
+    smooth: true,
+    showSymbol: false,
+    lineStyle: { width: 2, color },
+    itemStyle: { color },
+    areaStyle: { color: verticalGradient(color) },
+    data: chartData.map((d) => d[key]),
+    tooltip: { valueFormatter: fmt },
+    // The current value, printed once at the right-hand end. No legend: each
+    // panel holds one line and its own title already names it.
+    endLabel: endLabel(fmt),
+  });
+
   const option = {
-    color: [PALETTE[1], SEMANTIC.success],
     textStyle,
-    // Extra right padding so the second (percentage) axis and its name clear
-    // the plot area instead of sitting on top of the last data point.
-    grid: { ...sessionGrid, right: 52 },
+    // Each panel is a single series, so its own title names it and no legend
+    // box is needed — a legend for one line is furniture.
+    title: [
+      { text: "Words per minute", top: 0, left: 0, textStyle: axisName },
+      { text: "Keyboard activity", top: "52%", left: 0, textStyle: axisName },
+    ],
     tooltip: { trigger: "axis", ...baseTooltip },
-    legend: { ...baseLegend, data: ["WPM", "Keyboard %"] },
-    xAxis: {
-      type: "category",
-      boundaryGap: false,
-      name: "Time",
-      nameGap: 22,
-      ...axisName,
-      data: chartData.map((d) => d.time),
-      axisLabel: timeAxisLabel,
-      axisLine,
-      axisTick: { show: false },
-    },
+    axisPointer: { link: [{ xAxisIndex: "all" }] },
+    grid: [
+      // Right padding leaves room for the end labels outside the plot.
+      { left: 8, right: 48, top: 22, height: "30%", containLabel: true },
+      { left: 8, right: 48, top: "74%", bottom: 8, containLabel: true },
+    ],
+    xAxis: [
+      {
+        type: "category",
+        gridIndex: 0,
+        boundaryGap: false,
+        data: times,
+        axisLabel: { show: false },
+        axisLine,
+        axisTick: { show: false },
+      },
+      {
+        type: "category",
+        gridIndex: 1,
+        boundaryGap: false,
+        data: times,
+        axisLabel: timeAxisLabel,
+        axisLine,
+        axisTick: { show: false },
+      },
+    ],
     yAxis: [
       {
         type: "value",
-        name: "WPM",
-        nameGap: 34,
-        ...axisName,
+        gridIndex: 0,
+        splitNumber: 3,
         minInterval: 1,
         axisLabel,
         splitLine,
+        axisLine: { show: false },
+        axisTick: { show: false },
       },
       {
         type: "value",
-        name: "Activity %",
-        nameGap: 38,
-        ...axisName,
+        gridIndex: 1,
+        splitNumber: 3,
         max: 100,
-        position: "right",
         axisLabel: { ...axisLabel, formatter: "{value}%" },
-        splitLine: { show: false },
+        splitLine,
+        axisLine: { show: false },
+        axisTick: { show: false },
       },
     ],
     series: [
-      {
-        name: "WPM",
-        type: "line",
-        yAxisIndex: 0,
-        smooth: true,
-        showSymbol: false,
-        lineStyle: { width: 2 },
-        data: chartData.map((d) => d.wpm),
-      },
-      {
-        name: "Keyboard %",
-        type: "line",
-        yAxisIndex: 1,
-        smooth: true,
-        showSymbol: false,
-        lineStyle: { width: 2 },
-        data: chartData.map((d) => d.activityPct),
-      },
+      panel("WPM", "wpm", PALETTE[0], 0, (v) => `${Math.round(Number(v) || 0)} wpm`),
+      panel("Keyboard activity", "activityPct", PALETTE[5], 1, (v) => fmtPct(v)),
     ],
   };
 
@@ -301,8 +341,18 @@ export function MouseActivityChart({ data, loading = false, error = null, onRetr
       idle: Number(r.idle_percentage) || 0,
     }));
 
+  // Active is the measure; idle is the remainder, and it is painted as inert
+  // track rather than as `danger`.
+  //
+  // Two reasons. First, the two series always sum to 100, so the stack is
+  // always full height and only ONE number is actually being shown — giving
+  // the complement a saturated hue doubles the ink for no added information.
+  // Second, red is reserved for states that are wrong, and idle is not wrong:
+  // it is reading, thinking, being in a meeting. Colouring it as a fault makes
+  // the chart argue a position the data does not support, about a named person,
+  // on a screen their manager reads.
   const option = {
-    color: [SEMANTIC.success, SEMANTIC.danger],
+    color: [SEMANTIC.success, SEMANTIC.track],
     textStyle,
     grid: sessionGrid,
     tooltip: {
@@ -332,15 +382,22 @@ export function MouseActivityChart({ data, loading = false, error = null, onRetr
       splitLine,
     },
     series: [
-      { name: "Active %", type: "bar", stack: "a", data: chartData.map((d) => d.active) },
+      {
+        name: "Active %",
+        type: "bar",
+        stack: "a",
+        itemStyle: { ...stackGap },
+        data: chartData.map((d) => d.active),
+      },
       {
         name: "Idle %",
         type: "bar",
         stack: "a",
-        itemStyle: { borderRadius: [4, 4, 0, 0] },
+        itemStyle: { ...stackGap, borderRadius: [4, 4, 0, 0] },
         data: chartData.map((d) => d.idle),
       },
     ],
+    barCategoryGap: "35%",
   };
 
   return (

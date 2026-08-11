@@ -3,7 +3,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import EChart from "@/components/charts/EChart";
 import {
-  PALETTE,
+  PRIMARY,
   textStyle,
   baseGrid,
   baseTooltip,
@@ -189,7 +189,6 @@ export default function GanttChartPage() {
     }));
 
     return {
-      color: PALETTE,
       textStyle,
       grid: { ...baseGrid, left: 8, right: 30, top: 20, bottom: 30, containLabel: true },
       tooltip: {
@@ -259,10 +258,21 @@ export default function GanttChartPage() {
           type: "bar",
           stack: "g",
           barWidth: 24,
-          data: withOffsets.map((r, i) => ({
-            value: r.duration,
-            itemStyle: { color: PALETTE[i % PALETTE.length], borderRadius: 4 },
-          })),
+          // ONE hue for every bar.
+          //
+          // This used to walk the categorical palette by row index, so a task's
+          // colour was decided by where it happened to land in the list. That
+          // encodes nothing — insert a task at the top and every bar below it
+          // changes colour — while spending six hues and making the chart read
+          // as though the colours mean something. Position and length already
+          // carry the whole schedule; colour has no variable left to show.
+          //
+          // The row does carry a `progress` figure, but it is derived as
+          // `workingHours * 5`, a rough proxy rather than real completion, so
+          // painting a sequential ramp from it would put a confident-looking
+          // gradient on top of a guess.
+          itemStyle: { color: PRIMARY, borderRadius: 4 },
+          data: withOffsets.map((r) => r.duration),
         },
       ],
     };
