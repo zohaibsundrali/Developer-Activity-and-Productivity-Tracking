@@ -291,7 +291,13 @@ export default function ProductivityDashboard({ currentAdmin }) {
           data: pieData.map((entry, index) => ({
             value: entry.value,
             name: entry.name,
-            itemStyle: { color: STATUS_COLORS[index % STATUS_COLORS.length] },
+            // Clamped, not cycled. There are three slices and three colours
+            // today so the modulo never wrapped — but if a fourth status is
+            // ever added it would silently reuse the FIRST status colour, so
+            // two different states would render identically green.
+            itemStyle: {
+              color: STATUS_COLORS[Math.min(index, STATUS_COLORS.length - 1)],
+            },
           })),
         },
       ],

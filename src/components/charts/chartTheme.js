@@ -29,7 +29,12 @@ const SURFACE = "#ffffff"; // --card
 
 // Gridlines are --border at low opacity. They must be visible enough to read a
 // value against and quiet enough that the data is what the eye lands on.
-const GRID = "rgba(224, 229, 235, 0.9)";
+//
+// Stepped down from 0.9 to 0.55: at full strength the grid was reading as a
+// second layer of content competing with the series. A gridline only has to be
+// findable when the eye is already looking for a value — it does not have to be
+// legible from across the room.
+const GRID = "rgba(224, 229, 235, 0.55)";
 
 // An inert "everything else" fill: --border stepped one notch darker
 // (214 20% 88%). Used for the remainder half of a progress bar and for the
@@ -161,7 +166,11 @@ export const axisLine = { lineStyle: { color: LINE } };
  */
 export const valueAxis = {
   type: "value",
-  splitNumber: 4,
+  // Three labelled steps, down from four. A reader takes a magnitude off a
+  // chart by finding the two gridlines a point sits between; more lines than
+  // that buys precision nobody is asking a dashboard for, and each one is
+  // another horizontal rule crossing the data.
+  splitNumber: 3,
   axisLine: { show: false },
   axisTick: { show: false },
   axisLabel,
@@ -315,6 +324,49 @@ export const roundedBar = (color, radius = [4, 4, 0, 0]) => ({ color, borderRadi
 
 /** Same, for a horizontal bar growing to the right. */
 export const roundedBarH = (color, radius = [0, 4, 4, 0]) => ({ color, borderRadius: radius });
+
+/**
+ * A 2px seam of card surface between stacked segments.
+ *
+ * Spread into the `itemStyle` of every segment in a stack. The eye resolves an
+ * edge far faster than it resolves a change of hue, so the gap is what makes a
+ * stacked bar readable — and it is what keeps the boundary visible for a reader
+ * who cannot separate the two colours at all. Painting the border in the card
+ * colour rather than drawing a line means the seam reads as space, not as ink.
+ */
+export const stackGap = { borderColor: SURFACE, borderWidth: 2 };
+
+/**
+ * The latest value, printed at the end of a line, as an echarts
+ * `series.endLabel`.
+ *
+ * This is the direct-labelling half of "fewer legends". On a single-series line
+ * the panel heading already says WHAT the line is; what the reader actually
+ * wants is WHERE IT IS NOW, and that is one number at the right-hand end rather
+ * than a legend swatch repeating a name they have already read.
+ *
+ * The number wears an ink token, not the series colour: a coloured mark beside
+ * text carries identity, coloured text just makes the text harder to read.
+ * Never combine this with a label on every point — the whole point is that one
+ * value is worth printing and forty are not.
+ *
+ *   series: [{ type: "line", ...ENDLABEL_ANCHOR, endLabel: endLabel(fmtInt) }]
+ */
+export const endLabel = (format = fmtInt) => ({
+  show: true,
+  formatter: (p) => format(p.value),
+  color: INK,
+  fontSize: 12,
+  fontWeight: 600,
+  fontFamily: FONT_FAMILY,
+  offset: [4, 0],
+});
+
+/**
+ * Right-hand padding that leaves room for `endLabel` to sit outside the plot
+ * instead of on top of the last data point. Spread over a grid.
+ */
+export const gridWithEndLabel = (grid = {}) => ({ ...baseGrid, right: 44, ...grid });
 
 /**
  * The centre label for a donut, as an echarts `series.label`.
