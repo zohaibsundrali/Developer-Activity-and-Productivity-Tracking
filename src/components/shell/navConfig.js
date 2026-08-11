@@ -16,6 +16,7 @@ import {
   Inbox,
   Lightbulb,
   GitPullRequestArrow,
+  Bug,
   Contact,
   BarChart3,
   LayoutGrid,
@@ -46,6 +47,7 @@ export const ADMIN_NAV = [
   { id: "views", label: "Views", icon: Columns3 },
   { id: "sprints", label: "Sprints", icon: Rocket },
   { id: "task-reviews", label: "Task Reviews", icon: ClipboardCheck },
+  { id: "bugs", label: "Bugs", icon: Bug },
   { id: "developer-activity", label: "Developer Activity", icon: Activity },
   { id: "reports", label: "Reports", icon: FileBarChart },
   { id: "automation", label: "Automation", icon: Zap },
@@ -114,6 +116,9 @@ export const ADMIN_SECTION_ROLES = {
   // job the role exists for. Manager and team_lead join it because they were
   // already reviewers everywhere except this sidebar entry.
   "task-reviews": ["owner", "admin", "manager", "team_lead", "qa"],
+  // Same audience as Task Reviews. Developers and designers see their own
+  // bugs on the board; this queue is for the people who triage them.
+  bugs: ["owner", "admin", "manager", "team_lead", "qa"],
   "developer-activity": ["owner", "admin"],
   reports: ["owner", "admin", "manager", "team_lead"],
   automation: ["owner", "admin"],
