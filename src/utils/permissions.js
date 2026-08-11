@@ -117,8 +117,14 @@ export function can(action) {
     case "transfer_employee":
     case "activate_employee":
       return PEOPLE_MANAGERS.includes(r);
-    // Project administration — Owner, Admin.
+    // Creating a project is the project manager's job. It used to be
+    // owner/admin only, which meant a PM could run a project but not start
+    // one — every new piece of work had to queue behind a founder. Deleting
+    // one stays owner/admin: starting work and destroying it are not the same
+    // decision and should not carry the same permission.
     case "create_project":
+      return SUPERVISORS.includes(r);
+    // Project administration — Owner, Admin.
     case "delete_project":
     case "manage_automation":
       return ADMINS.includes(r);

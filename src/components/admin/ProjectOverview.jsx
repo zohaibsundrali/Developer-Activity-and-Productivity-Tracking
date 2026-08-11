@@ -16,6 +16,7 @@ import {
   STATUS_META,
 } from "@/utils/pmData";
 import { loadEmployees } from "@/utils/employeesData";
+import ProjectDiscussion from "@/components/admin/ProjectDiscussion";
 import StatCard from "@/components/shell/StatCard";
 import { showError } from "@/utils/alerts";
 import {
@@ -51,6 +52,7 @@ import {
   BookmarkCheck,
   RefreshCw,
   Activity as ActivityIcon,
+  MessagesSquare,
 } from "lucide-react";
 
 /* Project Hub — a self-contained overview for one project: health, key stats,
@@ -749,7 +751,30 @@ export default function ProjectOverview() {
               </CardContent>
             </Card>
 
-            {/* 4) Activity timeline */}
+            {/* 4) Internal discussion — founder ↔ project manager ↔ team.
+                 Placed above Activity on purpose: Activity is a log of what
+                 the system noticed, this is where people actually talk, and
+                 the thing you want to answer is nearly always the message. */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <MessagesSquare className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                  <CardTitle>Discussion</CardTitle>
+                </div>
+                <CardDescription>
+                  Talk to the project manager and the team about this project.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {/* Bounded height so a long thread scrolls inside the card
+                    instead of pushing Activity and Templates off the screen. */}
+                <div className="h-[420px]">
+                  <ProjectDiscussion projectId={projectId} />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 5) Activity timeline */}
             <Card>
               <CardHeader>
                 <div className="flex items-center gap-2">

@@ -19,16 +19,25 @@ function asRole(role) {
   getOrgContext.mockReturnValue(role ? { role } : null);
 }
 
+// All eleven, in rank order. `designer` is EXCLUDED from the strict-ordering
+// test below (and only from that one) because it shares a rank with
+// `developer` on purpose — a test that demands a total order cannot also
+// express a deliberate tie.
 const ALL_ROLES = [
   'owner',
   'admin',
   'manager',
   'hr',
+  'finance',
   'team_lead',
+  'qa',
   'developer',
+  'designer',
   'employee',
   'client',
 ];
+
+const STRICTLY_ORDERED = ALL_ROLES.filter((r) => r !== 'designer');
 
 beforeEach(() => {
   getOrgContext.mockReset();
@@ -70,17 +79,24 @@ describe('hasRole', () => {
 });
 
 describe('atLeast (ROLE_RANK ordering)', () => {
-  it('orders roles owner > admin > manager > hr > team_lead > developer > employee > client', () => {
+  it('orders roles owner > admin > manager > hr > finance > team_lead > qa > developer > employee > client', () => {
     // Each role must satisfy atLeast for itself and everything below it.
-    ALL_ROLES.forEach((role, index) => {
+    STRICTLY_ORDERED.forEach((role, index) => {
       asRole(role);
-      ALL_ROLES.slice(index).forEach((lowerOrEqual) => {
+      STRICTLY_ORDERED.slice(index).forEach((lowerOrEqual) => {
         expect(atLeast(lowerOrEqual), `${role} should satisfy atLeast(${lowerOrEqual})`).toBe(true);
       });
-      ALL_ROLES.slice(0, index).forEach((higher) => {
+      STRICTLY_ORDERED.slice(0, index).forEach((higher) => {
         expect(atLeast(higher), `${role} should NOT satisfy atLeast(${higher})`).toBe(false);
       });
     });
+  });
+
+  it('treats designer and developer as the same tier, in both directions', () => {
+    asRole('designer');
+    expect(atLeast('developer')).toBe(true);
+    asRole('developer');
+    expect(atLeast('designer')).toBe(true);
   });
 
   it('returns false when signed out regardless of the requested role', () => {
@@ -155,7 +171,9 @@ describe('can — people operations (owner, admin, hr)', () => {
 });
 
 describe('can — project administration (owner, admin)', () => {
-  const PROJECT_ACTIONS = ['create_project', 'delete_project', 'manage_automation'];
+  // create_project deliberately left OUT of this list — it is no longer
+  // owner/admin only. See the block below.
+  const PROJECT_ACTIONS = ['delete_project', 'manage_automation'];
   const ALLOWED = ['owner', 'admin'];
 
   it.each(PROJECT_ACTIONS)('allows exactly owner/admin to %s', (action) => {
@@ -173,8 +191,10 @@ describe('can — project administration (owner, admin)', () => {
 });
 
 describe('can — task/team oversight (owner, admin, manager, team_lead)', () => {
+  // review_tasks deliberately NOT here: QA reviews too, so it has its own
+  // block. Leaving it in this list would assert that QA cannot review, which
+  // is the opposite of why the role exists.
   const SUPERVISOR_ACTIONS = [
-    'review_tasks',
     'manage_tasks',
     'view_tracking',
     'view_reports',
@@ -197,9 +217,10 @@ describe('can — task/team oversight (owner, admin, manager, team_lead)', () =>
 });
 
 describe('can — submit_task', () => {
-  const ALLOWED = ['developer', 'employee', 'team_lead'];
+  // Designer and QA file work the same way a developer does.
+  const ALLOWED = ['developer', 'designer', 'qa', 'employee', 'team_lead'];
 
-  it('allows exactly developer/employee/team_lead', () => {
+  it('allows exactly the people who do the work', () => {
     ALL_ROLES.forEach((role) => {
       asRole(role);
       expect(can('submit_task'), `${role} -> submit_task`).toBe(ALLOWED.includes(role));
@@ -218,5 +239,73 @@ describe('can — unknown actions', () => {
   it('never allows an unknown action while signed out', () => {
     asRole(null);
     expect(can('some_unlisted_action')).toBe(false);
+  });
+});
+
+describe('can — creating a project is the project manager\'s job', () => {
+  // This used to be owner/admin only, which meant a PM could RUN a project but
+  // not START one — every new piece of work had to queue behind a founder.
+  const ALLOWED = ['owner', 'admin', 'manager', 'team_lead'];
+
+  it('allows exactly the supervisor set to create_project', () => {
+    ALL_ROLES.forEach((role) => {
+      asRole(role);
+      expect(can('create_project'), `${role} -> create_project`).toBe(ALLOWED.includes(role));
+    });
+  });
+
+  it('still keeps DELETING a project to owner/admin', () => {
+    // Starting work and destroying it are not the same decision.
+    asRole('manager');
+    expect(can('create_project')).toBe(true);
+    expect(can('delete_project')).toBe(false);
+    asRole('team_lead');
+    expect(can('create_project')).toBe(true);
+    expect(can('delete_project')).toBe(false);
+  });
+
+  it('does not hand it to a developer, designer, qa or client', () => {
+    for (const role of ['developer', 'designer', 'qa', 'employee', 'client']) {
+      asRole(role);
+      expect(can('create_project'), role).toBe(false);
+    }
+  });
+});
+
+describe('can — review_tasks includes QA', () => {
+  const ALLOWED = ['owner', 'admin', 'manager', 'team_lead', 'qa'];
+
+  it('allows exactly the reviewer set', () => {
+    ALL_ROLES.forEach((role) => {
+      asRole(role);
+      expect(can('review_tasks'), `${role} -> review_tasks`).toBe(ALLOWED.includes(role));
+    });
+  });
+
+  it('gives QA the review right WITHOUT the rest of the oversight surface', () => {
+    asRole('qa');
+    expect(can('review_tasks')).toBe(true);
+    expect(can('view_tracking')).toBe(false);
+    expect(can('view_reports')).toBe(false);
+    expect(can('create_project')).toBe(false);
+  });
+});
+
+describe('can — finance sees money, not people', () => {
+  const ALLOWED = ['owner', 'admin', 'finance'];
+
+  it.each(['view_billing', 'manage_billing'])('allows exactly owner/admin/finance to %s', (action) => {
+    ALL_ROLES.forEach((role) => {
+      asRole(role);
+      expect(can(action), `${role} -> ${action}`).toBe(ALLOWED.includes(role));
+    });
+  });
+
+  it('does not give finance any monitoring or people access', () => {
+    asRole('finance');
+    expect(can('view_tracking')).toBe(false);
+    expect(can('view_team')).toBe(false);
+    expect(can('manage_employees')).toBe(false);
+    expect(can('create_project')).toBe(false);
   });
 });

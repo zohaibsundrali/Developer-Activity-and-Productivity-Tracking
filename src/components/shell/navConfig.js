@@ -82,7 +82,11 @@ export const EMPLOYEE_NAV = [
 // user (owner/admin/hr). Used to filter the sidebar AND to gate section access.
 export const ADMIN_SECTION_ROLES = {
   overview: null,
-  "all-projects": ["owner", "admin"],
+  // A project manager who may create a project has to be able to reach the
+  // list of them. Manager and team_lead already had `project-hub`, `views`
+  // and `sprints` — this was the one screen in that set they were locked out
+  // of, which made the others look broken.
+  "all-projects": ["owner", "admin", "manager", "team_lead"],
   "project-hub": ["owner", "admin", "manager", "team_lead"],
   board: ["owner", "admin"],
   views: ["owner", "admin", "manager", "team_lead"],
