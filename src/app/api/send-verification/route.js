@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import { sendEmail } from '@/utils/emailService';
 import { renderTemplate } from '@/utils/emailTemplates';
+import { serviceClient } from '@/utils/serverAuth';
+import {
+  normalizeEmail,
+  hashCode,
+  newCode,
+  CODE_TTL_MINUTES,
+} from '@/utils/verificationCodes';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,16 +44,11 @@ export const dynamic = 'force-dynamic';
 const MAX_PER_WINDOW = 5;
 const WINDOW_MS = 10 * 60 * 1000; // 10 minutes
 
-/**
- * How long the page tells the user the code lasts. It is stated in the email
- * so it must come from one place; the page uses the same ten minutes.
- *
- * This is COPY, not enforcement. Enforcement would need the code minted here,
- * stored server-side with an `expires_at`, and checked by a verify endpoint
- * that /api/auth/signup trusts — a change to signup's contract, which is out
- * of scope for this pass.
- */
-const CODE_TTL_MINUTES = 10;
+// CODE_TTL_MINUTES now comes from src/utils/verificationCodes.js, shared with
+// the verify route, and it is ENFORCED rather than merely stated: the code is
+// minted here, stored with an `expires_at`, and checked by /api/auth/verify-code
+// which /api/auth/signup then trusts. The note that used to sit here — saying
+// this was copy and not enforcement — described the world before that.
 
 // Best-effort in-process limiter. Serverless instances each keep their own
 // counter, so this caps abuse rather than eliminating it; a shared store would
@@ -66,14 +68,15 @@ export async function POST(request) {
   try {
     const body = await request.json().catch(() => ({}));
     const rawEmail = typeof body.email === 'string' ? body.email.trim() : '';
-    const rawCode = String(body.code ?? '');
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail) || rawEmail.length > 254) {
       return NextResponse.json({ error: 'A valid email address is required' }, { status: 400 });
     }
-    if (!/^\d{4,8}$/.test(rawCode)) {
-      return NextResponse.json({ error: 'Invalid verification code' }, { status: 400 });
-    }
+
+    // `body.code` IS NO LONGER READ. The caller does not get to choose the
+    // code any more — this route mints it. A caller that still sends one is
+    // simply ignored rather than rejected, so an older cached bundle degrades
+    // into "the emailed code is the one that works" rather than into an error.
 
     const ip =
       request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
@@ -87,7 +90,46 @@ export async function POST(request) {
     }
 
     const email = rawEmail;
-    const code = rawCode;
+
+    // Mint the code HERE and store its hash, so that /api/auth/verify-code can
+    // actually check it and the ten-minute expiry the email states is a fact
+    // rather than copy. Previously the browser generated this number, held it
+    // in React state, and compared it itself — a check anyone could skip by
+    // posting straight to /api/auth/signup.
+    const code = newCode();
+    const svc = serviceClient();
+    const normalized = normalizeEmail(email);
+    const expiresAt = new Date(Date.now() + CODE_TTL_MINUTES * 60_000).toISOString();
+
+    // Any earlier live code for this address is retired first. Without this,
+    // asking for a second code would leave the first one working — so "resend
+    // because I did not receive it" would widen the window instead of moving
+    // it, and every resend would add another guessable code.
+    await svc
+      .from('email_verifications')
+      .update({ expires_at: new Date().toISOString() })
+      .eq('email', normalized)
+      .is('consumed_at', null)
+      .is('verified_at', null)
+      .gt('expires_at', new Date().toISOString());
+
+    const { error: storeErr } = await svc.from('email_verifications').insert({
+      email: normalized,
+      code_hash: hashCode(normalized, code),
+      expires_at: expiresAt,
+      ip,
+    });
+
+    if (storeErr) {
+      // Refuse rather than send. An email carrying a code that nothing stored
+      // is worse than no email: the user would type a number that can never
+      // verify and read it as their own mistake.
+      console.error('[send-verification] store failed:', storeErr.message);
+      return NextResponse.json(
+        { success: false, error: 'Could not start verification. Please try again.' },
+        { status: 503 }
+      );
+    }
 
     // One template, one subject, no branch on anything the caller sent. The
     // values below are handed over RAW on purpose: `renderTemplate` escapes and

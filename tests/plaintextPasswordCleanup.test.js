@@ -92,7 +92,24 @@ function fakeClient() {
         },
         update(patch) {
           state.updates.push({ table, patch });
-          return { eq: async () => ({ data: null, error: null }) };
+          // Chainable and awaitable: signup consumes the email verification
+          // with .update().eq().is().not().gte().select() as a single write
+          // (migration 056). A single-level `{ eq }` throws on the second link.
+          const result = {
+            data: table === "email_verifications" ? [{ id: "verification-1" }] : null,
+            error: null,
+          };
+          const builder = {
+            eq: () => builder,
+            is: () => builder,
+            not: () => builder,
+            gt: () => builder,
+            gte: () => builder,
+            lt: () => builder,
+            lte: () => builder,
+            select: () => thenable(result),
+          };
+          return thenable(result, builder);
         },
         delete() {
           return { eq: async () => ({ data: null, error: null }) };

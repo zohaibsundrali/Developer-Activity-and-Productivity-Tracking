@@ -236,8 +236,13 @@ describe("the ten-minute countdown", () => {
     expect(REGISTRATION_CODE).toMatch(/const CODE_TTL_MINUTES = 10/);
     expect(REGISTRATION_CODE).toMatch(/const CODE_TTL_MS = CODE_TTL_MINUTES \* 60 \* 1000/);
     expect(REGISTRATION_CODE).toMatch(/setCodeExpiry\(Date\.now\(\) \+ CODE_TTL_MS\)/);
-    expect(ROUTE_CODE).toMatch(/const CODE_TTL_MINUTES = 10/);
+    // The route's copy of the constant moved into
+    // src/utils/verificationCodes.js, so send and verify cannot disagree on
+    // it, and it is now ENFORCED via a stored `expires_at` rather than merely
+    // stated in the email.
+    expect(ROUTE_CODE).toMatch(/CODE_TTL_MINUTES,?\s*\n?\s*\}\s*from ['"]@\/utils\/verificationCodes['"]/);
     expect(ROUTE_CODE).toMatch(/expiresInMinutes: CODE_TTL_MINUTES/);
+    expect(ROUTE_CODE).toMatch(/CODE_TTL_MINUTES \* 60_000/);
   });
 
   it("stops ticking once the code is dead rather than re-rendering for ever", () => {
@@ -257,12 +262,23 @@ describe("the ten-minute countdown", () => {
   // The honest part. Nothing server-side mints, stores or compares the code,
   // so this deadline is enforced in the browser and nowhere else. If that ever
   // changes, this test should be the thing that fails.
-  it("is still a client-side code, compared client-side", () => {
-    expect(REGISTRATION_CODE).toMatch(/Math\.floor\(1000 \+ Math\.random\(\) \* 9000\)/);
-    expect(REGISTRATION_CODE).toMatch(/if \(code !== generatedCode\)/);
-    expect(ROUTE_CODE).not.toMatch(/Math\.random/);
-    expect(ROUTE_CODE).not.toMatch(/expires_at/);
-    expect(ROUTE).toContain("STILL OUTSTANDING");
+  // This test used to assert the OPPOSITE — that the code was generated and
+  // compared in the browser — because that is what the code did and the suite
+  // documented it honestly rather than pretending otherwise. Migration 056 and
+  // /api/auth/verify-code moved the decision to the server, so the assertion
+  // inverts with it.
+  it("no longer mints or compares the code in the browser", () => {
+    expect(REGISTRATION_CODE).not.toMatch(/Math\.random/);
+    expect(REGISTRATION_CODE).not.toMatch(/generatedCode/);
+    expect(REGISTRATION_CODE).toContain("/api/auth/verify-code");
+  });
+
+  it("mints the code on the server and stores it with an expiry", () => {
+    expect(ROUTE_CODE).toContain("newCode()");
+    expect(ROUTE_CODE).toContain("email_verifications");
+    expect(ROUTE_CODE).toMatch(/expires_at/);
+    // The route no longer relays a number the caller chose.
+    expect(ROUTE_CODE).not.toMatch(/rawCode/);
   });
 });
 
@@ -397,7 +413,10 @@ describe("the verification email", () => {
 describe("what must not have changed", () => {
   it("the send-verification route still validates and rate limits exactly as before", () => {
     expect(ROUTE_CODE).toContain("/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(rawEmail)");
-    expect(ROUTE_CODE).toMatch(/if \(!\/\^\\d\{4,8\}\$\/\.test\(rawCode\)\)/);
+    // The `rawCode` shape check is gone because the caller no longer supplies a
+    // code at all — the route mints it. Removing the input is strictly stronger
+    // than validating it.
+    expect(ROUTE_CODE).not.toMatch(/rawCode/);
     expect(ROUTE_CODE).toMatch(/rateLimited\(`ip:\$\{ip\}`\) \|\| rateLimited\(`to:\$\{rawEmail\.toLowerCase\(\)\}`\)/);
     expect(ROUTE_CODE).toMatch(/status: 429/);
     // No caller-chosen content survives: `type` and `role` are not read at all.
