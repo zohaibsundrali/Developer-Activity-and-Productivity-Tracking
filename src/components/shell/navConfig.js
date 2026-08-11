@@ -13,6 +13,8 @@ import {
   LifeBuoy,
   Receipt,
   Handshake,
+  Inbox,
+  Lightbulb,
   Contact,
   BarChart3,
   LayoutGrid,
@@ -33,6 +35,10 @@ export { SECTION_TITLES, sectionTitle } from "@/components/shell/sectionTitles";
 export const ADMIN_NAV = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "all-projects", label: "All Projects", icon: FolderKanban },
+  // Sits directly under All Projects: a request IS a project that has not
+  // been agreed to yet, so it belongs beside the projects rather than off in
+  // an admin corner where nobody would look for it.
+  { id: "requests", label: "Requests", icon: Inbox },
   { id: "project-hub", label: "Project Hub", icon: Gauge },
   { id: "board", label: "Board", icon: LayoutGrid },
   { id: "views", label: "Views", icon: Columns3 },
@@ -59,6 +65,9 @@ export const ADMIN_NAV = [
 export const DEVELOPER_NAV = [
   { id: "overview", label: "Dashboard", icon: LayoutDashboard },
   { id: "projects", label: "My Projects", icon: FolderKanban },
+  // Directly under My Projects: proposing one is the same subject as having
+  // one, and a client looking to start something looks there first.
+  { id: "new-project", label: "New Project", icon: Lightbulb },
   { id: "account", label: "Account", icon: UserCircle },
 ];
 
@@ -87,6 +96,9 @@ export const ADMIN_SECTION_ROLES = {
   // and `sprints` — this was the one screen in that set they were locked out
   // of, which made the others look broken.
   "all-projects": ["owner", "admin", "manager", "team_lead"],
+  // Everyone who can decide, plus team_lead who can read but not decide —
+  // the route and the RLS policy both refuse a decision from them.
+  requests: ["owner", "admin", "manager", "team_lead"],
   "project-hub": ["owner", "admin", "manager", "team_lead"],
   board: ["owner", "admin"],
   views: ["owner", "admin", "manager", "team_lead"],
