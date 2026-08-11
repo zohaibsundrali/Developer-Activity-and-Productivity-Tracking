@@ -143,7 +143,19 @@ from public.projects;
 --  3e. projects.status is STILL unconstrained, and that is on purpose — see
 --      the header. Expect 0 rows; when somebody normalises the vocabulary this
 --      is the query that should start returning one.
-select conname
-from pg_constraint
-where conrelid = 'public.projects'::regclass
-  and pg_get_constraintdef(oid) ilike '%status%';
+--
+--      MATCHED ON THE COLUMN, NOT ON THE TEXT. This query first read
+--      `pg_get_constraintdef(oid) ilike '%status%'`, which also matches
+--      `projects_task_plan_status_check` — a constraint on a DIFFERENT column,
+--      task_plan_status. Run against the live database it returned that row,
+--      which reads as "status is constrained" when it is not. Joining through
+--      conkey asks the question that was meant: is there a check constraint
+--      covering the `status` column itself?
+select con.conname, pg_get_constraintdef(con.oid) as definition
+from pg_constraint con
+join unnest(con.conkey) as k(attnum) on true
+join pg_attribute a
+  on a.attrelid = con.conrelid and a.attnum = k.attnum
+where con.conrelid = 'public.projects'::regclass
+  and con.contype = 'c'
+  and a.attname = 'status';
