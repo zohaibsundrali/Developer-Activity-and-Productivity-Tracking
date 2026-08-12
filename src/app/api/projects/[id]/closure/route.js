@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
+import { PROJECT_STATUS } from "@/utils/projectStatus";
 
 export const dynamic = "force-dynamic";
 
@@ -31,10 +32,13 @@ export const dynamic = "force-dynamic";
  * A disabled control with no explanation is the thing that gets reported as a
  * bug about the button.
  *
- * WHAT IS NOT ENFORCED HERE, ON PURPOSE: the project's `status` string. Two
- * PROJECT_STATUS maps in the app disagree with each other about its
- * vocabulary, so the route writes a friendly value alongside the timestamps for
- * the existing badges and reads none of it back to decide anything.
+ * THE STATUS STRING IS WRITTEN, NEVER READ BACK. The route sets a matching
+ * `status` alongside the timestamps so the existing badges keep working, and
+ * decides nothing from it. That separation was originally forced — the app's
+ * screens disagreed about the vocabulary — and it is kept now that migration
+ * 065 has settled it, because a timestamp cannot be half-true and a text
+ * column can. The values come from utils/projectStatus.js; 065's CHECK refuses
+ * anything else, so a literal here would be a runtime failure.
  */
 
 // Owner and admin can act on any project. A manager or team lead acts on the
@@ -246,7 +250,7 @@ export async function POST(request, { params }) {
           completed_by: auth.appUserId || null,
           // Written for the badges that already read it. Nothing decides
           // anything from this string — see the note at the top.
-          status: "completed",
+          status: PROJECT_STATUS.completed,
         };
         logEntry = { action: "project_completed", meta: {} };
         break;
@@ -316,7 +320,7 @@ export async function POST(request, { params }) {
           closed_by: auth.appUserId || null,
           closure_note:
             typeof body.note === "string" ? body.note.trim().slice(0, 5000) || null : null,
-          status: "closed",
+          status: PROJECT_STATUS.closed,
         };
         logEntry = {
           action: "project_closed",
@@ -352,7 +356,10 @@ export async function POST(request, { params }) {
           },
         });
 
-        patch = { closed_at: null, closed_by: null, status: "in_progress" };
+        // `active`, not `in_progress`. They meant the same thing and that
+        // duplication is what migration 065 removed; the CHECK now refuses
+        // `in_progress`, so this write would fail. See utils/projectStatus.js.
+        patch = { closed_at: null, closed_by: null, status: PROJECT_STATUS.active };
         // Already logged above, with the values that are about to be lost.
         logEntry = null;
         break;

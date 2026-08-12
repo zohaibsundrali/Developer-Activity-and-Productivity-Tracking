@@ -1,6 +1,7 @@
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
+import { PROJECT_STATUS } from "@/utils/projectStatus";
 import { notify, windowedDedupeKey } from "@/utils/notifications";
 
 // How close together two identical status changes have to be to count as one
@@ -1423,7 +1424,7 @@ export async function cloneProject(sourceProjectId, newName, { copyTasks = true 
     ...carry,
     organization_id: orgId,
     name: newName || `${name} (copy)`,
-    status: "pending",
+    status: PROJECT_STATUS.pending,
     progress: 0,
     is_template: false,
     archived: false,

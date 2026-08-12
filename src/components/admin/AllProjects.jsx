@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { showError, showInfo, showSuccess, showWarning } from "@/utils/alerts";
 import { getOrgId } from "@/utils/orgContext";
+import { PROJECT_STATUS } from "@/utils/projectStatus";
 import { authFetch } from "@/utils/authFetch";
 import { uploadOrgFile, resolveOrgFileUrl } from "@/utils/orgFiles";
 // The page <h1> reads the same string the sidebar and topbar do.
@@ -467,7 +468,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
             file_name: newProject.file ? newProject.file.name : null,
             progress: 0,
             developers_count: 1,
-            status: 'active',
+            status: PROJECT_STATUS.active,
             // Task plan workflow defaults (Admin cannot approve/reject until developer submits)
             task_plan_submitted: false,
             task_plan_status: 'draft',

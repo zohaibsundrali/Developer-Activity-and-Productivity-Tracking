@@ -35,23 +35,14 @@ const CONTROL_CLASS =
   "rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 // Project status → StatusPill state (colour + glyph + text, never colour alone).
-const PROJECT_STATUS = {
-  active: { status: "active", label: "Active" },
-  in_progress: { status: "active", label: "In progress" },
-  completed: { status: "success", label: "Completed" },
-  done: { status: "success", label: "Completed" },
-  pending: { status: "pending", label: "Pending" },
-  assigned: { status: "pending", label: "Assigned" },
-};
-
+// The map that used to live here knew six spellings; the one on the developer
+// dashboard knew eight, and the two disagreed. Both now read the single
+// vocabulary in utils/projectStatus.js, which migration 065 also enforces in
+// the database.
 function projectStatus(status) {
-  const key = String(status || "").toLowerCase();
-  return (
-    PROJECT_STATUS[key] || {
-      status: "unknown",
-      label: status ? status.charAt(0).toUpperCase() + status.slice(1) : "Pending",
-    }
-  );
+  const meta = projectStatusMeta(status);
+  // StatusPill takes the tone under the name `status`.
+  return { status: meta.tone, label: meta.label };
 }
 
 // A card fact: same label/value slot on every card, so a grid of them reads as
