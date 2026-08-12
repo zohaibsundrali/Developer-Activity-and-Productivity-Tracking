@@ -29,6 +29,7 @@ export const ROLES = [
   "qa",
   "developer",
   "designer",
+  "devops",
   "employee",
   "client",
 ];
@@ -37,9 +38,9 @@ export const ROLES = [
  * Rank, for "is this caller at least X" and for refusing to grant a role at or
  * above your own.
  *
- * `designer` and `developer` SHARE a rank on purpose — they do the same kind of
- * work with the same access, so neither outranks the other. Anything comparing
- * these numbers must cope with a tie.
+ * `designer`, `developer` and `devops` SHARE a rank on purpose — they do the
+ * same kind of work with the same access, so none outranks the others.
+ * Anything comparing these numbers must cope with a tie.
  *
  * The scale is sparse so a role can be inserted between two others without
  * renumbering. Do NOT write a comparison that assumes a particular maximum:
@@ -56,6 +57,7 @@ export const ROLE_RANK = {
   qa: 35,
   developer: 30,
   designer: 30,
+  devops: 30,
   employee: 20,
   client: 10,
 };

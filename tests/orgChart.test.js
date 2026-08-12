@@ -48,17 +48,25 @@ describe("it is a chart, not a list", () => {
     expect(CHART).toMatch(/h-8 w-px bg-border/);
   });
 
-  it("uses all three rail cases, so it stops at the outer children", () => {
-    // first: from its own centre rightwards. last: leftwards. middle: across.
-    expect(CHART).toContain('"left-1/2 right-0"');
-    expect(CHART).toContain('"left-0 right-1/2"');
-    expect(CHART).toContain('"left-0 right-0"');
+  it("uses all three connector cases, so it stops at the outer children", () => {
+    // The rails became rounded ELBOWS: each outer child draws one element
+    // carrying both halves of its corner, so the two borders cannot fall out
+    // of alignment with each other at fractional zoom.
+    //   first  — crossbar right, corner turning down at its own centre
+    //   last   — crossbar left, same
+    //   middle — a straight crossbar plus a centre drop (a T has no corner)
+    expect(CHART).toMatch(/left-1\/2 right-0 top-0 h-10 rounded-tl-xl border-l border-t/);
+    expect(CHART).toMatch(/left-0 right-1\/2 top-0 h-10 rounded-tr-xl border-r border-t/);
+    expect(CHART).toMatch(/left-0 right-0 top-0 border-t/);
   });
 
-  it("draws NO rail for a lone child", () => {
+  it("draws NO crossbar for a lone child — only a straight drop", () => {
     // A horizontal line to nowhere is what makes a hand-made tree look broken.
     expect(CHART).toMatch(/const only = items\.length === 1/);
-    expect(CHART).toMatch(/only\s*\?\s*null/);
+    const branches = CHART.slice(CHART.indexOf("export function Branches"), CHART.indexOf("function initialsOf"));
+    const loneArm = branches.slice(branches.indexOf("only ?"), branches.indexOf("i === 0 ?"));
+    expect(loneArm).toMatch(/w-px/);
+    expect(loneArm).not.toMatch(/border-t|rounded-t/);
   });
 
   it("no longer renders the stacked cards it replaced", () => {
@@ -107,7 +115,7 @@ describe("the hierarchy it claims is the hierarchy it has", () => {
   it("says so when there is no manager rather than leaving a gap", () => {
     // A gap in a chart reads as "still loading".
     expect(CHART).toMatch(/export function EmptyManagerNode/);
-    expect(CHART).toMatch(/No manager/);
+    expect(CHART).toMatch(/Not assigned/);
     expect(CHART).toMatch(/Set one in Project Hub/);
   });
 
@@ -152,8 +160,20 @@ describe("what each node shows", () => {
     expect(hidden.length).toBeGreaterThanOrEqual(rails.length);
   });
 
-  it("says how many people a role branch is hiding, rather than an ellipsis", () => {
-    // A count somebody can act on beats a "…" they have to click to understand.
-    expect(CHART).toMatch(/\+\{rest\} more/);
+  it("collapses a large branch behind a real control, not an ellipsis", () => {
+    // A count somebody can act on beats a "…" they have to click to understand
+    // — and it has to be a button, because "expandable branches for large
+    // teams" is the whole reason a twelve-person team does not become a list.
+    expect(CHART).toMatch(/Show \$\{overflow\} more/);
+    expect(CHART).toMatch(/Show fewer/);
+    expect(CHART).toMatch(/aria-expanded=\{open\}/);
+    expect(CHART).toMatch(/aria-controls=\{listId\}/);
+  });
+
+  it("gives each branch its OWN open state", () => {
+    // One useState per branch, so opening a large team does not open every
+    // other team on the screen.
+    const branch = CHART.slice(CHART.indexOf("export function RoleBranch"));
+    expect(branch).toMatch(/const \[open, setOpen\] = useState\(false\)/);
   });
 });

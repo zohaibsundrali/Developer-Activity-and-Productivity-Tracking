@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 
 /**
  * Role changes — the authorisation matrix, the write order, and the claim merge.
@@ -145,16 +147,31 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+const root = path.resolve(__dirname, '..');
+
 describe('the role vocabulary', () => {
-  it('accepts exactly the 11 roles the memberships CHECK constraint allows', () => {
-    // Widened by database/058. This assertion used to say eight, and it was
-    // right to fail when the shared role list reached this file: for as long
-    // as it passed, changing somebody to designer/qa/finance was refused here
-    // as an unknown role while the database would have accepted it.
+  it('accepts exactly the 12 roles the memberships CHECK constraint allows', () => {
+    // Widened by 058 (designer/qa/finance) and 067 (devops). This assertion has
+    // now said eight, then eleven, then twelve, and each time it was RIGHT to
+    // fail: for as long as it passed with the old number, changing somebody to
+    // the new role was refused here as unknown while the database would have
+    // accepted it.
     expect([...VALID_ROLES].sort()).toEqual(
-      ['admin', 'client', 'designer', 'developer', 'employee', 'finance',
-       'hr', 'manager', 'owner', 'qa', 'team_lead'].sort()
+      ['admin', 'client', 'designer', 'developer', 'devops', 'employee',
+       'finance', 'hr', 'manager', 'owner', 'qa', 'team_lead'].sort()
     );
+  });
+
+  it('is the same set the CHECK constraint in 067 lists', () => {
+    // The two drifting apart is the whole failure mode: a role the app can
+    // assign and the database refuses is a save that fails in front of a user.
+    const sql = readFileSync(path.join(root, 'database/067_devops_role.sql'), 'utf8');
+    const listed = [...sql.matchAll(/'([a-z_]+)'/g)]
+      .map((m) => m[1])
+      .filter((r) => [...VALID_ROLES].includes(r));
+    for (const role of VALID_ROLES) {
+      expect(listed, `${role} missing from 067's CHECK`).toContain(role);
+    }
   });
 
   it('ranks owner above admin above hr above developer', () => {
