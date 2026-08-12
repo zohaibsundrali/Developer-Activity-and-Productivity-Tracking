@@ -2498,7 +2498,7 @@ export default function DeveloperActivity() {
                   // In-app route change: router.push keeps the shell mounted.
                   // A window.location assignment here reloaded the whole
                   // document — flash, lost scroll, shell rebuilt from scratch.
-                  onClick={() => router.push("/admin/dashboard?section=add-developer")}
+                  onClick={() => router.push("/admin/dashboard?section=employees")}
                 >
                   Add a Developer
                 </Button>

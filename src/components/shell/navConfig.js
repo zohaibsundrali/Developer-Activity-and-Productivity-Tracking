@@ -2,7 +2,6 @@ import {
   LayoutDashboard,
   FolderKanban,
   ClipboardCheck,
-  UserPlus,
   Activity,
   Users,
   UserCircle,
@@ -51,8 +50,13 @@ export const ADMIN_NAV = [
   { id: "developer-activity", label: "Developer Activity", icon: Activity },
   { id: "reports", label: "Reports", icon: FileBarChart },
   { id: "automation", label: "Automation", icon: Zap },
-  { id: "add-developer", label: "Add Developer", icon: UserPlus },
-  { id: "view-developers", label: "View Developers", icon: Users },
+  // "Add Developer" and "View Developers" were both here. The People section
+  // is now one screen: Employees creates the account, lists everyone with the
+  // headcount per role, and carries the deactivate and delete controls the
+  // developer list used to own. Three sidebar entries covering overlapping
+  // halves of the same people is how somebody ends up looking for a colleague
+  // on the screen that does not have them. Old ?section= links for both still
+  // resolve — see LEGACY_SECTIONS in the admin dashboard.
   { id: "employees", label: "Employees", icon: Contact },
   { id: "team-stats", label: "Team Stats", icon: BarChart3 },
   { id: "organization", label: "Organization", icon: Building2 },
@@ -122,8 +126,6 @@ export const ADMIN_SECTION_ROLES = {
   "developer-activity": ["owner", "admin"],
   reports: ["owner", "admin", "manager", "team_lead"],
   automation: ["owner", "admin"],
-  "add-developer": ["owner", "admin", "hr"],
-  "view-developers": ["owner", "admin", "hr"],
   employees: ["owner", "admin", "hr"],
   "team-stats": ["owner", "admin", "hr"],
   organization: ["owner", "admin", "hr"],

@@ -31,8 +31,6 @@ test.describe('Owner', () => {
         'All Projects',
         'Task Reviews',
         'Reports',
-        'Add Developer',
-        'View Developers',
         'Employees',
         'Team Stats',
         'Organization',

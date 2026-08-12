@@ -32,8 +32,6 @@ export const SECTION_TITLES = {
   "developer-activity": { admin: "Developer Activity" },
   reports: { admin: "Reports & Analytics" },
   automation: { admin: "Workflow Automation" },
-  "add-developer": { admin: "Add Developer" },
-  "view-developers": { admin: "View Developers" },
   employees: { admin: "Employees" },
   "team-stats": { admin: "Team Stats" },
   organization: { admin: "Organization" },

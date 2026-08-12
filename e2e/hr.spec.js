@@ -7,12 +7,14 @@ import { expectNav, gotoSection, openSection } from './fixtures/app.js';
  * HR — people operations.
  *
  * HR reaches the admin console but only the people-facing half of it
- * (ADMIN_SECTION_ROLES in navConfig.js): employees, team stats, organization,
- * add/view developers. Billing, Clients, All Projects and Task Reviews are
+ * (ADMIN_SECTION_ROLES in navConfig.js): employees, team stats, organization.
+ * Billing, Clients, All Projects and Task Reviews are
  * owner/admin territory and must not appear.
  *
- * Onboarding here means "Add Developer" plus the invitation flow; offboarding
- * means the activate/deactivate control on the employee row, which writes
+ * Onboarding here means the Add Employee dialog — which used to be its own
+ * "Add Developer" sidebar screen and now opens from Employees — plus the
+ * invitation flow; offboarding means the activate/deactivate control on the
+ * employee card, which writes
  * `memberships.status` — the field that actually revokes a session on next
  * login (orgContext.isMembershipActive). The spec asserts the control exists
  * and is enabled for HR; flipping it is destructive, so it only runs with
@@ -32,8 +34,9 @@ test.describe('HR', () => {
 
     await expect(page).toHaveURL(/\/admin\/dashboard/);
     await expectNav(page, {
-      visible: ['Overview', 'Add Developer', 'View Developers', 'Employees', 'Team Stats', 'Organization'],
-      hidden: ['Billing', 'Clients', 'All Projects', 'Task Reviews', 'Automation', 'System Health'],
+      visible: ['Overview', 'Employees', 'Team Stats', 'Organization'],
+      // Add Developer and View Developers are both Employees now.
+      hidden: ['Add Developer', 'View Developers', 'Billing', 'Clients', 'All Projects', 'Task Reviews', 'Automation', 'System Health'],
     });
   });
 
@@ -50,16 +53,31 @@ test.describe('HR', () => {
 
     // Headcount tiles are the summary HR reads first.
     await expect(page.getByText('Total employees', { exact: true })).toBeVisible();
+
+    // …and under them, one tile per role present, which is the answer to
+    // "how many developers do we have".
+    await expect(page.getByRole('heading', { name: 'By role' })).toBeVisible();
   });
 
-  test('onboarding: the Add Developer form collects name, email and a password', async ({ page }) => {
-    test.skip(hr.portalName !== 'admin', 'Add Developer lives on the admin console.');
+  test('onboarding: the Add Employee form collects name, email, role and a password', async ({ page }) => {
+    test.skip(hr.portalName !== 'admin', 'The employee directory lives on the admin console.');
 
-    await openSection(page, 'Add Developer', 'Add Developer');
+    await openSection(page, 'Employees', 'Employees');
+    await page.getByRole('button', { name: 'Add employee' }).click();
 
-    await expect(page.getByPlaceholder("Enter developer's full name")).toBeVisible();
-    await expect(page.getByPlaceholder("Enter developer's email")).toBeVisible();
-    await expect(page.getByPlaceholder('Set developer password')).toBeVisible();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.getByPlaceholder('Enter their full name')).toBeVisible();
+    await expect(page.getByPlaceholder('Enter their email address')).toBeVisible();
+    await expect(page.getByPlaceholder('Set their password')).toBeVisible();
+
+    // The role picker is the reason this form is no longer "Add Developer".
+    // HR outranks developer, designer, QA, team lead and finance, so all five
+    // are on offer; HR itself is not, because the provision route refuses a
+    // role at or above the caller's own.
+    const role = page.getByRole('combobox', { name: 'Role' });
+    await expect(role).toBeVisible();
+    await expect(role.getByRole('option', { name: 'Designer' })).toBeAttached();
+    await expect(role.getByRole('option', { name: 'HR' })).toHaveCount(0);
   });
 
   test('onboarding: HR can invite a member with a role', async ({ page }) => {
@@ -77,12 +95,16 @@ test.describe('HR', () => {
 
     await openSection(page, 'Employees', 'Employees');
 
-    const rows = page.getByRole('row').filter({ has: page.getByRole('button', { name: 'Edit', exact: true }) });
-    const count = await rows.count();
+    // Located by the button rather than by the table row it used to sit in:
+    // the directory shows cards by default now, and a row-scoped locator
+    // silently found nothing and SKIPPED, which reads in the report exactly
+    // like an organisation with no employees seeded.
+    const toggles = page.getByRole('button', { name: /^(Deactivate|Activate)$/ });
+    const count = await toggles.count();
     test.skip(count === 0, 'No employees are seeded in this organisation — seed one to cover offboarding.');
 
-    // `manage_employees` is what puts the toggle on the row; HR holds it.
-    const toggle = rows.first().getByRole('button', { name: /^(Deactivate|Activate)$/ });
+    // `manage_employees` is what puts the toggle on the card; HR holds it.
+    const toggle = toggles.first();
     await expect(toggle).toBeVisible();
     await expect(toggle).toBeEnabled();
   });
