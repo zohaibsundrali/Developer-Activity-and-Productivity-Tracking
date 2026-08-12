@@ -82,10 +82,11 @@ export const ADMIN_NAV = [
 export const DEVELOPER_NAV = [
   { id: "overview", label: "Dashboard", icon: LayoutDashboard },
   { id: "projects", label: "My Projects", icon: FolderKanban },
-  // Directly under My Projects: proposing one is the same subject as having
-  // one, and a client looking to start something looks there first.
-  { id: "new-project", label: "New Project", icon: Lightbulb },
-  { id: "change-requests", label: "Change Requests", icon: GitPullRequestArrow },
+  // `new-project` and `change-requests` USED TO BE HERE, and both were dead:
+  // the developer dashboard has no case for either, so they fell through to
+  // Dashboard. They belong to the CLIENT portal — which renders both, and
+  // whose section titles are the only ones defined for them — so that is where
+  // they now are. See CLIENT_NAV.
   { id: "account", label: "Account", icon: UserCircle },
 ];
 
@@ -181,6 +182,13 @@ export function staffNav(role) {
 export const CLIENT_NAV = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "projects", label: "My Projects", icon: FolderKanban },
+  // Directly under My Projects: proposing one is the same subject as having
+  // one, and a client looking to start something looks there first. Both of
+  // these were in DEVELOPER_NAV, where nothing rendered them — so a client
+  // could not raise a proposal or a change request at all, and the two modules
+  // built for them were unreachable from the UI.
+  { id: "new-project", label: "New Project", icon: Lightbulb },
+  { id: "change-requests", label: "Change Requests", icon: GitPullRequestArrow },
   { id: "announcements", label: "Announcements", icon: Megaphone },
   { id: "approvals", label: "Approvals", icon: CheckSquare },
   { id: "invoices", label: "Invoices", icon: Receipt },
