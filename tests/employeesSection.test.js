@@ -215,18 +215,23 @@ describe("grantableStaffRoles mirrors the provision route", () => {
 describe("the directory shows every role it might be handed", () => {
   const directory = read("src/components/admin/EmployeeDirectory.jsx");
 
-  it("has a badge variant for each one, so none falls back to Unknown", () => {
-    const block = directory.match(/const ROLE_VARIANTS = \{([\s\S]*?)\n\};/)?.[1] || "";
-    for (const r of ROLES) {
-      expect(block, `${r} has no badge variant`).toMatch(new RegExp(`\\b${r}:`));
-    }
-  });
-
-  it("has a headcount tile for each one", () => {
-    const block = directory.match(/const ROLE_META = \{([\s\S]*?)\n\};/)?.[1] || "";
-    for (const r of ROLES) {
-      expect(block, `${r} has no tile`).toMatch(new RegExp(`\\b${r}:`));
-    }
+  it("reads its role presentation from the shared module, not its own copy", () => {
+    // These two maps used to live in this file and were asserted here. They
+    // moved to components/shared/roleMeta.js the moment the Team Structure
+    // screen needed the same icons — two copies is how `designer`, `qa` and
+    // `finance` went weeks without a badge variant after 058 added them.
+    //
+    // The coverage assertion moved with them, to
+    // tests/hierarchyAndAttachments.test.js, which checks every role in ROLES
+    // has an icon, a label and a variant. Repeating it here would be the same
+    // duplication in the tests that the change removed from the source.
+    expect(directory).toContain('from "@/components/shared/roleMeta"');
+    expect(directory).not.toMatch(/const ROLE_VARIANTS = \{/);
+    expect(directory).not.toMatch(/const ROLE_META = \{/);
+    // …and it actually calls them, rather than importing and then inlining.
+    expect(directory).toContain("roleIcon(role)");
+    expect(directory).toContain("rolePlural(role)");
+    expect(directory).toContain("roleVariant(emp.role)");
   });
 
   it("counts the roles present rather than every role that exists", () => {

@@ -33,6 +33,7 @@ export const SECTION_TITLES = {
   reports: { admin: "Reports & Analytics" },
   automation: { admin: "Workflow Automation" },
   employees: { admin: "Employees" },
+  hierarchy: { admin: "Team Structure" },
   "team-stats": { admin: "Team Stats" },
   organization: { admin: "Organization" },
   clients: { admin: "Clients" },

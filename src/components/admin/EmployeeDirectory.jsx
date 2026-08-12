@@ -11,18 +11,8 @@ import {
   FilterX,
   UserPlus,
   Trash2,
-  FolderKanban,
   LayoutGrid,
   Rows3,
-  Crown,
-  ShieldCheck,
-  Briefcase,
-  UserCog,
-  Wallet,
-  ClipboardCheck,
-  Code2,
-  Palette,
-  User,
 } from "lucide-react";
 import StatCard from "@/components/shell/StatCard";
 import EmployeeProfileEditor from "@/components/admin/EmployeeProfileEditor";
@@ -45,7 +35,8 @@ import { sectionTitle } from "@/components/shell/navConfig";
 import { getOrgId } from "@/utils/orgContext";
 import { loadEmployees, setEmployeeStatus } from "@/utils/employeesData";
 import { can, getRole } from "@/utils/permissions";
-import { ROLES, grantableStaffRoles } from "@/utils/roles";
+import { grantableStaffRoles } from "@/utils/roles";
+import { roleIcon, roleVariant, rolePlural, roleOrder } from "@/components/shared/roleMeta";
 import { confirmAndDeleteDeveloper } from "@/utils/developerDeletion";
 import { resolveOrgFileUrls } from "@/utils/orgFiles";
 
@@ -61,57 +52,6 @@ import { resolveOrgFileUrls } from "@/utils/orgFiles";
  * below `md` where eight columns stop being legible.
  */
 
-// role → Badge variant. Status/role is never colour alone: the badge always
-// carries its label too.
-//
-// designer, qa and finance were missing here after migration 058 added them,
-// so three real roles rendered in the fallback outline as if they were
-// something the directory had never heard of.
-const ROLE_VARIANTS = {
-  owner: "default",
-  admin: "info",
-  manager: "secondary",
-  hr: "secondary",
-  finance: "secondary",
-  team_lead: "secondary",
-  qa: "success",
-  developer: "success",
-  designer: "success",
-  employee: "outline",
-  client: "outline",
-};
-
-function roleVariant(role) {
-  return ROLE_VARIANTS[role] || "outline";
-}
-
-// role → icon and plural, for the "by role" tiles. Purely presentational; a
-// role missing from here still gets counted and shown, with a generic icon and
-// its own prettified name.
-const ROLE_META = {
-  owner: { icon: Crown, plural: "Owners" },
-  admin: { icon: ShieldCheck, plural: "Admins" },
-  manager: { icon: Briefcase, plural: "Managers" },
-  hr: { icon: UserCog, plural: "HR" },
-  finance: { icon: Wallet, plural: "Finance" },
-  team_lead: { icon: Users, plural: "Team Leads" },
-  qa: { icon: ClipboardCheck, plural: "QA" },
-  developer: { icon: Code2, plural: "Developers" },
-  designer: { icon: Palette, plural: "Designers" },
-  employee: { icon: User, plural: "Employees" },
-  client: { icon: UserCircle, plural: "Clients" },
-};
-
-// Highest privilege first, so the strip reads the way an org chart does. Roles
-// this file has never heard of sort after the known ones rather than being
-// dropped — an unrecognised role is exactly the thing somebody needs to see.
-const roleOrder = (role) => {
-  const i = ROLES.indexOf(role);
-  return i === -1 ? ROLES.length : i;
-};
-
-// membership status → StatusPill status (which encodes shape as well as colour,
-// so "active" and "suspended" stay distinguishable without colour vision).
 const STATUS_PILLS = {
   active: "active",
   invited: "pending",
@@ -198,9 +138,8 @@ function CardFact({ label, children }) {
  * status.
  */
 function RoleTile({ role, count, active, onClick }) {
-  const meta = ROLE_META[role] || {};
-  const Icon = meta.icon || Users;
-  const label = meta.plural || prettyLabel(role);
+  const Icon = roleIcon(role);
+  const label = rolePlural(role);
 
   return (
     <button
