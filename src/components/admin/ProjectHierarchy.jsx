@@ -24,6 +24,7 @@ import {
   EmptyState,
   ErrorState,
   Skeleton,
+  ScrollStrip,
 } from "@/components/ui";
 import StatCard from "@/components/shell/StatCard";
 import { sectionTitle } from "@/components/shell/navConfig";
@@ -38,6 +39,14 @@ import {
   roleVariant,
   roleOrder,
 } from "@/components/shared/roleMeta";
+import {
+  Trunk,
+  Branches,
+  PersonNode,
+  EmptyManagerNode,
+  ProjectNode,
+  RoleBranch,
+} from "@/components/admin/orgChart";
 
 /**
  * Team Structure — who is on what, project by project.
@@ -104,245 +113,137 @@ function formatDate(value) {
   return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
-/** Initials, for somebody with no photo. */
-function initialsOf(name, email) {
-  const src = String(name || email || "?").trim();
-  const parts = src.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return src.slice(0, 2).toUpperCase() || "?";
-}
-
-function Avatar({ person, size = "md" }) {
-  const box = size === "lg" ? "h-10 w-10 text-sm" : "h-8 w-8 text-xs";
-  return (
-    <span
-      aria-hidden="true"
-      className={`${box} flex shrink-0 items-center justify-center rounded-full bg-primary/10 font-semibold text-primary ring-2 ring-card`}
-    >
-      {initialsOf(person?.name, person?.email)}
-    </span>
-  );
-}
-
 /**
- * The progress bar.
+ * One project, as a chart:
  *
- * The number is beside it, always. A bar alone is a shape somebody has to
- * estimate, and "roughly three quarters" is not what anybody wants to report
- * upward. The bar carries role="progressbar" with its value so a screen reader
- * gets the same fact rather than a decorative div.
+ *      [ project ]
+ *           │
+ *      [ manager ]              or a "No manager" node
+ *           │
+ *   ── team leads ──            only when there are any
+ *           │
+ *   ── one branch per role ──   Developers · Designers · QA · …
+ *
+ * NO LINE IS DRAWN FROM A TEAM LEAD TO A MEMBER, and that is deliberate.
+ * `memberships.reports_to` is null for every member of this organization —
+ * checked, not assumed — so there is no data saying who reports to which lead.
+ * Drawing one would invent a reporting structure and then be believed. The
+ * leads sit as their own level under the manager; the role branches hang from
+ * the same trunk, which claims only what is true: these people are all on this
+ * project.
  */
-function ProgressBar({ value, label }) {
-  const pct = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
-  return (
-    <div className="flex items-center gap-3">
-      <div
-        role="progressbar"
-        aria-valuenow={pct}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label={label}
-        className="h-2 flex-1 overflow-hidden rounded-full bg-muted"
-      >
-        <div
-          className="h-full rounded-full bg-primary transition-[width] duration-300 motion-reduce:transition-none"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <span className="w-11 shrink-0 text-right text-sm font-semibold tabular-nums text-foreground">
-        {pct}%
-      </span>
-    </div>
-  );
-}
-
-/** Overlapping avatars — the team at a glance, without expanding the card. */
-function AvatarStack({ people, max = 5 }) {
-  const shown = people.slice(0, max);
-  const rest = people.length - shown.length;
-  if (!people.length) return null;
-
-  return (
-    <div className="flex items-center">
-      <div className="flex -space-x-2">
-        {shown.map((p) => (
-          <span key={p.key} title={`${p.name}${p.role ? ` — ${roleLabel(p.role)}` : ""}`}>
-            <Avatar person={p} />
-          </span>
-        ))}
-      </div>
-      {rest > 0 && (
-        <span className="ml-2 text-xs font-medium text-muted-foreground tabular-nums">
-          +{rest}
-        </span>
-      )}
-      <span className="sr-only">
-        {people.length} {people.length === 1 ? "person" : "people"} on this project
-      </span>
-    </div>
-  );
-}
-
-/** One person inside an expanded card. */
-function PersonRow({ person }) {
-  const Icon = roleIcon(person.role);
-  return (
-    <li className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2">
-      <Avatar person={person} />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-foreground">
-          {person.name}
-        </span>
-        <span className="block truncate text-xs text-muted-foreground">
-          {person.email || "—"}
-        </span>
-      </span>
-      <span className="flex shrink-0 items-center gap-2">
-        {person.taskCount > 0 && (
-          <span className="text-xs text-muted-foreground tabular-nums">
-            {person.taskCount} {person.taskCount === 1 ? "task" : "tasks"}
-          </span>
-        )}
-        <Badge variant={roleVariant(person.role)} size="sm">
-          <Icon className="h-3 w-3" aria-hidden="true" />
-          {roleLabel(person.role)}
-        </Badge>
-      </span>
-    </li>
-  );
-}
-
-/** One project: collapsed summary, expandable to the people. */
-function ProjectCard({ project, expanded, onToggle }) {
+function ProjectChart({ project, expanded, onToggle }) {
   const { health, manager, byRole, team } = project;
   const status = projectStatusMeta(project.status);
   const risk = RISK_META[health.risk] || RISK_META.low;
   const deadline = formatDate(health.deadline);
   const panelId = `hierarchy-panel-${project.id}`;
 
+  // Team leads are a level, not a role branch — they sit between the manager
+  // and everybody else, which is the one thing a chart can say that a list
+  // cannot.
+  const leads = byRole.find((g) => g.role === "team_lead")?.people || [];
+  const roleBranches = byRole.filter((g) => g.role !== "team_lead");
+
+  const meta = (
+    <>
+      {project.priority && (
+        <Badge variant={PRIORITY_VARIANTS[String(project.priority).toLowerCase()] || "secondary"} size="sm">
+          <Flag className="h-3 w-3" aria-hidden="true" />
+          {prettyish(project.priority)}
+        </Badge>
+      )}
+      {/* Risk is only worth saying when it is not "fine". */}
+      {health.risk !== "low" && (
+        <Badge variant={risk.variant} size="sm">
+          <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+          {risk.label}
+        </Badge>
+      )}
+      <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+        <CalendarDays className="h-4 w-4" aria-hidden="true" />
+        {deadline ? (
+          <span className={health.deadlinePassed ? "font-medium text-destructive" : ""}>
+            {deadline}
+            {health.deadlinePassed ? " — passed" : ""}
+          </span>
+        ) : (
+          "No deadline"
+        )}
+      </span>
+      <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground tabular-nums">
+        <Users className="h-4 w-4" aria-hidden="true" />
+        {team.length + (manager ? 1 : 0)}
+      </span>
+    </>
+  );
+
   return (
-    <div className="rounded-xl border border-border bg-card shadow-card transition-shadow duration-150 motion-reduce:transition-none hover:shadow-elevated">
-      {/* The whole header is the toggle: a chevron alone is a small target and
-          the rest of the row looks clickable anyway. */}
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        aria-controls={panelId}
-        className="flex w-full items-start gap-3 rounded-xl p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:p-5"
-      >
-        <ChevronRight
-          className={`mt-0.5 h-5 w-5 shrink-0 text-muted-foreground transition-transform duration-150 motion-reduce:transition-none ${
-            expanded ? "rotate-90" : ""
-          }`}
-          aria-hidden="true"
+    <div className="rounded-2xl border border-border bg-muted/20 p-4 sm:p-6">
+      <div className="flex justify-center">
+        <ProjectNode
+          project={project}
+          status={<StatusPill status={status.tone} label={status.label} />}
+          health={health}
+          expanded={expanded}
+          onToggle={onToggle}
+          panelId={panelId}
+          ChevronIcon={ChevronRight}
+          meta={meta}
         />
+      </div>
 
-        <span className="min-w-0 flex-1 space-y-3">
-          {/* Name + the badges that qualify it */}
-          <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <span className="truncate text-base font-semibold text-foreground">
-              {project.name || "Untitled project"}
-            </span>
-            <StatusPill status={status.tone} label={status.label} />
-            {project.priority && (
-              <Badge variant={PRIORITY_VARIANTS[String(project.priority).toLowerCase()] || "secondary"} size="sm">
-                <Flag className="h-3 w-3" aria-hidden="true" />
-                {prettyish(project.priority)}
-              </Badge>
-            )}
-            {/* Risk is only worth saying when it is not "fine". */}
-            {health.risk !== "low" && (
-              <Badge variant={risk.variant} size="sm">
-                <AlertTriangle className="h-3 w-3" aria-hidden="true" />
-                {risk.label}
-              </Badge>
-            )}
-          </span>
-
-          <ProgressBar value={health.progress} label={`${project.name} progress`} />
-
-          {/* The one-line facts. Deadline, tasks, PM, team. */}
-          <span className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
-            <span className="inline-flex items-center gap-1.5">
-              <CalendarDays className="h-4 w-4" aria-hidden="true" />
-              {deadline ? (
-                <span className={health.deadlinePassed ? "font-medium text-destructive" : ""}>
-                  {deadline}
-                  {health.deadlinePassed ? " — passed" : ""}
-                </span>
-              ) : (
-                "No deadline"
-              )}
-            </span>
-            <span className="inline-flex items-center gap-1.5 tabular-nums">
-              <FolderKanban className="h-4 w-4" aria-hidden="true" />
-              {health.done} of {health.total} tasks
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <Briefcase className="h-4 w-4" aria-hidden="true" />
-              {manager ? manager.name : <span className="italic">No manager</span>}
-            </span>
-          </span>
-        </span>
-
-        <span className="hidden shrink-0 pt-1 sm:block">
-          <AvatarStack people={team} />
-        </span>
-      </button>
-
-      {/* Expanded: the hierarchy itself */}
       {expanded && (
-        <div id={panelId} className="border-t border-border px-4 pb-5 pt-4 sm:px-5">
-          {/* Manager first and on its own — that is the hierarchy. */}
-          <section className="space-y-2">
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Project Manager
-            </h4>
-            {manager ? (
-              <ul className="space-y-2">
-                <PersonRow person={manager} />
-              </ul>
-            ) : (
-              <p className="rounded-lg border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
-                No project manager set. Assign one on the project so reports and
-                approvals have somewhere to go.
-              </p>
-            )}
-          </section>
+        <div id={panelId} className="pt-0">
+          <Trunk />
 
-          <section className="mt-5 space-y-4">
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Team
-            </h4>
+          {/* The manager: one node, on its own level. */}
+          <div className="flex justify-center">
+            {manager ? <PersonNode person={manager} emphasis caption="Project manager" /> : <EmptyManagerNode />}
+          </div>
 
-            {byRole.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
+          {team.length === 0 ? (
+            <>
+              <Trunk />
+              <p className="mx-auto max-w-md rounded-xl border border-dashed border-border px-4 py-3 text-center text-sm text-muted-foreground">
                 Nobody is on this project yet. People appear here once they hold
                 a task on it, or once they are set as its developer.
               </p>
-            ) : (
-              byRole.map(({ role, people }) => {
-                const Icon = roleIcon(role);
-                return (
-                  <div key={role} className="space-y-2">
-                    <p className="flex items-center gap-2 text-sm font-medium text-foreground">
-                      <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                      {rolePlural(role)}
-                      <span className="text-muted-foreground tabular-nums">
-                        {people.length}
-                      </span>
-                    </p>
-                    <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
-                      {people.map((p) => (
-                        <PersonRow key={p.key} person={p} />
+            </>
+          ) : (
+            <>
+              {leads.length > 0 && (
+                <>
+                  <Trunk />
+                  {/* A level, drawn from one trunk — not a line per lead, which
+                      would imply a reporting split the data does not have. */}
+                  <ScrollStrip fadeFrom="from-muted/20">
+                    <Branches className="w-max min-w-full">
+                      {leads.map((p) => (
+                        <PersonNode key={p.key} person={p} caption="Team lead" />
                       ))}
-                    </ul>
-                  </div>
-                );
-              })
-            )}
-          </section>
+                    </Branches>
+                  </ScrollStrip>
+                </>
+              )}
+
+              {roleBranches.length > 0 && (
+                <>
+                  <Trunk />
+                  {/* Scrolls rather than wraps: the rail is drawn across ONE
+                      row, so a wrapped second row would sit under a line that
+                      does not reach it. */}
+                  <ScrollStrip fadeFrom="from-muted/20">
+                    <Branches className="w-max min-w-full">
+                      {roleBranches.map((g) => (
+                        <RoleBranch key={g.role} role={g.role} people={g.people} />
+                      ))}
+                    </Branches>
+                  </ScrollStrip>
+                </>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>
@@ -648,7 +549,7 @@ export default function ProjectHierarchy() {
               </p>
               <div className="space-y-3">
                 {unmanaged.map((p) => (
-                  <ProjectCard
+                  <ProjectChart
                     key={p.id}
                     project={p}
                     expanded={expanded.has(p.id)}
@@ -679,7 +580,7 @@ export default function ProjectHierarchy() {
               )}
               <div className="space-y-3">
                 {managed.map((p) => (
-                  <ProjectCard
+                  <ProjectChart
                     key={p.id}
                     project={p}
                     expanded={expanded.has(p.id)}
