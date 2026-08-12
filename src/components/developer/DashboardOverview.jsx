@@ -3,22 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { setVisibleInterval } from "@/hooks/useVisibleInterval";
 import { supabase } from "@/utils/supabaseClient";
+import { projectStatusMeta } from "@/utils/projectStatus";
 import { Mail, CalendarDays, FolderKanban, CheckCircle2, Clock, Timer } from "lucide-react";
 import StatCard from "@/components/shell/StatCard";
 import { EmptyState, Section, Skeleton, StatusPill } from "@/components/ui";
 
 // Project status → StatusPill state. Status is colour + glyph + text, never a
 // bare tinted chip.
-const PROJECT_STATUS = {
-  completed: { status: "success", label: "Completed" },
-  in_progress: { status: "active", label: "In progress" },
-  "in progress": { status: "active", label: "In progress" },
-  active: { status: "active", label: "In progress" },
-  on_hold: { status: "warning", label: "On hold" },
-  "on hold": { status: "warning", label: "On hold" },
-  cancelled: { status: "error", label: "Cancelled" },
-  canceled: { status: "error", label: "Cancelled" },
-};
+// The eight-entry map that used to live here disagreed with the six-entry one
+// in MyProjects — the same project read "Pending" on one screen and
+// "In progress" on the other. Both now read utils/projectStatus.js.
 
 export default function DashboardOverview({ user, assignedProjects = [] }) {
   const [recentProjects, setRecentProjects] = useState([]);
@@ -60,8 +54,11 @@ export default function DashboardOverview({ user, assignedProjects = [] }) {
   const currentYear = new Date().getFullYear();
 
   const getStatusBadge = useCallback((status) => {
-    const s = String(status || "pending").toLowerCase();
-    return PROJECT_STATUS[s] || { status: "pending", label: "Pending" };
+    // The old fallback relabelled anything it did not recognise as "Pending",
+    // so a project holding a junk status looked like a normal waiting one and
+    // nobody could have found it. projectStatusMeta shows the value instead.
+    const meta = projectStatusMeta(status);
+    return { status: meta.tone, label: meta.label };
   }, []);
 
   const formatUpdatedAt = useCallback((value) => {
