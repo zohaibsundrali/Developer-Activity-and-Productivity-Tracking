@@ -422,8 +422,8 @@ export default function ProjectBoard() {
       {header}
 
       <div className="space-y-6">
-        {/* Toolbar */}
-        <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
+        {/* Toolbar — the card is the primitive's own now, not hand-rolled here. */}
+        <div>
           <Toolbar
             search={{
               value: search,

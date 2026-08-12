@@ -31,12 +31,12 @@ function Section({
     >
       {hasHeader && (
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-          <div className="min-w-0 space-y-1">
+          <div className="min-w-0 space-y-1.5">
             {title && (
               <h2
                 id={headingId}
                 data-slot="section-title"
-                className="text-base font-semibold tracking-tight text-foreground"
+                className="text-base font-semibold tracking-[-0.01em] text-foreground"
               >
                 {title}
               </h2>
@@ -44,7 +44,7 @@ function Section({
             {description && (
               <p
                 data-slot="section-description"
-                className="text-sm text-muted-foreground"
+                className="text-sm leading-relaxed text-muted-foreground"
               >
                 {description}
               </p>

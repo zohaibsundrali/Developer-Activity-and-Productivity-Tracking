@@ -8,11 +8,12 @@ import { Skeleton } from "@/components/ui";
 // palette, so the historic `violet` tone falls back to `accent` rather than
 // reintroducing a literal colour.
 const TONES = {
-  primary: "bg-primary/10 text-primary",
-  info: "bg-info/10 text-info-on-tint",
-  success: "bg-success/10 text-success",
-  warning: "bg-warning/10 text-warning-on-tint",
-  destructive: "bg-destructive/10 text-destructive",
+  primary: "bg-gradient-to-br from-primary/15 to-primary/5 text-primary ring-1 ring-inset ring-primary/10",
+  info: "bg-gradient-to-br from-info/15 to-info/5 text-info-on-tint ring-1 ring-inset ring-info/10",
+  success: "bg-gradient-to-br from-success/15 to-success/5 text-success ring-1 ring-inset ring-success/10",
+  warning: "bg-gradient-to-br from-warning/20 to-warning/5 text-warning-on-tint ring-1 ring-inset ring-warning/10",
+  destructive:
+    "bg-gradient-to-br from-destructive/15 to-destructive/5 text-destructive ring-1 ring-inset ring-destructive/10",
   accent: "bg-accent text-accent-foreground",
   secondary: "bg-secondary text-secondary-foreground",
   muted: "bg-muted text-muted-foreground",
@@ -93,7 +94,10 @@ export default function StatCard({
 
   const shell = cn(
     "rounded-xl border border-border bg-card p-4 shadow-card sm:p-5",
-    "transition-shadow duration-150 motion-reduce:transition-none hover:shadow-elevated",
+    // Lifts half a pixel, like every other card in the product now. Motion is
+    // the cheapest way to make a surface feel responsive, and the cheapest way
+    // to make it feel broken if it ignores a reduced-motion preference.
+    "transition-all duration-200 ease-out motion-reduce:transition-none hover:-translate-y-0.5 hover:shadow-elevated",
     className
   );
 
@@ -142,7 +146,7 @@ export default function StatCard({
 
       <div className="mt-4">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <p className="text-3xl font-bold leading-none tracking-tight text-foreground tabular-nums">
+          <p className="text-3xl font-bold leading-none tracking-[-0.02em] text-foreground tabular-nums">
             {value}
           </p>
           {t && (
