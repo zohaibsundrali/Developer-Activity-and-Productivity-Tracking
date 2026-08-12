@@ -34,6 +34,7 @@ export const SECTION_TITLES = {
   automation: { admin: "Workflow Automation" },
   employees: { admin: "Employees" },
   hierarchy: { admin: "Team Structure" },
+  capacity: { admin: "Capacity" },
   "team-stats": { admin: "Team Stats" },
   organization: { admin: "Organization" },
   clients: { admin: "Clients" },

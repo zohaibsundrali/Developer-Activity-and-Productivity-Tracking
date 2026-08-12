@@ -17,6 +17,7 @@ import OrganizationManagement from "@/components/admin/OrganizationManagement";
 import ClientManagement from "@/components/admin/ClientManagement";
 import EmployeeDirectory from "@/components/admin/EmployeeDirectory";
 import ProjectHierarchy from "@/components/admin/ProjectHierarchy";
+import TeamCapacity from "@/components/admin/TeamCapacity";
 import TeamStats from "@/components/admin/TeamStats";
 import ProjectBoard from "@/components/admin/ProjectBoard";
 import AgileWorkspace from "@/components/admin/AgileWorkspace";
@@ -75,6 +76,7 @@ const ADMIN_NAV_GROUPS = {
   automation: "Insights",
   employees: "People",
   hierarchy: "People",
+  capacity: "People",
   "team-stats": "People",
   organization: "Workspace",
   clients: "Workspace",
@@ -385,6 +387,8 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
         return <EmployeeDirectory />;
       case "hierarchy":
         return <ProjectHierarchy />;
+      case "capacity":
+        return <TeamCapacity />;
       case "team-stats":
         return <TeamStats />;
       case "organization":
