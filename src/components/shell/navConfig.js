@@ -26,6 +26,7 @@ import {
   Zap,
   CreditCard,
   HeartPulse,
+  Network,
 } from "lucide-react";
 
 // Re-exported so existing imports keep working; the definitions live in
@@ -58,6 +59,10 @@ export const ADMIN_NAV = [
   // on the screen that does not have them. Old ?section= links for both still
   // resolve — see LEGACY_SECTIONS in the admin dashboard.
   { id: "employees", label: "Employees", icon: Contact },
+  // Project -> manager -> team. Sits beside Employees because it answers the
+  // other half of the same question: Employees says who works here, this says
+  // what they are working on.
+  { id: "hierarchy", label: "Team Structure", icon: Network },
   { id: "team-stats", label: "Team Stats", icon: BarChart3 },
   { id: "organization", label: "Organization", icon: Building2 },
   { id: "clients", label: "Clients", icon: Handshake },
@@ -127,6 +132,10 @@ export const ADMIN_SECTION_ROLES = {
   reports: ["owner", "admin", "manager", "team_lead"],
   automation: ["owner", "admin"],
   employees: ["owner", "admin", "hr"],
+  // Founder, admin and HR see the whole structure; a manager and a team lead
+  // need it to see who is free before they assign anything. It is read-only —
+  // nothing on it writes — so the audience is wider than Employees.
+  hierarchy: ["owner", "admin", "hr", "manager", "team_lead"],
   "team-stats": ["owner", "admin", "hr"],
   organization: ["owner", "admin", "hr"],
   clients: ["owner", "admin", "finance"],

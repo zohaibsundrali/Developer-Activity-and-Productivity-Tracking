@@ -1506,6 +1506,57 @@ export async function uploadTaskAttachment(taskId, file) {
   return { attachment: data, error };
 }
 
+/**
+ * A short-lived URL for one attachment.
+ *
+ * The bucket is PRIVATE, so a stored path is not a link. Until this existed the
+ * drawer listed file names that could not be opened — an upload went into a
+ * bucket nobody could read back, which is a worse outcome than refusing the
+ * upload. Migration 054's `task_submissions_read` policy already covers the
+ * `pm/{orgId}/…` prefix these are written under, so signing works from the
+ * browser under the caller's own token and stays inside their organization.
+ *
+ * One hour: long enough to open or download, short enough that a link pasted
+ * into a chat stops working before it is forwarded anywhere interesting.
+ */
+export async function signTaskAttachment(attachment) {
+  const path = attachment?.file_path;
+  if (!path) return { url: null, error: new Error("This attachment has no file.") };
+  const { data, error } = await supabase.storage
+    .from("task-submissions")
+    .createSignedUrl(path, 60 * 60);
+  return { url: data?.signedUrl || null, error };
+}
+
+/**
+ * Delete an attachment: the row first, then the file.
+ *
+ * THAT ORDER IS DELIBERATE. Neither delete can be guaranteed once the other has
+ * run, so the question is which half-done state is less harmful:
+ *
+ *   row first  — worst case an orphaned blob nobody can see. Costs storage.
+ *   file first — worst case a listed attachment whose download 404s. Costs the
+ *                person's time, twice, because it looks like a bug.
+ *
+ * The invisible failure is the better one here, and it is the only one of the
+ * two that cannot mislead somebody.
+ */
+export async function deleteTaskAttachment(attachment) {
+  if (!attachment?.id) return { error: new Error("No attachment to delete.") };
+
+  const { error } = await supabase.from("task_attachments").delete().eq("id", attachment.id);
+  if (error) return { error };
+
+  if (attachment.file_path) {
+    try {
+      await supabase.storage.from("task-submissions").remove([attachment.file_path]);
+    } catch {
+      /* the row is gone; an orphaned blob is not worth reporting as a failure */
+    }
+  }
+  return { error: null };
+}
+
 /* ------------------------------------------------------------------ */
 /*  Project discussion — the internal thread                           */
 /* ------------------------------------------------------------------ */

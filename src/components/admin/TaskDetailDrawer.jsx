@@ -12,6 +12,8 @@ import {
   Plus,
   Save,
   Loader2,
+  Download,
+  Trash2,
   AlertTriangle,
   CheckCircle2,
   XCircle,
@@ -30,11 +32,28 @@ import {
   toggleWatcher,
   addDependency,
   uploadTaskAttachment,
+  signTaskAttachment,
+  deleteTaskAttachment,
   PRIORITIES,
 } from "@/utils/pmData";
 import { getOrgContext, isMembershipActive } from "@/utils/orgContext";
 import { hasRole } from "@/utils/permissions";
-import { showError, showSuccess } from "@/utils/alerts";
+import { showConfirm, showError, showSuccess } from "@/utils/alerts";
+
+/**
+ * "1.4 MB". Shown next to every attachment because the size is what decides
+ * whether somebody opens it now or waits — and because a 0-byte file is a
+ * failed upload that otherwise looks identical to a good one.
+ */
+function formatBytes(bytes) {
+  const n = Number(bytes);
+  if (!Number.isFinite(n) || n < 0) return null;
+  if (n === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const i = Math.min(units.length - 1, Math.floor(Math.log(n) / Math.log(1024)));
+  const value = n / 1024 ** i;
+  return `${value >= 10 || i === 0 ? Math.round(value) : value.toFixed(1)} ${units[i]}`;
+}
 import TaskExtras from "@/components/admin/TaskExtras";
 import TaskTimer from "@/components/admin/TaskTimer";
 import {
@@ -168,6 +187,7 @@ export default function TaskDetailDrawer({
   const [depType, setDepType] = useState("blocks");
   const [reviewerId, setReviewerId] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [busyAttachmentId, setBusyAttachmentId] = useState(null);
 
   // comment composer + @mentions
   const [commentBody, setCommentBody] = useState("");
@@ -516,9 +536,24 @@ export default function TaskDetailDrawer({
   };
 
   // ---- attachments ---------------------------------------------------
+  // Refused here rather than by the storage API, which answers a failed upload
+  // with a 413 and no useful text. The number is the practical ceiling for a
+  // browser upload over a slow connection, not a bucket limit.
+  const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+
   const handleUpload = async (e) => {
     const file = e?.target?.files?.[0];
     if (!file || !taskId) return;
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      showError(
+        "File too large",
+        `${file.name} is ${formatBytes(file.size)}. The limit is ${formatBytes(
+          MAX_ATTACHMENT_BYTES
+        )}.`
+      );
+      if (e?.target) e.target.value = "";
+      return;
+    }
     setUploading(true);
     try {
       const { error } = await uploadTaskAttachment(taskId, file);
@@ -533,6 +568,43 @@ export default function TaskDetailDrawer({
     } finally {
       setUploading(false);
       if (e?.target) e.target.value = "";
+    }
+  };
+
+  // The bucket is private, so "open" means "sign, then open". The window is
+  // opened only after the URL comes back; opening it first and navigating it
+  // later is what browsers block as a popup.
+  const handleOpenAttachment = async (attachment) => {
+    setBusyAttachmentId(attachment.id);
+    try {
+      const { url, error } = await signTaskAttachment(attachment);
+      if (error || !url) {
+        showError("Could not open", error?.message || "The file link could not be created.");
+        return;
+      }
+      window.open(url, "_blank", "noopener,noreferrer");
+    } finally {
+      setBusyAttachmentId(null);
+    }
+  };
+
+  const handleDeleteAttachment = async (attachment) => {
+    const ok = await showConfirm(
+      "Delete this file?",
+      `${attachment.file_name || "This file"} will be removed from the task. This cannot be undone.`,
+      { confirmButtonText: "Delete" }
+    );
+    if (!ok) return;
+    setBusyAttachmentId(attachment.id);
+    try {
+      const { error } = await deleteTaskAttachment(attachment);
+      if (error) {
+        showError("Not deleted", error.message || String(error));
+        return;
+      }
+      await refresh();
+    } finally {
+      setBusyAttachmentId(null);
     }
   };
 
@@ -1248,15 +1320,57 @@ export default function TaskDetailDrawer({
             <Skeleton className="h-10 w-full rounded-lg" />
           ) : (
             <ul className="space-y-1.5">
-              {(detail.attachments || []).map((a) => (
-                <li
-                  key={String(a.id ?? a.file_path)}
-                  className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"
-                >
-                  <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  <span className="truncate text-foreground">{a.file_name || "File"}</span>
-                </li>
-              ))}
+              {(detail.attachments || []).map((a) => {
+                const size = formatBytes(a.file_size);
+                const busy = busyAttachmentId === a.id;
+                const name = a.file_name || "File";
+                return (
+                  <li
+                    key={String(a.id ?? a.file_path)}
+                    className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"
+                  >
+                    <Paperclip
+                      className="h-4 w-4 shrink-0 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-foreground">{name}</span>
+                      {size && (
+                        <span className="block text-xs text-muted-foreground tabular-nums">
+                          {size}
+                        </span>
+                      )}
+                    </span>
+                    {/* Until these two existed, an upload went into a private
+                        bucket and the drawer showed a name nobody could open
+                        or remove. */}
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAttachment(a)}
+                      disabled={busy}
+                      title="Open"
+                      aria-label={`Open ${name}`}
+                      className="rounded-md p-1.5 text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                    >
+                      {busy ? (
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                      ) : (
+                        <Download className="h-4 w-4" aria-hidden="true" />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteAttachment(a)}
+                      disabled={busy}
+                      title="Delete"
+                      aria-label={`Delete ${name}`}
+                      className="rounded-md p-1.5 text-muted-foreground transition-colors duration-150 hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </li>
+                );
+              })}
               {(detail.attachments || []).length === 0 ? (
                 <li className="rounded-lg border border-dashed border-border px-3 py-3 text-xs text-muted-foreground">
                   No attachments.
