@@ -16,6 +16,7 @@ import {
 import { authFetch } from "@/utils/authFetch";
 import { showError } from "@/utils/alerts";
 import { Button, Tabs } from "@/components/ui";
+import ProjectClosurePanel from "@/components/shared/ProjectClosurePanel";
 import ClientTimeline from "./ClientTimeline";
 import ClientProjectComments from "./ClientProjectComments";
 import ClientTaskDetail from "./ClientTaskDetail";
@@ -215,7 +216,9 @@ export default function ClientProjectDetail({ projectId, onBack }) {
           tabIndex={0}
           className="p-6 sm:p-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         >
-          {tab === "overview" && <OverviewTab project={project} health={health} />}
+          {tab === "overview" && (
+            <OverviewTab project={project} health={health} projectId={projectId} onChanged={load} />
+          )}
           {tab === "milestones" && <MilestonesTab milestones={milestones} />}
           {tab === "tasks" && <TasksTab tasks={tasks} onOpenTask={setOpenTaskId} />}
           {tab === "team" && <TeamTab team={team} />}
@@ -244,7 +247,7 @@ function BackButton({ onBack }) {
   );
 }
 
-function OverviewTab({ project, health }) {
+function OverviewTab({ project, health, projectId, onChanged }) {
   const pct = Math.max(0, Math.min(100, Number(project.progress) || 0));
 
   return (
@@ -261,6 +264,12 @@ function OverviewTab({ project, health }) {
         </div>
         <ProgressBar value={project.progress} showLabel={false} tone={health?.barTone} />
       </div>
+
+      {/* Directly under the progress, because "are we finished?" is the same
+          question and this is where the client answers it. The panel decides
+          for itself whether there is anything to show — before the team marks
+          the work complete it is three gray steps and no form. */}
+      <ProjectClosurePanel projectId={projectId} onChanged={onChanged} />
 
       {/* The three dates, always all three, so the row never goes ragged.
           Status is not repeated here — the header pill carries it. */}

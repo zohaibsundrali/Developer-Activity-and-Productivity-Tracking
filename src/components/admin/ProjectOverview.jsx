@@ -17,6 +17,7 @@ import {
 } from "@/utils/pmData";
 import { loadEmployees } from "@/utils/employeesData";
 import ProjectDiscussion from "@/components/admin/ProjectDiscussion";
+import ProjectClosurePanel from "@/components/shared/ProjectClosurePanel";
 import StatCard from "@/components/shell/StatCard";
 import { showError } from "@/utils/alerts";
 import {
@@ -585,7 +586,12 @@ export default function ProjectOverview() {
               />
             </div>
 
-            {/* 3) Milestones / phases */}
+            {/* 3) Closure — sits directly under the milestone count it depends
+                   on, because "why can't I mark this complete?" is answered by
+                   that number and the open-bug count beside it. */}
+            <ProjectClosurePanel projectId={projectId} onChanged={reload} />
+
+            {/* 4) Milestones / phases */}
             <Card>
               <CardHeader>
                 <div className="flex flex-wrap items-center gap-2">
