@@ -27,6 +27,7 @@ import {
   CreditCard,
   HeartPulse,
   Network,
+  GaugeCircle as Gauge2,
 } from "lucide-react";
 
 // Re-exported so existing imports keep working; the definitions live in
@@ -63,6 +64,9 @@ export const ADMIN_NAV = [
   // other half of the same question: Employees says who works here, this says
   // what they are working on.
   { id: "hierarchy", label: "Team Structure", icon: Network },
+  // The same graph from the other end: Team Structure says who is on a
+  // project, this says what one person is carrying across all of them.
+  { id: "capacity", label: "Capacity", icon: Gauge2 },
   { id: "team-stats", label: "Team Stats", icon: BarChart3 },
   { id: "organization", label: "Organization", icon: Building2 },
   { id: "clients", label: "Clients", icon: Handshake },
@@ -136,6 +140,9 @@ export const ADMIN_SECTION_ROLES = {
   // need it to see who is free before they assign anything. It is read-only —
   // nothing on it writes — so the audience is wider than Employees.
   hierarchy: ["owner", "admin", "hr", "manager", "team_lead"],
+  // Same audience, same reason: a manager deciding who to assign needs this
+  // more than anyone. Read-only — nothing on it writes.
+  capacity: ["owner", "admin", "hr", "manager", "team_lead"],
   "team-stats": ["owner", "admin", "hr"],
   organization: ["owner", "admin", "hr"],
   clients: ["owner", "admin", "finance"],

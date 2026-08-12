@@ -4,6 +4,13 @@ import path from "node:path";
 
 import { ROLES } from "@/utils/roles";
 import {
+  projectTeam,
+  personLoad,
+  loadLevel,
+  LOAD_LEVELS,
+  isOpenTask,
+} from "@/utils/orgWorkGraph";
+import {
   ROLE_META,
   ROLE_VARIANTS,
   roleIcon,
@@ -97,12 +104,23 @@ describe("the Team Structure section is wired end to end", () => {
   it("is visible to founder, admin, HR, PM and team lead — the five who were asked for", () => {
     for (const role of ["owner", "admin", "hr", "manager", "team_lead"]) {
       expect(canAccessAdminSection("hierarchy", role), role).toBe(true);
+      expect(canAccessAdminSection("capacity", role), role).toBe(true);
     }
+  });
+
+  it("wires Capacity the same way, end to end", () => {
+    expect(ADMIN_NAV.map((i) => i.id)).toContain("capacity");
+    expect(SECTION_TITLES.capacity?.admin).toBe("Capacity");
+    expect(code("src/app/admin/dashboard/page.js")).toContain('case "capacity":');
+    // Missing from ADMIN_SECTION_ROLES means allowed for EVERYONE, via
+    // canAccessAdminSection's `undefined` branch. That is the failure mode.
+    expect(ADMIN_SECTION_ROLES.capacity).toBeDefined();
   });
 
   it("is not visible to a developer, a designer or a client", () => {
     for (const role of ["developer", "designer", "client"]) {
       expect(canAccessAdminSection("hierarchy", role), role).toBe(false);
+      expect(canAccessAdminSection("capacity", role), role).toBe(false);
     }
   });
 
@@ -114,109 +132,242 @@ describe("the Team Structure section is wired end to end", () => {
   });
 });
 
-describe("the hierarchy derives a team without a query per project", () => {
-  it("issues exactly five queries for the whole page", () => {
-    // Counted, not claimed. The comment on this file first said "four" while
-    // the code called loadEmployees() — which reads like one call and is SEVEN
-    // (memberships, developers, admin_users, employee_profiles, teams,
-    // departments, projects). The real number was nine. A helper that hides
-    // its cost is how a page ends up slow while every line looks cheap.
-    const tables = [...HIERARCHY.matchAll(/\.from\("(\w+)"\)/g)].map((m) => m[1]);
+describe("the work graph — one loader, five queries, no per-project fetch", () => {
+  const GRAPH_SRC = code("src/utils/orgWorkGraph.js");
+
+  it("issues exactly five queries, and they are these five", () => {
+    // Counted, not claimed. This screen first called loadEmployees(), which
+    // reads like one call and is SEVEN (memberships, developers, admin_users,
+    // employee_profiles, teams, departments, projects). The real number was
+    // nine. A helper whose cost is invisible at the call site is how a page
+    // ends up slow while every line in it looks cheap.
+    const tables = [...GRAPH_SRC.matchAll(/\.from\("(\w+)"\)/g)].map((m) => m[1]);
     expect(tables.sort()).toEqual(
       ["admin_users", "developer_tasks", "developers", "memberships", "projects"].sort()
     );
-    expect(HIERARCHY).toContain("Promise.all");
-    expect(HIERARCHY).toContain("tasksByProject");
+    expect(GRAPH_SRC).toContain("Promise.all");
   });
 
-  it("does not call loadEmployees, whose cost is invisible at the call site", () => {
-    expect(HIERARCHY).not.toContain("loadEmployees");
+  it("is the only place the screens fetch from", () => {
+    // Two copies of the joining rules would drift into two screens disagreeing
+    // about who is on a project — each looking right on its own.
+    for (const f of [
+      "src/components/admin/ProjectHierarchy.jsx",
+      "src/components/admin/TeamCapacity.jsx",
+    ]) {
+      const src = code(f);
+      expect(src, `${f} fetches directly`).not.toMatch(/supabase\s*\.from\(/);
+      expect(src, `${f} uses the seven-query helper`).not.toContain("loadEmployees");
+      expect(src).toContain("loadOrgWorkGraph");
+    }
   });
 
-  it("does not fetch inside the per-project map", () => {
-    // The shape that kills this screen: `.map(async p => await supabase…)`.
-    const shaped = HIERARCHY.slice(HIERARCHY.indexOf("const shaped ="));
-    expect(shaped).not.toMatch(/\.map\(\s*async/);
-    expect(shaped).not.toContain("await supabase");
+  it("never fetches inside a per-project or per-person map", () => {
+    for (const f of [
+      "src/utils/orgWorkGraph.js",
+      "src/components/admin/ProjectHierarchy.jsx",
+      "src/components/admin/TeamCapacity.jsx",
+    ]) {
+      const src = code(f);
+      const after = src.slice(src.indexOf("loadOrgWorkGraph"));
+      expect(after, f).not.toMatch(/\.map\(\s*async/);
+    }
   });
 
-  it("unions all three ways somebody is on a project", () => {
-    expect(HIERARCHY).toContain("p.manager_id");
-    expect(HIERARCHY).toContain("p.assigned_developer_id");
-    expect(HIERARCHY).toMatch(/for \(const t of tasks\)[\s\S]{0,120}t\.developer_id/);
+  it("writes nothing — both screens are read-only", () => {
+    // Scoped to supabase chains: a bare /\.delete\(/ also matches
+    // `next.delete(id)`, the expand/collapse Set. A test that fails on a Set is
+    // one people learn to ignore.
+    const calls = GRAPH_SRC.match(/supabase\s*\.from\([\s\S]{0,400}?(?=supabase\s*\.from\(|$)/g) || [];
+    expect(calls.length, "no supabase calls found — the check would be vacuous").toBeGreaterThan(0);
+    for (const call of calls) expect(call).not.toMatch(/\.(insert|update|upsert|delete)\(/);
   });
+});
 
-  it("does not list the manager twice", () => {
-    // They are rendered above the team, on their own — that IS the hierarchy.
-    expect(HIERARCHY).toMatch(/members\.delete\(String\(manager\.userId\)\)/);
+describe("projectTeam — the three ways somebody is on a project", () => {
+  const graph = {
+    projects: [],
+    projectById: new Map(),
+    tasksByProject: new Map([
+      [
+        "p1",
+        [
+          { id: "t1", project_id: "p1", developer_id: "dev", status: "pending" },
+          { id: "t2", project_id: "p1", developer_id: "dev", status: "in_progress" },
+          { id: "t3", project_id: "p1", developer_id: "des", status: "pending" },
+        ],
+      ],
+    ]),
+    tasksByPerson: new Map(),
+    personById: new Map([
+      ["pm", { userId: "pm", name: "Pat", email: "pat@x.com", role: "manager" }],
+      ["dev", { userId: "dev", name: "Dev", email: "dev@x.com", role: "developer" }],
+      ["des", { userId: "des", name: "Des", email: "des@x.com", role: "designer" }],
+      ["leg", { userId: "leg", name: "Leg", email: "leg@x.com", role: "developer" }],
+    ]),
+    personByEmail: new Map([["leg@x.com", { userId: "leg", name: "Leg", email: "leg@x.com", role: "developer" }]]),
+  };
+
+  it("includes anyone holding a task", () => {
+    const { team } = projectTeam({ id: "p1" }, graph);
+    expect(team.map((t) => t.userId).sort()).toEqual(["des", "dev"]);
   });
 
   it("counts a person once but sums their tasks", () => {
-    // Somebody holding four tasks is one team member, not four.
-    expect(HIERARCHY).toMatch(/seen\.taskCount \+= taskCount/);
+    // Somebody holding two tasks is one team member, not two.
+    const { team } = projectTeam({ id: "p1" }, graph);
+    expect(team.find((t) => t.userId === "dev").taskCount).toBe(2);
+    expect(team.filter((t) => t.userId === "dev")).toHaveLength(1);
   });
 
-  it("takes progress from the same function the Project Hub uses", () => {
-    // Two different progress numbers on two screens is worse than none.
-    expect(HIERARCHY).toContain("computeProjectHealth");
-    expect(HIERARCHY).not.toMatch(/done \/ total/);
+  it("includes the legacy single assignee, by id or by email", () => {
+    const byId = projectTeam({ id: "p1", assigned_developer_id: "leg" }, graph);
+    expect(byId.team.map((t) => t.userId)).toContain("leg");
+
+    const byEmail = projectTeam({ id: "p1", assigned_developer_email: "LEG@x.com" }, graph);
+    expect(byEmail.team.map((t) => t.userId)).toContain("leg");
   });
 
-  it("reads the shared status vocabulary rather than a fourth map", () => {
-    expect(HIERARCHY).toContain("projectStatusMeta");
-    expect(HIERARCHY).not.toMatch(/const PROJECT_STATUS = \{/);
+  it("returns the manager separately and keeps them OUT of the team", () => {
+    // Every screen renders them above it. In both places, a two-person project
+    // reports three people.
+    const r = projectTeam({ id: "p1", manager_id: "pm" }, graph);
+    expect(r.manager.userId).toBe("pm");
+    expect(r.team.map((t) => t.userId)).not.toContain("pm");
   });
 
-  it("says so when a project has no manager, instead of showing a blank", () => {
-    expect(HIERARCHY).toMatch(/No project manager set/);
-    expect(HIERARCHY).toMatch(/Nobody is on this project yet/);
+  it("does not double-count a manager who also holds tasks", () => {
+    const r = projectTeam({ id: "p1", manager_id: "dev" }, graph);
+    expect(r.manager.userId).toBe("dev");
+    expect(r.team.map((t) => t.userId)).not.toContain("dev");
   });
 
-  it("puts projects with no manager in their own section, above the rest", () => {
-    // A stat tile counts them; this is where you see which ones. Split rather
-    // than sorted, because a project nobody answers for is a different kind of
-    // row and reads as just another card when mixed in.
-    expect(HIERARCHY).toContain("const unmanaged = useMemo");
-    expect(HIERARCHY).toContain("const managed = useMemo");
-    expect(HIERARCHY).toMatch(/Without a manager/);
-    // Both must EXIST before the ordering means anything. Comparing raw
-    // indexOf results lets a missing needle return -1 and satisfy "comes
-    // first" — the assertion then passes precisely when the feature is gone.
-    const at = (needle) => {
-      const i = HIERARCHY.indexOf(needle);
-      expect(i, `${needle} is not rendered at all`).toBeGreaterThan(-1);
-      return i;
-    };
-    expect(at("unmanaged.map(")).toBeLessThan(at("{managed.map("));
+  it("survives a project with no team, no manager and no tasks", () => {
+    const r = projectTeam({ id: "nope" }, graph);
+    expect(r.team).toEqual([]);
+    expect(r.manager).toBeNull();
+    expect(r.tasks).toEqual([]);
+  });
+});
+
+describe("personLoad — what one person is carrying", () => {
+  const TODAY = "2026-08-12";
+  const graph = {
+    projects: [
+      { id: "p1", manager_id: "pm" },
+      { id: "p2", manager_id: null },
+      { id: "p3", manager_id: "pm" },
+    ],
+    projectById: new Map(),
+    tasksByProject: new Map(),
+    tasksByPerson: new Map([
+      [
+        "dev",
+        [
+          { id: "a", project_id: "p1", developer_id: "dev", status: "pending", due_date: "2026-08-01" },
+          { id: "b", project_id: "p1", developer_id: "dev", status: "in_progress", due_date: "2026-12-01" },
+          { id: "c", project_id: "p2", developer_id: "dev", status: "completed", due_date: "2026-01-01" },
+          { id: "d", project_id: "p2", developer_id: "dev", status: "rejected", due_date: "2026-08-01" },
+        ],
+      ],
+      ["pm", []],
+    ]),
+    personById: new Map(),
+    personByEmail: new Map(),
+  };
+
+  it("counts only open work", () => {
+    const l = personLoad({ userId: "dev" }, graph, TODAY);
+    expect(l.totalTasks).toBe(4);
+    expect(l.openTasks).toBe(3); // completed is off the plate; rejected is not
   });
 
-  it("hides that section when there is nothing wrong, rather than showing an empty box", () => {
-    expect(HIERARCHY).toMatch(/\{unmanaged\.length > 0 && \(/);
+  it("counts a REJECTED task as open — it is back on their plate", () => {
+    // A capacity view that forgets this reports somebody as free while they
+    // are fixing something.
+    const l = personLoad({ userId: "dev" }, graph, TODAY);
+    expect(l.tasks.map((t) => t.id)).toContain("d");
   });
 
-  it("gives the progress bar an accessible value, not just a width", () => {
-    expect(HIERARCHY).toContain('role="progressbar"');
-    expect(HIERARCHY).toContain("aria-valuenow={pct}");
+  it("counts overdue only among open tasks", () => {
+    // Task c is past due but completed, so it is not somebody's problem.
+    const l = personLoad({ userId: "dev" }, graph, TODAY);
+    expect(l.overdue).toBe(2); // a and d
   });
 
-  it("clamps a progress value that is out of range or not a number", () => {
-    expect(HIERARCHY).toMatch(/Math\.max\(0, Math\.min\(100, Math\.round\(Number\(value\) \|\| 0\)\)\)/);
+  it("counts distinct projects, not tasks", () => {
+    const l = personLoad({ userId: "dev" }, graph, TODAY);
+    expect(l.projectCount).toBe(2);
   });
 
-  it("drives the collapse from aria-expanded and aria-controls", () => {
-    expect(HIERARCHY).toContain("aria-expanded={expanded}");
-    expect(HIERARCHY).toContain("aria-controls={panelId}");
+  it("counts projects somebody MANAGES even with no tasks of their own", () => {
+    // Managing three projects is not idle, and showing it as free is how work
+    // lands on the wrong person.
+    const l = personLoad({ userId: "pm" }, graph, TODAY);
+    expect(l.openTasks).toBe(0);
+    expect(l.managingCount).toBe(2);
+    expect(l.projectCount).toBe(2);
   });
 
-  it("writes nothing — it is a read-only view", () => {
-    // Scoped to supabase chains on purpose: a bare /\.delete\(/ also matches
-    // `next.delete(id)`, which is the expand/collapse Set and not a write. A
-    // test that fails on a Set is a test people learn to ignore.
-    const calls = HIERARCHY.match(/supabase\s*\.from\([\s\S]{0,400}?(?=supabase\s*\.from\(|$)/g) || [];
-    expect(calls.length, "no supabase calls found — the check would be vacuous").toBeGreaterThan(0);
-    for (const call of calls) {
-      expect(call).not.toMatch(/\.(insert|update|upsert|delete)\(/);
-    }
+  it("survives somebody with no record at all", () => {
+    const l = personLoad({ userId: "ghost" }, graph, TODAY);
+    expect(l.openTasks).toBe(0);
+    expect(l.projectCount).toBe(0);
+  });
+});
+
+describe("loadLevel — a convention, ordered so the extremes surface", () => {
+  it("calls nobody with no open work anything but free", () => {
+    expect(loadLevel({ openTasks: 0, overdue: 0 }).id).toBe("free");
+  });
+
+  it("escalates with volume", () => {
+    expect(loadLevel({ openTasks: 1, overdue: 0 }).id).toBe("light");
+    expect(loadLevel({ openTasks: 4, overdue: 0 }).id).toBe("steady");
+    expect(loadLevel({ openTasks: 7, overdue: 0 }).id).toBe("heavy");
+    expect(loadLevel({ openTasks: 12, overdue: 0 }).id).toBe("overloaded");
+  });
+
+  it("lets overdue work outrank volume", () => {
+    // Two overdue is a worse position than six on-time, and sorting purely by
+    // count hides exactly that.
+    expect(loadLevel({ openTasks: 1, overdue: 1 }).id).toBe("heavy");
+    expect(loadLevel({ openTasks: 1, overdue: 3 }).id).toBe("overloaded");
+  });
+
+  it("ranks the levels so a sort is possible", () => {
+    const ranks = ["free", "light", "steady", "heavy", "overloaded"].map(
+      (id) => LOAD_LEVELS[id].rank
+    );
+    expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
+    expect(new Set(ranks).size).toBe(ranks.length);
+  });
+});
+
+describe("the Capacity screen", () => {
+  const CAP = code("src/components/admin/TeamCapacity.jsx");
+
+  it("leaves suspended members out of available capacity", () => {
+    // Listing a locked-out account as "Free" is how work gets assigned to it.
+    expect(CAP).toMatch(/filter\(\(p\) => p\.status === "active"\)/);
+  });
+
+  it("shows the raw counts beside the label that summarised them", () => {
+    // The label is a convention, not a measurement — nothing here records how
+    // long a task takes. A number presented as a verdict gets used as one.
+    expect(CAP).toContain("load.openTasks");
+    expect(CAP).toContain("load.overdue");
+    expect(CAP).toMatch(/not hours/);
+  });
+
+  it("reuses the shared role and status metadata", () => {
+    expect(CAP).toContain('from "@/components/shared/roleMeta"');
+    expect(CAP).toContain("projectStatusMeta");
+  });
+
+  it("gives the load bar a text alternative, not just a width", () => {
+    expect(CAP).toContain('role="progressbar"');
+    expect(CAP).toContain("aria-valuetext");
   });
 });
 

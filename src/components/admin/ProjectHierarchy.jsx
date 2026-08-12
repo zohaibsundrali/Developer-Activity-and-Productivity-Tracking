@@ -27,9 +27,9 @@ import {
 } from "@/components/ui";
 import StatCard from "@/components/shell/StatCard";
 import { sectionTitle } from "@/components/shell/navConfig";
-import { supabase } from "@/utils/supabaseClient";
 import { getOrgId } from "@/utils/orgContext";
 import { computeProjectHealth } from "@/utils/pmData";
+import { loadOrgWorkGraph, projectTeam } from "@/utils/orgWorkGraph";
 import { projectStatusMeta, isProjectOpen } from "@/utils/projectStatus";
 import {
   roleIcon,
@@ -59,29 +59,12 @@ import {
  * been added but given nothing to do will not appear, and that is worth knowing
  * rather than papering over — the card says so when it happens.
  *
- * WHAT IT COSTS: FIVE queries for the whole page, no matter how many projects.
- *
- * That number is counted honestly, and it is worth saying why it is not four.
- * This screen first called `loadEmployees()`, which reads like one call and is
- * SEVEN — memberships, developers, admin_users, employee_profiles, teams,
- * departments and projects. With the two here that was nine round trips to
- * render a page that needs three facts. A helper that hides its cost is how a
- * page ends up slow while every line in it looks cheap.
- *
- * The five are: projects, developer_tasks, memberships (roles), developers and
- * admin_users (names). Four is reachable only by dropping admin_users and
- * showing an email where an owner-or-admin project manager's name should be,
- * which trades a real thing on screen for a number in a comment. Names live in
- * two tables because staff and admins are two tables, and PostgREST cannot
- * union them in one request.
- *
- * `employee_profiles` went with the change, so job titles are no longer shown;
- * the email is, which identifies somebody just as well here.
- *
- * The obvious shape — a query per project for its tasks and another for its
- * team — is what makes a screen like this take eight seconds on a real
- * organisation. A test fails if a fetch ever appears inside the per-project
- * map.
+ * WHAT IT COSTS: five queries for the whole page, no matter how many projects,
+ * and they are not issued here — utils/orgWorkGraph.js owns them, because
+ * Capacity reads the same graph from the other end and two copies of the
+ * joining rules would drift into two screens disagreeing about who is on a
+ * project. The note at the top of that file counts the five and says why it is
+ * not four.
  *
  * PROGRESS is computed from tasks (done ÷ total) by computeProjectHealth, the
  * same function the Project Hub uses, falling back to the stored `progress`
@@ -380,147 +363,30 @@ export default function ProjectHierarchy() {
     setLoading(true);
     setError(null);
     try {
-      const orgId = getOrgId();
-      if (!orgId) throw new Error("Your session has no organization. Sign in again.");
+      const graph = await loadOrgWorkGraph(getOrgId());
 
-      // Five queries, in parallel. See the note at the top of the file for why
-      // this does not call loadEmployees() — that helper is seven on its own.
-      const [projRes, taskRes, memRes, devRes, adminRes] = await Promise.all([
-        supabase
-          .from("projects")
-          .select(
-            "id, name, status, progress, priority, deadline, end_date, manager_id, " +
-              "assigned_developer_id, assigned_developer_email, archived"
-          )
-          .eq("organization_id", orgId)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("developer_tasks")
-          .select("id, project_id, developer_id, status, due_date")
-          .eq("organization_id", orgId)
-          .limit(5000),
-        supabase
-          .from("memberships")
-          .select("user_id, user_type, role, email, status")
-          .eq("organization_id", orgId)
-          .neq("user_type", "client"),
-        supabase.from("developers").select("id, name, email").eq("organization_id", orgId),
-        supabase.from("admin_users").select("id, full_name, email").eq("organization_id", orgId),
-      ]);
+      const shaped = graph.projects.map((p) => {
+        const { manager, team, tasks } = projectTeam(p, graph);
+        const health = computeProjectHealth(p, tasks);
 
-      if (projRes.error) throw projRes.error;
+        const sorted = [...team].sort(
+          (a, b) =>
+            roleOrder(a.role) - roleOrder(b.role) ||
+            String(a.name || "").localeCompare(String(b.name || ""))
+        );
 
-      // Names come from whichever profile table the membership points at.
-      const nameById = new Map();
-      for (const d of devRes.data || []) {
-        nameById.set(String(d.id), { name: d.name, email: d.email });
-      }
-      for (const a of adminRes.data || []) {
-        nameById.set(String(a.id), { name: a.full_name, email: a.email });
-      }
+        const grouped = new Map();
+        for (const person of sorted) {
+          const role = person.role || "employee";
+          if (!grouped.has(role)) grouped.set(role, []);
+          grouped.get(role).push(person);
+        }
+        const byRole = Array.from(grouped, ([role, people]) => ({ role, people })).sort(
+          (a, b) => roleOrder(a.role) - roleOrder(b.role)
+        );
 
-      const byUserId = new Map();
-      const byEmail = new Map();
-      for (const m of memRes.data || []) {
-        if (!m.user_id) continue;
-        const profile = nameById.get(String(m.user_id)) || {};
-        const email = profile.email || m.email || "";
-        // Falling back to the local part of the address is deliberate: a
-        // membership whose profile row is missing still has to appear, because
-        // a person silently absent from their own project is worse than a
-        // person shown by an imperfect name.
-        const person = {
-          userId: m.user_id,
-          name: profile.name || (email ? email.split("@")[0] : "Member"),
-          email,
-          role: m.role || m.user_type || "developer",
-        };
-        byUserId.set(String(m.user_id), person);
-        if (email) byEmail.set(email.toLowerCase(), person);
-      }
-
-      // Tasks grouped by project, once.
-      const tasksByProject = new Map();
-      for (const t of taskRes.data || []) {
-        if (!t.project_id) continue;
-        const key = String(t.project_id);
-        if (!tasksByProject.has(key)) tasksByProject.set(key, []);
-        tasksByProject.get(key).push(t);
-      }
-
-      const shaped = (projRes.data || [])
-        .filter((p) => !p.archived)
-        .map((p) => {
-          const tasks = tasksByProject.get(String(p.id)) || [];
-          const health = computeProjectHealth(p, tasks);
-
-          // Union of the three facts that put somebody on a project.
-          const members = new Map();
-          const add = (emp, taskCount = 0) => {
-            if (!emp?.userId) return;
-            const key = String(emp.userId);
-            const seen = members.get(key);
-            if (seen) {
-              seen.taskCount += taskCount;
-              return;
-            }
-            members.set(key, {
-              key,
-              userId: emp.userId,
-              name: emp.name,
-              email: emp.email,
-              role: emp.role,
-              taskCount,
-            });
-          };
-
-          const manager = p.manager_id ? byUserId.get(String(p.manager_id)) : null;
-
-          if (p.assigned_developer_id) add(byUserId.get(String(p.assigned_developer_id)));
-          else if (p.assigned_developer_email)
-            add(byEmail.get(String(p.assigned_developer_email).toLowerCase()));
-
-          for (const t of tasks) {
-            if (!t.developer_id) continue;
-            add(byUserId.get(String(t.developer_id)), 1);
-          }
-
-          // The manager is shown above the team, so they are not repeated in it.
-          if (manager?.userId) members.delete(String(manager.userId));
-
-          const team = Array.from(members.values()).sort(
-            (a, b) =>
-              roleOrder(a.role) - roleOrder(b.role) ||
-              String(a.name || "").localeCompare(String(b.name || ""))
-          );
-
-          const grouped = new Map();
-          for (const person of team) {
-            const role = person.role || "employee";
-            if (!grouped.has(role)) grouped.set(role, []);
-            grouped.get(role).push(person);
-          }
-          const byRole = Array.from(grouped, ([role, people]) => ({ role, people })).sort(
-            (a, b) => roleOrder(a.role) - roleOrder(b.role)
-          );
-
-          return {
-            ...p,
-            health,
-            team,
-            byRole,
-            manager: manager
-              ? {
-                  key: String(manager.userId),
-                  userId: manager.userId,
-                  name: manager.name,
-                  email: manager.email,
-                  role: manager.role,
-                  taskCount: 0,
-                }
-              : null,
-          };
-        });
+        return { ...p, health, team: sorted, byRole, manager };
+      });
 
       setProjects(shaped);
     } catch (e) {
