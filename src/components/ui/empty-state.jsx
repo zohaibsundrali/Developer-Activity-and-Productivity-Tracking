@@ -21,27 +21,31 @@ function EmptyState({
     <div
       data-slot="empty-state"
       className={cn(
-        "flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-card/50 px-6 py-12 text-center",
+        // The most-rendered surface in the product — 47 files — and the one
+        // people see most on a new installation, where almost everything is
+        // empty. It was a grey circle on a dashed box; it is worth more than
+        // that, because for a first-time user it IS the product.
+        "flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border bg-gradient-to-b from-card/60 to-card/20 px-6 py-14 text-center",
         className
       )}
       {...props}
     >
       {Icon && (
-        <span className="flex h-11 w-11 items-center justify-center rounded-full bg-muted text-muted-foreground">
-          <Icon aria-hidden="true" className="h-5 w-5" />
+        <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary ring-1 ring-inset ring-primary/10">
+          <Icon aria-hidden="true" className="h-6 w-6" />
         </span>
       )}
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         {title && (
-          <p className="text-sm font-medium text-foreground">{title}</p>
+          <p className="text-base font-semibold tracking-tight text-foreground">{title}</p>
         )}
         {description && (
-          <p className="mx-auto max-w-sm text-sm text-muted-foreground">
+          <p className="mx-auto max-w-md text-sm leading-relaxed text-muted-foreground">
             {description}
           </p>
         )}
       </div>
-      {action && <div className="pt-1">{action}</div>}
+      {action && <div className="pt-2">{action}</div>}
     </div>
   )
 }

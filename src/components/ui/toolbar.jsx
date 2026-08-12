@@ -31,7 +31,13 @@ function Toolbar({
       role="toolbar"
       aria-orientation="horizontal"
       className={cn(
-        "flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between",
+        // A SURFACE, which it did not have. Two things said it should:
+        // EmployeeDirectory's loading skeleton draws the toolbar as a card, so
+        // the page visibly changed shape the moment data landed; and
+        // ProjectBoard hand-rolled the same card around its own Toolbar. One
+        // of those is a bug and the other is a copy — both are fixed by the
+        // primitive owning its own surface.
+        "flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-card sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:p-5",
         className
       )}
       {...props}
