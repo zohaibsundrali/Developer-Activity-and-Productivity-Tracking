@@ -1,3 +1,5 @@
+import { isUnsettled } from "@/utils/taskState";
+
 /**
  * Bugs.
  *
@@ -115,7 +117,10 @@ export function severityMeta(id) {
 
 /** Is this bug still somebody's problem? */
 export function isOpenBug(bug) {
-  return !["completed"].includes(bug?.status);
+  // "Open" here means NOT SETTLED — a bug with QA is still a bug. That is a
+  // different question from "is it on the developer's plate", which Capacity
+  // asks; utils/taskState.js holds both and explains why they differ.
+  return isUnsettled(bug);
 }
 
 /**

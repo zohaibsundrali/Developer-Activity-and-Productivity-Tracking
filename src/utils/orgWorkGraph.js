@@ -1,4 +1,5 @@
 import { supabase } from "@/utils/supabaseClient";
+import { isOnSomeonesPlate } from "@/utils/taskState";
 
 /**
  * Who works here, what the projects are, and which tasks join the two.
@@ -35,17 +36,15 @@ import { supabase } from "@/utils/supabaseClient";
  */
 
 /**
- * Statuses that mean the work is off somebody's plate.
+ * Capacity asks whether the ASSIGNEE is still holding the task, which is not
+ * the same question as whether it is finished — see utils/taskState.js, which
+ * holds both and explains the one status they disagree about.
  *
- * Mirrors DONE_STATUSES in pmData.js, which is module-private there. `reviewed`
- * counts as done: it has left the assignee and is with a reviewer.
- * `rejected` deliberately does NOT — work sent back is back on their plate, and
- * a capacity view that forgets that reports somebody as free while they are
- * fixing something.
+ * `rejected` counts as on their plate: work sent back is back with the person
+ * who did it, and a capacity view that forgets that reports them as free while
+ * they are fixing something.
  */
-export const CLOSED_TASK_STATUSES = new Set(["completed", "reviewed"]);
-
-export const isOpenTask = (task) => !CLOSED_TASK_STATUSES.has(task?.status);
+export const isOpenTask = isOnSomeonesPlate;
 
 /** yyyy-mm-dd, for date-only comparison without a timezone argument. */
 const ymd = (value) => {
