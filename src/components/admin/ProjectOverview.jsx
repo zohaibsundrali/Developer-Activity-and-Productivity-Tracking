@@ -20,6 +20,8 @@ import ProjectDiscussion from "@/components/admin/ProjectDiscussion";
 import ProjectClosurePanel from "@/components/shared/ProjectClosurePanel";
 import StatCard from "@/components/shell/StatCard";
 import { showError } from "@/utils/alerts";
+import { authFetch } from "@/utils/authFetch";
+import { hasRole } from "@/utils/permissions";
 import {
   PageHeader,
   Card,
@@ -182,7 +184,7 @@ export default function ProjectOverview() {
     const runQuery = (withArchived) => {
       let q = supabase
         .from("projects")
-        .select("id, name, status, progress, deadline, end_date, start_date, is_template, archived")
+        .select("id, name, status, progress, deadline, end_date, start_date, is_template, archived, manager_id")
         .eq("organization_id", id);
       if (withArchived) q = q.eq("archived", false);
       return q.order("created_at", { ascending: false });
@@ -272,6 +274,57 @@ export default function ProjectOverview() {
     [projects, projectId]
   );
   const health = useMemo(() => computeProjectHealth(project, tasks), [project, tasks]);
+
+  /* ---- project manager ---- */
+  const [savingManager, setSavingManager] = useState(false);
+
+  // Same list the server accepts, and the server is the one that counts —
+  // /api/projects/[id]/manager re-checks the role against the caller's token.
+  // This only keeps the dropdown from offering somebody who would be refused.
+  const managerOptions = useMemo(
+    () =>
+      (employees || [])
+        .filter(
+          (e) =>
+            e.status === "active" &&
+            ["owner", "admin", "manager", "team_lead"].includes(e.role)
+        )
+        .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""))),
+    [employees]
+  );
+
+  // Owner/admin only, narrower than creating a project. A manager who could
+  // reassign projects could hand themselves every project in the organization.
+  const canAssignManager = hasRole("owner", "admin");
+
+  const saveManager = useCallback(
+    async (managerId) => {
+      if (!projectId) return;
+      setSavingManager(true);
+      try {
+        const res = await authFetch(`/api/projects/${projectId}/manager`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ managerId }),
+        });
+        const data = await res.json().catch(() => ({}));
+        // authFetch RESOLVES on a 4xx rather than throwing, so the response has
+        // to be inspected — otherwise a 403 looks like a successful save.
+        if (!res.ok) {
+          showError("Not changed", data?.error || "The manager could not be changed.");
+          return;
+        }
+        // Re-read rather than patching local state: the row is the truth, and
+        // the closure panel below reads manager_id too.
+        await loadProjects(projectId);
+      } catch (err) {
+        showError("Not changed", err?.message || String(err));
+      } finally {
+        setSavingManager(false);
+      }
+    },
+    [projectId, loadProjects]
+  );
 
   const actorNameById = useMemo(() => {
     const m = new Map();
@@ -558,6 +611,43 @@ export default function ProjectOverview() {
                       style={{ width: `${healthProgress}%` }}
                     />
                   </div>
+                </div>
+
+                {/* Project manager. Until this existed, `manager_id` was
+                    written in exactly ONE place — accepting a client proposal —
+                    so every other project could never have a manager, and one
+                    whose manager left could never get a new one. */}
+                <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4">
+                  <Field label="Project manager" htmlFor="project-manager" className="min-w-[16rem] flex-1">
+                    <select
+                      id="project-manager"
+                      className={`${CONTROL_CLASS} w-full`}
+                      value={project?.manager_id || ""}
+                      onChange={(e) => saveManager(e.target.value || null)}
+                      disabled={!canAssignManager || savingManager}
+                    >
+                      <option value="">
+                        {canAssignManager ? "— No manager —" : "No manager"}
+                      </option>
+                      {managerOptions.map((m) => (
+                        <option key={m.userId} value={m.userId}>
+                          {m.name} · {labelize(m.role)}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  {savingManager && (
+                    <span className="pb-2 text-sm text-muted-foreground" role="status">
+                      Saving…
+                    </span>
+                  )}
+                  {!canAssignManager && (
+                    // Said, not hidden. A control that is simply absent reads as
+                    // a missing feature rather than a permission.
+                    <p className="pb-2 text-sm text-muted-foreground">
+                      Only an owner or admin can change this.
+                    </p>
+                  )}
                 </div>
 
                 <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
