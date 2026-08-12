@@ -84,16 +84,6 @@ import {
 const selectClass =
   "h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
-const PRIORITY_VARIANTS = {
-  urgent: "destructive",
-  critical: "destructive",
-  high: "warning",
-  medium: "secondary",
-  normal: "secondary",
-  low: "outline",
-  lowest: "outline",
-};
-
 const RISK_META = {
   low: { variant: "success", label: "On track" },
   medium: { variant: "warning", label: "At risk" },
@@ -145,25 +135,18 @@ function ProjectChart({ project, expanded, onToggle }) {
   const leads = byRole.find((g) => g.role === "team_lead")?.people || [];
   const roleBranches = byRole.filter((g) => g.role !== "team_lead");
 
-  const meta = (
+  const facts = (
     <>
       {project.priority && (
-        <Badge variant={PRIORITY_VARIANTS[String(project.priority).toLowerCase()] || "secondary"} size="sm">
-          <Flag className="h-3 w-3" aria-hidden="true" />
-          {prettyish(project.priority)}
-        </Badge>
+        <span className="inline-flex items-center gap-1.5">
+          <Flag className="h-4 w-4" aria-hidden="true" />
+          <span className="text-foreground">{prettyish(project.priority)}</span>
+        </span>
       )}
-      {/* Risk is only worth saying when it is not "fine". */}
-      {health.risk !== "low" && (
-        <Badge variant={risk.variant} size="sm">
-          <AlertTriangle className="h-3 w-3" aria-hidden="true" />
-          {risk.label}
-        </Badge>
-      )}
-      <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+      <span className="inline-flex items-center gap-1.5">
         <CalendarDays className="h-4 w-4" aria-hidden="true" />
         {deadline ? (
-          <span className={health.deadlinePassed ? "font-medium text-destructive" : ""}>
+          <span className={health.deadlinePassed ? "font-medium text-destructive" : "text-foreground"}>
             {deadline}
             {health.deadlinePassed ? " — passed" : ""}
           </span>
@@ -171,10 +154,25 @@ function ProjectChart({ project, expanded, onToggle }) {
           "No deadline"
         )}
       </span>
-      <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground tabular-nums">
+      <span className="inline-flex items-center gap-1.5 tabular-nums">
         <Users className="h-4 w-4" aria-hidden="true" />
-        {team.length + (manager ? 1 : 0)}
+        <span className="text-foreground">{team.length + (manager ? 1 : 0)}</span>
+        {team.length + (manager ? 1 : 0) === 1 ? "person" : "people"}
       </span>
+      <span className="inline-flex items-center gap-1.5 tabular-nums">
+        <FolderKanban className="h-4 w-4" aria-hidden="true" />
+        <span className="text-foreground">
+          {health.done}/{health.total}
+        </span>
+        tasks
+      </span>
+      {/* Risk is only worth saying when it is not "fine". */}
+      {health.risk !== "low" && (
+        <Badge variant={risk.variant} size="sm">
+          <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+          {risk.label}
+        </Badge>
+      )}
     </>
   );
 
@@ -189,7 +187,7 @@ function ProjectChart({ project, expanded, onToggle }) {
           onToggle={onToggle}
           panelId={panelId}
           ChevronIcon={ChevronRight}
-          meta={meta}
+          facts={facts}
         />
       </div>
 
@@ -199,7 +197,7 @@ function ProjectChart({ project, expanded, onToggle }) {
 
           {/* The manager: one node, on its own level. */}
           <div className="flex justify-center">
-            {manager ? <PersonNode person={manager} emphasis caption="Project manager" /> : <EmptyManagerNode />}
+            {manager ? <PersonNode person={manager} tone="manager" caption="Project manager" /> : <EmptyManagerNode />}
           </div>
 
           {team.length === 0 ? (
@@ -220,7 +218,7 @@ function ProjectChart({ project, expanded, onToggle }) {
                   <ScrollStrip fadeFrom="from-muted/20">
                     <Branches className="w-max min-w-full">
                       {leads.map((p) => (
-                        <PersonNode key={p.key} person={p} caption="Team lead" />
+                        <PersonNode key={p.key} person={p} tone="lead" caption="Team lead" />
                       ))}
                     </Branches>
                   </ScrollStrip>

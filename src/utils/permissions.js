@@ -131,12 +131,12 @@ export function can(action) {
     case "view_billing":
     case "manage_billing":
       return BILLING.includes(r);
-    // Who files work for review. Designer and QA do the same kind of work as
-    // a developer, so they submit it the same way — leaving them out here was
-    // the sort of omission that looks like a permissions bug to the person it
-    // happens to.
+    // Who files work for review. Designer, DevOps and QA do the same kind of
+    // work as a developer, so they submit it the same way — leaving them out
+    // here was the sort of omission that looks like a permissions bug to the
+    // person it happens to.
     case "submit_task":
-      return ["developer", "designer", "qa", "employee", "team_lead"].includes(r);
+      return ["developer", "designer", "devops", "qa", "employee", "team_lead"].includes(r);
     default:
       return true;
   }

@@ -8,6 +8,7 @@ import {
   ClipboardCheck,
   Code2,
   Palette,
+  Server,
   User,
   UserCircle,
 } from "lucide-react";
@@ -47,6 +48,7 @@ export const ROLE_VARIANTS = {
   qa: "success",
   developer: "success",
   designer: "success",
+  devops: "success",
   employee: "outline",
   client: "outline",
 };
@@ -72,6 +74,7 @@ export const ROLE_META = {
   qa: { icon: ClipboardCheck, label: "QA", plural: "QA" },
   developer: { icon: Code2, label: "Developer", plural: "Developers" },
   designer: { icon: Palette, label: "Designer", plural: "Designers" },
+  devops: { icon: Server, label: "DevOps", plural: "DevOps" },
   employee: { icon: User, label: "Employee", plural: "Employees" },
   client: { icon: UserCircle, label: "Client", plural: "Clients" },
 };
