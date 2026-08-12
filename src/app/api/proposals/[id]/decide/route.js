@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
+import { PROJECT_STATUS } from "@/utils/projectStatus";
 import { requireUnlocked } from "@/utils/entitlements";
 
 export const dynamic = "force-dynamic";
@@ -172,7 +173,7 @@ export async function POST(request, { params }) {
         organization_id: auth.orgId,
         name: proposal.title,
         description: proposal.description,
-        status: "pending",
+        status: PROJECT_STATUS.pending,
         // OUR estimate wins over the client's ask. Before this, accepting a
         // proposal created a project budgeted at whatever the customer hoped
         // to spend — and every margin figure downstream was then measured
