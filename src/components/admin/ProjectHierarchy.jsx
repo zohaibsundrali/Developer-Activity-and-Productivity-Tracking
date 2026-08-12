@@ -29,7 +29,6 @@ import StatCard from "@/components/shell/StatCard";
 import { sectionTitle } from "@/components/shell/navConfig";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId } from "@/utils/orgContext";
-import { loadEmployees } from "@/utils/employeesData";
 import { computeProjectHealth } from "@/utils/pmData";
 import { projectStatusMeta, isProjectOpen } from "@/utils/projectStatus";
 import {
@@ -60,10 +59,29 @@ import {
  * been added but given nothing to do will not appear, and that is worth knowing
  * rather than papering over — the card says so when it happens.
  *
- * WHAT IT COSTS: four queries for the whole page, no matter how many projects.
+ * WHAT IT COSTS: FIVE queries for the whole page, no matter how many projects.
+ *
+ * That number is counted honestly, and it is worth saying why it is not four.
+ * This screen first called `loadEmployees()`, which reads like one call and is
+ * SEVEN — memberships, developers, admin_users, employee_profiles, teams,
+ * departments and projects. With the two here that was nine round trips to
+ * render a page that needs three facts. A helper that hides its cost is how a
+ * page ends up slow while every line in it looks cheap.
+ *
+ * The five are: projects, developer_tasks, memberships (roles), developers and
+ * admin_users (names). Four is reachable only by dropping admin_users and
+ * showing an email where an owner-or-admin project manager's name should be,
+ * which trades a real thing on screen for a number in a comment. Names live in
+ * two tables because staff and admins are two tables, and PostgREST cannot
+ * union them in one request.
+ *
+ * `employee_profiles` went with the change, so job titles are no longer shown;
+ * the email is, which identifies somebody just as well here.
+ *
  * The obvious shape — a query per project for its tasks and another for its
  * team — is what makes a screen like this take eight seconds on a real
- * organisation.
+ * organisation. A test fails if a fetch ever appears inside the per-project
+ * map.
  *
  * PROGRESS is computed from tasks (done ÷ total) by computeProjectHealth, the
  * same function the Project Hub uses, falling back to the stored `progress`
@@ -193,7 +211,7 @@ function PersonRow({ person }) {
           {person.name}
         </span>
         <span className="block truncate text-xs text-muted-foreground">
-          {person.designation || person.email || "—"}
+          {person.email || "—"}
         </span>
       </span>
       <span className="flex shrink-0 items-center gap-2">
@@ -365,8 +383,9 @@ export default function ProjectHierarchy() {
       const orgId = getOrgId();
       if (!orgId) throw new Error("Your session has no organization. Sign in again.");
 
-      // Four queries for the whole page. See the note at the top of the file.
-      const [projRes, taskRes, empRes] = await Promise.all([
+      // Five queries, in parallel. See the note at the top of the file for why
+      // this does not call loadEmployees() — that helper is seven on its own.
+      const [projRes, taskRes, memRes, devRes, adminRes] = await Promise.all([
         supabase
           .from("projects")
           .select(
@@ -380,17 +399,44 @@ export default function ProjectHierarchy() {
           .select("id, project_id, developer_id, status, due_date")
           .eq("organization_id", orgId)
           .limit(5000),
-        loadEmployees(orgId),
+        supabase
+          .from("memberships")
+          .select("user_id, user_type, role, email, status")
+          .eq("organization_id", orgId)
+          .neq("user_type", "client"),
+        supabase.from("developers").select("id, name, email").eq("organization_id", orgId),
+        supabase.from("admin_users").select("id, full_name, email").eq("organization_id", orgId),
       ]);
 
       if (projRes.error) throw projRes.error;
 
-      const employees = empRes?.employees || [];
+      // Names come from whichever profile table the membership points at.
+      const nameById = new Map();
+      for (const d of devRes.data || []) {
+        nameById.set(String(d.id), { name: d.name, email: d.email });
+      }
+      for (const a of adminRes.data || []) {
+        nameById.set(String(a.id), { name: a.full_name, email: a.email });
+      }
+
       const byUserId = new Map();
       const byEmail = new Map();
-      for (const e of employees) {
-        if (e.userId) byUserId.set(String(e.userId), e);
-        if (e.email) byEmail.set(String(e.email).toLowerCase(), e);
+      for (const m of memRes.data || []) {
+        if (!m.user_id) continue;
+        const profile = nameById.get(String(m.user_id)) || {};
+        const email = profile.email || m.email || "";
+        // Falling back to the local part of the address is deliberate: a
+        // membership whose profile row is missing still has to appear, because
+        // a person silently absent from their own project is worse than a
+        // person shown by an imperfect name.
+        const person = {
+          userId: m.user_id,
+          name: profile.name || (email ? email.split("@")[0] : "Member"),
+          email,
+          role: m.role || m.user_type || "developer",
+        };
+        byUserId.set(String(m.user_id), person);
+        if (email) byEmail.set(email.toLowerCase(), person);
       }
 
       // Tasks grouped by project, once.
@@ -424,7 +470,6 @@ export default function ProjectHierarchy() {
               name: emp.name,
               email: emp.email,
               role: emp.role,
-              designation: emp.profile?.designation || null,
               taskCount,
             });
           };
@@ -471,7 +516,6 @@ export default function ProjectHierarchy() {
                   name: manager.name,
                   email: manager.email,
                   role: manager.role,
-                  designation: manager.profile?.designation || null,
                   taskCount: 0,
                 }
               : null,
@@ -517,6 +561,13 @@ export default function ProjectHierarchy() {
       return true;
     });
   }, [projects, search, statusFilter, managerFilter]);
+
+  // Split, not sorted. A project nobody answers for is a different KIND of row
+  // from one that has a manager: it needs an owner before anything else on it
+  // matters, and mixed into the list it reads as just another card. The stat
+  // tile counts them; this is where you actually see which ones.
+  const unmanaged = useMemo(() => visible.filter((p) => !p.manager), [visible]);
+  const managed = useMemo(() => visible.filter((p) => p.manager), [visible]);
 
   const stats = useMemo(() => {
     const open = projects.filter((p) => isProjectOpen(p.status));
@@ -706,15 +757,72 @@ export default function ProjectHierarchy() {
           }
         />
       ) : (
-        <div className="space-y-3">
-          {visible.map((p) => (
-            <ProjectCard
-              key={p.id}
-              project={p}
-              expanded={expanded.has(p.id)}
-              onToggle={() => toggle(p.id)}
-            />
-          ))}
+        <div className="space-y-8">
+          {/* Without a manager — first, because it is the list somebody has to
+              act on. Hidden entirely when it is empty rather than sitting there
+              as a permanent empty box saying nothing is wrong. */}
+          {unmanaged.length > 0 && (
+            <section aria-labelledby="hierarchy-unmanaged" className="space-y-3">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <h2
+                  id="hierarchy-unmanaged"
+                  className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-warning-on-tint"
+                >
+                  <UserX className="h-4 w-4" aria-hidden="true" />
+                  Without a manager
+                </h2>
+                <span className="text-sm text-muted-foreground tabular-nums">
+                  {unmanaged.length}
+                </span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Nobody answers for these. Reports, approvals and client questions
+                on a project with no manager have nowhere to go — set one on the
+                project to move it into the list below.
+              </p>
+              <div className="space-y-3">
+                {unmanaged.map((p) => (
+                  <ProjectCard
+                    key={p.id}
+                    project={p}
+                    expanded={expanded.has(p.id)}
+                    onToggle={() => toggle(p.id)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {managed.length > 0 && (
+            <section aria-labelledby="hierarchy-managed" className="space-y-3">
+              {/* The heading only earns its place once there is something above
+                  it to distinguish this list from. */}
+              {unmanaged.length > 0 && (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <h2
+                    id="hierarchy-managed"
+                    className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground"
+                  >
+                    <Briefcase className="h-4 w-4" aria-hidden="true" />
+                    With a manager
+                  </h2>
+                  <span className="text-sm text-muted-foreground tabular-nums">
+                    {managed.length}
+                  </span>
+                </div>
+              )}
+              <div className="space-y-3">
+                {managed.map((p) => (
+                  <ProjectCard
+                    key={p.id}
+                    project={p}
+                    expanded={expanded.has(p.id)}
+                    onToggle={() => toggle(p.id)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       )}
     </div>

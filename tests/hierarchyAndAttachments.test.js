@@ -115,11 +115,22 @@ describe("the Team Structure section is wired end to end", () => {
 });
 
 describe("the hierarchy derives a team without a query per project", () => {
-  it("loads the org's projects, tasks and people in one pass", () => {
+  it("issues exactly five queries for the whole page", () => {
+    // Counted, not claimed. The comment on this file first said "four" while
+    // the code called loadEmployees() — which reads like one call and is SEVEN
+    // (memberships, developers, admin_users, employee_profiles, teams,
+    // departments, projects). The real number was nine. A helper that hides
+    // its cost is how a page ends up slow while every line looks cheap.
+    const tables = [...HIERARCHY.matchAll(/\.from\("(\w+)"\)/g)].map((m) => m[1]);
+    expect(tables.sort()).toEqual(
+      ["admin_users", "developer_tasks", "developers", "memberships", "projects"].sort()
+    );
     expect(HIERARCHY).toContain("Promise.all");
-    // Tasks are fetched once for the organization and grouped in memory.
-    expect(HIERARCHY).toMatch(/from\("developer_tasks"\)[\s\S]{0,200}eq\("organization_id", orgId\)/);
     expect(HIERARCHY).toContain("tasksByProject");
+  });
+
+  it("does not call loadEmployees, whose cost is invisible at the call site", () => {
+    expect(HIERARCHY).not.toContain("loadEmployees");
   });
 
   it("does not fetch inside the per-project map", () => {
@@ -159,6 +170,28 @@ describe("the hierarchy derives a team without a query per project", () => {
   it("says so when a project has no manager, instead of showing a blank", () => {
     expect(HIERARCHY).toMatch(/No project manager set/);
     expect(HIERARCHY).toMatch(/Nobody is on this project yet/);
+  });
+
+  it("puts projects with no manager in their own section, above the rest", () => {
+    // A stat tile counts them; this is where you see which ones. Split rather
+    // than sorted, because a project nobody answers for is a different kind of
+    // row and reads as just another card when mixed in.
+    expect(HIERARCHY).toContain("const unmanaged = useMemo");
+    expect(HIERARCHY).toContain("const managed = useMemo");
+    expect(HIERARCHY).toMatch(/Without a manager/);
+    // Both must EXIST before the ordering means anything. Comparing raw
+    // indexOf results lets a missing needle return -1 and satisfy "comes
+    // first" — the assertion then passes precisely when the feature is gone.
+    const at = (needle) => {
+      const i = HIERARCHY.indexOf(needle);
+      expect(i, `${needle} is not rendered at all`).toBeGreaterThan(-1);
+      return i;
+    };
+    expect(at("unmanaged.map(")).toBeLessThan(at("{managed.map("));
+  });
+
+  it("hides that section when there is nothing wrong, rather than showing an empty box", () => {
+    expect(HIERARCHY).toMatch(/\{unmanaged\.length > 0 && \(/);
   });
 
   it("gives the progress bar an accessible value, not just a width", () => {
