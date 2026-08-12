@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Users,
   RefreshCw,
@@ -9,9 +9,24 @@ import {
   Building2,
   UserCircle,
   FilterX,
+  UserPlus,
+  Trash2,
+  FolderKanban,
+  LayoutGrid,
+  Rows3,
+  Crown,
+  ShieldCheck,
+  Briefcase,
+  UserCog,
+  Wallet,
+  ClipboardCheck,
+  Code2,
+  Palette,
+  User,
 } from "lucide-react";
 import StatCard from "@/components/shell/StatCard";
 import EmployeeProfileEditor from "@/components/admin/EmployeeProfileEditor";
+import AddEmployeeDialog from "@/components/admin/AddEmployeeDialog";
 import {
   PageHeader,
   Toolbar,
@@ -29,7 +44,9 @@ import {
 import { sectionTitle } from "@/components/shell/navConfig";
 import { getOrgId } from "@/utils/orgContext";
 import { loadEmployees, setEmployeeStatus } from "@/utils/employeesData";
-import { can } from "@/utils/permissions";
+import { can, getRole } from "@/utils/permissions";
+import { ROLES, grantableStaffRoles } from "@/utils/roles";
+import { confirmAndDeleteDeveloper } from "@/utils/developerDeletion";
 import { resolveOrgFileUrls } from "@/utils/orgFiles";
 
 /**
@@ -46,19 +63,52 @@ import { resolveOrgFileUrls } from "@/utils/orgFiles";
 
 // role → Badge variant. Status/role is never colour alone: the badge always
 // carries its label too.
+//
+// designer, qa and finance were missing here after migration 058 added them,
+// so three real roles rendered in the fallback outline as if they were
+// something the directory had never heard of.
 const ROLE_VARIANTS = {
   owner: "default",
   admin: "info",
   manager: "secondary",
-  team_lead: "secondary",
   hr: "secondary",
+  finance: "secondary",
+  team_lead: "secondary",
+  qa: "success",
   developer: "success",
+  designer: "success",
   employee: "outline",
+  client: "outline",
 };
 
 function roleVariant(role) {
   return ROLE_VARIANTS[role] || "outline";
 }
+
+// role → icon and plural, for the "by role" tiles. Purely presentational; a
+// role missing from here still gets counted and shown, with a generic icon and
+// its own prettified name.
+const ROLE_META = {
+  owner: { icon: Crown, plural: "Owners" },
+  admin: { icon: ShieldCheck, plural: "Admins" },
+  manager: { icon: Briefcase, plural: "Managers" },
+  hr: { icon: UserCog, plural: "HR" },
+  finance: { icon: Wallet, plural: "Finance" },
+  team_lead: { icon: Users, plural: "Team Leads" },
+  qa: { icon: ClipboardCheck, plural: "QA" },
+  developer: { icon: Code2, plural: "Developers" },
+  designer: { icon: Palette, plural: "Designers" },
+  employee: { icon: User, plural: "Employees" },
+  client: { icon: UserCircle, plural: "Clients" },
+};
+
+// Highest privilege first, so the strip reads the way an org chart does. Roles
+// this file has never heard of sort after the known ones rather than being
+// dropped — an unrecognised role is exactly the thing somebody needs to see.
+const roleOrder = (role) => {
+  const i = ROLES.indexOf(role);
+  return i === -1 ? ROLES.length : i;
+};
 
 // membership status → StatusPill status (which encodes shape as well as colour,
 // so "active" and "suspended" stay distinguishable without colour vision).
@@ -124,7 +174,7 @@ function EmployeeIdentity({ emp, photo, size = "md" }) {
   );
 }
 
-/** One labelled fact inside a mobile card. */
+/** One labelled fact inside an employee card. */
 function CardFact({ label, children }) {
   return (
     <div className="min-w-0">
@@ -136,6 +186,157 @@ function CardFact({ label, children }) {
   );
 }
 
+/**
+ * "12 Developers, 3 Designers, 1 HR" — one tile per role actually present.
+ *
+ * It is a button, not a card: the count answers "how many developers are
+ * there", and the next question is always "which ones", so pressing it filters
+ * the list below. Pressing the active one clears the filter again.
+ *
+ * Colour carries nothing here. Every tile is the same neutral surface and the
+ * role is named in words, which keeps the palette's status colours meaning
+ * status.
+ */
+function RoleTile({ role, count, active, onClick }) {
+  const meta = ROLE_META[role] || {};
+  const Icon = meta.icon || Users;
+  const label = meta.plural || prettyLabel(role);
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex items-center gap-3 rounded-xl border bg-card p-4 text-left shadow-card transition-all duration-150 motion-reduce:transition-none hover:shadow-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+        active ? "border-primary ring-1 ring-primary" : "border-border"
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
+          active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+        }`}
+      >
+        <Icon className="h-5 w-5" />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-2xl font-bold leading-none tracking-tight text-foreground tabular-nums">
+          {count}
+        </span>
+        <span className="mt-1 block truncate text-sm font-medium text-muted-foreground">
+          {label}
+        </span>
+      </span>
+      {/* The tile is a filter, and a pressed filter that looks like a statistic
+          is how somebody ends up reading a filtered list as the whole org. */}
+      <span className="sr-only">
+        {active ? "Filter applied. Press to show everyone." : `Show only ${label}.`}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * One person, as a card. Used by both the desktop grid and the phone list, so
+ * the two cannot drift into showing different facts about the same employee.
+ */
+function EmployeeCard({
+  emp,
+  photo,
+  reportsToName,
+  canManage,
+  canDelete,
+  isToggling,
+  isDeleting,
+  onEdit,
+  onToggle,
+  onDelete,
+}) {
+  return (
+    <div className="flex h-full flex-col rounded-xl border border-border bg-card p-4 shadow-card transition-shadow duration-150 motion-reduce:transition-none hover:shadow-elevated">
+      <div className="flex items-start justify-between gap-3">
+        <EmployeeIdentity emp={emp} photo={photo} size="lg" />
+        <StatusPill
+          status={statusPill(emp.status)}
+          label={prettyLabel(emp.status) || "Unknown"}
+        />
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {emp.role && (
+          <Badge variant={roleVariant(emp.role)} size="sm">
+            {prettyLabel(emp.role)}
+          </Badge>
+        )}
+        {emp.profile?.designation && (
+          <span className="truncate text-sm text-muted-foreground">
+            {emp.profile.designation}
+          </span>
+        )}
+      </div>
+
+      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-border pt-4">
+        <CardFact label="Department">{emp.departmentName || "—"}</CardFact>
+        <CardFact label="Team">{emp.teamName || "—"}</CardFact>
+        <CardFact label="Reports to">{reportsToName}</CardFact>
+        {/* The one fact the old developer list had that this screen did not. */}
+        <CardFact label="Projects">
+          <span className="font-medium tabular-nums">{emp.projectCount ?? 0}</span>
+        </CardFact>
+      </dl>
+
+      {/* mt-auto keeps the buttons on the bottom edge, so a card whose owner
+          has no department does not sit with its actions halfway up the grid
+          row. */}
+      <div className="mt-auto flex flex-wrap items-center gap-2 pt-4">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onEdit}
+          aria-label={`Edit ${emp.name || "employee"}`}
+        >
+          <Pencil className="h-4 w-4" aria-hidden="true" />
+          Edit
+        </Button>
+        {canManage && (
+          <Button
+            variant={emp.status === "active" ? "destructive" : "outline"}
+            size="sm"
+            onClick={onToggle}
+            disabled={isToggling}
+            aria-label={`${emp.status === "active" ? "Deactivate" : "Activate"} ${
+              emp.name || "employee"
+            }`}
+          >
+            <Power className="h-4 w-4" aria-hidden="true" />
+            {isToggling
+              ? "Saving…"
+              : emp.status === "active"
+              ? "Deactivate"
+              : "Activate"}
+          </Button>
+        )}
+        {canDelete && emp.userType === "developer" && (
+          // Deliberately last, quiet, and NOT the destructive variant —
+          // Deactivate is the one that should be reached for. This removes
+          // their projects, tasks, submissions and activity log, and the two
+          // confirmations behind it say so with the counts.
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onDelete}
+            disabled={isDeleting}
+            aria-label={`Delete ${emp.name || "employee"} permanently`}
+          >
+            <Trash2 className="h-4 w-4 text-destructive" aria-hidden="true" />
+            {isDeleting ? "Deleting…" : "Delete"}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function EmployeeDirectory() {
   const [employees, setEmployees] = useState([]);
   const [teams, setTeams] = useState([]);
@@ -143,6 +344,10 @@ export default function EmployeeDirectory() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  // Set before any await, so a second click on another card cannot start a
+  // second deletion while the first one is still in its confirmations.
+  const deletionInProgress = useRef(false);
 
   // toolbar state
   const [search, setSearch] = useState("");
@@ -152,10 +357,28 @@ export default function EmployeeDirectory() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState("name");
 
+  // Cards or table. Cards by default: this page answers "who works here", and
+  // a face with a role under it answers that faster than a row does. The table
+  // is still one click away for anyone scanning eight fields at once.
+  const [view, setView] = useState("cards");
+
   // editor
   const [selected, setSelected] = useState(null);
+  const [adding, setAdding] = useState(false);
 
   const canManage = can("manage_employees");
+  // Separate from `manage_employees` on purpose: suspending somebody and
+  // destroying their work are not the same decision. Both happen to be
+  // owner/admin/HR today, and reading the right capability is what keeps that
+  // true if either list changes.
+  const canDelete = can("delete_developer");
+
+  // The "Add employee" button appears only if this person could actually
+  // complete the form. `manage_employees` is owner/admin/hr; the second half
+  // mirrors the provision route, which refuses to grant a role ranking at or
+  // above the caller's own — without it, a role with no grantable options
+  // would open a dialog with an empty dropdown.
+  const canAdd = canManage && grantableStaffRoles(getRole()).length > 0;
 
   const load = useCallback(async () => {
     try {
@@ -227,6 +450,24 @@ export default function EmployeeDirectory() {
     return { total, active };
   }, [employees]);
 
+  // How many of each role there are.
+  //
+  // Counted from the roles PRESENT, not from the ROLES list — an org with no
+  // designers should not be told it has "0 Designers", because a row of zeros
+  // is what makes the numbers that matter hard to find. A role nobody in the
+  // codebase has heard of still gets a tile, which is how you would find out
+  // that somebody had been given one.
+  const roleCounts = useMemo(() => {
+    const counts = new Map();
+    (employees || []).forEach((e) => {
+      const r = e?.role || "unassigned";
+      counts.set(r, (counts.get(r) || 0) + 1);
+    });
+    return Array.from(counts, ([role, count]) => ({ role, count })).sort(
+      (a, b) => roleOrder(a.role) - roleOrder(b.role) || a.role.localeCompare(b.role)
+    );
+  }, [employees]);
+
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     let rows = (employees || []).filter((e) => {
@@ -286,6 +527,37 @@ export default function EmployeeDirectory() {
     [canManage, load]
   );
 
+  const handleDelete = useCallback(
+    async (emp) => {
+      // `userType === "developer"` is the whole precondition: the route deletes
+      // a row from `developers`, and an owner or admin's account lives in
+      // `admin_users`, so pointing it at one would find nothing.
+      if (!canDelete || !emp || emp.userType !== "developer") return;
+      if (deletionInProgress.current) return;
+
+      deletionInProgress.current = true;
+      setDeletingId(emp.membershipId);
+      try {
+        const { deleted } = await confirmAndDeleteDeveloper({
+          // The membership carries `user_id`, which IS developers.id — the
+          // primary key the route resolves by. added_by/added_by_admin are not
+          // loaded here, so the "only what you added" pre-check does not fire
+          // and the route's own check against the verified token is the one
+          // that decides. Selecting those columns to pre-empt it would break
+          // the whole directory on an install that predates them, because
+          // PostgREST refuses the entire request over one unknown column.
+          developer: { id: emp.userId, name: emp.name, email: emp.email },
+          actor: JSON.parse(sessionStorage.getItem("adminUser") || "null"),
+        });
+        if (deleted) await load();
+      } finally {
+        deletionInProgress.current = false;
+        setDeletingId(null);
+      }
+    },
+    [canDelete, load]
+  );
+
   const orgId = getOrgId();
 
   // Filter chrome is purely local view state — resetting it touches nothing
@@ -308,20 +580,28 @@ export default function EmployeeDirectory() {
   const header = (
     <PageHeader
       title={sectionTitle("employees", "admin")}
-      description="Directory of everyone in your organization."
+      description="Everyone in your organization — add an account, change a role, deactivate or remove."
       actions={
-        <Button
-          variant="outline"
-          onClick={load}
-          disabled={loading}
-          aria-label="Refresh employee directory"
-        >
-          <RefreshCw
-            className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
-            aria-hidden="true"
-          />
-          Refresh
-        </Button>
+        <>
+          <Button
+            variant="outline"
+            onClick={load}
+            disabled={loading}
+            aria-label="Refresh employee directory"
+          >
+            <RefreshCw
+              className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+              aria-hidden="true"
+            />
+            Refresh
+          </Button>
+          {canAdd && (
+            <Button onClick={() => setAdding(true)}>
+              <UserPlus className="h-4 w-4" aria-hidden="true" />
+              Add employee
+            </Button>
+          )}
+        </>
       }
     />
   );
@@ -436,6 +716,15 @@ export default function EmployeeDirectory() {
         emp.teamName || <span className="text-muted-foreground">—</span>,
     },
     {
+      key: "projects",
+      header: "Projects",
+      render: (emp) => (
+        <span className="font-medium tabular-nums text-foreground">
+          {emp.projectCount ?? 0}
+        </span>
+      ),
+    },
+    {
       key: "reportsTo",
       header: "Reports to",
       render: (emp) => {
@@ -484,6 +773,18 @@ export default function EmployeeDirectory() {
                 : emp.status === "active"
                 ? "Deactivate"
                 : "Activate"}
+            </Button>
+          )}
+          {canDelete && emp.userType === "developer" && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleDelete(emp)}
+              disabled={deletingId === emp.membershipId}
+              aria-label={`Delete ${emp.name || "employee"} permanently`}
+            >
+              <Trash2 className="h-4 w-4 text-destructive" aria-hidden="true" />
+              {deletingId === emp.membershipId ? "Deleting…" : "Delete"}
             </Button>
           )}
         </div>
@@ -551,6 +852,31 @@ export default function EmployeeDirectory() {
         />
         <StatCard title="Teams" value={teams.length} icon={Users} tone="primary" />
       </div>
+
+      {/* By role — the headcount question, and a filter for the answer. */}
+      {roleCounts.length > 0 && (
+        <section aria-labelledby="employees-by-role" className="space-y-3">
+          <h2
+            id="employees-by-role"
+            className="text-sm font-semibold uppercase tracking-wide text-muted-foreground"
+          >
+            By role
+          </h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {roleCounts.map(({ role, count }) => (
+              <RoleTile
+                key={role}
+                role={role}
+                count={count}
+                active={roleFilter === role}
+                onClick={() =>
+                  setRoleFilter((current) => (current === role ? "all" : role))
+                }
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Toolbar */}
       <Toolbar
@@ -631,12 +957,43 @@ export default function EmployeeDirectory() {
           </>
         }
         actions={
-          filtersActive ? (
-            <Button variant="ghost" onClick={clearFilters}>
-              <FilterX className="h-4 w-4" aria-hidden="true" />
-              Clear filters
-            </Button>
-          ) : null
+          <>
+            {filtersActive && (
+              <Button variant="ghost" onClick={clearFilters}>
+                <FilterX className="h-4 w-4" aria-hidden="true" />
+                Clear filters
+              </Button>
+            )}
+            {/* md and up only: below it the cards are the only layout that
+                fits, so a control that cannot change anything is hidden
+                rather than shown disabled. */}
+            <div
+              role="group"
+              aria-label="Layout"
+              className="hidden rounded-lg border border-border p-0.5 md:flex"
+            >
+              {[
+                { id: "cards", label: "Cards", Icon: LayoutGrid },
+                { id: "table", label: "Table", Icon: Rows3 },
+              ].map(({ id, label, Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setView(id)}
+                  aria-pressed={view === id}
+                  title={`${label} view`}
+                  className={`flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors duration-150 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                    view === id
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" aria-hidden="true" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </>
         }
       />
 
@@ -649,98 +1006,55 @@ export default function EmployeeDirectory() {
             }`}
       </p>
 
-      {/* Table — md and up. Eight columns are unreadable on a phone, so the
-          card list below takes over rather than letting the page scroll sideways. */}
-      <div className="hidden md:block">
-        {/* DataTable owns its own overflow-x-auto wrapper. */}
-        <DataTable
-          columns={columns}
-          rows={visible}
-          keyField="membershipId"
-          empty={emptyState}
-        />
+      {/* Table — md and up, and only when asked for. Eight columns are
+          unreadable on a phone, so below md the cards are the only layout. */}
+      {view === "table" && (
+        <div className="hidden md:block">
+          {/* DataTable owns its own overflow-x-auto wrapper. */}
+          <DataTable
+            columns={columns}
+            rows={visible}
+            keyField="membershipId"
+            empty={emptyState}
+          />
+        </div>
+      )}
+
+      {/* Cards — the default above md, and the only layout below it. One list
+          rendered once: a second copy of the card for the phone is how the two
+          came to show different facts about the same person. */}
+      <div className={view === "table" ? "md:hidden" : ""}>
+        {visible.length === 0 ? (
+          emptyState
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {visible.map((emp) => (
+              <EmployeeCard
+                key={emp.membershipId}
+                emp={emp}
+                photo={photoUrls.get(emp.profile?.photo_url) || null}
+                reportsToName={
+                  emp.reportsTo ? nameByUserId.get(emp.reportsTo) || "—" : "—"
+                }
+                canManage={canManage}
+                canDelete={canDelete}
+                isToggling={togglingId === emp.membershipId}
+                isDeleting={deletingId === emp.membershipId}
+                onEdit={() => setSelected(emp)}
+                onToggle={() => handleToggleStatus(emp)}
+                onDelete={() => handleDelete(emp)}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Card list — below md. */}
-      <div className="space-y-3 md:hidden">
-        {visible.length === 0
-          ? emptyState
-          : visible.map((emp) => {
-              const photo = photoUrls.get(emp.profile?.photo_url) || null;
-              const reportsToName = emp.reportsTo
-                ? nameByUserId.get(emp.reportsTo) || "—"
-                : "—";
-              const isToggling = togglingId === emp.membershipId;
-
-              return (
-                <div
-                  key={emp.membershipId}
-                  className="rounded-xl border border-border bg-card p-4 shadow-card"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <EmployeeIdentity emp={emp} photo={photo} size="lg" />
-                    <StatusPill
-                      status={statusPill(emp.status)}
-                      label={prettyLabel(emp.status) || "Unknown"}
-                    />
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    {emp.role && (
-                      <Badge variant={roleVariant(emp.role)} size="sm">
-                        {prettyLabel(emp.role)}
-                      </Badge>
-                    )}
-                    {emp.profile?.designation && (
-                      <span className="truncate text-sm text-muted-foreground">
-                        {emp.profile.designation}
-                      </span>
-                    )}
-                  </div>
-
-                  <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-border pt-4">
-                    <CardFact label="Department">
-                      {emp.departmentName || "—"}
-                    </CardFact>
-                    <CardFact label="Team">{emp.teamName || "—"}</CardFact>
-                    <CardFact label="Reports to">{reportsToName}</CardFact>
-                  </dl>
-
-                  <div className="mt-4 flex flex-wrap items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSelected(emp)}
-                      aria-label={`Edit ${emp.name || "employee"}`}
-                    >
-                      <Pencil className="h-4 w-4" aria-hidden="true" />
-                      Edit
-                    </Button>
-                    {canManage && (
-                      <Button
-                        variant={
-                          emp.status === "active" ? "destructive" : "outline"
-                        }
-                        size="sm"
-                        onClick={() => handleToggleStatus(emp)}
-                        disabled={isToggling}
-                        aria-label={`${
-                          emp.status === "active" ? "Deactivate" : "Activate"
-                        } ${emp.name || "employee"}`}
-                      >
-                        <Power className="h-4 w-4" aria-hidden="true" />
-                        {isToggling
-                          ? "Saving…"
-                          : emp.status === "active"
-                          ? "Deactivate"
-                          : "Activate"}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-      </div>
+      {/* Add — the form that used to be its own "Add Developer" sidebar screen. */}
+      <AddEmployeeDialog
+        open={adding}
+        onClose={() => setAdding(false)}
+        onCreated={load}
+      />
 
       {/* Editor modal */}
       {selected && (

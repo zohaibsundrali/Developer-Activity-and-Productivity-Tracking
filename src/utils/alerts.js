@@ -35,11 +35,17 @@ export const showPre = (title, text, icon = "info") =>
   showAlert({ icon, title, html: toPreHtml(text) });
 
 // Confirmation dialog — resolves to true when the user confirms.
+//
+// `pre: true` renders the body as preformatted text instead of a paragraph,
+// for the confirmations that show a list ("Projects: 3 / Tasks: 41") where the
+// alignment is the point. It is escaped either way — `text` and `toPreHtml`
+// both go through escapeHtml, so a developer named `<script>` is a name.
 export const showConfirm = async (title, text, options = {}) => {
   const result = await Swal.fire({
     icon: options.icon || "warning",
     title,
-    text,
+    text: options.pre ? undefined : text,
+    html: options.pre ? toPreHtml(text) : undefined,
     showCancelButton: true,
     confirmButtonText: options.confirmButtonText || "Confirm",
     cancelButtonText: options.cancelButtonText || "Cancel",

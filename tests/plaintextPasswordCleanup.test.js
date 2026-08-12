@@ -294,24 +294,31 @@ describe("invitation acceptance creates no plaintext password row", () => {
   });
 });
 
-describe("the admin 'add developer' flow", () => {
-  // AddDeveloper.jsx is a client component that talks to Supabase from the
-  // browser; there is no DOM environment here to render it in. The assertion is
-  // therefore on its source: neither of the two insert payloads it builds may
-  // carry a password, and the typed password must still reach
-  // /api/auth/provision, which is what creates the auth account.
-  const src = code("src/components/admin/AddDeveloper.jsx");
+describe("the admin 'add employee' flow", () => {
+  // createStaffMember talks to Supabase from the browser; there is no DOM
+  // environment here to drive it. The assertion is therefore on its source:
+  // neither of the two insert payloads it builds may carry a password, and the
+  // typed password must still reach /api/auth/provision, which is what creates
+  // the auth account.
+  //
+  // This used to read AddDeveloper.jsx. That screen was folded into Employees
+  // and the three writes moved to this module whole — the guarantee did not
+  // change, only the file it has to hold in.
+  const src = code("src/utils/staffAccounts.js");
 
   it("builds no insert payload containing a password field", () => {
-    expect(src).not.toMatch(/password:\s*newDeveloper\.password\s*,?\s*\n\s*status:/);
+    // Both payloads are spelled out here rather than matched loosely: they are
+    // the two objects that go to `developers`, and a `password` key appearing
+    // in either is the whole failure this file exists to catch.
+    expect(src).not.toMatch(/const profile = \{[^}]*password/s);
+    expect(src).not.toMatch(/const attributed = \{[^}]*\bpassword\b[^}]*\}/s);
     // The only place the typed password may appear is the provision request.
-    const occurrences = src.match(/password:\s*newDeveloper\.password/g) || [];
+    const occurrences = src.match(/^\s*password,\s*$/gm) || [];
     expect(occurrences).toHaveLength(1);
   });
 
   it("still sends the password to /api/auth/provision", () => {
     expect(src).toContain('authFetch("/api/auth/provision"');
-    expect(src).toMatch(/password:\s*newDeveloper\.password/);
   });
 });
 

@@ -2,14 +2,13 @@
  * The one rule for a person's name typed into a form.
  *
  * WHY THIS FILE EXISTS
- *  Two forms take a person's name from a stranger: Add Developer
- *  (src/components/admin/AddDeveloper.jsx, an admin naming someone else) and
- *  the create-organization form (src/app/admin/registration/page.js, an owner
- *  naming themselves). They were given the same brief and started to grow two
- *  implementations of it, which is how two forms end up disagreeing about
+ *  Two forms take a person's name from a stranger: Add Employee
+ *  (src/components/admin/AddEmployeeDialog.jsx, an admin naming someone else)
+ *  and the create-organization form (src/app/admin/registration/page.js, an
+ *  owner naming themselves). They were given the same brief and started to grow
+ *  two implementations of it, which is how two forms end up disagreeing about
  *  whether "O'Brien" is a name. There is one rule and it lives here; both
- *  import it, and AddDeveloper re-exports it under its old name so the module
- *  that already tests it keeps working.
+ *  import it.
  *
  * THE RULE, AND THE ONE JUDGEMENT CALL IN IT
  *  Letters and spaces, 3-50 characters after trimming, no digits and no

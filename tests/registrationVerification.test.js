@@ -10,7 +10,7 @@ import { BRAND_NAME } from "@/components/brand/brand";
  * The create-organization form and the email confirmation that follows it.
  *
  * WHAT THIS COVERS
- *  1. The name rule — one implementation, shared with the Add Developer form.
+ *  1. The name rule — one implementation, shared with the Add Employee form.
  *  2. The confirmation email: what it says, and that nothing interpolated into
  *     it can become markup.
  *  3. The verification step: four boxes, an automatic submit, a countdown, and
@@ -41,19 +41,23 @@ const ROUTE_CODE = withoutComments(ROUTE);
 // ── 14. Full name ────────────────────────────────────────────────────
 
 describe("full name validation on the create-organization form", () => {
-  it("is the same implementation the Add Developer form uses, not a second copy", async () => {
-    const { validateDeveloperName } = await import("@/components/admin/AddDeveloper");
-    expect(validateDeveloperName).toBe(validatePersonName);
-    // …and the form imports it rather than declaring a rule of its own.
+  it("is the same implementation the Add Employee form uses, not a second copy", () => {
+    // Both forms import the rule from @/utils/nameValidation rather than
+    // declaring one. This used to prove it by importing the Add Developer
+    // component and comparing the function identity; that component is gone
+    // (the form opens from Employees now), and reading the two sources says
+    // the same thing without pulling a whole admin screen — and its import
+    // graph — through the transformer to say it.
     expect(REGISTRATION).toContain('import { validatePersonName } from "@/utils/nameValidation"');
     expect(REGISTRATION_CODE).not.toMatch(/const \w*NAME_PATTERN\s*=/);
-    // 20s, not the 5s default. This is the only test in the file that pulls a
-    // real admin component through the transformer, and AddDeveloper's import
-    // graph is large enough that under full-suite parallelism it intermittently
-    // crossed 5s — passing alone, failing in the suite. A flaky failure here
-    // reads as "the name rule was forked again", which is exactly the alarm
-    // that must stay trustworthy.
-  }, 20000);
+
+    const dialog = readFileSync(
+      path.join(process.cwd(), "src/components/admin/AddEmployeeDialog.jsx"),
+      "utf8"
+    );
+    expect(dialog).toContain('import { validatePersonName } from "@/utils/nameValidation"');
+    expect(withoutComments(dialog)).not.toMatch(/const \w*NAME_PATTERN\s*=/);
+  });
 
   it("accepts a name", () => {
     for (const good of ["Ali Raza", "Jo Ann", "José Martínez", "Müller", "O'Brien", "Anne-Marie"]) {

@@ -81,3 +81,36 @@ export function isRole(value) {
 export function rankOf(role) {
   return isRole(role) ? ROLE_RANK[role] : null;
 }
+
+/**
+ * The roles whose account lives in `developers` — i.e. everyone the Employees
+ * directory can create outright.
+ *
+ * DERIVED, never typed out. A hand-written list here is a fourth copy of the
+ * role vocabulary and would go stale the same way the provision route's copy
+ * did. Owner and admin are excluded because their profile row belongs in
+ * `admin_users` and the only paths that write it are signup and invite-accept;
+ * client is excluded because it has its own screen (CreateClientAccount) and
+ * its own table.
+ */
+export const STAFF_ROLES = ROLES.filter((r) => userTypeForRole(r) === "developer");
+
+/**
+ * Of those, the ones `callerRole` is actually allowed to grant.
+ *
+ * This MIRRORS the rule in /api/auth/provision — `requestedRank >= callerRank`
+ * is refused there — and mirrors it deliberately rather than being the rule:
+ * the server check is the one that counts, and it runs against a verified
+ * token rather than whatever the browser believes about itself. This exists so
+ * the dropdown does not offer a choice that will come back as a 403.
+ *
+ * Fail closed: an unknown caller role grants nothing. Note that a tie is
+ * refused, not allowed, which is why an HR user cannot mint another HR user
+ * and why `designer` and `developer` — who share a rank — cannot create each
+ * other.
+ */
+export function grantableStaffRoles(callerRole) {
+  const callerRank = rankOf(callerRole);
+  if (callerRank === null) return [];
+  return STAFF_ROLES.filter((r) => ROLE_RANK[r] < callerRank);
+}

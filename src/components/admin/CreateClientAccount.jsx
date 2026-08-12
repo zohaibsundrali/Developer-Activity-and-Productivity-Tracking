@@ -34,7 +34,7 @@ import {
  * clients row is deleted again, because a client profile that can never sign in
  * is worse than no row: it shows up in every picker, can be linked to a
  * project, and silently receives nothing. That is the same rollback
- * AddDeveloper does, for the same reason.
+ * createStaffMember (src/utils/staffAccounts.js) does, for the same reason.
  *
  * The membership is last and is NOT rolled back on failure: by then the account
  * works and the person can sign in. A missing membership row costs them a line

@@ -313,13 +313,15 @@ Point CI at a **dedicated Supabase project or branch**, never production.
   sections are present and Billing / Clients / Automation are absent.
 
 ### `hr.spec.js` — people operations
-- Sees Employees, Team Stats, Organization, Add/View Developers — and **not**
-  Billing, Clients, All Projects, Task Reviews, Automation, System Health.
+- Sees Employees, Team Stats, Organization — and **not** Add Developer or View
+  Developers (both screens were folded into Employees), Billing, Clients, All
+  Projects, Task Reviews, Automation, System Health.
 - **Employees**: the directory renders with its search box, role and department
-  filters, and the headcount tiles.
-- **Onboarding**: the Add Developer form collects name, email and password; the
-  organisation invite form offers a role.
-- **Offboarding**: every employee row exposes an enabled Deactivate/Activate
+  filters, the headcount tiles and the per-role tiles under "By role".
+- **Onboarding**: the Add Employee dialog, opened from Employees, collects name,
+  email, role and password, and offers only roles ranking below the caller's
+  own; the organisation invite form offers a role.
+- **Offboarding**: every employee card exposes an enabled Deactivate/Activate
   control — the toggle that writes `memberships.status`, which is what actually
   revokes access at next login.
 - **Profiles**: an employee profile opens with its HR fields (designation,

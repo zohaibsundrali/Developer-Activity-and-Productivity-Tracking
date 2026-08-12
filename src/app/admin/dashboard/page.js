@@ -10,8 +10,6 @@ import AllProjects from "@/components/admin/AllProjects";
 import ProjectRequests from "@/components/admin/ProjectRequests";
 import ChangeRequests from "@/components/admin/ChangeRequests";
 import BugQueue from "@/components/admin/BugQueue";
-import AddDeveloper from "@/components/admin/AddDeveloper";
-import ViewDevelopers from "@/components/admin/ViewDevelopers";
 import DeveloperActivity from "@/components/admin/DeveloperActivity";
 import TaskReviewPanel from "@/components/admin/TaskReviewPanel";
 import ProductivityDashboard from "@/components/admin/ProductivityDashboard";
@@ -45,6 +43,18 @@ import { showSuccess } from "@/utils/alerts";
 const SIGNUP_MARKER_KEY = "adminToken";
 const WELCOME_SHOWN_KEY = "devtrack.orgWelcomeShown";
 
+// Sections that have moved. "Add Developer" and "View Developers" were their
+// own screens; both are Employees now. Bookmarks, an old notification's deep
+// link and the button on Developer Activity all still point at the old ids,
+// and a section id with nowhere to go falls through to Overview — which reads
+// as "the button is broken" rather than "that screen moved".
+const LEGACY_SECTIONS = {
+  "add-developer": "employees",
+  "view-developers": "employees",
+};
+
+const resolveSection = (id) => LEGACY_SECTIONS[id] || id || "overview";
+
 // Presentational only: labels the sidebar groups the nav items into. Keys are
 // the same section ids the switch below uses; it changes no ordering, no
 // filtering and no access rule — `adminNavFor(role)` still decides membership.
@@ -62,8 +72,6 @@ const ADMIN_NAV_GROUPS = {
   "developer-activity": "Insights",
   reports: "Insights",
   automation: "Insights",
-  "add-developer": "People",
-  "view-developers": "People",
   employees: "People",
   "team-stats": "People",
   organization: "Workspace",
@@ -196,7 +204,7 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
   const [projects, setProjects] = useState([]);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const sectionParam = searchParams?.get("section") || "overview";
+  const sectionParam = resolveSection(searchParams?.get("section"));
 
   // The URL is still the source of truth — back/forward, a pasted ?section=
   // link and the notification centre's deep links all have to win — but the
@@ -367,12 +375,8 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
         return <ReportsDashboard />;
       case "automation":
         return <AutomationRules />;
-      case "add-developer":
-        return <AddDeveloper {...contentProps} />;
       case "developer-activity":
         return <DeveloperActivity user={user} supabase={supabase} />;
-      case "view-developers":
-        return <ViewDevelopers {...contentProps} />;
       case "task-reviews":
         return <TaskReviewPanel currentAdmin={user} />;
       case "employees":

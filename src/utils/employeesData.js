@@ -24,6 +24,7 @@ export async function loadEmployees(orgId) {
     { data: profiles },
     { data: teams },
     { data: depts },
+    { data: projectRows },
   ] = await Promise.all([
     supabase.from("memberships").select("*").eq("organization_id", orgId).neq("user_type", "client"),
     supabase.from("developers").select("id, name, email, status, created_at").eq("organization_id", orgId),
@@ -31,6 +32,14 @@ export async function loadEmployees(orgId) {
     supabase.from("employee_profiles").select("*").eq("organization_id", orgId),
     supabase.from("teams").select("id, name, department_id, manager_id, team_lead_id").eq("organization_id", orgId),
     supabase.from("departments").select("id, name").eq("organization_id", orgId),
+    // How many projects each person is on. Fetched as one column for the whole
+    // organization and counted below, rather than a count query per employee —
+    // the developer list this replaced issued N of those, so a directory of
+    // forty people cost forty round trips to fill in one number.
+    supabase
+      .from("projects")
+      .select("assigned_developer_email")
+      .eq("organization_id", orgId),
   ]);
 
   const devById = new Map((devs || []).map((d) => [d.id, d]));
@@ -39,17 +48,29 @@ export async function loadEmployees(orgId) {
   const deptById = new Map((depts || []).map((d) => [d.id, d]));
   const profByKey = new Map((profiles || []).map((p) => [`${p.user_id}:${p.user_type}`, p]));
 
+  // Keyed on the lowercased address: `assigned_developer_email` is free text
+  // written by several screens, so "Ali@x.com" and "ali@x.com" are one person
+  // and counting them separately would show a project owner as unassigned.
+  const projectsByEmail = new Map();
+  (projectRows || []).forEach((p) => {
+    const key = String(p?.assigned_developer_email || "").trim().toLowerCase();
+    if (!key) return;
+    projectsByEmail.set(key, (projectsByEmail.get(key) || 0) + 1);
+  });
+
   const employees = (mem || []).map((m) => {
     const prof = profByKey.get(`${m.user_id}:${m.user_type}`) || null;
     const person = m.user_type === "admin" ? adminById.get(m.user_id) : devById.get(m.user_id);
     const name =
       person?.full_name || person?.name || (m.email ? m.email.split("@")[0] : "Member");
+    const email = person?.email || m.email || "";
     return {
       membershipId: m.id,
       userId: m.user_id,
       userType: m.user_type,
       name,
-      email: person?.email || m.email || "",
+      email,
+      projectCount: projectsByEmail.get(email.trim().toLowerCase()) || 0,
       role: m.role || m.user_type || "developer",
       status: m.status || "active",
       teamId: m.team_id || null,

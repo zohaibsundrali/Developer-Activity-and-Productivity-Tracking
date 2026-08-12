@@ -3,11 +3,17 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 /**
- * The Add Developer form: the name rule, and the reason the fields were full.
+ * The Add Employee form: the name rule, and the reason the fields were full.
+ *
+ * It was the "Add Developer" screen when these tests were written. The screen
+ * is gone — the form opens from Employees now, as AddEmployeeDialog, and the
+ * writes it performs live in src/utils/staffAccounts.js — but every failure
+ * recorded below is a property of the FORM, not of where it hung in the
+ * sidebar, so the tests followed it rather than being deleted with the screen.
  *
  * WHAT WAS WRONG
  *  Name, email and password arrived pre-filled. Nothing in the component seeds
- *  them — `newDeveloper` starts as three empty strings and only the change
+ *  them — the state starts as empty strings and only the change
  *  handler ever writes to it — so the values were the browser's: three inputs
  *  called name / email / password in that order read as a sign-up form, and the
  *  signed-in admin's own saved credentials were filled into a form whose whole
@@ -26,9 +32,14 @@ import path from "node:path";
  *  only BETWEEN letters, so they buy nothing for "Ali-" or "!!!".
  */
 
-const { validateDeveloperName, NAME_MIN_LENGTH, NAME_MAX_LENGTH } = await import(
-  "@/components/admin/AddDeveloper"
-);
+// The rule itself lives in @/utils/nameValidation and is imported by both
+// forms that take a person's name. Aliased to the name these tests were
+// written against; the assertions below are unchanged.
+const {
+  validatePersonName: validateDeveloperName,
+  NAME_MIN_LENGTH,
+  NAME_MAX_LENGTH,
+} = await import("@/utils/nameValidation");
 
 const ok = (value) => validateDeveloperName(value) === "";
 
@@ -101,21 +112,24 @@ describe("developer name validation", () => {
   });
 });
 
-describe("the Add Developer form starts empty", () => {
+describe("the Add Employee form starts empty", () => {
   const source = readFileSync(
-    path.join(process.cwd(), "src/components/admin/AddDeveloper.jsx"),
+    path.join(process.cwd(), "src/components/admin/AddEmployeeDialog.jsx"),
     "utf8"
   );
 
-  it("seeds its state with three empty strings and nothing else", () => {
+  it("seeds its state with empty strings and nothing else", () => {
+    // The role is the one field with a default, because a select with no
+    // selection is not a blank field — it is a form that cannot be submitted.
     expect(source).toMatch(
-      /useState\(\{\s*name:\s*""\s*,\s*email:\s*""\s*,\s*password:\s*""\s*\}\)/
+      /const EMPTY = \{\s*name:\s*""\s*,\s*email:\s*""\s*,\s*password:\s*""\s*,/
     );
+    expect(source).toMatch(/useState\(EMPTY\)/);
   });
 
   it("does not blank the fields in an effect after paint", () => {
     // The wrong fix: the admin would watch their own details appear and vanish.
-    expect(source).not.toMatch(/useEffect\([^)]*setNewDeveloper/s);
+    expect(source).not.toMatch(/useEffect\([^)]*setForm/s);
   });
 
   it("tells the browser not to autofill any of the three inputs", () => {
@@ -127,14 +141,21 @@ describe("the Add Developer form starts empty", () => {
     expect(source).toMatch(/autoComplete="new-password"/);
   });
 
-  it("still sends the typed password to /api/auth/provision", () => {
-    // The field's initial value changed; what the form submits did not.
-    expect(source).toMatch(/authFetch\("\/api\/auth\/provision"/);
-    expect(source).toMatch(/password:\s*newDeveloper\.password/);
-  });
-
   it("surfaces the name error through Field, which owns aria-describedby", () => {
     expect(source).toMatch(/error=\{nameError \|\| undefined\}/);
-    expect(source).toMatch(/const nameError = validateDeveloperName\(newDeveloper\.name\)/);
+    expect(source).toMatch(/const nameError = validatePersonName\(form\.name\)/);
+  });
+});
+
+describe("what the form submits", () => {
+  // The writes moved out of the component when the screen did. The password's
+  // destination is the assertion that matters, and it is now here.
+  const source = readFileSync(
+    path.join(process.cwd(), "src/utils/staffAccounts.js"),
+    "utf8"
+  );
+
+  it("still sends the typed password to /api/auth/provision", () => {
+    expect(source).toMatch(/authFetch\("\/api\/auth\/provision"/);
   });
 });
