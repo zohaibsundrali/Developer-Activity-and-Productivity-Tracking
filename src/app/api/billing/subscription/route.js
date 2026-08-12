@@ -93,6 +93,21 @@ export async function GET(request) {
             last_payment_at: sub.last_payment_at,
             hasStripeCustomer: Boolean(sub.stripe_customer_id),
             hasStripeSubscription: Boolean(sub.stripe_subscription_id),
+            // The card on file. Brand, last four and expiry only — the number
+            // and the CVV are never stored (migration 066), so there is
+            // nothing here that would be dangerous to send. The Stripe
+            // payment_method id is deliberately NOT published: like the
+            // customer and subscription ids above, it stays on the server.
+            card: sub.card_last4
+              ? {
+                  brand: sub.card_brand || null,
+                  last4: sub.card_last4,
+                  expMonth: sub.card_exp_month || null,
+                  expYear: sub.card_exp_year || null,
+                  funding: sub.card_funding || null,
+                  updatedAt: sub.card_updated_at || null,
+                }
+              : null,
           }
         : null,
       // The plan in force right now, which is the free plan whenever the

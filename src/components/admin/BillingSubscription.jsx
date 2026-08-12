@@ -468,6 +468,29 @@ export default function BillingSubscription() {
   const trialDays = data?.trialDaysRemaining;
   const currentPlanCode = plan?.code || subscription?.plan_code || null;
 
+  // The card on file. Brand, last four and expiry are all the server has —
+  // migration 066 makes storing anything more impossible at the column level.
+  const card = subscription?.card || null;
+  const cardExpiry =
+    card?.expMonth && card?.expYear
+      ? `${String(card.expMonth).padStart(2, "0")}/${card.expYear}`
+      : null;
+
+  // "Expires soon" is two months out, not one. A card that expires at the end
+  // of next month gives somebody a fortnight to notice and act; warning in the
+  // final month means the first sign is a failed payment.
+  const cardExpiryState = (() => {
+    if (!card?.expMonth || !card?.expYear) return null;
+    const now = new Date();
+    // Expiry is END of that month, so the card is dead once the FOLLOWING
+    // month begins. Comparing against the 1st of the expiry month would call a
+    // perfectly good card expired for its last thirty days.
+    const deadAt = new Date(card.expYear, card.expMonth, 1);
+    if (now >= deadAt) return "expired";
+    const warnFrom = new Date(card.expYear, card.expMonth - 2, 1);
+    return now >= warnFrom ? "soon" : null;
+  })();
+
   return (
     <div className="space-y-6">
       {/* Header — title comes from SECTION_TITLES so the sidebar, the topbar
@@ -767,6 +790,74 @@ export default function BillingSubscription() {
           </div>
         )}
       </section>
+
+      {/* Payment method — the card being billed, which this screen could not
+          show at all before migration 066. */}
+      <Section
+        title="Payment method"
+        description="The card Stripe charges for this organization."
+      >
+        <div className="rounded-xl border border-border bg-card p-5 shadow-card">
+          {card ? (
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-4">
+                <span
+                  aria-hidden="true"
+                  className="flex h-11 w-16 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                >
+                  {card.brand || "Card"}
+                </span>
+                <div className="min-w-0">
+                  <p className="font-medium text-foreground">
+                    {/* The dots are decorative; the accessible name says what
+                        this actually is, because "•••• 4242" read aloud is
+                        four bullets and a number. */}
+                    <span aria-hidden="true">•••• •••• •••• {card.last4}</span>
+                    <span className="sr-only">
+                      {card.brand || "Card"} ending in {card.last4}
+                    </span>
+                  </p>
+                  <p className="mt-0.5 text-sm text-muted-foreground">
+                    {cardExpiry ? `Expires ${cardExpiry}` : "No expiry on file"}
+                    {card.funding ? ` · ${card.funding}` : ""}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                {cardExpiryState === "expired" && (
+                  <Badge variant="destructive" size="sm">
+                    <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                    Expired
+                  </Badge>
+                )}
+                {cardExpiryState === "soon" && (
+                  <Badge variant="warning" size="sm">
+                    <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                    Expires soon
+                  </Badge>
+                )}
+                {subscription?.hasStripeCustomer && !unconfigured && (
+                  <Button variant="outline" onClick={openPortal} disabled={busy === "portal"}>
+                    {busy === "portal" ? "Opening…" : "Update card"}
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <EmptyState
+              icon={CreditCard}
+              className="border-0 bg-transparent"
+              title="No card on file"
+              description={
+                unconfigured
+                  ? "Stripe is not connected for this deployment, so no card can be stored yet."
+                  : "A card appears here once a paid plan is started. Only the brand, last four digits and expiry are ever stored — never the full number, and never the security code."
+              }
+            />
+          )}
+        </div>
+      </Section>
 
       {/* Usage */}
       <Section

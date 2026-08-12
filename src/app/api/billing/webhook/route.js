@@ -195,6 +195,9 @@ async function processEvent(svc, event, organizationId) {
     case "invoice.finalized":
       return upsertInvoice(svc, organizationId, object);
 
+    case "payment_method.detached":
+      return handlePaymentMethodDetached(svc, organizationId, object);
+
     default:
       return undefined;
   }
@@ -354,10 +357,115 @@ async function applySubscription(
     row.grace_period_ends_at = null;
   }
 
+  // Folded into the SAME upsert rather than a second write. A separate update
+  // would be a second chance to fail, leaving the subscription current and the
+  // card stale — the state where the screen shows a card that is not being
+  // billed.
+  Object.assign(row, await readCardFields(subscription, terminal));
+
   const { error } = await svc
     .from("organization_subscriptions")
     .upsert(row, { onConflict: "organization_id" });
   if (error) throw new Error(`subscription upsert failed: ${error.message}`);
+}
+
+// ── The card on file ────────────────────────────────────
+//
+// NEVER THE CARD NUMBER, NEVER THE CVV. Stripe Checkout collects those in an
+// iframe on its own domain; they do not reach this server, and migration 066's
+// CHECK on card_last4 refuses anything but four digits even if a future change
+// tried. What is kept is what answers "which card is this organization billed
+// on, and is it about to expire?" — the two questions the Billing screen could
+// not answer at all.
+//
+// `default_payment_method` arrives as an ID STRING on a raw webhook payload and
+// as an expanded object only when someone asked for it. Both shapes are handled;
+// the string costs one Stripe read, and a failed read is not allowed to fail the
+// webhook — Stripe would retry the whole event, and a missing card is worth far
+// less than a subscription status that never lands.
+async function readCardFields(subscription, terminal) {
+  // A cancelled subscription has no card on file worth showing. Clearing it is
+  // deliberate: a dead card lingering on the billing screen reads as an active
+  // payment method.
+  if (terminal) {
+    return {
+      card_brand: null,
+      card_last4: null,
+      card_exp_month: null,
+      card_exp_year: null,
+      card_funding: null,
+      stripe_payment_method_id: null,
+      card_updated_at: new Date().toISOString(),
+    };
+  }
+
+  const pm = subscription.default_payment_method;
+  if (!pm) return {};
+
+  let card = null;
+  let pmId = null;
+
+  if (typeof pm === "object" && pm.card) {
+    card = pm.card;
+    pmId = pm.id || null;
+  } else {
+    pmId = idOf(pm);
+    if (!pmId) return {};
+    try {
+      const stripe = stripeClient();
+      if (!stripe) return {};
+      const full = await stripe.paymentMethods.retrieve(pmId);
+      card = full?.card || null;
+    } catch (err) {
+      console.warn(`[billing/webhook] Could not read payment method ${pmId}: ${err?.message}`);
+      // The id alone is still worth storing — it is what the detach event
+      // matches against later.
+      return { stripe_payment_method_id: pmId, card_updated_at: new Date().toISOString() };
+    }
+  }
+
+  if (!card) return pmId ? { stripe_payment_method_id: pmId } : {};
+
+  // Coerced and bounded here as well as in the database. 066 refuses a bad
+  // value, and a refused write would fail the whole subscription upsert — the
+  // card must never be the reason a status update is lost.
+  const last4 = /^[0-9]{4}$/.test(String(card.last4 || "")) ? String(card.last4) : null;
+  const month = Number(card.exp_month);
+  const year = Number(card.exp_year);
+
+  return {
+    card_brand: card.brand || null,
+    card_last4: last4,
+    card_exp_month: Number.isInteger(month) && month >= 1 && month <= 12 ? month : null,
+    card_exp_year: Number.isInteger(year) && year >= 2000 && year <= 2100 ? year : null,
+    card_funding: card.funding || null,
+    stripe_payment_method_id: pmId,
+    card_updated_at: new Date().toISOString(),
+  };
+}
+
+// The card was removed at Stripe. Clear it here only if it is the one we are
+// showing — a customer may hold several, and detaching an old one must not
+// blank the card that is actually being billed.
+async function handlePaymentMethodDetached(svc, organizationId, paymentMethod) {
+  const pmId = paymentMethod?.id;
+  if (!pmId) return;
+
+  const { error } = await svc
+    .from("organization_subscriptions")
+    .update({
+      card_brand: null,
+      card_last4: null,
+      card_exp_month: null,
+      card_exp_year: null,
+      card_funding: null,
+      stripe_payment_method_id: null,
+      card_updated_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("organization_id", organizationId)
+    .eq("stripe_payment_method_id", pmId);
+  if (error) throw new Error(`payment method detach failed: ${error.message}`);
 }
 
 async function handlePaymentFailed(svc, organizationId, invoice) {
