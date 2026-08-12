@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
+import { isUnsettled } from "@/utils/taskState";
 import path from "node:path";
 
 /**
@@ -99,9 +100,14 @@ function fakeClient() {
       }
 
       if (table === "developer_tasks") {
+        // `not` as well as `neq`: the gate moved from `.neq("status",
+        // "completed")` to `.not("status", "in", settledFilter())` so the SQL
+        // filter and the JS predicate share one definition. A fake missing the
+        // method throws, which is how this test caught the change.
         const b = {
           eq: () => b,
           neq: () => b,
+          not: () => b,
           then: (r) => r({ count: state.openBugs, error: null }),
         };
         return { select: () => b };
@@ -182,12 +188,17 @@ describe("the gate on marking work complete", () => {
     expect(body.detail).toContain("3 bugs still open");
   });
 
-  it("counts a REOPENED bug as open", async () => {
-    // The route asks for `status != completed`, so `rejected` — a bug that
-    // failed its retest — is counted. A gate that let those through would pass
-    // a project with known broken work in it.
+  it("counts a REOPENED bug, and one still with QA, as open", async () => {
+    // The gate asks "is this settled?", not "is it off somebody's plate" —
+    // utils/taskState.js keeps those apart. So `rejected` (failed its retest)
+    // AND `reviewed` (QA still has it) both still block closing the project.
+    // A gate that let either through would pass a project with known broken
+    // or unverified work in it.
     const route = read("src/app/api/projects/[id]/closure/route.js");
-    expect(route).toMatch(/\.neq\("status", "completed"\)/);
+    expect(route).toMatch(/\.not\("status", "in", settledFilter\(\)\)/);
+    expect(isUnsettled({ status: "rejected" })).toBe(true);
+    expect(isUnsettled({ status: "reviewed" })).toBe(true);
+    expect(isUnsettled({ status: "completed" })).toBe(false);
   });
 
   it("re-checks the gate at the button, not just at page load", async () => {

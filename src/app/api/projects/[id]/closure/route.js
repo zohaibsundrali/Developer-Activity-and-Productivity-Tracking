@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { PROJECT_STATUS } from "@/utils/projectStatus";
+import { settledFilter } from "@/utils/taskState";
 
 export const dynamic = "force-dynamic";
 
@@ -104,9 +105,14 @@ async function readGate(svc, orgId, projectId) {
       .eq("organization_id", orgId)
       .eq("project_id", projectId)
       .eq("task_type", "bug")
-      // Everything except `completed` is open — including `rejected`, which is
-      // a bug that FAILED its retest and is emphatically not closed.
-      .neq("status", "completed"),
+      // UNSETTLED, not "off somebody's plate" — the two are different questions
+      // and utils/taskState.js keeps them apart. A bug sitting with QA
+      // (`reviewed`) still blocks closing the project, and so does one that
+      // FAILED its retest (`rejected`). Only `completed` counts as done.
+      //
+      // The filter value is built from the same set the JS predicate uses, so
+      // a change in one cannot leave this query asking the old question.
+      .not("status", "in", settledFilter()),
   ]);
 
   const list = milestones || [];
