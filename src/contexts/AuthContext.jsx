@@ -4,17 +4,21 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef } f
 import {
   isSessionExpired,
   clearAdminSession,
+  clearClientSession,
   clearDeveloperSession,
   getStoredAdminSession,
+  getStoredClientSession,
   getStoredDeveloperSession,
   touchAdminSession,
   touchDeveloperSession
 } from '@/utils/sessionPolicy';
+import { dashboardHomeFor } from '@/utils/dashboardHome';
 
 // Storage keys
 const STORAGE_KEYS = {
   ADMIN: 'adminUser',
   DEVELOPER: 'developerUser',
+  CLIENT: 'clientUser',
   TOKEN: 'auth_token',
   USER: 'user_data'
 };
@@ -26,6 +30,8 @@ const AuthContext = createContext({
   isLoading: true,
   // 'pending' | 'authenticated' | 'unauthenticated' — derived, see below.
   authStatus: 'pending',
+  // Dashboard route for the signed-in user, or null. Derived, see below.
+  home: null,
   login: () => {},
   logout: () => {},
   checkAuth: () => {}
@@ -76,6 +82,36 @@ export function AuthProvider({ children }) {
           const touched = maybeTouch('developer', developerData) || developerData;
           setIsLoggedIn(true);
           setUser(touched);
+          return true;
+        }
+      }
+
+      // CLIENTS WERE MISSING FROM THIS FUNCTION ENTIRELY.
+      //
+      // Login writes `clientUser` exactly as it writes the other two, and
+      // sessionPolicy has always exported the reader for it — but nothing here
+      // ever called it, so as far as this context was concerned a signed-in
+      // client was an anonymous visitor. Nothing broke loudly, because the one
+      // guard that consults `isLoggedIn` (ProtectedRoute's default check) is
+      // not used on any client screen; the middleware and the API layer are
+      // what actually keep a client out of somewhere they do not belong.
+      //
+      // It became visible the moment anything on a PUBLIC page asked "is
+      // somebody signed in" — the marketing header offered a client "Sign in"
+      // while they were, in fact, signed in.
+      //
+      // Checked last, after admin and developer, so an admin who also holds a
+      // stale client session is still an admin.
+      const clientData = getStoredClientSession();
+      if (clientData && typeof clientData === 'object') {
+        if (isSessionExpired(clientData)) {
+          clearClientSession();
+        } else {
+          // No touch() for clients: touchClientSession exists, but the sliding
+          // activity window below is wired for the two staff surfaces only.
+          // Reading a session must not be the thing that extends it.
+          setIsLoggedIn(true);
+          setUser(clientData);
           return true;
         }
       }
@@ -167,11 +203,24 @@ export function AuthProvider({ children }) {
       checkAuth();
     };
     
-    // Add event listeners
+    // TWO EVENT NAMES, ONE EVENT.
+    //
+    // This context dispatches `auth-state-changed`; the login page dispatches
+    // `auth-change` after it writes the session. Nothing listened for the
+    // second one, so signing in and then moving around the app CLIENT-SIDE
+    // left this context still believing nobody was signed in — until something
+    // remounted the provider or a full page load re-ran checkAuth. That is the
+    // other half of the "I signed in, then the header still offered me Sign
+    // in" report: a hard load looked fine, an in-app link did not.
+    //
+    // Both are honoured rather than renaming one, because a rename fixes it
+    // only for the callers you remember to grep for.
     window.addEventListener('auth-state-changed', handleAuthStateChange);
-    
+    window.addEventListener('auth-change', handleAuthStateChange);
+
     return () => {
       window.removeEventListener('auth-state-changed', handleAuthStateChange);
+      window.removeEventListener('auth-change', handleAuthStateChange);
     };
   }, [checkAuth]);
 
@@ -245,11 +294,22 @@ export function AuthProvider({ children }) {
   // checking" from "checked, and no" without re-deriving the same boolean pair
   // in every consumer, which is how one screen ends up bouncing a user the
   // others let through.
+  //
+  // `home` is the same kind of derived read: the dashboard this user belongs
+  // to, or null when there is nobody signed in / the session predates the role
+  // field. `user.role` is written by the login page as exactly one of admin,
+  // client, developer — the three profile tables — which is what
+  // dashboardHomeFor is keyed by. A membership role (manager, qa, team_lead…)
+  // never appears here; it decides what the /developer surface SHOWS, not
+  // which surface it is.
+  const home = isLoggedIn ? dashboardHomeFor(user?.role) : null;
+
   const contextValue = {
     isLoggedIn,
     user,
     isLoading,
     authStatus: isLoading ? 'pending' : isLoggedIn ? 'authenticated' : 'unauthenticated',
+    home,
     login,
     logout,
     checkAuth

@@ -38,8 +38,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Menu, X } from "lucide-react";
+import { LayoutDashboard, Menu, X } from "lucide-react";
 
+import { useAuth } from "@/contexts/AuthContext";
 import Logo from "@/components/brand/Logo";
 import { Container, CtaButton } from "@/components/landing/primitives";
 import {
@@ -186,6 +187,31 @@ export default function SiteNav({ sections }) {
   const toggleRef = useRef(null);
   const panelRef = useRef(null);
 
+  /*
+   * A visitor who is already signed in is offered their dashboard, and nothing
+   * else. Sign in / Join with an invite / Create an organization are three
+   * answers to "you do not have an account yet", and every one of them is
+   * wrong for somebody who does: signing in again is a no-op, and creating a
+   * second organization is an actively bad suggestion.
+   *
+   * WHY THE SIGNED-OUT SET IS WHAT RENDERS FIRST
+   *
+   * The session lives in sessionStorage, which exists only in the browser.
+   * This component is server-rendered — the marketing page is static, and
+   * making it read cookies would turn every visit into an SSR request to
+   * personalise a header. So the server, and therefore React's first client
+   * render, cannot know. Rendering anything other than the signed-out set
+   * before `isLoading` settles is a hydration mismatch.
+   *
+   * `isLoading` is settled by AuthProvider's mount effect, and ProtectedRoute
+   * documents the same trade-off from the other side. The visible cost is one
+   * frame of "Sign in" before it becomes "Dashboard" for a signed-in visitor;
+   * the alternative — an empty action slot until the check settles — shifts
+   * the header for everybody to spare that one frame for a minority.
+   */
+  const { isLoading: authLoading, isLoggedIn, home } = useAuth();
+  const signedIn = !authLoading && isLoggedIn && Boolean(home);
+
   const links = (contentLinks() ?? DEFAULT_LINKS).filter(
     (link) => !link.href.startsWith("#") || !sections || sections.has(link.href.slice(1)),
   );
@@ -328,30 +354,44 @@ export default function SiteNav({ sections }) {
             a wrapping header is worse than a header with two actions.
           */}
           <div className="ml-auto hidden items-center gap-1 lg:flex xl:gap-2">
-            {navSignIn ? (
-              <NavAnchor
-                href={navSignIn.href}
-                onClick={(event) => scrollToSection(event, navSignIn.href)}
-                className="inline-flex h-10 items-center rounded-lg px-3 text-sm font-semibold text-foreground transition-colors duration-200 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              >
-                {navSignIn.label}
-              </NavAnchor>
-            ) : null}
-            {navSecondary ? (
-              <CtaButton
-                href={navSecondary.href}
-                variant="ghost"
-                size="sm"
-                className="hidden xl:inline-flex"
-              >
-                {navSecondary.label}
+            {signedIn ? (
+              <CtaButton href={home} variant="primary" size="sm" className="shadow-card">
+                <LayoutDashboard className="h-4 w-4 shrink-0" aria-hidden="true" />
+                Dashboard
               </CtaButton>
-            ) : null}
-            {navPrimary ? (
-              <CtaButton href={navPrimary.href} variant="primary" size="sm" className="shadow-card">
-                {navPrimary.label}
-              </CtaButton>
-            ) : null}
+            ) : (
+              <>
+                {navSignIn ? (
+                  <NavAnchor
+                    href={navSignIn.href}
+                    onClick={(event) => scrollToSection(event, navSignIn.href)}
+                    className="inline-flex h-10 items-center rounded-lg px-3 text-sm font-semibold text-foreground transition-colors duration-200 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  >
+                    {navSignIn.label}
+                  </NavAnchor>
+                ) : null}
+                {navSecondary ? (
+                  <CtaButton
+                    href={navSecondary.href}
+                    variant="ghost"
+                    size="sm"
+                    className="hidden xl:inline-flex"
+                  >
+                    {navSecondary.label}
+                  </CtaButton>
+                ) : null}
+                {navPrimary ? (
+                  <CtaButton
+                    href={navPrimary.href}
+                    variant="primary"
+                    size="sm"
+                    className="shadow-card"
+                  >
+                    {navPrimary.label}
+                  </CtaButton>
+                ) : null}
+              </>
+            )}
           </div>
 
           {/*
@@ -426,7 +466,7 @@ export default function SiteNav({ sections }) {
             ))}
           </Container>
 
-          {navPrimary || navSecondary || navSignIn ? (
+          {signedIn || navPrimary || navSecondary || navSignIn ? (
             /* Same hierarchy as the bar, stacked: solid, outline, then the
                plain sign-in. Nothing is dropped at this width — the outlined
                step is only held back on the desktop row, where it is a space
@@ -437,7 +477,20 @@ export default function SiteNav({ sections }) {
                brand navy (`sidebar-border`) rather than the page hairline, so
                the foot of the menu is a deliberate edge you can see. */
             <Container className="mt-auto flex flex-col gap-2 border-t-2 border-sidebar-border py-6">
-              {navPrimary ? (
+              {signedIn ? (
+                /* Full width and on its own, matching the bar: one destination
+                   for someone who is already inside the product. */
+                <CtaButton
+                  href={home}
+                  variant="primary"
+                  size="lg"
+                  onClick={() => setOpen(false)}
+                >
+                  <LayoutDashboard className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  Dashboard
+                </CtaButton>
+              ) : null}
+              {!signedIn && navPrimary ? (
                 <CtaButton
                   href={navPrimary.href}
                   variant="primary"
@@ -447,7 +500,7 @@ export default function SiteNav({ sections }) {
                   {navPrimary.label}
                 </CtaButton>
               ) : null}
-              {navSecondary ? (
+              {!signedIn && navSecondary ? (
                 <CtaButton
                   href={navSecondary.href}
                   variant="ghost"
@@ -457,7 +510,7 @@ export default function SiteNav({ sections }) {
                   {navSecondary.label}
                 </CtaButton>
               ) : null}
-              {navSignIn ? (
+              {!signedIn && navSignIn ? (
                 <NavAnchor
                   href={navSignIn.href}
                   onClick={(event) => {
