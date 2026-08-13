@@ -76,7 +76,8 @@ const ReactNs = await import("react");
 globalThis.React = ReactNs.default ?? ReactNs;
 const { createElement: h } = globalThis.React;
 const { renderToStaticMarkup } = await import("react-dom/server");
-const { pct, distributionRows, BarRow } = await import("@/components/admin/TeamStats.jsx");
+const { pct, distributionRows } = await import("@/components/admin/TeamStats.jsx");
+const { ShareBar } = await import("@/components/admin/statViz.jsx");
 const { usageMetric, usageBarWidth, UsageBar } = await import(
   "@/components/admin/BillingSubscription.jsx"
 );
@@ -85,6 +86,11 @@ const { usageMetric, usageBarWidth, UsageBar } = await import(
 // on exactly that: the markup the component emits, not just the arithmetic.
 const fillWidths = (element) =>
   [...renderToStaticMarkup(element).matchAll(/style="width:([^"]+)"/g)].map((m) => m[1]);
+
+// A ShareBar segment carries a min-width alongside the width, so the width is
+// read up to the `;` rather than to the closing quote.
+const segmentWidths = (markup) =>
+  [...markup.matchAll(/style="width:([^";]+)/g)].map((m) => m[1]);
 
 describe("team stats distribution bars are drawn to the share they print", () => {
   it("draws a normal percentage at that percentage", () => {
@@ -195,20 +201,37 @@ describe("billing usage bars", () => {
 });
 
 describe("what the rendered markup actually emits", () => {
-  it("draws a role bar at the width printed beside it", () => {
-    // Live org: Owner 1 and Developer 1 of a headcount of 2, both of which
-    // rendered `width: 100%` (548 of 548px) beside a "(50%)" label.
+  /*
+   * These two moved from BarRow to ShareBar when the role and department
+   * panels stopped being stacked bar lists. The DEFECT they were written for
+   * is a property of the panel, not of the component that happened to draw it:
+   * the bar must be the share it prints. Deleting them with BarRow would have
+   * retired the only measurement of that.
+   */
+  it("draws a role segment at the width printed beside it", () => {
+    // Live org: Owner 1 and Developer 1 of a headcount of 2, which rendered
+    // `width: 100%` (548 of 548px) each, beside a "(50%)" label.
     const rows = distributionRows(new Map([["owner", 1], ["developer", 1]]), 2);
-    for (const row of rows) {
-      expect(fillWidths(h(BarRow, { label: row.key, value: row.count, share: row.share }))).toEqual([
-        "50%",
-      ]);
-    }
+    const markup = renderToStaticMarkup(
+      h(ShareBar, { rows: rows.map((r) => ({ ...r, label: r.key })), total: 2 })
+    );
+    expect(segmentWidths(markup)).toEqual(["50%", "50%"]);
+    // And the legend states the same number the segment is drawn to.
+    expect(markup).toContain("50%");
+    expect(markup).not.toContain("100%");
   });
 
-  it("draws a majority role bar at its own share", () => {
-    expect(fillWidths(h(BarRow, { label: "Owner", value: 3, share: 75 }))).toEqual(["75%"]);
-    expect(fillWidths(h(BarRow, { label: "Unassigned", value: 2, share: 100 }))).toEqual(["100%"]);
+  it("draws a majority role segment at its own share", () => {
+    const markup = renderToStaticMarkup(
+      h(ShareBar, {
+        rows: [
+          { key: "owner", label: "Owner", count: 3 },
+          { key: "unassigned", label: "Unassigned", count: 1 },
+        ],
+        total: 4,
+      })
+    );
+    expect(segmentWidths(markup)).toEqual(["75%", "25%"]);
   });
 
   it("emits no fill at all for an unlimited usage row", () => {

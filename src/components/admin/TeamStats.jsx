@@ -81,56 +81,20 @@ export function distributionRows(counts, total) {
     .sort((a, b) => b.count - a.count);
 }
 
-/**
- * One horizontal bar. Label and value sit on their own line above the track so
- * a long department name can never collide with its number, and the label
- * truncates rather than wrapping the row to two heights.
- */
 /*
- * One hue for every bar in this file. These panels are each a SINGLE ranked
- * series shown side by side; painting "by role" in brand indigo and "by
- * department" in info blue implied the two carried different kinds of value,
- * which they do not — and the near-clash of the two blues was exactly the
- * "several saturated colours for no reason" look we are removing. Bar length
- * carries the magnitude; colour has no work left to do here.
+ * `BarRow` USED TO LIVE HERE, and both panels that used it — by role, by
+ * department — now draw a <ShareBar> instead. It is deleted rather than left
+ * exported "in case": nothing imports it, and an exported component with no
+ * caller is invisible to lint and to the eye, so it survives until somebody
+ * copies it.
+ *
+ * The guarantee it carried is NOT deleted. Its whole reason for existing was
+ * that the bar had to be drawn to the share it printed — a two-person org with
+ * one Owner and one Developer once printed "50%" beside two full-width bars.
+ * ShareBar keeps that property by construction (segment width and legend
+ * percentage are the same call), and the assertions that measured it moved
+ * with it — see tests/progressBarWidths.test.js.
  */
-export function BarRow({ label, value, share }) {
-  // The bar IS the printed share. There is deliberately no separate width prop:
-  // the two can no longer drift apart.
-  const width = Math.max(0, Math.min(100, Number(share) || 0));
-  return (
-    <li>
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="min-w-0 truncate text-sm text-foreground" title={label}>
-          {label}
-        </span>
-        <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
-          <span className="font-semibold text-foreground">{value}</span>
-          {share != null ? (
-            <span className="ml-1.5 text-xs">({share}%)</span>
-          ) : null}
-        </span>
-      </div>
-      <div
-        className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted"
-        role="progressbar"
-        aria-label={`${label}: ${value}`}
-        // The scale is 0–100 percent, so the value announced has to be the
-        // percentage — announcing the raw head count against a max of 100 told
-        // a screen reader "1 out of 100" for a bar drawn at 50%.
-        aria-valuenow={width}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuetext={share != null ? `${value} (${share}%)` : String(value)}
-      >
-        <div
-          className="h-full rounded-full bg-primary transition-[width] duration-150"
-          style={{ width: `${width}%` }}
-        />
-      </div>
-    </li>
-  );
-}
 
 /** Chart-shaped skeleton: a few label/bar pairs. */
 function ChartSkeleton({ rows = 4 }) {
@@ -582,16 +546,14 @@ export default function TeamStats() {
               description="Assign departments on an employee's profile to populate this."
             />
           ) : (
-            <ul className="space-y-4">
-              {deptRows.map((d) => (
-                <BarRow
-                  key={d.key}
-                  label={d.key}
-                  value={d.count}
-                  share={d.share}
-                />
-              ))}
-            </ul>
+            // The same question as "by role", asked of a different column, so
+            // it is drawn the same way. Consistency is the point: two panels
+            // answering "how is the whole divided" that look different suggest
+            // they mean different things.
+            <ShareBar
+              rows={deptRows.map((d) => ({ key: d.key, label: d.key, count: d.count }))}
+              total={headcount}
+            />
           )}
         </Section>
 
