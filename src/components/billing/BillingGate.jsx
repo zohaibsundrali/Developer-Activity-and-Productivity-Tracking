@@ -8,6 +8,7 @@ import { AlertTriangle, Clock, Lock } from "lucide-react";
 
 import { authFetch } from "@/utils/authFetch";
 import { BRAND_NAME } from "@/components/brand/brand";
+import AuthLoadingScreen from "@/components/auth/AuthLoadingScreen";
 
 /**
  * The trial countdown, and the door that closes at the end of it.
@@ -83,12 +84,20 @@ export default function BillingGate({ children }) {
   if (exempt) return children;
 
   // Held only until the first answer arrives — one request, already in flight.
+  //
+  // THE BRANDED SCREEN, NOT A HAND-ROLLED ONE. This used to be a grey sentence
+  // centred on a bare background: no mark, no spinner, no `role="status"`. On a
+  // slow connection it is the FIRST full screen of the product an admin sees
+  // after signing in, and a lone line of muted text with nothing moving reads
+  // as a page that failed rather than one that is working.
+  //
+  // AuthLoadingScreen already solved this for the auth guard — the lockup, a
+  // spinning indicator, the polite-live region, and the deep brand ground — so
+  // this reuses it rather than growing a second answer to "what does waiting
+  // look like". The two waits are the same moment to the person in front of
+  // them; they should not look like two different products.
   if (!checked) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background px-4">
-        <p className="text-sm text-muted-foreground">Loading your workspace…</p>
-      </div>
-    );
+    return <AuthLoadingScreen message="Loading your workspace…" />;
   }
 
   // Locked, and this person cannot pay — a developer, or a manager. Showing

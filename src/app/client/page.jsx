@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 import AppShell from "@/components/shell/AppShell";
+import AuthLoadingScreen from "@/components/auth/AuthLoadingScreen";
 import { CLIENT_NAV, sectionTitle } from "@/components/shell/navConfig";
 import {
   getStoredClientSession,
@@ -28,15 +29,14 @@ import ClientAccount from "@/components/client/ClientAccount";
 // The one boot screen this route uses, defined once instead of twice. It is
 // shown while the session is being read — before there is any content shape to
 // stand in for — so it stays a labelled indicator rather than a skeleton.
+//
+// It was a hand-rolled ring and a grey line: correct behaviour, but unbranded,
+// so a client's first screen of the product carried nothing that said whose
+// product it was. AuthLoadingScreen is the same wait with the lockup on it, and
+// using it here means the admin gate, the auth guard and this portal all show
+// one screen instead of three that nearly match.
 function PortalBoot() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="flex flex-col items-center gap-3" role="status" aria-live="polite">
-        <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-primary/30 border-t-primary motion-reduce:animate-none" />
-        <p className="text-sm font-medium text-muted-foreground">Loading your portal…</p>
-      </div>
-    </div>
-  );
+  return <AuthLoadingScreen message="Loading your portal…" />;
 }
 
 // Authentication check — mirrors the developer dashboard, scoped to `clientUser`.
