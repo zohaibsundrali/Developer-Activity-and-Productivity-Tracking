@@ -15,6 +15,7 @@ import { getOrgId } from "@/utils/orgContext";
 import { loadEmployees } from "@/utils/employeesData";
 import { supabase } from "@/utils/supabaseClient";
 import StatCard from "@/components/shell/StatCard";
+import { ShareBar, LeaderRow } from "@/components/admin/statViz";
 import { sectionTitle } from "@/components/shell/sectionTitles";
 import {
   PageHeader,
@@ -553,16 +554,19 @@ export default function TeamStats() {
               description="Roles appear here as soon as people join the organization."
             />
           ) : (
-            <ul className="space-y-4">
-              {roleRows.map((r) => (
-                <BarRow
-                  key={r.key}
-                  label={prettyLabel(r.key)}
-                  value={r.count}
-                  share={r.share}
-                />
-              ))}
-            </ul>
+            // A SHARE, drawn as one bar. It was a fourth stacked list of
+            // identical rows; "how is the headcount divided" is a different
+            // question from "who is ahead" and now looks different. The
+            // Employees screen answers "how many of each" with its role tiles —
+            // this answers "what proportion", which is why both earn a place.
+            <ShareBar
+              rows={roleRows.map((r) => ({
+                key: r.key,
+                label: prettyLabel(r.key),
+                count: r.count,
+              }))}
+              total={headcount}
+            />
           )}
         </Section>
 
@@ -659,32 +663,16 @@ export default function TeamStats() {
               description="Rankings appear once tracked activity has been recorded for this organization."
             />
           ) : (
-            <ol className="divide-y divide-border">
+            <ol className="-mx-2 space-y-0.5">
               {rankRows.map((r, i) => (
-                <li
+                <LeaderRow
                   key={`${r.name}-${i}`}
-                  className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
-                >
-                  <span className="flex min-w-0 items-center gap-3">
-                    <span
-                      aria-hidden="true"
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold tabular-nums text-muted-foreground"
-                    >
-                      {i + 1}
-                    </span>
-                    <span
-                      className="min-w-0 truncate text-sm text-foreground"
-                      title={r.name || undefined}
-                    >
-                      {r.name || "Unnamed"}
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
-                    {r.score != null
-                      ? `${Math.round(r.score)} score`
-                      : `${Math.round(r.active)} active`}
-                  </span>
-                </li>
+                  rank={i + 1}
+                  label={r.name || "Unnamed"}
+                  initials={(r.name || "?").trim().slice(0, 2).toUpperCase()}
+                  value={r.score != null ? Math.round(r.score) : Math.round(r.active)}
+                  unit={r.score != null ? "score" : "active"}
+                />
               ))}
             </ol>
           )}

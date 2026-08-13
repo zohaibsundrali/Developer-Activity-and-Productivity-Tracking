@@ -23,6 +23,7 @@ import {
   Skeleton,
 } from "@/components/ui";
 import StatCard from "@/components/shell/StatCard";
+import { LoadStrip } from "@/components/admin/statViz";
 import { sectionTitle } from "@/components/shell/navConfig";
 import { getOrgId } from "@/utils/orgContext";
 import {
@@ -328,6 +329,16 @@ export default function TeamCapacity() {
     return rows;
   }, [people, search, roleFilter, sortBy]);
 
+  // Ordered by rank so the strip reads free -> overloaded left to right, which
+  // is the direction the sentence "we have room / we do not" is read in.
+  const levelCounts = useMemo(() => {
+    const order = Object.values(LOAD_LEVELS).sort((a, b) => a.rank - b.rank);
+    return order.map((l) => ({
+      ...l,
+      count: people.filter((p) => p.level.id === l.id).length,
+    }));
+  }, [people]);
+
   const stats = useMemo(() => {
     const free = people.filter((p) => p.level.id === LOAD_LEVELS.free.id).length;
     const overloaded = people.filter((p) => p.level.id === LOAD_LEVELS.overloaded.id).length;
@@ -420,7 +431,11 @@ export default function TeamCapacity() {
         <StatCard title="Open tasks" value={stats.open} icon={FolderKanban} tone="primary" />
       </div>
 
-      {/* Said on screen, not only in the source. A label that looks like a
+      {/* One line that answers "is there room?" before anybody scans forty
+          rows — which is the question that brought them to this screen. */}
+      <LoadStrip levels={levelCounts} total={people.length} />
+
+            {/* Said on screen, not only in the source. A label that looks like a
           measurement gets used as one. */}
       <p className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
         Load is counted in open tasks, not hours — nothing here records how long
