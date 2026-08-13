@@ -259,7 +259,13 @@ describe("item 23 — dashboard subtitle", () => {
 
   it("keeps the page h1 and the refresh action", () => {
     expect(OVERVIEW).toMatch(/<PageHeader\s+title=\{sectionTitle\("overview", "admin"\)\}/);
-    expect(OVERVIEW).toMatch(/Refresh stats/);
+    // The label was "Refresh stats" when the screen was three counters. It
+    // reloads the whole dashboard now, so the word "stats" was the wrong half
+    // to keep. What item 23 actually protects is that a refresh action EXISTS
+    // in the header and re-runs the load — asserted here rather than the
+    // wording, which is not the guarantee.
+    expect(OVERVIEW).toMatch(/onClick=\{load\}/);
+    expect(OVERVIEW).toMatch(/\{loading \? "Refreshing…" : "Refresh"\}/);
   });
 });
 

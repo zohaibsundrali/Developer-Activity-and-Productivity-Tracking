@@ -87,7 +87,12 @@ export async function loadOrgWorkGraph(orgId) {
       .order("created_at", { ascending: false }),
     supabase
       .from("developer_tasks")
-      .select("id, project_id, developer_id, status, due_date, task_title")
+      // `task_type` is here for one reason: a bug IS a developer_tasks row with
+      // task_type='bug' (see utils/bugs.js — there is no bug table). Selecting
+      // one more column on a query this module already makes is what lets the
+      // admin Overview count open bugs without a ninth request. Team Structure
+      // and Capacity ignore it.
+      .select("id, project_id, developer_id, status, due_date, task_title, task_type")
       .eq("organization_id", orgId)
       .limit(5000),
     supabase
