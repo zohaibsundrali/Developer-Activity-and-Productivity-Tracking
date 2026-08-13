@@ -10,6 +10,7 @@ import {
   FileText,
 } from "lucide-react";
 import { adminNavFor, staffNav, CLIENT_NAV, canAccessAdminSection } from "./navConfig";
+import { DASHBOARD_HOME } from "@/utils/dashboardHome";
 
 /**
  * Data model behind the command palette.
@@ -38,12 +39,10 @@ export const RECENT_SEARCHES_KEY = "devtrack.recentSearches.v1";
 export const RECENT_SEARCHES_LIMIT = 6;
 
 // Each dashboard drives its sections from `?section=`, so a command is just the
-// dashboard route plus the section id the sidebar already uses.
-const DASHBOARD_ROUTE = {
-  admin: "/admin/dashboard",
-  developer: "/developer/dashboard",
-  client: "/client",
-};
+// dashboard route plus the section id the sidebar already uses. The routes
+// themselves are shared with the marketing header, which needs the same answer
+// for its "Dashboard" button — see utils/dashboardHome.js.
+const DASHBOARD_ROUTE = DASHBOARD_HOME;
 
 /**
  * Navigation commands for the signed-in user.
