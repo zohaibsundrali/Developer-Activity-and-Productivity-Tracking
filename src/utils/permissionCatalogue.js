@@ -189,6 +189,12 @@ export const PERMISSIONS = Object.freeze([
   { key: "automation.manage", roles: ADMINS, module: "oversight", label: "Configure automation", legacy: "manage_automation" },
   { key: "system.health", roles: ADMINS, module: "oversight", label: "Open system health" },
   { key: "system.audit", roles: ADMINS, module: "oversight", label: "Run the auth audit" },
+  // OWNER ONLY, and the only capability in this file that does not extend to
+  // admin. Whoever can write a permission override can write themselves one,
+  // so this is the key that hands out every other key. It matches the RLS
+  // write policy on user_permissions (migration 069) rather than being a
+  // second opinion about it.
+  { key: "permissions.manage", roles: OWNER_ONLY, module: "oversight", label: "Grant and revoke individual permissions" },
   // Role-identical to hierarchy.view and capacity.view today. Its own key
   // because it means something else, and reusing one of those would make a
   // later divergence a data migration instead of an edit.

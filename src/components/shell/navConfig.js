@@ -26,6 +26,7 @@ import {
   Zap,
   CreditCard,
   HeartPulse,
+  KeyRound,
   Network,
   GaugeCircle as Gauge2,
 } from "lucide-react";
@@ -72,6 +73,10 @@ export const ADMIN_NAV = [
   { id: "clients", label: "Clients", icon: Handshake },
   { id: "billing", label: "Billing", icon: CreditCard },
   { id: "system-health", label: "System Health", icon: HeartPulse },
+  // Beside System Health rather than beside Employees: this screen is about
+  // what people MAY DO, which is an administration question, and putting it in
+  // the People group would invite it to be read as part of managing a person.
+  { id: "permissions", label: "Permissions", icon: KeyRound },
   // Personal, not workspace: the signed-in person's own name, email and
   // password. Every admin-dashboard user has one, so it is never filtered out.
   { id: "account", label: "Account", icon: UserCircle },
