@@ -3,6 +3,7 @@ import {
   ListChecks,
   FolderKanban,
   ClipboardCheck,
+  Clock,
   Activity,
   Users,
   UserCircle,
@@ -88,6 +89,7 @@ export const ADMIN_NAV = [
 export const DEVELOPER_NAV = [
   { id: "overview", label: "Dashboard", icon: LayoutDashboard },
   { id: "my-work", label: "My Work", icon: ListChecks },
+  { id: "timesheet", label: "My Timesheet", icon: Clock },
   { id: "projects", label: "My Projects", icon: FolderKanban },
   // `new-project` and `change-requests` USED TO BE HERE, and both were dead:
   // the developer dashboard has no case for either, so they fell through to
@@ -102,6 +104,7 @@ export const DEVELOPER_NAV = [
 export const MANAGER_NAV = [
   { id: "overview", label: "Dashboard", icon: LayoutDashboard },
   { id: "my-work", label: "My Work", icon: ListChecks },
+  { id: "timesheet", label: "My Timesheet", icon: Clock },
   { id: "projects", label: "My Projects", icon: FolderKanban },
   { id: "team", label: "Team", icon: Users },
   { id: "account", label: "Account", icon: UserCircle },
@@ -111,6 +114,7 @@ export const MANAGER_NAV = [
 export const EMPLOYEE_NAV = [
   { id: "overview", label: "Dashboard", icon: LayoutDashboard },
   { id: "my-work", label: "My Work", icon: ListChecks },
+  { id: "timesheet", label: "My Timesheet", icon: Clock },
   { id: "projects", label: "My Projects", icon: FolderKanban },
   { id: "account", label: "Account", icon: UserCircle },
 ];

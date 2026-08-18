@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertOctagon, CalendarClock, CheckCircle2, Inbox, RefreshCw } from "lucide-react";
+import { CheckCircle2, Play, RefreshCw, Square } from "lucide-react";
 
 import {
   Badge,
@@ -12,6 +12,8 @@ import {
   Skeleton,
 } from "@/components/ui";
 import { getOrgContext, getOrgId } from "@/utils/orgContext";
+import { getActiveTimer, startTaskTimer, stopTaskTimer } from "@/utils/pmData";
+import { showError, showSuccess } from "@/utils/alerts";
 import { WORK_BUCKETS, bucketMyWork, daysUntil, deadlineOf, loadMyWork } from "@/utils/myWork";
 
 /**
@@ -71,50 +73,70 @@ const PRIORITY_TONE = {
   low: "outline",
 };
 
-function TaskRow({ task, onOpen }) {
+function TaskRow({ task, onOpen, activeTimer, onStart, onStop, busy }) {
   const project = task.project?.name || "No project";
+  const isRunning = String(activeTimer?.task_id || "") === String(task.id);
+
+  // A DIV, NOT A BUTTON, and the title is the button instead. The row used to
+  // be one big <button> — which is fine until it has to contain the timer
+  // control, because a button inside a button is invalid HTML and browsers
+  // resolve it by dropping one of them. Which one they drop is not something
+  // to find out in production.
   return (
-    <li>
+    <li className="flex items-start gap-2 rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:bg-muted/50">
       <button
         type="button"
         onClick={() => onOpen?.(task)}
-        className="flex w-full items-start justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2.5 text-left transition-colors hover:bg-muted/50"
+        className="min-w-0 flex-1 text-left"
       >
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium text-foreground">
-            {task.task_title || "Untitled task"}
-          </span>
-          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-            <span className="truncate">{project}</span>
-            {task.task_type === "bug" && (
-              <Badge variant="destructive" className="h-4 px-1 text-[10px]">
-                Bug
-              </Badge>
-            )}
-            {task.priority && task.priority !== "medium" && (
-              <Badge variant={PRIORITY_TONE[task.priority] || "secondary"} className="h-4 px-1 text-[10px] capitalize">
-                {task.priority}
-              </Badge>
-            )}
-          </span>
-          {/* The reviewer's words, on the row, not one click away. A rejection
-              with the reason hidden is a task somebody has to go hunting to
-              understand — which is how sent-back work sits untouched. */}
-          {task.status === "rejected" && (task.rejection_reason || task.admin_comments) && (
-            <span className="mt-1 block rounded bg-destructive/10 px-2 py-1 text-xs text-destructive">
-              {task.rejection_reason || task.admin_comments}
-            </span>
+        <span className="block truncate text-sm font-medium text-foreground">
+          {task.task_title || "Untitled task"}
+        </span>
+        <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          <span className="truncate">{project}</span>
+          {task.task_type === "bug" && (
+            <Badge variant="destructive" className="h-4 px-1 text-[10px]">
+              Bug
+            </Badge>
+          )}
+          {task.priority && task.priority !== "medium" && (
+            <Badge variant={PRIORITY_TONE[task.priority] || "secondary"} className="h-4 px-1 text-[10px] capitalize">
+              {task.priority}
+            </Badge>
           )}
         </span>
-        <span className="shrink-0 pt-0.5 text-right">
-          <Deadline task={task} />
-        </span>
+        {/* The reviewer's words, on the row, not one click away. A rejection
+            with the reason hidden is a task somebody has to go hunting to
+            understand — which is how sent-back work sits untouched. */}
+        {task.status === "rejected" && (task.rejection_reason || task.admin_comments) && (
+          <span className="mt-1 block rounded bg-destructive/10 px-2 py-1 text-xs text-destructive">
+            {task.rejection_reason || task.admin_comments}
+          </span>
+        )}
       </button>
+
+      <span className="flex shrink-0 items-center gap-2 pt-0.5">
+        <Deadline task={task} />
+        {/* Logging time belongs where the tasks are. Everything behind this
+            button already existed — task_time_logs, start/stop, a database
+            guard against two running timers — and its only UI was inside an
+            ADMIN drawer, so the people doing the work could not reach it. */}
+        <Button
+          size="sm"
+          variant={isRunning ? "destructive" : "outline"}
+          disabled={busy}
+          onClick={() => (isRunning ? onStop?.() : onStart?.(task))}
+          title={isRunning ? "Stop the timer" : "Start timing this task"}
+          aria-label={isRunning ? `Stop timing ${task.task_title}` : `Start timing ${task.task_title}`}
+        >
+          {isRunning ? <Square className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+        </Button>
+      </span>
     </li>
   );
 }
 
-function Bucket({ bucket, tasks, onOpen }) {
+function Bucket({ bucket, tasks, onOpen, timer }) {
   const tone = toneClasses(bucket.tone);
   return (
     <section aria-labelledby={`bucket-${bucket.id}`} className="space-y-2">
@@ -131,7 +153,7 @@ function Bucket({ bucket, tasks, onOpen }) {
       </div>
       <ul className="space-y-1.5">
         {tasks.map((t) => (
-          <TaskRow key={t.id} task={t} onOpen={onOpen} />
+          <TaskRow key={t.id} task={t} onOpen={onOpen} {...timer} />
         ))}
       </ul>
     </section>
@@ -156,6 +178,8 @@ export default function MyWork({ onViewProjectDetails }) {
   const [tasks, setTasks] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [activeTimer, setActiveTimer] = useState(null);
+  const [timerBusy, setTimerBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -183,6 +207,56 @@ export default function MyWork({ onViewProjectDetails }) {
     },
     [onViewProjectDetails]
   );
+
+  // ── The timer ────────────────────────────────────────────────────────────
+  // startTaskTimer stops any other running timer first, and a partial unique
+  // index (migration 024) refuses a second one if two tabs race past that
+  // read. So the worst case here is a stale button, not a double count —
+  // which is why this reloads the active timer after every action rather than
+  // trusting local state.
+  const refreshTimer = useCallback(async () => {
+    try {
+      setActiveTimer(await getActiveTimer());
+    } catch {
+      setActiveTimer(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshTimer();
+  }, [refreshTimer]);
+
+  const start = useCallback(
+    async (task) => {
+      setTimerBusy(true);
+      try {
+        await startTaskTimer(task.id, task.project_id || null);
+        await refreshTimer();
+        showSuccess(`Timing "${task.task_title}"`);
+      } catch (e) {
+        showError(e?.message || "Could not start the timer.");
+      } finally {
+        setTimerBusy(false);
+      }
+    },
+    [refreshTimer]
+  );
+
+  const stop = useCallback(async () => {
+    if (!activeTimer) return;
+    setTimerBusy(true);
+    try {
+      await stopTaskTimer(activeTimer);
+      await refreshTimer();
+      showSuccess("Timer stopped");
+    } catch (e) {
+      showError(e?.message || "Could not stop the timer.");
+    } finally {
+      setTimerBusy(false);
+    }
+  }, [activeTimer, refreshTimer]);
+
+  const timer = { activeTimer, onStart: start, onStop: stop, busy: timerBusy };
 
   if (loading && !tasks) {
     return (
@@ -230,7 +304,7 @@ export default function MyWork({ onViewProjectDetails }) {
       ) : (
         <div className="space-y-7">
           {filled.map((b) => (
-            <Bucket key={b.id} bucket={b} tasks={view.buckets[b.id]} onOpen={open} />
+            <Bucket key={b.id} bucket={b} tasks={view.buckets[b.id]} onOpen={open} timer={timer} />
           ))}
         </div>
       )}
