@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { allowed } from "@/utils/permissions";
 import {
   GitPullRequestArrow,
   Calculator,
@@ -13,7 +14,7 @@ import {
 } from "lucide-react";
 import { authFetch } from "@/utils/authFetch";
 import { supabase } from "@/utils/supabaseClient";
-import { getOrgId, getOrgContext } from "@/utils/orgContext";
+import { getOrgId } from "@/utils/orgContext";
 import { showError, showSuccess } from "@/utils/alerts";
 import { sectionTitle } from "@/components/shell/navConfig";
 import {
@@ -97,9 +98,14 @@ export default function ChangeRequests() {
   const [raising, setRaising] = useState(false);
   const [draft, setDraft] = useState({ projectId: "", title: "", description: "" });
 
-  const me = getOrgContext();
-  const canPrice = ["owner", "admin", "manager"].includes(me?.role);
-  const canApprove = ["owner", "admin"].includes(me?.role);
+  // The two-person rule, asked of the catalogue rather than restated here.
+  // Pricing is owner/admin/manager; approving the price for sale is owner/admin
+  // only, so whoever set the number is not also the one who agrees to sell at
+  // it. That distinction was written out twice — here and in
+  // /api/change-requests/[id]/advance — and two copies is how it quietly stops
+  // being true on one side.
+  const canPrice = allowed("change_request.decide");
+  const canApprove = allowed("change_request.approve");
 
   const load = useCallback(async () => {
     setLoading(true);

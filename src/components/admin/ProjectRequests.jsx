@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { allowed } from "@/utils/permissions";
+import { defaultRolesFor } from "@/utils/permissionCatalogue";
 import {
   Inbox,
   Check,
@@ -13,7 +15,7 @@ import {
 } from "lucide-react";
 import { authFetch } from "@/utils/authFetch";
 import { supabase } from "@/utils/supabaseClient";
-import { getOrgId, getOrgContext } from "@/utils/orgContext";
+import { getOrgId } from "@/utils/orgContext";
 import { showError, showSuccess } from "@/utils/alerts";
 import { sectionTitle } from "@/components/shell/navConfig";
 import {
@@ -93,8 +95,7 @@ export default function ProjectRequests() {
   const [managerId, setManagerId] = useState("");
   const [est, setEst] = useState({ cost: "", hours: "", days: "", notes: "" });
 
-  const me = getOrgContext();
-  const canDecide = ["owner", "admin", "manager"].includes(me?.role);
+  const canDecide = allowed("proposal.decide");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -115,7 +116,9 @@ export default function ProjectRequests() {
           .select("user_id, email, role, status")
           .eq("organization_id", orgId)
           .eq("status", "active")
-          .in("role", ["owner", "admin", "manager", "team_lead"]),
+          // Not a gate — this asks who to NOTIFY, and the answer is whoever
+          // can open the request queue. Derived so the two cannot drift.
+          .in("role", [...defaultRolesFor("proposal.view")]),
       ]);
       const byId = {};
       for (const c of clientRows || []) byId[c.id] = c;

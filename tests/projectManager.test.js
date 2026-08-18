@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { roleCan } from "@/utils/permissionEngine";
+import { ROLES, MANAGEABLE_BY_ROLES } from "@/utils/roles";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -215,12 +217,21 @@ describe("the screen", () => {
 
   it("offers only eligible, active people", () => {
     expect(UI).toMatch(/e\.status === "active"/);
-    expect(UI).toMatch(/\["owner", "admin", "manager", "team_lead"\]\.includes\(e\.role\)/);
+    // The eligible-manager list is a TARGET list, not a permission — who may
+    // BE assigned, not who may assign. It had two copies, here and in the
+    // route; utils/roles.js now holds the only one.
+    expect(UI).toContain("MANAGEABLE_BY_ROLES.includes(e.role)");
+    expect([...MANAGEABLE_BY_ROLES]).toEqual(["owner", "admin", "manager", "team_lead"]);
   });
 
   it("gates the control on owner/admin and SAYS so rather than hiding it", () => {
     // A control that is simply absent reads as a missing feature.
-    expect(UI).toMatch(/hasRole\("owner", "admin"\)/);
+    expect(UI).toContain('allowed("project.assign_manager")');
+    for (const role of ROLES) {
+      expect(roleCan(role, "project.assign_manager"), role).toBe(
+        ["owner", "admin"].includes(role)
+      );
+    }
     expect(UI).toMatch(/Only an owner or admin can change this/);
   });
 

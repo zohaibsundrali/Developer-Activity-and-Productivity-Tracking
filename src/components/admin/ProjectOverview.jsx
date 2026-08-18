@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { MANAGEABLE_BY_ROLES } from "@/utils/roles";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
 import {
@@ -21,7 +22,7 @@ import ProjectClosurePanel from "@/components/shared/ProjectClosurePanel";
 import StatCard from "@/components/shell/StatCard";
 import { showError } from "@/utils/alerts";
 import { authFetch } from "@/utils/authFetch";
-import { hasRole } from "@/utils/permissions";
+import { allowed } from "@/utils/permissions";
 import {
   PageHeader,
   Card,
@@ -286,8 +287,7 @@ export default function ProjectOverview() {
       (employees || [])
         .filter(
           (e) =>
-            e.status === "active" &&
-            ["owner", "admin", "manager", "team_lead"].includes(e.role)
+            e.status === "active" && MANAGEABLE_BY_ROLES.includes(e.role)
         )
         .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""))),
     [employees]
@@ -295,7 +295,7 @@ export default function ProjectOverview() {
 
   // Owner/admin only, narrower than creating a project. A manager who could
   // reassign projects could hand themselves every project in the organization.
-  const canAssignManager = hasRole("owner", "admin");
+  const canAssignManager = allowed("project.assign_manager");
 
   const saveManager = useCallback(
     async (managerId) => {
