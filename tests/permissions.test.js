@@ -150,10 +150,16 @@ describe('can — people operations (owner, admin, hr)', () => {
   // tests/permissionParity.test.js for the argument and
   // tests/permissionEngine.test.js for the rule itself. Its own assertion is
   // below, so the capability is still pinned — just to the right set.
+  // `delete_developer` ALSO MOVED OUT, for the same reason as invite_members:
+  // it was decided in two places that disagreed. This helper said owner/admin/hr
+  // and EmployeeDirectory used it to draw the Delete control;
+  // /api/developer/delete has always been owner/admin, so HR saw a button that
+  // answered 403 every time. The route wins — and deleting a staff account
+  // destroys their projects, tasks, submissions and activity logs, so the
+  // smaller list is also the right one. Its own assertion is below.
   const PEOPLE_ACTIONS = [
     'manage_members',
     'create_developer',
-    'delete_developer',
     'manage_employees',
     'manage_teams',
     'onboard_offboard',
@@ -169,9 +175,13 @@ describe('can — people operations (owner, admin, hr)', () => {
     });
   });
 
-  it('does not let a manager delete developers', () => {
-    asRole('manager');
-    expect(can('delete_developer')).toBe(false);
+  it('lets only owner and admin delete a staff account', () => {
+    for (const role of ALL_ROLES) {
+      asRole(role);
+      expect(can('delete_developer'), `${role} -> delete_developer`).toBe(
+        ['owner', 'admin'].includes(role)
+      );
+    }
   });
 
   it('lets a manager invite, because the invitations route always has', () => {

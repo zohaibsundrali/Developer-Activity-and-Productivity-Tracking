@@ -61,6 +61,17 @@ export const SECTION_PERMISSIONS = Object.freeze({
   clients: "client.view",
   billing: "billing.view",
   "system-health": "system.health",
+  // NOT IN THE SIDEBAR — its ADMIN_NAV entry is commented out — but still a
+  // live `case` in the dashboard's section switch, so `?section=productivity`
+  // rendered it. With no entry here `canAccessAdminSection` fell through to
+  // its "unknown ids stay open" branch and returned true for all seven roles
+  // the area admits, including hr and finance, who are deliberately kept off
+  // the monitoring surface. Found by adversarial review, not by a test.
+  //
+  // A screen you can reach is a screen that needs a rule, whether or not
+  // anything links to it. tests/permissionEngine.test.js now asserts that
+  // every case in that switch has an entry here.
+  productivity: "monitoring.view",
   account: null,
 });
 

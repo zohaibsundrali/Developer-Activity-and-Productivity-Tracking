@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
+import { requirePermission } from '@/utils/serverPermissions';
 import { requireUnlocked } from '@/utils/entitlements';
 
 // Roles allowed to review task submissions (matches permissions.js `review_tasks`).
 // QA and team_lead join the reviewers. Reviewing submitted work is the whole
 // reason the QA role exists; without this the role would be a label with no
 // power, which is worse than not having it.
-const REVIEWER_ROLES = ['owner', 'admin', 'manager', 'team_lead', 'qa'];
 
 // Already-scored outcomes. Reviewing one again would re-award points and
 // overwrite the record of what actually happened.
@@ -34,12 +34,11 @@ export async function POST(request) {
     if (billingBlocked) {
       return NextResponse.json(billingBlocked, { status: billingBlocked.status });
     }
-    if (!REVIEWER_ROLES.includes(auth.role)) {
-      return NextResponse.json(
-        { error: 'Forbidden: you are not allowed to review submissions.' },
-        { status: 403 }
-      );
-    }
+    // Permission, not a role list. See utils/permissionCatalogue.js — the
+    // hand-typed array this replaces was one of fifteen, and roles added to the
+    // product reached some of them and not others.
+    const denied = requirePermission(auth, "task.review");
+    if (denied) return denied;
 
     const body = await request.json();
     const {
@@ -393,12 +392,11 @@ export async function GET(request) {
     if (auth.userType === 'client') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-    if (!REVIEWER_ROLES.includes(auth.role)) {
-      return NextResponse.json(
-        { error: 'Forbidden: you are not allowed to view submissions.' },
-        { status: 403 }
-      );
-    }
+    // Permission, not a role list. See utils/permissionCatalogue.js — the
+    // hand-typed array this replaces was one of fifteen, and roles added to the
+    // product reached some of them and not others.
+    const denied = requirePermission(auth, "task.review");
+    if (denied) return denied;
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') || 'pending';

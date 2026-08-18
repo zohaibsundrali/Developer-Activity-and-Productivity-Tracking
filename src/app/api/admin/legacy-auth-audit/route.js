@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
+import { requirePermission } from "@/utils/serverPermissions";
 import { LEGACY_HASH_PREFIX } from "@/app/api/developer/change-password/legacyPassword";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +43,6 @@ export const dynamic = "force-dynamic";
  *  reading them.
  */
 
-const AUDIT_ROLES = ["owner", "admin"];
 
 // The three tables that carry a legacy password column and an auth link.
 const AUDITED_TABLES = ["developers", "admin_users", "clients"];
@@ -99,13 +99,11 @@ export async function GET(request) {
   try {
     const auth = await getAuthedOrg(request);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    if (
-      auth.userType === "client" ||
-      auth.role === "client" ||
-      !AUDIT_ROLES.includes(auth.role)
-    ) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    // Permission, not a role list. See utils/permissionCatalogue.js — the
+    // hand-typed array this replaces was one of fifteen, and roles added to the
+    // product reached some of them and not others.
+    const denied = requirePermission(auth, "system.audit");
+    if (denied) return denied;
 
     const svc = serviceClient();
     const orgId = auth.orgId;

@@ -214,34 +214,63 @@ describe("every permission named in the source exists", () => {
    * before and would silently answer no now. Both are wrong; only one is
    * detectable, and this is what detects it.
    */
-  it("in every can(), allowed() and requirePermission() call", () => {
-    const CALL = /\b(?:can|allowed|authCan|roleCan)\(\s*["']([a-z][a-z_.]*)["']/g;
-    const unknown = [];
+  /**
+   * BOTH SCANNERS BELOW USED TO BE VACUOUS, and adversarial review is what said
+   * so. Neither could fail:
+   *
+   *   - the key-first pattern also listed `authCan` and `roleCan`, which take
+   *     the key SECOND, so those two alternatives matched nothing ever;
+   *   - the requirePermission pattern matched nothing at all, so its `unknown`
+   *     array was empty by construction rather than by evidence.
+   *
+   * A scanner that finds nothing and a scanner that is broken produce the same
+   * green tick. So each one now asserts what it FOUND before asserting that
+   * what it found is valid — if the regex stops matching, the count drops and
+   * the test fails instead of quietly passing.
+   */
+
+  /** Every `fn(..., "key")` occurrence, wherever the key sits in the call. */
+  function scan(pattern, { skip = /$^/ } = {}) {
+    const hits = [];
     for (const file of SOURCES) {
-      // The catalogue and the shim legitimately mention keys as data.
-      if (/permissionCatalogue|permissionEngine|serverPermissions/.test(file)) continue;
+      if (skip.test(file)) continue;
       const src = stripComments(readFileSync(file, "utf8"));
-      for (const [, key] of src.matchAll(CALL)) {
-        // Section ids reach a local `can(section)` helper on the dashboard, not
-        // the permission one. Those are validated by the section test below.
-        if (Object.prototype.hasOwnProperty.call(SECTION_PERMISSIONS, key)) continue;
-        if (!isPermissionKey(key) && !LEGACY_KEYS[key]) {
-          unknown.push(`${path.relative(root, file)} -> ${key}`);
-        }
+      for (const m of src.matchAll(pattern)) {
+        hits.push({ file: path.relative(root, file), key: m[1] });
       }
     }
+    return hits;
+  }
+
+  it("in every can() and allowed() call — the key-first forms", () => {
+    const hits = scan(/\b(?:can|allowed)\(\s*["']([a-z][a-z_.]*)["']/g, {
+      skip: /permissionCatalogue|permissionEngine|serverPermissions/,
+    });
+    // Section ids reach a LOCAL `can(section)` helper on the dashboard, not the
+    // permission one; they are checked by the section suites instead.
+    const permissionHits = hits.filter(
+      (h) => !Object.prototype.hasOwnProperty.call(SECTION_PERMISSIONS, h.key)
+    );
+    // The proof the scanner works. `can()` has real call sites; if this ever
+    // reads 0 the regex has gone stale and the assertion below means nothing.
+    expect(permissionHits.length, "scanner found no can()/allowed() calls").toBeGreaterThan(0);
+
+    const unknown = permissionHits
+      .filter((h) => !isPermissionKey(h.key) && !LEGACY_KEYS[h.key])
+      .map((h) => `${h.file} -> ${h.key}`);
     expect(unknown).toEqual([]);
   });
 
-  it("in every requirePermission() call", () => {
-    const CALL = /requirePermission\(\s*[A-Za-z0-9_.]+\s*,\s*["']([^"']+)["']/g;
-    const unknown = [];
-    for (const file of SOURCES) {
-      if (/serverPermissions/.test(file)) continue;
-      for (const [, key] of stripComments(readFileSync(file, "utf8")).matchAll(CALL)) {
-        if (!isPermissionKey(key)) unknown.push(`${path.relative(root, file)} -> ${key}`);
-      }
-    }
+  it("in every roleCan(), authCan() and requirePermission() call — the key-second forms", () => {
+    const hits = scan(
+      /\b(?:roleCan|authCan|requirePermission)\(\s*[^,()]+,\s*["']([^"']+)["']/g,
+      { skip: /permissionCatalogue|permissionEngine|serverPermissions/ }
+    );
+    expect(hits.length, "scanner found no key-second calls").toBeGreaterThan(0);
+
+    const unknown = hits
+      .filter((h) => !isPermissionKey(h.key))
+      .map((h) => `${h.file} -> ${h.key}`);
     expect(unknown).toEqual([]);
   });
 });
@@ -255,13 +284,48 @@ describe("the section map is derived, not a second copy", () => {
   });
 
   it("derives ADMIN_SECTION_ROLES from the catalogue", () => {
+    // TAUTOLOGY REMOVED. This compared ADMIN_SECTION_ROLES[section] against
+    // defaultRolesFor(key) — the same array object, reached two ways. It could
+    // only fail if the spread that builds it were deleted, and it proved
+    // derivation while reading as though it proved correctness.
+    //
+    // Spot-checked against literal expectations instead, so a wrong mapping in
+    // SECTION_PERMISSIONS actually fails something.
+    expect([...ADMIN_SECTION_ROLES.billing]).toEqual(["owner", "admin", "finance"]);
+    expect([...ADMIN_SECTION_ROLES.employees]).toEqual(["owner", "admin", "hr"]);
+    expect([...ADMIN_SECTION_ROLES["task-reviews"]]).toEqual([
+      "owner", "admin", "manager", "team_lead", "qa",
+    ]);
+    expect([...ADMIN_SECTION_ROLES["developer-activity"]]).toEqual(["owner", "admin"]);
+    expect([...ADMIN_SECTION_ROLES.productivity]).toEqual(["owner", "admin"]);
+    expect(ADMIN_SECTION_ROLES.overview).toBeNull();
+    expect(ADMIN_SECTION_ROLES.account).toBeNull();
+
+    // And that the shape holds for the rest — every gated section resolves to a
+    // non-empty role list, every ungated one to null.
     for (const [section, key] of Object.entries(SECTION_PERMISSIONS)) {
-      if (key === null) {
-        expect(ADMIN_SECTION_ROLES[section], section).toBeNull();
-      } else {
-        expect([...ADMIN_SECTION_ROLES[section]], section).toEqual([...defaultRolesFor(key)]);
-      }
+      if (key === null) expect(ADMIN_SECTION_ROLES[section], section).toBeNull();
+      else expect(ADMIN_SECTION_ROLES[section].length, section).toBeGreaterThan(0);
     }
+  });
+
+  it("freezes the catalogue itself, not just the copy taken from it", () => {
+    // The freeze assertion below used to cover only ADMIN_SECTION_ROLES — the
+    // derived copy, which decides nothing. The live arrays were mutable, and
+    // because the role bundles are shared objects one push widened every
+    // permission in that bundle at once, invisibly: the sidebar keeps
+    // rendering the frozen copy while the resolver answers yes.
+    expect(Object.isFrozen(PERMISSIONS)).toBe(true);
+    for (const entry of PERMISSIONS) {
+      expect(Object.isFrozen(entry), entry.key).toBe(true);
+      expect(Object.isFrozen(entry.roles), `${entry.key}.roles`).toBe(true);
+    }
+    expect(Object.isFrozen(defaultRolesFor("organization.manage"))).toBe(true);
+    expect(Object.isFrozen(defaultRolesFor("not.a_key"))).toBe(true);
+
+    // The exact escalation, refused.
+    expect(() => defaultRolesFor("organization.manage").push("developer")).toThrow();
+    expect(roleCan("developer", "organization.delete")).toBe(false);
   });
 
   it("cannot be edited into disagreeing with the catalogue", () => {

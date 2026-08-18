@@ -54,6 +54,25 @@ import {
 export const ANONYMOUS = Object.freeze({ role: null });
 
 /**
+ * Own properties only — every read of the subject goes through this.
+ *
+ * The inner override lookup already used `hasOwnProperty`, and its test proved
+ * it, which read as if the whole subject were safe. It was not: `subject.role`,
+ * `subject.overrides` and `subject.projectRoles` were plain property accesses,
+ * so a polluted `Object.prototype.role = "owner"` made `resolvePermission({},
+ * key)` answer true for everything, and a polluted `Object.prototype.overrides`
+ * sailed through the hasOwnProperty guard because a polluted object really does
+ * own its keys.
+ *
+ * No pollution sink is known in this codebase. The resolver should not be the
+ * thing that depends on that staying true.
+ */
+function own(obj, key) {
+  if (!obj || typeof obj !== "object") return undefined;
+  return Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined;
+}
+
+/**
  * Does `subject` hold `key`?
  *
  * @param {{role?: string|null, overrides?: Record<string, boolean>,
@@ -68,7 +87,7 @@ export function resolvePermission(subject, key, scope = {}) {
   if (!isPermissionKey(key)) return false;
   if (!subject || typeof subject !== "object") return false;
 
-  const overrides = subject.overrides;
+  const overrides = own(subject, "overrides");
   if (overrides && Object.prototype.hasOwnProperty.call(overrides, key)) {
     // Present-and-false is a deny and present-and-true is a grant; anything
     // else stored in there is not an answer, so fall through rather than
@@ -85,13 +104,15 @@ export function resolvePermission(subject, key, scope = {}) {
   // lose it by not being on the project, because plenty of these screens are
   // org-wide reads. Taking access away for one project is what an override is
   // for, and it is checked above this line.
-  const projectId = scope?.projectId;
-  if (projectId && subject.projectRoles) {
-    const projectRole = subject.projectRoles[projectId];
+  const projectId = own(scope, "projectId");
+  const projectRoles = own(subject, "projectRoles");
+  if (projectId && projectRoles) {
+    const projectRole = own(projectRoles, projectId);
     if (typeof projectRole === "string" && allowed.includes(projectRole)) return true;
   }
 
-  return typeof subject.role === "string" && allowed.includes(subject.role);
+  const role = own(subject, "role");
+  return typeof role === "string" && allowed.includes(role);
 }
 
 /**

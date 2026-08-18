@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { roleCan } from "@/utils/permissionEngine";
+import { ROLES } from "@/utils/roles";
 import { canAccessAdminSection } from "@/components/shell/sectionAccess";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -140,7 +142,15 @@ describe("accept is ordered so a failure cannot claim success", () => {
   });
 
   it("keeps deciding to owner/admin/manager", () => {
-    expect(DECIDE).toMatch(/DECIDER_ROLES = \["owner", "admin", "manager"\]/);
+    // The named array moved into the catalogue as `proposal.decide`. The RLS
+    // policy assertion above still checks the database independently, which is
+    // the half that actually enforces it.
+    expect(DECIDE).toContain('requirePermission(auth, "proposal.decide")');
+    for (const role of ROLES) {
+      expect(roleCan(role, "proposal.decide"), role).toBe(
+        ["owner", "admin", "manager"].includes(role)
+      );
+    }
   });
 
   it("never lets a failed notification undo a recorded decision", () => {

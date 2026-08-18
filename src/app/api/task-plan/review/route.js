@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getAuthedOrg } from '@/utils/serverAuth';
+import { requirePermission } from '@/utils/serverPermissions';
 
 // Roles allowed to review task plans (matches permissions.js `review_tasks`).
-const REVIEWER_ROLES = ['owner', 'admin', 'manager', 'team_lead', 'qa'];
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -48,12 +48,11 @@ export async function POST(request) {
     if (auth.userType === 'client') {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
-    if (!REVIEWER_ROLES.includes(auth.role)) {
-      return NextResponse.json(
-        { success: false, error: 'Forbidden: you are not allowed to review task plans.' },
-        { status: 403 }
-      );
-    }
+    // Permission, not a role list. See utils/permissionCatalogue.js — the
+    // hand-typed array this replaces was one of fifteen, and roles added to the
+    // product reached some of them and not others.
+    const denied = requirePermission(auth, "task.review");
+    if (denied) return denied;
 
     const body = await request.json().catch(() => ({}));
     const { projectId, adminId, adminEmail, action, rejectionReason } = body;

@@ -107,7 +107,14 @@ export const PERMISSIONS = Object.freeze([
   { key: "member.invite", roles: INVITERS, module: "people", label: "Send an invitation", legacy: "invite_members" },
   { key: "member.provision", roles: INVITERS, module: "people", label: "Create a login for a member" },
   { key: "member.create", roles: PEOPLE, module: "people", label: "Create a staff account", legacy: "create_developer" },
-  { key: "member.delete", roles: PEOPLE, module: "people", label: "Delete a staff account", legacy: "delete_developer" },
+  // ADMINS, not PEOPLE, and this one is visible to a user. `can()` filed it
+  // under owner/admin/hr and EmployeeDirectory really does use it to draw the
+  // Delete control — but /api/developer/delete has always been owner/admin, so
+  // an HR user saw a button that answered 403 every time they pressed it.
+  // Deleting a staff account also destroys their projects, tasks, submissions
+  // and activity logs and cannot be undone; where two sources disagree about
+  // who may do that, the answer is the smaller list.
+  { key: "member.delete", roles: ADMINS, module: "people", label: "Delete a staff account", legacy: "delete_developer" },
   { key: "member.sync_roles", roles: ADMINS, module: "people", label: "Re-sync role claims" },
   { key: "employee.manage", roles: PEOPLE, module: "people", label: "Manage employee records", legacy: "manage_employees" },
   { key: "employee.onboard", roles: PEOPLE, module: "people", label: "Onboard and offboard", legacy: "onboard_offboard" },
@@ -125,6 +132,12 @@ export const PERMISSIONS = Object.freeze([
   { key: "project.delete", roles: ADMINS, module: "projects", label: "Delete a project", legacy: "delete_project" },
   { key: "project.assign_manager", roles: ADMINS, module: "projects", label: "Assign a project manager" },
   { key: "project.close", roles: ADMINS, module: "projects", label: "Close a project" },
+  // THE OUTER GATE ONLY. The closure route also requires that a manager or
+  // team lead own the project they are completing (`manager_id` is them, or
+  // nobody). That ownership rule has no expression here and MUST stay in the
+  // route: a role-only check would let every manager in the org complete every
+  // project.
+  { key: "project.complete", roles: SUPERVISORS, module: "projects", label: "Mark a project complete" },
   { key: "project.hub", roles: SUPERVISORS, module: "projects", label: "Open the project hub" },
   { key: "project.board", roles: ADMINS, module: "projects", label: "Open the board" },
 
@@ -142,12 +155,23 @@ export const PERMISSIONS = Object.freeze([
   { key: "change_request.view", roles: SUPERVISORS, module: "clients", label: "View change requests" },
   { key: "change_request.create", roles: DECIDERS, module: "clients", label: "Raise a change request" },
   { key: "change_request.decide", roles: DECIDERS, module: "clients", label: "Advance a change request" },
+  // DELIBERATELY NARROWER THAN change_request.decide, which includes manager.
+  // A manager who priced the work must not also be the one who agrees to sell
+  // it at that price — the two-person rule the advance route already enforces.
+  { key: "change_request.approve", roles: ADMINS, module: "clients", label: "Approve a change request for sale" },
   { key: "client.view", roles: BILLING, module: "clients", label: "View client accounts" },
   { key: "client.notify", roles: DECIDERS, module: "clients", label: "Message a client" },
 
   // ── Money ───────────────────────────────────────────────────────────────
   { key: "billing.view", roles: BILLING, module: "billing", label: "View billing", legacy: "view_billing" },
   { key: "billing.manage", roles: BILLING, module: "billing", label: "Change the subscription", legacy: "manage_billing" },
+  // NARROWER THAN billing.manage ON PURPOSE. Starting a subscription,
+  // cancelling one and opening the Stripe customer portal are owner-only in
+  // every route that does them, and each of those files says so: an admin may
+  // read the billing page but may not commit the organization to a recurring
+  // charge. Mapping them to `billing.manage` would have handed that to admin
+  // and finance under cover of a refactor.
+  { key: "billing.purchase", roles: OWNER_ONLY, module: "billing", label: "Buy, cancel or change the plan" },
 
   // ── Oversight ───────────────────────────────────────────────────────────
   { key: "report.view", roles: SUPERVISORS, module: "oversight", label: "Open reports", legacy: "view_reports" },
@@ -155,7 +179,32 @@ export const PERMISSIONS = Object.freeze([
   { key: "automation.manage", roles: ADMINS, module: "oversight", label: "Configure automation", legacy: "manage_automation" },
   { key: "system.health", roles: ADMINS, module: "oversight", label: "Open system health" },
   { key: "system.audit", roles: ADMINS, module: "oversight", label: "Run the auth audit" },
+  // Role-identical to hierarchy.view and capacity.view today. Its own key
+  // because it means something else, and reusing one of those would make a
+  // later divergence a data migration instead of an edit.
+  { key: "signal.view", roles: PEOPLE_READERS, module: "oversight", label: "View delivery signals" },
 ]);
+
+/**
+ * DEEP FREEZE, and it is not ceremony.
+ *
+ * `Object.freeze(PERMISSIONS)` freezes the ARRAY. The entries stayed writable
+ * and their `roles` arrays stayed mutable, and because the bundles above are
+ * shared array objects, one `push` widened every permission in that bundle at
+ * once:
+ *
+ *   defaultRolesFor("organization.manage").push("developer")
+ *   → roleCan("developer", "organization.delete") === true
+ *
+ * `ADMIN_SECTION_ROLES` takes a copy at import, so the sidebar would have gone
+ * on rendering the correct answer while the resolver was compromised — a
+ * widening with nothing on screen to show for it. Found by adversarial review;
+ * the freeze test only ever checked the derived copy, which decides nothing.
+ */
+for (const entry of PERMISSIONS) {
+  Object.freeze(entry.roles);
+  Object.freeze(entry);
+}
 
 /** Every key, for membership tests and for the DB seed. */
 export const PERMISSION_KEYS = Object.freeze(PERMISSIONS.map((p) => p.key));
@@ -177,8 +226,12 @@ export function isPermissionKey(key) {
 }
 
 /** The default roles for a key, or [] for a key that does not exist. */
+const NO_ROLES = Object.freeze([]);
 export function defaultRolesFor(key) {
-  return BY_KEY.get(key)?.roles || [];
+  // Frozen by the loop above, so this is the real list and callers still
+  // cannot grow it. Returning a copy instead would be a per-call allocation on
+  // the hottest path in the product.
+  return BY_KEY.get(key)?.roles || NO_ROLES;
 }
 
 /**

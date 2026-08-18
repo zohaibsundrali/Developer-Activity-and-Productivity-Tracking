@@ -156,8 +156,22 @@ describe("finance sees money and NOT monitoring", () => {
   });
 
   it("can act on billing in the API layer", () => {
-    expect(read("src/app/api/billing/subscription/route.js")).toContain('"finance"');
+    // billing/subscription now asks for the permission; billing/access still
+    // names finance inline, and both must keep admitting them.
+    expect(read("src/app/api/billing/subscription/route.js"))
+      .toContain('requirePermission(auth, "billing.view")');
+    expect(roleCan("finance", "billing.view")).toBe(true);
     expect(read("src/app/api/billing/access/route.js")).toContain('"finance"');
+  });
+
+  it("still cannot buy, cancel or open the Stripe portal", () => {
+    // Checkout, cancel and portal are owner-only in every route that does
+    // them. `billing.manage` includes finance, so those three got their own
+    // key rather than being folded in — mapping them to billing.manage would
+    // have handed an accountant the power to cancel the company's plan.
+    expect(roleCan("finance", "billing.purchase")).toBe(false);
+    expect(roleCan("admin", "billing.purchase")).toBe(false);
+    expect(roleCan("owner", "billing.purchase")).toBe(true);
   });
 
   it("gets billing capabilities but not oversight ones", () => {
@@ -188,8 +202,11 @@ describe("qa can review, and that is the point of it", () => {
   });
 
   it("is a reviewer in both review routes", () => {
-    expect(read("src/app/api/admin-review/route.js")).toContain("'qa'");
-    expect(read("src/app/api/task-plan/review/route.js")).toContain("'qa'");
+    // Both routes ask for the permission now instead of listing roles.
+    for (const route of ["src/app/api/admin-review/route.js", "src/app/api/task-plan/review/route.js"]) {
+      expect(read(route), route).toContain('requirePermission(auth, "task.review")');
+    }
+    expect(roleCan("qa", "task.review")).toBe(true);
   });
 
   it("reaches the task-reviews section", () => {

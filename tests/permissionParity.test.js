@@ -1,10 +1,18 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 import { ROLES } from "@/utils/roles";
 import { PERMISSIONS, LEGACY_KEYS, permissionsForRole } from "@/utils/permissionCatalogue";
 import { roleCan } from "@/utils/permissionEngine";
 import { canAccessAdminSection } from "@/components/shell/sectionAccess";
 import { SECTION_PERMISSIONS } from "@/components/shell/sectionAccess";
+
+const root = path.resolve(__dirname, "..");
+const read = (rel) =>
+  readFileSync(path.join(root, rel), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
 
 /**
  * The catalogue answers what the four things it replaced answered.
@@ -127,6 +135,24 @@ const OLD_ROUTE_GUARDS = [
   { key: "member.sync_roles", roles: ["owner", "admin"], from: "api/admin/members/sync-roles SYNC_ROLES" },
   { key: "system.health", roles: ["owner", "admin"], from: "api/admin/health HEALTH_ROLES" },
   { key: "system.audit", roles: ["owner", "admin"], from: "api/admin/legacy-auth-audit AUDIT_ROLES" },
+
+  // ADDED AFTER A ROUTE-BY-ROUTE AUDIT of all 61 handlers. The first version of
+  // this fixture was transcribed from the routes that happened to declare a
+  // NAMED role array, and four guards written as inline comparisons were
+  // missed. Every one of them would have been WIDENED by mapping it to the
+  // nearest existing key — which is exactly the failure this file exists to
+  // prevent, and it very nearly passed because the fixture was the thing that
+  // was incomplete.
+  { key: "billing.purchase", roles: ["owner"], from: "api/billing/checkout auth.role !== 'owner'" },
+  { key: "billing.purchase", roles: ["owner"], from: "api/billing/cancel auth.role !== 'owner'" },
+  { key: "billing.purchase", roles: ["owner"], from: "api/billing/portal auth.role !== 'owner'" },
+  { key: "change_request.approve", roles: ["owner", "admin"], from: "api/change-requests/[id]/advance admin_approve" },
+  { key: "member.delete", roles: ["owner", "admin"], from: "api/developer/delete" },
+  { key: "project.complete", roles: ["owner", "admin", "manager", "team_lead"], from: "api/projects/[id]/closure mayManage" },
+  { key: "project.assign_manager", roles: ["owner", "admin"], from: "api/projects/[id]/manager" },
+  { key: "team.manage", roles: ["owner", "admin", "hr"], from: "api/admin/teams/[id] TEAM_MANAGERS" },
+  { key: "member.manage", roles: ["owner", "admin", "hr"], from: "api/admin/members/role ROLE_CHANGERS" },
+  { key: "signal.view", roles: ["owner", "admin", "hr", "manager", "team_lead"], from: "api/signals SIGNAL_ROLES" },
 ];
 
 /**
@@ -171,6 +197,23 @@ const DELIBERATE_DIVERGENCES = [
     //
     // Nothing on screen changes: `can("view_tracking")` has no call sites.
     winner: "sectionAccess developer-activity + migration 040 RLS",
+    roles: ["owner", "admin"],
+  },
+  {
+    legacy: "delete_developer",
+    key: "member.delete",
+    // The only divergence on this list that a user will SEE. `can()` said
+    // owner/admin/hr and EmployeeDirectory.jsx:313 uses it to draw the Delete
+    // control; /api/developer/delete has always been owner/admin. So an HR user
+    // was shown a button that answered 403 every single time.
+    //
+    // The route wins, and it is also the safer direction: deleting a staff
+    // account destroys their projects, tasks, submissions and activity logs and
+    // cannot be undone.
+    //
+    // WHAT CHANGES ON SCREEN: HR stops seeing a Delete button. They lose no
+    // capability, because they never had one — they lose a button that lied.
+    winner: "api/developer/delete",
     roles: ["owner", "admin"],
   },
 ];
@@ -248,11 +291,61 @@ describe("the catalogue agrees with the section table it replaced", () => {
     }
   });
 
+  /**
+   * Sections deliberately gated for the first time. Same rule as
+   * DELIBERATE_DIVERGENCES: enumerated, argued for, never blanket.
+   */
+  const NEW_GATES = [
+    {
+      section: "productivity",
+      key: "monitoring.view",
+      // It has no sidebar entry — commented out of ADMIN_NAV — but it is still
+      // a live `case` in the dashboard's section switch, so
+      // `?section=productivity` rendered it. With no rule,
+      // canAccessAdminSection fell through to "unknown ids stay open" and
+      // answered true for all seven roles the admin area admits, hr and
+      // finance included. Those two are kept off the monitoring surface on
+      // purpose; monitoring.view is the rule the equivalent screen already has.
+      //
+      // Found by adversarial review of this branch, not by any test — which is
+      // why the assertion below now runs in BOTH directions.
+      reason: "reachable by URL with no rule at all; hr and finance could open it",
+    },
+  ];
+
   it("does not gate a section nobody had a rule for", () => {
     // A section that appears in SECTION_PERMISSIONS but not in the frozen
-    // record would be a NEW restriction arriving under cover of a refactor.
+    // record is a NEW restriction, and a refactor is not allowed to smuggle
+    // one in. It has to be listed above with its argument.
+    const declared = new Set(NEW_GATES.map((g) => g.section));
     for (const section of Object.keys(SECTION_PERMISSIONS)) {
+      if (declared.has(section)) continue;
       expect(Object.keys(OLD_SECTION_ROLES), section).toContain(section);
+    }
+  });
+
+  it("gates every new gate at the permission it claims", () => {
+    for (const gate of NEW_GATES) {
+      expect(SECTION_PERMISSIONS[gate.section], gate.section).toBe(gate.key);
+      expect(Object.keys(OLD_SECTION_ROLES), gate.section).not.toContain(gate.section);
+    }
+  });
+
+  it("has a rule for every section the dashboard can actually render", () => {
+    /**
+     * THE DIRECTION THAT WAS MISSING. The assertion above catches a section
+     * gaining a rule it never had. Nothing caught a section that can be
+     * RENDERED and has no rule — which is the one that hands a screen to
+     * somebody, and is exactly how `productivity` stayed open.
+     */
+    const page = read("src/app/admin/dashboard/page.js");
+    const cases = [...page.matchAll(/case\s+"([a-z-]+)":/g)].map((m) => m[1]);
+    expect(cases.length, "found no cases — the regex has gone stale").toBeGreaterThan(15);
+    for (const section of new Set(cases)) {
+      expect(
+        Object.prototype.hasOwnProperty.call(SECTION_PERMISSIONS, section),
+        `?section=${section} renders and has no rule in SECTION_PERMISSIONS`
+      ).toBe(true);
     }
   });
 });

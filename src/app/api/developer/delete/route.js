@@ -305,6 +305,24 @@ export async function GET(request) {
       );
     }
 
+    // CROSS-TENANT DISCLOSURE, fixed. The DELETE handler below has always had
+    // this check; the GET preview never did. `resolveDeveloper` looks the
+    // person up with the SERVICE ROLE, which bypasses RLS, so an owner or admin
+    // of any organization could pass another tenant's developer id or email and
+    // get back their name, their email, and how many projects, tasks and
+    // submissions they hold. Everything above this line — authentication, the
+    // owner/admin role gate — passes for that caller, because they really are
+    // an owner. Of a different company.
+    //
+    // The 404 is deliberately the same one an unknown id gets: telling a
+    // stranger "exists, but not yours" is most of the disclosure.
+    if (developer.organization_id !== auth.orgId) {
+      return NextResponse.json(
+        { success: false, error: 'Developer not found.' },
+        { status: 404 }
+      );
+    }
+
     const devId = developer.id;
 
     const [

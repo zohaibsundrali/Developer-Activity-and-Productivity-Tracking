@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
+import { requirePermission } from "@/utils/serverPermissions";
 import { billingConfigured } from "@/utils/stripeServer";
 import { recordEvent } from "@/utils/systemEvents";
 
@@ -36,7 +37,6 @@ export const dynamic = "force-dynamic";
  *  for. A developer cannot upgrade the company's plan.
  */
 
-const BILLING_ROLES = ["owner", "admin", "finance"];
 
 // One month, matching the `billing_interval` on every seeded plan. The demo
 // grant is a period like any other rather than an unbounded one, so a demo
@@ -51,12 +51,11 @@ export async function POST(request) {
     if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (auth.userType === "client" || !BILLING_ROLES.includes(auth.role)) {
-      return NextResponse.json(
-        { error: "Only an owner or admin can change the subscription." },
-        { status: 403 }
-      );
-    }
+    // Permission, not a role list. See utils/permissionCatalogue.js — the
+    // hand-typed array this replaces was one of fifteen, and roles added to the
+    // product reached some of them and not others.
+    const denied = requirePermission(auth, "billing.manage");
+    if (denied) return denied;
 
     if (billingConfigured()) {
       // Stripe is live on this deployment. There is nothing to demo, and
