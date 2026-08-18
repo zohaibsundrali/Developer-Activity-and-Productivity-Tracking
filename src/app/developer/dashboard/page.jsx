@@ -4,6 +4,8 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 import AppShell from "@/components/shell/AppShell";
 import { staffNav, sectionTitle } from "@/components/shell/navConfig";
+import { roleCan } from "@/utils/permissionEngine";
+import MyWork from "@/components/developer/MyWork";
 import NotificationDropdown from "@/components/developer/NotificationDropdown";
 import DashboardOverview from "@/components/developer/DashboardOverview";
 import MyProjects from "@/components/developer/MyProjects";
@@ -325,13 +327,20 @@ function DeveloperDashboardContent() {
       return <ProjectDetails />;
     }
 
-    // Manager-only oversight section. Guard by role so a developer/employee
-    // can't reach it by editing the URL (?section=team).
+    // Manager-only oversight section. Guard so a developer or employee cannot
+    // reach it by editing the URL (?section=team).
+    //
+    // THE ROLE LIST HERE WAS THE LAST HAND-TYPED ONE on this dashboard. It read
+    // ["manager","team_lead","hr","admin","owner"] — which is exactly the set
+    // `hierarchy.view` grants, and exactly the set staffNav offers the Team
+    // entry to. Three copies of one answer, and nothing keeping them equal.
     const effectiveRole = user?.membership_role || "developer";
-    const isManager = ["manager", "team_lead", "hr", "admin", "owner"].includes(effectiveRole);
+    const isManager = roleCan(effectiveRole, "hierarchy.view");
 
     // Render based on active section
     switch (activeSection) {
+      case "my-work":
+        return <MyWork onViewProjectDetails={handleViewProjectDetails} />;
       case "projects":
         return <MyProjects {...contentProps} />;
       case "team":
