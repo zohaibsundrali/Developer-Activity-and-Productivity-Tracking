@@ -88,12 +88,18 @@ describe("dashboardHomeFor", () => {
   });
 
   it("is pure — no session, no storage, no React", () => {
-    // This is what lets the command palette, the marketing header and any
-    // server code all read the same map. An import of supabase or of
-    // sessionPolicy here would make it browser-only again.
+    // This is what lets the command palette, the marketing header, the login
+    // page and any server code all read the same map. The rule was originally
+    // "no imports at all"; it now imports sectionAccess.js, which is itself
+    // pure — so the rule is stated as what it was protecting: nothing that
+    // needs a browser, a session or a network.
     const source = read(HOME);
-    expect(source).not.toMatch(/\bimport\b/);
     expect(source).not.toMatch(/sessionStorage|localStorage|document\./);
+    expect(source).not.toMatch(/supabase|sessionPolicy|orgContext|react/i);
+    const imports = source.match(/^import .*$/gm) || [];
+    expect(imports).toEqual([
+      'import { canEnterAdminArea } from "@/components/shell/sectionAccess";',
+    ]);
   });
 });
 
@@ -142,7 +148,11 @@ describe("AuthContext sees every signed-in user", () => {
   });
 
   it("publishes the dashboard route as derived state", () => {
-    expect(code).toMatch(/dashboardHomeFor\(user\?\.role\)/);
+    // BOTH arguments. Passing only `user?.role` sends a project manager, a
+    // team lead, an HR user, a QA and a finance user to the staff dashboard —
+    // they are all `developer` in the profile table, and none of their work is
+    // on that surface.
+    expect(code).toMatch(/dashboardHomeFor\(user\?\.role, user\?\.membership_role\)/);
     expect(code).toMatch(/const home = isLoggedIn \? dashboardHomeFor/);
     // Exported through the provider value, or no consumer can read it.
     expect(code).toMatch(/const contextValue = \{[\s\S]*?\bhome,[\s\S]*?\}/);

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { SESSION_MAX_AGE_DAYS } from "@/utils/sessionPolicy";
 import { loadOrgContext, isMembershipActive } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
+import { dashboardHomeFor } from "@/utils/dashboardHome";
 
 import { ArrowLeft, CheckCircle2 } from "lucide-react";
 import { Button, Field, Input } from "@/components/ui";
@@ -196,7 +197,21 @@ export default function LoginPage() {
         expiryDate.setDate(expiryDate.getDate() + SESSION_MAX_AGE_DAYS);
         document.cookie = `developer_auth=true; expires=${expiryDate.toUTCString()}; path=/`;
         document.cookie = `developer_id=${loggedInData.id}; expires=${expiryDate.toUTCString()}; path=/`;
-        setTimeout(() => { router.push("/developer/dashboard"); }, 100);
+        // NOT ALWAYS /developer/dashboard.
+        //
+        // This branch is "the profile row is in `developers`", which is where
+        // userTypeForRole files a project manager, a team lead, an HR user, a
+        // QA and a finance user as well as an actual developer. Sending all six
+        // to the staff dashboard put four of them on a four-entry sidebar with
+        // none of their work on it — All Projects, Employees, Task Reviews and
+        // the rest are admin-shell sections, and ADMIN_SECTION_ROLES has always
+        // said those roles may open them.
+        //
+        // dashboardHomeFor consults the membership role first for exactly this
+        // reason. It cannot return null here: `developer` is a known user type.
+        setTimeout(() => {
+          router.push(dashboardHomeFor("developer", org.membershipRole) || "/developer/dashboard");
+        }, 100);
       }
     } catch (error) {
       setError(error.message);

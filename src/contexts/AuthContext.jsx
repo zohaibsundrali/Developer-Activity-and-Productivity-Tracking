@@ -297,12 +297,15 @@ export function AuthProvider({ children }) {
   //
   // `home` is the same kind of derived read: the dashboard this user belongs
   // to, or null when there is nobody signed in / the session predates the role
-  // field. `user.role` is written by the login page as exactly one of admin,
-  // client, developer — the three profile tables — which is what
-  // dashboardHomeFor is keyed by. A membership role (manager, qa, team_lead…)
-  // never appears here; it decides what the /developer surface SHOWS, not
-  // which surface it is.
-  const home = isLoggedIn ? dashboardHomeFor(user?.role) : null;
+  // field.
+  //
+  // BOTH ARGUMENTS MATTER. `user.role` is written by the login page as exactly
+  // one of admin, client, developer — the three profile tables — and it cannot
+  // answer this on its own: a project manager, a team lead, an HR user, a QA
+  // and a finance user are all `developer` in that table, and every one of them
+  // belongs in the admin shell. `user.membership_role` is the one that says so,
+  // and dashboardHomeFor consults it first.
+  const home = isLoggedIn ? dashboardHomeFor(user?.role, user?.membership_role) : null;
 
   const contextValue = {
     isLoggedIn,

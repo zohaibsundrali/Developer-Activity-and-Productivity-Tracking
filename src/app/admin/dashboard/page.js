@@ -3,7 +3,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 import AppShell from "@/components/shell/AppShell";
-import { adminNavFor, canAccessAdminSection, sectionTitle } from "@/components/shell/navConfig";
+import { adminNavFor, canAccessAdminSection, canEnterAdminArea, sectionTitle } from "@/components/shell/navConfig";
 import NotificationDropdown from "@/components/admin/NotificationDropdown";
 import DashboardOverview from "@/components/admin/DashboardOverview";
 import AllProjects from "@/components/admin/AllProjects";
@@ -28,7 +28,7 @@ import AutomationRules from "@/components/admin/AutomationRules";
 import BillingSubscription from "@/components/admin/BillingSubscription";
 import SystemHealth from "@/components/admin/SystemHealth";
 import AdminAccount from "@/components/admin/AdminAccount";
-import { isSessionExpired, clearAdminSession } from "@/utils/sessionPolicy";
+import { isSessionExpired, clearAdminSession, clearDeveloperSession } from "@/utils/sessionPolicy";
 import { Skeleton } from "@/components/ui";
 // The app's one dialog pattern (sweetalert2, wrapped). No second toast library.
 import { showSuccess } from "@/utils/alerts";
@@ -119,32 +119,58 @@ function DashboardBootSkeleton() {
   );
 }
 
-// Authentication check function for admin
-const checkAdminAuth = () => {
+/**
+ * Whose session may render this shell.
+ *
+ * IT USED TO READ `adminUser` AND NOTHING ELSE, and require `role === 'admin'`.
+ *
+ * That is correct for an owner or an admin, whose profile row is in
+ * `admin_users`. It is wrong for everybody else the admin shell is built for:
+ * `userTypeForRole` files a project manager, a team lead, an HR user, a QA and
+ * a finance user in `developers`, so their session is stored under
+ * `developerUser` with `role: "developer"`. All five were bounced straight back
+ * to /login — and the old code called `clearAdminSession()` on the way, which
+ * clears the shared server cookie, so the bounce logged them out of the staff
+ * dashboard they were legitimately using.
+ *
+ * ADMITTING THEM HERE GRANTS NOTHING. This decides which shell paints. Which
+ * SECTIONS it paints is `canAccessAdminSection(section, role)` further down;
+ * which requests succeed is `getAuthedOrg` against a verified JWT; which rows
+ * come back is RLS. This is the fourth of four gates and the only cosmetic one.
+ */
+const readAdminShellSession = () => {
   if (typeof window === 'undefined') return false;
-  
-  const adminUser = sessionStorage.getItem("adminUser");
-  if (!adminUser) return false;
 
-  try {
-    const userData = JSON.parse(adminUser);
-    
-    // Verify it's actually an admin
-    if (userData.role !== 'admin') {
-      clearAdminSession();
-      return false;
+  // Admin first: somebody holding both should be their higher self.
+  const candidates = [
+    ['adminUser', sessionStorage.getItem("adminUser")],
+    ['developerUser', sessionStorage.getItem("developerUser")],
+  ];
+
+  for (const [key, raw] of candidates) {
+    if (!raw) continue;
+    let userData;
+    try {
+      userData = JSON.parse(raw);
+    } catch {
+      continue;
     }
-    
-    // Session expiry check (7 days)
+
+    // An expired session is cleared wherever it was found. Note that only the
+    // MATCHING store is cleared — wiping a developer session because an admin
+    // one had gone stale is how somebody loses a dashboard they were using.
     if (isSessionExpired(userData)) {
-      clearAdminSession();
-      return false;
+      if (key === 'adminUser') clearAdminSession();
+      else clearDeveloperSession();
+      continue;
     }
-    
-    return userData;
-  } catch (error) {
-    return false;
+
+    if (userData.role === 'admin' || canEnterAdminArea(userData.membership_role)) {
+      return userData;
+    }
   }
+
+  return false;
 };
 
 // Higher Order Component for Admin Auth
@@ -156,10 +182,12 @@ const withAdminAuth = (WrappedComponent) => {
 
     useEffect(() => {
       const authCheck = () => {
-        const user = checkAdminAuth();
+        const user = readAdminShellSession();
         if (!user) {
-          clearAdminSession();
-          // Redirect to login
+          // No clear() here. readAdminShellSession already cleared anything it
+          // found expired; reaching this line means the stored session is
+          // valid and simply not for this shell, and wiping it would sign the
+          // person out of the dashboard they DO belong on.
           router.push("/login?redirect=" + encodeURIComponent(window.location.pathname));
         } else {
           setIsAuthenticated(true);
@@ -171,7 +199,10 @@ const withAdminAuth = (WrappedComponent) => {
 
       // Listen for storage changes
       const handleStorageChange = (e) => {
-        if (e.key === "adminUser" && !e.newValue) {
+        // Either store — a manager's session lives under `developerUser`, so
+        // watching only `adminUser` would leave their tab open after a
+        // sign-out in another one.
+        if ((e.key === "adminUser" || e.key === "developerUser") && !e.newValue) {
           router.push("/login");
         }
       };
@@ -224,7 +255,7 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
   }, [sectionParam]);
 
   useEffect(() => {
-    const authUser = checkAdminAuth();
+    const authUser = readAdminShellSession();
     if (!authUser) {
       router.push("/login");
       return;
@@ -235,7 +266,7 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
 
     // Set up interval to check session every minute
     const sessionCheckInterval = setInterval(() => {
-      const currentUser = checkAdminAuth();
+      const currentUser = readAdminShellSession();
       if (!currentUser) {
         handleLogout();
       }
@@ -292,7 +323,7 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
       if (initial) setLoading(true);
 
       // Verify user is still authenticated
-      const currentUser = checkAdminAuth();
+      const currentUser = readAdminShellSession();
       if (!currentUser) {
         handleLogout();
         return;

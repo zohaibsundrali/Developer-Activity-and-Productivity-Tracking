@@ -19,7 +19,8 @@ import { isProjectOpen, normalizeProjectStatus, projectStatusMeta } from "@/util
  * is derived from ONE snapshot, so the KPI row and the table underneath it can
  * never contradict each other.
  *
- * IT IS EIGHT QUERIES. Counted, not estimated:
+ * IT IS EIGHT QUERIES, PLUS UP TO TWO THAT DEPEND ON WHO IS LOOKING. Counted,
+ * not estimated:
  *
  *   5  loadOrgWorkGraph  — projects, developer_tasks, memberships, developers,
  *                          admin_users. Reused whole; Team Structure and
@@ -27,7 +28,12 @@ import { isProjectOpen, normalizeProjectStatus, projectStatusMeta } from "@/util
  *                          for "who is on a project" are worth having once.
  *   1  project_proposals — the request queue.
  *   1  pm_activity       — the recent-actions feed.
- *   1  notifications     — this admin's unread.
+ *   1  notifications     — this person's unread.
+ *  +1  clients           — a head count, and ONLY when the viewer's role can
+ *                          open that screen. See `withClients`.
+ *  +1  task_submissions  — the size of the review queue, and ONLY when the
+ *                          viewer's role can open Task Reviews. See
+ *                          `withReviews`.
  *
  * Bugs cost ZERO extra queries: a bug is a developer_tasks row with
  * task_type='bug' (utils/bugs.js), and the graph now selects that column.
@@ -39,6 +45,11 @@ import { isProjectOpen, normalizeProjectStatus, projectStatusMeta } from "@/util
  * operations dashboard that quietly carries financials is how a number reaches
  * somebody who was never meant to see it. Company-wide OPERATIONAL visibility
  * is the whole brief.
+ *
+ * The one number that touches the commercial side — the client head count — is
+ * gated by the same rule as everything else: it is fetched only when the
+ * viewer's role can open the Clients screen, so HR never sees it and never
+ * costs a request for it.
  *
  * EVERY COLUMN BELOW WAS VERIFIED AGAINST THE LIVE DATABASE before this
  * shipped. PostgREST rejects an entire request over one unknown column, so a
@@ -263,10 +274,18 @@ export function peopleRows(graph, today = ymd()) {
     );
 }
 
-/** The six headline numbers. */
-export function overviewKpis({ graph, proposals, today = ymd() }) {
+/** Every headline number the Overview can show. */
+export function overviewKpis({
+  graph,
+  proposals,
+  clientCount,
+  pendingReviews,
+  today = ymd(),
+}) {
   const projects = graph?.projects || [];
   const rows = projectRows(graph, today);
+  const people = peopleRows(graph, today);
+  const bugs = bugSummary(graph);
   const awaiting = new Set(PROPOSAL_BUCKETS[0].statuses);
 
   return {
@@ -276,8 +295,88 @@ export function overviewKpis({ graph, proposals, today = ymd() }) {
     teamMembers: (graph?.people || []).filter((p) => p.status === "active").length,
     overdueTasks: (graph?.tasks || []).filter((t) => isOverdue(t, today)).length,
     atRiskProjects: rows.filter((r) => r.risks.length > 0).length,
+
+    // The three below exist for the roles that cannot open a project screen.
+    // An HR user seeing "Total projects" is being shown a number they have no
+    // door to; these are theirs, and every one of them is actionable from a
+    // screen HR can actually open.
+    unmanagedProjects: projects.filter(
+      (p) => !p.manager_id && isProjectOpen(normalizeProjectStatus(p.status))
+    ).length,
+    overloadedPeople: people.filter((p) => p.level?.id === "overloaded").length,
+    availablePeople: people.filter((p) => p.level?.id === "free" || p.level?.id === "light").length,
+    rolesInUse: new Set((graph?.people || []).map((p) => p.role).filter(Boolean)).size,
+
+    // QA'S THREE. QA can open exactly two screens — Task Reviews and Bugs — so
+    // without these a QA user landed on an Overview with an EMPTY KPI row, the
+    // same failure finance had before `clientCount`. Both bug counts are free:
+    // a bug is a developer_tasks row with task_type='bug' and the graph already
+    // carries that column.
+    openBugs: bugs.open,
+    bugsInQa: bugs.inQa,
+
+    // Only ever non-null for a viewer who can open Task Reviews; see the
+    // conditional query in loadAdminOverview.
+    pendingReviews: pendingReviews ?? 0,
+
+    // Only ever non-null for a viewer who can open Clients; see the note on
+    // the conditional query in loadAdminOverview.
+    clientCount: clientCount ?? 0,
   };
 }
+
+/**
+ * The KPI catalogue, in priority order, each one naming the screen it opens.
+ *
+ * ONE RULE PRODUCES THREE DASHBOARDS: show a tile only when the viewer could
+ * open the screen behind it, then take the first six. Nothing is hand-assigned
+ * per role, so a change to ADMIN_SECTION_ROLES moves the tiles with it and the
+ * two cannot drift.
+ *
+ *   owner / admin   1–6: the delivery view — projects, risk, proposals, people.
+ *   manager / lead  1–5 then unmanaged projects: no Employees for them, so the
+ *                   sixth slot falls through to the org chart, which they can
+ *                   open and which is about the work.
+ *   HR              none of the first five. They get people, unmanaged
+ *                   projects, overloaded, available and roles in use — a
+ *                   dashboard about staffing, which is the job.
+ *   QA              none of the first ten. Reviews waiting, open bugs, bugs
+ *                   in QA — the queue they are answerable for.
+ *   finance         one: the client head count. Their other screen is
+ *                   Billing, and no money number belongs on this dashboard.
+ *
+ * The order is delivery-first because that is the larger audience; the
+ * people-side tiles sit below it and surface for whoever has nothing above.
+ */
+export const KPI_CATALOGUE = [
+  { key: "totalProjects", section: "all-projects" },
+  { key: "activeProjects", section: "all-projects" },
+  { key: "atRiskProjects", section: "project-hub" },
+  { key: "overdueTasks", section: "views" },
+  { key: "pendingProposals", section: "requests" },
+  { key: "teamMembers", section: "employees" },
+  { key: "unmanagedProjects", section: "hierarchy" },
+  { key: "overloadedPeople", section: "capacity" },
+  { key: "availablePeople", section: "capacity" },
+  { key: "rolesInUse", section: "team-stats" },
+  // Finance can open exactly two screens — Clients and Billing — so without
+  // this entry a finance user lands on an Overview with an EMPTY KPI row. A
+  // role admitted to the area and shown nothing reads as a broken screen
+  // rather than a restricted one. Caught by its own test, not by review.
+  { key: "clientCount", section: "clients" },
+
+  // QA, for the same reason. Their two screens are Task Reviews and Bugs, and
+  // the queue they are answerable for comes first. These sit at the tail
+  // because owner, admin, manager and team lead have filled all six slots long
+  // before here — appending cannot disturb a dashboard that is already full,
+  // and for QA the tail IS the dashboard.
+  { key: "pendingReviews", section: "task-reviews" },
+  { key: "openBugs", section: "bugs" },
+  { key: "bugsInQa", section: "bugs" },
+];
+
+/** How many tiles the KPI row shows. Two full rows of three at `lg`. */
+export const KPI_SLOTS = 6;
 
 /**
  * The snapshot.
@@ -288,7 +387,10 @@ export function overviewKpis({ graph, proposals, today = ymd() }) {
  * accord — `Promise.all` over `.then(...)` rather than `await` in sequence, so
  * one slow table cannot hold the other two.
  */
-export async function loadAdminOverview(orgId, { adminId, adminEmail } = {}) {
+export async function loadAdminOverview(
+  orgId,
+  { adminId, adminEmail, developerId, withClients = false, withReviews = false } = {}
+) {
   if (!orgId) throw new Error("Your session has no organization. Sign in again.");
 
   const proposalsQ = supabase
@@ -305,8 +407,16 @@ export async function loadAdminOverview(orgId, { adminId, adminEmail } = {}) {
     .order("created_at", { ascending: false })
     .limit(12);
 
-  // Scoped to the signed-in admin, exactly as the topbar bell is. An Overview
+  // Scoped to the signed-in person, exactly as the topbar bell is. An Overview
   // that showed everybody's notifications would be a second inbox nobody owns.
+  //
+  // THE RECIPIENT COLUMN DEPENDS ON WHICH TABLE THEY ARE IN. `notifications`
+  // has `admin_id`, `admin_email` and `developer_id` — verified live — and the
+  // admin shell is now reached by roles whose profile row is in `developers`
+  // (project manager, team lead, HR, QA, finance). Filtering on admin_id alone
+  // does not error for them; it quietly returns nothing, and an empty panel
+  // reads as "you have no notifications" rather than "we looked in the wrong
+  // column".
   let notificationsQ = supabase
     .from("notifications")
     .select("id, title, message, category, type, created_at, project_id, read")
@@ -317,14 +427,49 @@ export async function loadAdminOverview(orgId, { adminId, adminEmail } = {}) {
   const or = [];
   if (adminId) or.push(`admin_id.eq.${adminId}`);
   if (adminEmail) or.push(`admin_email.ilike.%${adminEmail}%`);
+  if (developerId) or.push(`developer_id.eq.${developerId}`);
   notificationsQ = or.length ? notificationsQ.or(or.join(",")) : notificationsQ.limit(0);
 
-  const [graph, proposals, activity, notifications] = await Promise.all([
-    loadOrgWorkGraph(orgId),
-    proposalsQ.then((r) => r.data || []).catch(() => []),
-    activityQ.then((r) => r.data || []).catch(() => []),
-    notificationsQ.then((r) => r.data || []).catch(() => []),
-  ]);
+  // A NINTH QUERY, AND ONLY FOR THE PEOPLE WHO CAN SEE THE ANSWER. Clients are
+  // owner/admin/finance; firing this for an HR user would spend a request on a
+  // number their screen will not render. `head: true` returns the count and no
+  // rows.
+  const clientsQ = withClients
+    ? supabase
+        .from("clients")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", orgId)
+        .then((r) => r.count ?? 0)
+        .catch(() => 0)
+    : Promise.resolve(null);
 
-  return { graph, proposals, activity, notifications };
+  // A TENTH, ON THE SAME TERMS. Task Reviews is the one QA screen whose
+  // number is not already in the work graph: a submission is a
+  // `task_submissions` row, not a `developer_tasks` row, and `review_status`
+  // is its own field. Columns verified live before this shipped.
+  //
+  // Fired only for a viewer who can open the screen — owner, admin, manager,
+  // team lead and QA — so HR, finance and a client never spend a request on a
+  // queue they cannot see. `head: true` returns the count and no rows.
+  const reviewsQ = withReviews
+    ? supabase
+        .from("task_submissions")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", orgId)
+        .eq("review_status", "pending")
+        .then((r) => r.count ?? 0)
+        .catch(() => 0)
+    : Promise.resolve(null);
+
+  const [graph, proposals, activity, notifications, clientCount, pendingReviews] =
+    await Promise.all([
+      loadOrgWorkGraph(orgId),
+      proposalsQ.then((r) => r.data || []).catch(() => []),
+      activityQ.then((r) => r.data || []).catch(() => []),
+      notificationsQ.then((r) => r.data || []).catch(() => []),
+      clientsQ,
+      reviewsQ,
+    ]);
+
+  return { graph, proposals, activity, notifications, clientCount, pendingReviews };
 }

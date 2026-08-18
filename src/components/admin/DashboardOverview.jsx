@@ -6,11 +6,15 @@ import {
   Activity,
   AlertOctagon,
   Bell,
+  Bug,
+  ClipboardCheck,
   FolderKanban,
+  Handshake,
   Inbox,
   Network,
   RefreshCw,
   TriangleAlert,
+  UserCheck,
   Users,
 } from "lucide-react";
 
@@ -21,6 +25,8 @@ import { getOrgContext, getOrgId } from "@/utils/orgContext";
 import { setVisibleInterval } from "@/hooks/useVisibleInterval";
 import SignalsPanel from "@/components/admin/SignalsPanel";
 import {
+  KPI_CATALOGUE,
+  KPI_SLOTS,
   PROPOSAL_BUCKETS,
   TASK_BUCKETS,
   bugSummary,
@@ -90,7 +96,8 @@ export default function DashboardOverview({ user }) {
   const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState(null);
 
-  const role = getOrgContext()?.role || null;
+  const ctx = getOrgContext();
+  const role = ctx?.role || null;
   const can = useCallback((section) => canAccessAdminSection(section, role), [role]);
 
   const load = useCallback(async () => {
@@ -98,9 +105,17 @@ export default function DashboardOverview({ user }) {
       setLoading(true);
       setError(null);
       const orgId = getOrgId();
+      // `user` is whichever profile row signed in — admin_users for an owner
+      // or admin, developers for a manager, team lead, HR, QA or finance. The
+      // notifications table keys those two on different columns, so which id
+      // this is has to be said rather than assumed.
+      const isAdminProfile = ctx?.userType === "admin";
       const snapshot = await loadAdminOverview(orgId, {
-        adminId: user?.id || null,
-        adminEmail: user?.email || null,
+        adminId: isAdminProfile ? user?.id || null : null,
+        adminEmail: isAdminProfile ? user?.email || null : null,
+        developerId: isAdminProfile ? null : user?.id || null,
+        withClients: canAccessAdminSection("clients", ctx?.role || null),
+        withReviews: canAccessAdminSection("task-reviews", ctx?.role || null),
       });
       setData(snapshot);
     } catch (e) {
@@ -109,20 +124,20 @@ export default function DashboardOverview({ user }) {
       setLoading(false);
       setHasLoaded(true);
     }
-  }, [user?.id, user?.email]);
+  }, [user?.id, user?.email, ctx?.userType, ctx?.role]);
 
   useEffect(() => {
     load();
-    // Paused while the tab is hidden. This is eight queries; running them at a
-    // wall nobody is looking at is the most expensive kind of idle.
+    // Paused while the tab is hidden. This is eight to ten queries; running
+    // them at a wall nobody is looking at is the most expensive kind of idle.
     return setVisibleInterval(load, REFRESH_MS);
   }, [load]);
 
   const view = useMemo(() => {
     if (!data) return null;
-    const { graph, proposals, activity, notifications } = data;
+    const { graph, proposals, activity, notifications, clientCount, pendingReviews } = data;
     return {
-      kpis: overviewKpis({ graph, proposals }),
+      kpis: overviewKpis({ graph, proposals, clientCount, pendingReviews }),
       projects: projectRows(graph),
       people: peopleRows(graph),
       tasks: taskBuckets(graph),
@@ -166,20 +181,41 @@ export default function DashboardOverview({ user }) {
         <>
           <KpiRow kpis={view?.kpis} loading={showSkeleton} can={can} />
 
+          {/* SAME RULE AS THE KPI ROW: a panel appears only when the viewer
+              could open the screen behind it. One rule, three dashboards —
+              an owner sees delivery and people, a project manager sees
+              delivery, and HR sees the people half without a bug count they
+              have no door to and cannot act on.
+
+              Notifications and Recent activity carry no `section`: the first
+              is the reader's own inbox and the second is org context that
+              writes nothing, so neither is gated. */}
           <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
             <div className="space-y-5 xl:col-span-2">
-              <ProjectsPanel rows={view?.projects} loading={showSkeleton} can={can} />
-              <TasksPanel buckets={view?.tasks} loading={showSkeleton} can={can} />
-              <PeoplePanel rows={view?.people} loading={showSkeleton} can={can} />
-              <HierarchyPanel view={view} loading={showSkeleton} can={can} />
+              {can("all-projects") && (
+                <ProjectsPanel rows={view?.projects} loading={showSkeleton} can={can} />
+              )}
+              {can("views") && (
+                <TasksPanel buckets={view?.tasks} loading={showSkeleton} can={can} />
+              )}
+              {can("capacity") && (
+                <PeoplePanel rows={view?.people} loading={showSkeleton} can={can} />
+              )}
+              {can("hierarchy") && (
+                <HierarchyPanel view={view} loading={showSkeleton} can={can} />
+              )}
             </div>
 
             <div className="space-y-5">
-              <ProposalsPanel proposals={view?.proposals} loading={showSkeleton} can={can} />
-              <QaPanel summary={view?.bugs} loading={showSkeleton} can={can} />
+              {can("requests") && (
+                <ProposalsPanel proposals={view?.proposals} loading={showSkeleton} can={can} />
+              )}
+              {can("bugs") && <QaPanel summary={view?.bugs} loading={showSkeleton} can={can} />}
               <NotificationsPanel rows={view?.notifications} loading={showSkeleton} />
               <ActivityPanel rows={view?.activity} graph={view?.graph} loading={showSkeleton} />
-              <ReportsPanel view={view} loading={showSkeleton} can={can} />
+              {can("reports") && (
+                <ReportsPanel view={view} loading={showSkeleton} can={can} />
+              )}
             </div>
           </div>
         </>
@@ -201,62 +237,106 @@ export default function DashboardOverview({ user }) {
  */
 function KpiRow({ kpis, loading, can }) {
   const k = kpis || {};
-  const tiles = [
-    {
+
+  // Presentation for each catalogue entry. The catalogue itself — order, and
+  // which section each tile opens — lives in utils/adminOverview.js beside the
+  // numbers, so a tile can never point at a screen its number did not come from.
+  const META = {
+    totalProjects: {
       title: "Total projects",
-      value: k.totalProjects ?? 0,
       icon: FolderKanban,
       tone: "primary",
-      href: "/admin/dashboard?section=all-projects",
-      section: "all-projects",
       hint: `${k.activeProjects ?? 0} still in flight`,
     },
-    {
+    activeProjects: {
       title: "Active projects",
-      value: k.activeProjects ?? 0,
       icon: Activity,
       tone: "info",
-      href: "/admin/dashboard?section=all-projects",
-      section: "all-projects",
       hint: "Not completed, closed or cancelled",
     },
-    {
-      title: "Pending proposals",
-      value: k.pendingProposals ?? 0,
-      icon: Inbox,
-      tone: k.pendingProposals > 0 ? "warning" : "muted",
-      href: "/admin/dashboard?section=requests",
-      section: "requests",
-      hint: "Waiting on your decision",
-    },
-    {
-      title: "Team members",
-      value: k.teamMembers ?? 0,
-      icon: Users,
-      tone: "primary",
-      href: "/admin/dashboard?section=employees",
-      section: "employees",
-      hint: "Active memberships",
-    },
-    {
-      title: "Overdue tasks",
-      value: k.overdueTasks ?? 0,
-      icon: AlertOctagon,
-      tone: k.overdueTasks > 0 ? "destructive" : "success",
-      href: "/admin/dashboard?section=views",
-      section: "views",
-      hint: "Past their due date, still open",
-    },
-    {
+    atRiskProjects: {
       title: "At-risk projects",
-      value: k.atRiskProjects ?? 0,
       icon: TriangleAlert,
       tone: k.atRiskProjects > 0 ? "warning" : "success",
-      href: "/admin/dashboard?section=project-hub",
-      section: "project-hub",
       hint: "Late, slipping, or on hold",
     },
-  ];
+    overdueTasks: {
+      title: "Overdue tasks",
+      icon: AlertOctagon,
+      tone: k.overdueTasks > 0 ? "destructive" : "success",
+      hint: "Past their due date, still open",
+    },
+    pendingProposals: {
+      title: "Pending proposals",
+      icon: Inbox,
+      tone: k.pendingProposals > 0 ? "warning" : "muted",
+      hint: "Waiting on your decision",
+    },
+    teamMembers: {
+      title: "Team members",
+      icon: Users,
+      tone: "primary",
+      hint: "Active memberships",
+    },
+    unmanagedProjects: {
+      title: "Projects without a manager",
+      icon: Network,
+      tone: k.unmanagedProjects > 0 ? "warning" : "success",
+      hint: "Nobody is accountable for these yet",
+    },
+    overloadedPeople: {
+      title: "Overloaded",
+      icon: AlertOctagon,
+      tone: k.overloadedPeople > 0 ? "destructive" : "success",
+      hint: "By open tasks, not hours",
+    },
+    availablePeople: {
+      title: "Available",
+      icon: UserCheck,
+      tone: "success",
+      hint: "Free or lightly loaded",
+    },
+    rolesInUse: {
+      title: "Roles in use",
+      icon: Users,
+      tone: "info",
+      hint: "Distinct roles across the org",
+    },
+    clientCount: {
+      title: "Clients",
+      icon: Handshake,
+      tone: "primary",
+      hint: "Accounts with a portal login",
+    },
+    pendingReviews: {
+      title: "Awaiting review",
+      icon: ClipboardCheck,
+      tone: k.pendingReviews > 0 ? "warning" : "success",
+      hint: "Submitted work nobody has judged yet",
+    },
+    openBugs: {
+      title: "Open bugs",
+      icon: Bug,
+      tone: k.openBugs > 0 ? "destructive" : "success",
+      hint: "Reported and not yet closed",
+    },
+    bugsInQa: {
+      title: "Bugs in QA",
+      icon: ClipboardCheck,
+      tone: k.bugsInQa > 0 ? "info" : "muted",
+      hint: "Fixed, waiting on a tester",
+    },
+  };
+
+  const tiles = KPI_CATALOGUE.filter((entry) => can(entry.section))
+    .slice(0, KPI_SLOTS)
+    .map((entry) => ({
+      ...META[entry.key],
+      key: entry.key,
+      value: k[entry.key] ?? 0,
+      section: entry.section,
+      href: `/admin/dashboard?section=${entry.section}`,
+    }));
 
   return (
     <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -271,19 +351,19 @@ function KpiRow({ kpis, loading, can }) {
             loading={loading}
           />
         );
-        // The whole tile is the target when the viewer may follow it, which is
-        // a far bigger hit area than a link inside it — and nothing at all when
-        // they may not, rather than a link that bounces.
-        return can(t.section) && !loading ? (
+        // The whole tile is the target — a far bigger hit area than a link
+        // inside it. Every tile in this row is openable by construction: the
+        // catalogue was already filtered by `can`.
+        return loading ? (
+          <div key={t.key}>{card}</div>
+        ) : (
           <Link
-            key={t.title}
+            key={t.key}
             href={t.href}
             className="rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             {card}
           </Link>
-        ) : (
-          <div key={t.title}>{card}</div>
         );
       })}
     </div>

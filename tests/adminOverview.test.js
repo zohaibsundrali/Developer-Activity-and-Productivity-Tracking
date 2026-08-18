@@ -138,6 +138,36 @@ describe("bugs cost no extra query, which depends on one column", () => {
   });
 });
 
+describe("the conditional queries only fire for people who can see the answer", () => {
+  const LOADER = stripComments(read("src/utils/adminOverview.js"));
+  const SCREEN = stripComments(read("src/components/admin/DashboardOverview.jsx"));
+
+  it("gates each one on its flag, and resolves rather than rejects when off", () => {
+    expect(LOADER).toMatch(/const clientsQ = withClients\s*\?/);
+    expect(LOADER).toMatch(/const reviewsQ = withReviews\s*\?/);
+    // Promise.all takes both branches. A `false` branch that threw would take
+    // the whole dashboard down for the roles that skip the query.
+    expect(LOADER.match(/: Promise\.resolve\(null\)/g) || []).toHaveLength(2);
+  });
+
+  it("decides the flags by the same section rule that decides the tiles", () => {
+    // If these ever disagree with canAccessAdminSection, a viewer either pays
+    // for a query whose number their screen will not render, or gets a tile
+    // that is permanently zero because nothing fetched it.
+    expect(SCREEN).toMatch(/withClients: canAccessAdminSection\("clients"/);
+    expect(SCREEN).toMatch(/withReviews: canAccessAdminSection\("task-reviews"/);
+  });
+
+  it("asks the review queue for a count, not for the rows", () => {
+    // Columns verified live: task_submissions has id, review_status,
+    // organization_id, task_id. PostgREST rejects the whole request over one
+    // unknown column, so a typo here blanks the tile with nothing in the
+    // console.
+    expect(LOADER).toMatch(/from\("task_submissions"\)[\s\S]{0,160}head: true/);
+    expect(LOADER).toMatch(/\.eq\("review_status", "pending"\)/);
+  });
+});
+
 describe("the vocabularies match what the database can actually hold", () => {
   it("proposal buckets cover every status the CHECK constraint allows", () => {
     // Read from the migration, not retyped. A status the schema permits but no
@@ -414,6 +444,39 @@ describe("the six headline numbers", () => {
     expect(k.atRiskProjects).toBe(1); // A: deadline passed
   });
 
+  it("carries QA's three numbers, each from where it actually lives", () => {
+    const qg = graphOf({
+      tasks: [
+        { id: 1, task_type: "bug", status: "pending" },
+        { id: 2, task_type: "bug", status: "awaiting_approval" },
+        { id: 3, task_type: "bug", status: "completed" },
+        { id: 4, task_type: "feature", status: "pending" },
+      ],
+    });
+    const qk = overviewKpis({ graph: qg, proposals: [], pendingReviews: 5, today: TODAY });
+
+    expect(qk.openBugs).toBe(2); // completed is closed, the feature is not a bug
+    expect(qk.bugsInQa).toBe(1); // awaiting_approval only
+
+    // And they must be the SAME derivation the QA panel underneath renders.
+    // Two counts of the same rows is two chances to disagree on one screen.
+    expect(qk.openBugs).toBe(bugSummary(qg).open);
+    expect(qk.bugsInQa).toBe(bugSummary(qg).inQa);
+
+    // The review queue is not in the work graph at all — a submission is a
+    // `task_submissions` row, not a `developer_tasks` row — so the loader
+    // hands it in and this passes it through rather than deriving it.
+    expect(qk.pendingReviews).toBe(5);
+  });
+
+  it("shows a zero, not a blank, for a count it was never given", () => {
+    // withReviews and withClients are false for most roles, so these arrive
+    // undefined. A tile rendering `undefined` prints nothing where a number
+    // belongs, which reads as a broken card rather than an empty queue.
+    expect(k.pendingReviews).toBe(0);
+    expect(k.clientCount).toBe(0);
+  });
+
   it("agrees with the table underneath it", () => {
     // Both come from one snapshot, which is the whole reason the loader exists.
     // If these two ever disagree, one panel is reading a different world.
@@ -455,7 +518,31 @@ describe("the screen tells the truth about what it is showing", () => {
     // which reads as the product being broken rather than as a permission.
     expect(SCREEN).toMatch(/canAccessAdminSection/);
     expect(SCREEN).toMatch(/canOpen=\{can\("all-projects"\)\}/);
-    expect(SCREEN).toMatch(/can\(t\.section\) && !loading/);
+    // The KPI row filters the catalogue by the same rule before rendering, so
+    // every tile it draws is openable by construction.
+    expect(SCREEN).toMatch(/KPI_CATALOGUE\.filter\(\(entry\) => can\(entry\.section\)\)/);
+  });
+
+  it("gates each PANEL on the section behind it, not just its link", () => {
+    // A bug count HR cannot open is noise on a screen that is supposed to be
+    // their dashboard. One rule — "show it if you could open it" — is what
+    // makes three roles get three different, relevant screens.
+    for (const [panel, section] of [
+      ["ProjectsPanel", "all-projects"],
+      ["TasksPanel", "views"],
+      ["PeoplePanel", "capacity"],
+      ["HierarchyPanel", "hierarchy"],
+      ["ProposalsPanel", "requests"],
+      ["QaPanel", "bugs"],
+      ["ReportsPanel", "reports"],
+    ]) {
+      const re = new RegExp(`can\\("${section}"\\)[\\s\\S]{0,120}<${panel}`);
+      expect(SCREEN, `${panel} must be gated on ${section}`).toMatch(re);
+    }
+    // These two are NOT gated, on purpose: the first is the reader's own
+    // inbox, the second is org context that writes nothing.
+    expect(SCREEN).toMatch(/\n +<NotificationsPanel/);
+    expect(SCREEN).toMatch(/\n +<ActivityPanel/);
   });
 
   it("pauses its polling while nobody is looking", () => {
