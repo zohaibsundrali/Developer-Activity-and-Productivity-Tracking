@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ROLE_RANK as SHARED_ROLE_RANK, rankOf } from "@/utils/roles";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
+import { authCan } from "@/utils/serverPermissions";
 import { recordEvent } from "@/utils/systemEvents";
 
 export const dynamic = "force-dynamic";
@@ -67,7 +68,6 @@ export const dynamic = "force-dynamic";
 // Only the two roles accountable for the organization. HR may change an
 // individual role through /api/admin/members/role, but a bulk re-stamp of
 // everyone's effective permissions belongs to owner/admin.
-const SYNC_ROLES = ["owner", "admin"];
 
 // Auth user lookups are one round trip each; run them in small batches so a
 // 200-person org does not serialise 200 requests, and does not open 200 either.
@@ -314,7 +314,9 @@ function rank(role) {
 async function authorize(request) {
   const auth = await getAuthedOrg(request);
   if (!auth) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  if (auth.userType === "client" || auth.role === "client" || !SYNC_ROLES.includes(auth.role)) {
+  // authCan refuses a client outright, so the two client clauses this replaces
+  // are covered rather than dropped.
+  if (!authCan(auth, "member.sync_roles")) {
     return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   }
   return { auth };

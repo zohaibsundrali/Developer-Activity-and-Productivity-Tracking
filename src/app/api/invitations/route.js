@@ -1,15 +1,25 @@
 import { NextResponse } from 'next/server';
-import { ROLE_RANK as SHARED_ROLE_RANK, rankOf } from "@/utils/roles";
+import { ROLES, ROLE_RANK as SHARED_ROLE_RANK, rankOf } from "@/utils/roles";
 import crypto from 'crypto';
 import { sendTemplatedEmail } from '@/utils/emailService';
 import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
+import { authCan } from '@/utils/serverPermissions';
 import { checkSeatLimitForRole, checkFeatureAccess } from '@/utils/entitlements';
 
 // Roles allowed to send invitations.
-const INVITER_ROLES = ['owner', 'admin', 'hr', 'manager'];
-// Roles that can be assigned via an invitation. "owner" is only grantable by an
-// existing owner (guarded below) so a lower role can't escalate someone to owner.
-const ASSIGNABLE_ROLES = ['admin', 'manager', 'team_lead', 'hr', 'developer', 'employee', 'client'];
+// Roles that can be assigned via an invitation: every role except `owner`,
+// which is grantable only by an existing owner (guarded below) so a lower role
+// cannot escalate someone past themselves.
+//
+// DERIVED, NOT TYPED OUT — and this is the third time that lesson has been
+// learned in this one file. ROLE_RANK below used to be a local copy and went
+// stale when designer/qa/finance were added. This list was the same mistake
+// one line up and nobody noticed, because it fails in the quietest possible
+// way: the invite form offered Finance, QA and Designer, and choosing any of
+// them answered `400 Invalid role.` — a role the product had shipped two
+// migrations earlier, refused by the one screen that hands it out. `devops`
+// (migration 067) never reached the form at all.
+const ASSIGNABLE_ROLES = ROLES.filter((r) => r !== 'owner');
 // Mirrors ROLE_RANK in src/utils/permissions.js — an inviter can only grant a
 // role that ranks strictly below their own.
 // ROLE_RANK is imported, not redeclared. This file kept its own copy, and
@@ -38,7 +48,10 @@ export async function POST(request) {
         { status: 401 }
       );
     }
-    if (!INVITER_ROLES.includes(auth.role)) {
+    // The rank guard further down is NOT replaced by this: it stops an
+    // inviter granting a role at or above their own, which is a comparison
+    // between two roles and not a capability the catalogue can express.
+    if (!authCan(auth, 'member.invite')) {
       return NextResponse.json(
         { success: false, error: 'Forbidden: you cannot send invitations.' },
         { status: 403 }
@@ -201,7 +214,10 @@ export async function GET(request) {
         { status: 401 }
       );
     }
-    if (!INVITER_ROLES.includes(auth.role)) {
+    // The rank guard further down is NOT replaced by this: it stops an
+    // inviter granting a role at or above their own, which is a comparison
+    // between two roles and not a capability the catalogue can express.
+    if (!authCan(auth, 'member.invite')) {
       return NextResponse.json(
         { success: false, error: 'Forbidden' },
         { status: 403 }

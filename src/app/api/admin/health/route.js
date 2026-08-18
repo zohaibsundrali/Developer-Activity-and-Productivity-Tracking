@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
+import { requirePermission } from "@/utils/serverPermissions";
 import { billingConfigured } from "@/utils/stripeServer";
 import { providerStatus } from "@/utils/emailProvider";
 
@@ -27,7 +28,6 @@ export const dynamic = "force-dynamic";
 // Only the two roles accountable for the deployment. A developer, manager,
 // team lead or HR user has no business reading infrastructure failure detail,
 // and a client never does. Mirrors the RLS policy in migration 038.
-const HEALTH_ROLES = ["owner", "admin"];
 
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
@@ -105,13 +105,11 @@ export async function GET(request) {
   try {
     const auth = await getAuthedOrg(request);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    if (
-      auth.userType === "client" ||
-      auth.role === "client" ||
-      !HEALTH_ROLES.includes(auth.role)
-    ) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    // Permission, not a role list. See utils/permissionCatalogue.js — the
+    // hand-typed array this replaces was one of fifteen, and roles added to the
+    // product reached some of them and not others.
+    const denied = requirePermission(auth, "system.health");
+    if (denied) return denied;
 
     const svc = serviceClient();
     const orgId = auth.orgId;

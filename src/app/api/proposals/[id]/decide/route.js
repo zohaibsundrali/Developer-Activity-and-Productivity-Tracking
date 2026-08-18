@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
+import { requirePermission } from "@/utils/serverPermissions";
 import { PROJECT_STATUS } from "@/utils/projectStatus";
 import { requireUnlocked } from "@/utils/entitlements";
 
@@ -28,18 +29,16 @@ export const dynamic = "force-dynamic";
  */
 
 const DECISIONS = ["accepted", "rejected", "needs_info", "in_review", "estimate"];
-const DECIDER_ROLES = ["owner", "admin", "manager"];
 
 export async function POST(request, { params }) {
   try {
     const auth = await getAuthedOrg(request);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    if (auth.userType === "client" || !DECIDER_ROLES.includes(auth.role)) {
-      return NextResponse.json(
-        { error: "Your role cannot decide proposals." },
-        { status: 403 }
-      );
-    }
+    // Permission, not a role list. See utils/permissionCatalogue.js — the
+    // hand-typed array this replaces was one of fifteen, and roles added to the
+    // product reached some of them and not others.
+    const denied = requirePermission(auth, "proposal.decide");
+    if (denied) return denied;
 
     const proposalId = params?.id;
     const body = await request.json().catch(() => ({}));

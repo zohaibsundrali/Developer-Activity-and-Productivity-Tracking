@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
+import { requirePermission } from "@/utils/serverPermissions";
 import { sendMail, notifyEmailHtml } from "@/utils/mailer";
 
 export const dynamic = "force-dynamic";
 
 // Only staff (never a client) may trigger client notifications.
-const STAFF_ROLES = ["owner", "admin", "manager"];
 
 const SUBJECTS = {
   announcement: "New announcement",
@@ -25,9 +25,11 @@ export async function POST(request) {
   try {
     const auth = await getAuthedOrg(request);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    if (auth.userType === "client" || auth.role === "client" || !STAFF_ROLES.includes(auth.role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    // Permission, not a role list. See utils/permissionCatalogue.js — the
+    // hand-typed array this replaces was one of fifteen, and roles added to the
+    // product reached some of them and not others.
+    const denied = requirePermission(auth, "client.notify");
+    if (denied) return denied;
 
     const { kind, title, message, projectId, clientId } = await request.json().catch(() => ({}));
     const svc = serviceClient();

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
+import { requirePermission } from "@/utils/serverPermissions";
 
 export const dynamic = "force-dynamic";
 
@@ -46,12 +47,11 @@ export async function POST(request, { params }) {
     const auth = await getAuthedOrg(request);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    if (auth.userType === "client" || !["owner", "admin"].includes(auth.role)) {
-      return NextResponse.json(
-        { error: "Only an owner or admin can change a project's manager." },
-        { status: 403 }
-      );
-    }
+    // Permission, not a role list. See utils/permissionCatalogue.js — the
+    // hand-typed array this replaces was one of fifteen, and roles added to the
+    // product reached some of them and not others.
+    const denied = requirePermission(auth, "project.assign_manager");
+    if (denied) return denied;
 
     const body = await request.json().catch(() => ({}));
     // `null` is a real instruction here — "this project has no manager" — and

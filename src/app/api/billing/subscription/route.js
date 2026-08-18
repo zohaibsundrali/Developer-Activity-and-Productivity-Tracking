@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
+import { requirePermission } from "@/utils/serverPermissions";
 import { resolveEntitlement, getUsage } from "@/utils/entitlements";
 import { billingConfigured, stripeMode } from "@/utils/stripeServer";
 
@@ -9,7 +10,6 @@ export const dynamic = "force-dynamic";
 // responsible for a bill may see one, and a client never can.
 // Finance too: reading the subscription is the job, and it carries none of
 // the monitoring access that making an accountant an admin used to.
-const BILLING_ROLES = ["owner", "admin", "finance"];
 
 // Columns of the plan catalogue that are safe to hand to a browser. The Stripe
 // price id is withheld deliberately — Checkout resolves it server-side from the
@@ -27,9 +27,11 @@ export async function GET(request) {
     if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (auth.userType === "client" || auth.role === "client" || !BILLING_ROLES.includes(auth.role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    // Permission, not a role list. See utils/permissionCatalogue.js — the
+    // hand-typed array this replaces was one of fifteen, and roles added to the
+    // product reached some of them and not others.
+    const denied = requirePermission(auth, "billing.view");
+    if (denied) return denied;
 
     // Service role: RLS grants owner/admin read on these tables, but the usage
     // counts span tables a plain admin token cannot fully count. The org id

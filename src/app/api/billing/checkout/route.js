@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
+import { requirePermission } from "@/utils/serverPermissions";
 import { stripeClient, billingConfigured, appOrigin } from "@/utils/stripeServer";
 
 export const dynamic = "force-dynamic";
@@ -19,12 +20,11 @@ export async function POST(request) {
     if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (auth.userType === "client" || auth.role !== "owner") {
-      return NextResponse.json(
-        { error: "Forbidden: only the organization owner can start a subscription." },
-        { status: 403 }
-      );
-    }
+    // Permission, not an inline role comparison. `billing.purchase` and NOT
+    // `billing.manage`: that one includes finance, and committing the
+    // organization to a recurring charge is the owner's decision alone.
+    const denied = requirePermission(auth, "billing.purchase");
+    if (denied) return denied;
 
     if (!billingConfigured()) {
       return NextResponse.json({ error: "Billing is not configured." }, { status: 503 });

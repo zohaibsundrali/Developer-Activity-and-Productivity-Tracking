@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { roleCan } from "@/utils/permissionEngine";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -52,7 +53,11 @@ describe("the bug lifecycle is the task pipeline, not a second one", () => {
   });
 
   it("QA can actually do the retest", () => {
-    expect(read("src/app/api/admin-review/route.js")).toContain("'qa'");
+    // The route no longer holds a role list — it asks for `task.review` — so
+    // this asks the same question of the thing that now answers it. Grepping
+    // the route for "qa" would pass on a comment and fail on a rename.
+    expect(roleCan("qa", "task.review")).toBe(true);
+    expect(read("src/app/api/admin-review/route.js")).toContain('requirePermission(auth, "task.review")');
   });
 });
 
