@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ROLES as SHARED_ROLES } from '@/utils/roles';
 
 /**
  * Role-based access control. `can()` is the app-layer gate in front of every
@@ -23,21 +24,18 @@ function asRole(role) {
 // test below (and only from that one) because it shares a rank with
 // `developer` on purpose — a test that demands a total order cannot also
 // express a deliberate tie.
-const ALL_ROLES = [
-  'owner',
-  'admin',
-  'manager',
-  'hr',
-  'finance',
-  'team_lead',
-  'qa',
-  'developer',
-  'designer',
-  'employee',
-  'client',
-];
+/**
+ * IMPORTED, not retyped. This copy had eleven names while utils/roles.js had
+ * twelve — `devops` (migration 067) was missing — so every `ALL_ROLES.forEach`
+ * assertion below silently skipped the newest role in the product.
+ */
+const ALL_ROLES = SHARED_ROLES;
 
-const STRICTLY_ORDERED = ALL_ROLES.filter((r) => r !== 'designer');
+// `designer` AND `devops` are dropped here, not just designer: both share
+// rank 30 with `developer` on purpose — they do the same kind of work with the
+// same access, so none outranks the others. A test that demands a total order
+// cannot also express a deliberate tie.
+const STRICTLY_ORDERED = ALL_ROLES.filter((r) => r !== 'designer' && r !== 'devops');
 
 beforeEach(() => {
   getOrgContext.mockReset();
@@ -251,8 +249,11 @@ describe('can — task/team oversight (owner, admin, manager, team_lead)', () =>
 });
 
 describe('can — submit_task', () => {
-  // Designer and QA file work the same way a developer does.
-  const ALLOWED = ['developer', 'designer', 'qa', 'employee', 'team_lead'];
+  // Designer, DevOps and QA file work the same way a developer does. `devops`
+  // was in the source list from the day migration 067 added the role and was
+  // missing from this one — invisible until ALL_ROLES stopped being a
+  // hand-typed copy that omitted the same role.
+  const ALLOWED = ['developer', 'designer', 'devops', 'qa', 'employee', 'team_lead'];
 
   it('allows exactly the people who do the work', () => {
     ALL_ROLES.forEach((role) => {

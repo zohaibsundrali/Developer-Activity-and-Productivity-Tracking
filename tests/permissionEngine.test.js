@@ -13,6 +13,7 @@ import {
   permissionsForRole,
 } from "@/utils/permissionCatalogue";
 import { resolvePermission, roleCan, permissionSetFor } from "@/utils/permissionEngine";
+import { requirePermission, authCan } from "@/utils/serverPermissions";
 import { SECTION_PERMISSIONS, ADMIN_SECTION_ROLES } from "@/components/shell/sectionAccess";
 
 /**
@@ -284,5 +285,100 @@ describe("permissionSetFor", () => {
   it("reflects overrides", () => {
     const set = permissionSetFor({ role: "developer", overrides: { "task.review": true } });
     expect(set).toContain("task.review");
+  });
+});
+
+describe("requirePermission — the guard API routes call", () => {
+  /**
+   * SHIPPED WITH NO TESTS AT ALL, and mutation testing is what said so:
+   * deleting the entire client check from serverPermissions.js broke nothing.
+   * A security helper whose failure is invisible is worse than no helper,
+   * because every route that adopts it inherits the blind spot.
+   */
+  const staff = (role) => ({ role, userType: "developer" });
+
+  it("returns null — meaning continue — when the permission is held", () => {
+    expect(requirePermission(staff("owner"), "billing.manage")).toBeNull();
+    expect(requirePermission(staff("qa"), "task.review")).toBeNull();
+  });
+
+  it("401s when there is nobody", () => {
+    for (const auth of [null, undefined]) {
+      expect(requirePermission(auth, "billing.view")?.status, String(auth)).toBe(401);
+    }
+  });
+
+  it("403s a signed-in member who does not hold it", () => {
+    expect(requirePermission(staff("developer"), "billing.view")?.status).toBe(403);
+    expect(requirePermission(staff("hr"), "project.view_all")?.status).toBe(403);
+  });
+
+  it("403s a client no matter what their role column says", () => {
+    // A client is a customer. Their `role` is `client` and no staff permission
+    // lists it — but a corrupted or hand-edited row claiming `owner` must not
+    // become a way into the staff API, so this is checked on userType and not
+    // left to fall out of the role lists.
+    expect(requirePermission({ role: "client", userType: "client" }, "billing.view")?.status).toBe(403);
+    expect(requirePermission({ role: "owner", userType: "client" }, "billing.view")?.status).toBe(403);
+    expect(requirePermission({ role: "owner", userType: "client" }, "project.view_all")?.status).toBe(403);
+  });
+
+  it("500s — not 403s — when the route names a permission that does not exist", () => {
+    // The caller did nothing wrong; the route did. A 403 here would send
+    // somebody hunting for a permission to grant that can never be granted.
+    const res = requirePermission(staff("owner"), "billing.viewx");
+    expect(res?.status).toBe(500);
+  });
+
+  it("takes the whole auth object, so no call site can pass a body field", () => {
+    // Passing a bare string must not accidentally work: `requirePermission(
+    // body.role, ...)` has to be obviously wrong, not subtly right.
+    expect(requirePermission("owner", "billing.view")?.status).toBe(403);
+  });
+
+  it("authCan answers the same question without a response", () => {
+    expect(authCan(staff("owner"), "billing.manage")).toBe(true);
+    expect(authCan(staff("developer"), "billing.manage")).toBe(false);
+    expect(authCan({ role: "owner", userType: "client" }, "billing.manage")).toBe(false);
+    expect(authCan(null, "billing.manage")).toBe(false);
+  });
+});
+
+describe("the role lists that used to go stale", () => {
+  /**
+   * The bug this whole change started from: a hand-typed copy of the roles in
+   * a file nobody thought of as owning the role vocabulary. Mutation testing
+   * put the old literal back and nothing failed — the bug was fixed and
+   * nothing was keeping it fixed.
+   */
+  const routeSrc = stripComments(
+    readFileSync(path.join(root, "src/app/api/invitations/route.js"), "utf8")
+  );
+  const pickerSrc = stripComments(
+    readFileSync(path.join(root, "src/components/admin/OrganizationManagement.jsx"), "utf8")
+  );
+
+  it("the invitations route derives the assignable roles", () => {
+    expect(routeSrc).toMatch(/ASSIGNABLE_ROLES = ROLES\.filter\(/);
+  });
+
+  it("the invitations route holds no literal role list", () => {
+    // The exact shape of the stale copy: an array of quoted role names.
+    expect(routeSrc).not.toMatch(/ASSIGNABLE_ROLES\s*=\s*\[\s*['"]/);
+  });
+
+  it("every role except owner is assignable, including the four that were not", () => {
+    // finance, qa and designer were offered by the form and rejected by the
+    // route with `400 Invalid role.`; devops was never offered at all.
+    const assignable = ROLES.filter((r) => r !== "owner");
+    for (const role of ["finance", "qa", "designer", "devops"]) {
+      expect(assignable, role).toContain(role);
+    }
+    expect(assignable).toHaveLength(ROLES.length - 1);
+  });
+
+  it("the member picker holds no literal role list either", () => {
+    expect(pickerSrc).not.toMatch(/const ROLES\s*=\s*\[/);
+    expect(pickerSrc).toContain('import { ROLES } from "@/utils/roles"');
   });
 });

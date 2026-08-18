@@ -2,11 +2,12 @@ import { describe, it, expect } from "vitest";
 import { canAccessAdminSection } from "@/components/shell/sectionAccess";
 import { defaultRolesFor, permissionsForRole } from "@/utils/permissionCatalogue";
 import { roleCan } from "@/utils/permissionEngine";
-import { readFileSync } from "node:fs";
+import { ROLES as SHARED_ROLES } from "@/utils/roles";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 /**
- * The eleven roles.
+ * Every role, however many there are.
  *
  * The danger with a role set is not that a role is missing — that is visible
  * the moment someone tries to assign it. The danger is a role that exists in
@@ -22,10 +23,14 @@ const read = (p) =>
     .replace(/^\s*\/\/.*$/gm, "")
     .replace(/^\s*--.*$/gm, "");
 
-const ROLES = [
-  "owner", "admin", "manager", "hr", "finance",
-  "team_lead", "qa", "developer", "designer", "employee", "client",
-];
+/**
+ * IMPORTED, not retyped — and this file of all files should not have needed
+ * telling. It held its own eleven-name copy while utils/roles.js had twelve:
+ * `devops` (migration 067) was missing, so every `it.each(ROLES)` below quietly
+ * skipped it. A suite whose whole job is "no role is missing from a list" was
+ * itself missing a role from its list.
+ */
+const ROLES = SHARED_ROLES;
 
 const PERMISSIONS = read("src/utils/permissions.js");
 // The ranks moved out of permissions.js into a pure module so the SERVER can
@@ -35,6 +40,33 @@ const ROLES_MODULE = read("src/utils/roles.js");
 const NAV = read("src/components/shell/navConfig.js");
 const ORGMGMT = read("src/components/admin/OrganizationManagement.jsx");
 const MIGRATION = read("database/058_software_house_roles.sql");
+
+/**
+ * The role CHECK constraint is redefined by whichever migration last touched
+ * it, and that is NOT always 058.
+ *
+ * This suite used to read 058 alone and enumerate eleven roles. `devops` came
+ * in migration 067, and because the local role list was also missing it, the
+ * assertion below never ran for the one role it would have failed on. Two
+ * stale copies covering for each other.
+ *
+ * So: find every migration that redefines the constraint and take the
+ * highest-numbered one, which is the definition actually in force.
+ */
+const ROLE_CHECK_MIGRATION = (() => {
+  const dir = path.join(root, "database");
+  const files = readdirSync(dir)
+    .filter((f) => /^\d{3}_.*\.sql$/.test(f))
+    .sort()
+    .reverse();
+  for (const f of files) {
+    const src = readFileSync(path.join(dir, f), "utf8");
+    if (/check\s*\(\s*role\s+in\s*\(/i.test(src) || /'owner'\s*,\s*'admin'/.test(src)) {
+      return { name: f, src };
+    }
+  }
+  throw new Error("no migration defines the role CHECK constraint");
+})();
 
 describe("every role exists in every list that decides anything", () => {
   it.each(ROLES)("roles.js ranks %s", (role) => {
@@ -77,7 +109,8 @@ describe("every role exists in every list that decides anything", () => {
   });
 
   it.each(ROLES)("the database CHECK constraint accepts %s", (role) => {
-    expect(MIGRATION).toContain(`'${role}'`);
+    expect(ROLE_CHECK_MIGRATION.src, `${role} missing from ${ROLE_CHECK_MIGRATION.name}`)
+      .toContain(`'${role}'`);
   });
 
   it("ranks them strictly highest-to-lowest with no accidental ties", () => {
