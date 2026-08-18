@@ -1,5 +1,6 @@
 import {
   LayoutDashboard,
+  ListChecks,
   FolderKanban,
   ClipboardCheck,
   Activity,
@@ -86,6 +87,7 @@ export const ADMIN_NAV = [
 // Developer sidebar items — ids MUST match the ?section= switch in the developer dashboard.
 export const DEVELOPER_NAV = [
   { id: "overview", label: "Dashboard", icon: LayoutDashboard },
+  { id: "my-work", label: "My Work", icon: ListChecks },
   { id: "projects", label: "My Projects", icon: FolderKanban },
   // `new-project` and `change-requests` USED TO BE HERE, and both were dead:
   // the developer dashboard has no case for either, so they fell through to
@@ -99,6 +101,7 @@ export const DEVELOPER_NAV = [
 // with an extra org-scoped Team oversight section.
 export const MANAGER_NAV = [
   { id: "overview", label: "Dashboard", icon: LayoutDashboard },
+  { id: "my-work", label: "My Work", icon: ListChecks },
   { id: "projects", label: "My Projects", icon: FolderKanban },
   { id: "team", label: "Team", icon: Users },
   { id: "account", label: "Account", icon: UserCircle },
@@ -107,6 +110,7 @@ export const MANAGER_NAV = [
 // Employee sidebar items — individual contributor (same surface as developer).
 export const EMPLOYEE_NAV = [
   { id: "overview", label: "Dashboard", icon: LayoutDashboard },
+  { id: "my-work", label: "My Work", icon: ListChecks },
   { id: "projects", label: "My Projects", icon: FolderKanban },
   { id: "account", label: "Account", icon: UserCircle },
 ];

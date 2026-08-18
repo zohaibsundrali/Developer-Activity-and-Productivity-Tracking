@@ -30,6 +30,7 @@ export const SECTION_TITLES = {
   sprints: { admin: "Sprints & Agile" },
   "task-reviews": { admin: "Task Reviews" },
   permissions: { admin: "Permissions" },
+  "my-work": { developer: "My Work" },
   "developer-activity": { admin: "Developer Activity" },
   reports: { admin: "Reports & Analytics" },
   automation: { admin: "Workflow Automation" },
