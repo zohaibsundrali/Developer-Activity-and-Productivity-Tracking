@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { recordEvent } from "@/utils/systemEvents";
+import { loadOverrides } from "@/utils/permissionOverrides";
 
 // Server-side auth helpers for API routes.
 //
@@ -144,6 +145,29 @@ export async function getAuthedOrg(request) {
     }
   }
 
+  // PER-PERSON OVERRIDES, read once and carried on `auth`.
+  //
+  // The catalogue says what a ROLE may do; `user_permissions` records the
+  // exceptions — the contractor who may not see billing, the developer trusted
+  // to review. They are loaded HERE rather than inside requirePermission for
+  // two reasons. `auth` already means "everything known about the verified
+  // caller", and the role is part of it, so an exception written against that
+  // person is the same kind of fact. And a permission check that does I/O has
+  // to be async, which turns `if (!authCan(...))` into `!Promise` — always
+  // false, guard silently skipped — the moment anyone forgets one `await`.
+  //
+  // One query, in parallel with nothing else that blocks, and it never throws:
+  // see permissionOverrides.js for why a missing TABLE and a failed QUERY are
+  // treated differently. `overridesUnavailable` is what makes the second case
+  // fail closed instead of quietly ignoring every deny in the organization.
+  let overrides = {};
+  let overridesUnavailable = false;
+  try {
+    overrides = await loadOverrides(admin, { orgId, appUserId, userType });
+  } catch {
+    overridesUnavailable = true;
+  }
+
   return {
     token,
     userId: data.user.id,
@@ -152,6 +176,8 @@ export async function getAuthedOrg(request) {
     role: meta.role || null,
     userType,
     appUserId,
+    overrides,
+    overridesUnavailable,
   };
 }
 
