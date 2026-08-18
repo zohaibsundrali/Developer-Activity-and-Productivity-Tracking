@@ -157,7 +157,20 @@ describe("the three gates that used to disagree", () => {
   it("the middleware still refuses the other two areas by user type", () => {
     // Widening /admin must not widen /client. A staff member with an elevated
     // role has no business in a customer's portal.
-    expect(MIDDLEWARE).toMatch(/prefix: '\/client', allow: \(s\) => s\.userType === 'client'/);
+    //
+    // ANCHORED TO THE CLOSING BRACE, AND THAT IS THE POINT. This assertion
+    // used to stop at `=> s.userType === 'client'`. Mutation testing appended
+    // `|| canEnterAdminArea(s.role)` to that very line and nothing failed —
+    // the prefix still matched, so the test was watching a boundary it could
+    // not actually see move. The `}` makes it exhaustive.
+    expect(MIDDLEWARE).toMatch(
+      /prefix: '\/client', allow: \(s\) => s\.userType === 'client' \}/
+    );
+    expect(MIDDLEWARE).toMatch(
+      /prefix: '\/developer', allow: \(s\) => s\.userType === 'developer' \|\| s\.userType === 'admin' \}/
+    );
+    // Belt and braces: the role check is invoked on exactly one rule, /admin.
+    expect(MIDDLEWARE.match(/canEnterAdminArea\(/g) || []).toHaveLength(1);
   });
 
   it("the admin page reads both session stores", () => {

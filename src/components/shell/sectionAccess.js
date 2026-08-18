@@ -121,7 +121,16 @@ export const ADMIN_AREA_ROLES = Object.freeze(
  * here still meets `canAccessAdminSection` for every screen, `getAuthedOrg` on
  * every request, and RLS at the table. This only decides whether the door to
  * the building opens.
+ *
+ * There was a `typeof role === "string" &&` in front of the includes(). It read
+ * as the fail-closed part and it was dead code: ADMIN_AREA_ROLES holds only
+ * strings, and Array.prototype.includes compares with SameValueZero, so null,
+ * undefined, 1 and {} were already false without it. Mutation testing could not
+ * kill it — removing it changed no answer — and a guard nobody can tell is
+ * load-bearing is worse than no guard, because the next reader trusts it to be
+ * doing something. The tests that pass those exact values still pass; they now
+ * prove the line below fails closed on its own.
  */
 export function canEnterAdminArea(role) {
-  return typeof role === "string" && ADMIN_AREA_ROLES.includes(role);
+  return ADMIN_AREA_ROLES.includes(role);
 }
