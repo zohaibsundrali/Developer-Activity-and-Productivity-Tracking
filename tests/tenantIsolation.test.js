@@ -89,6 +89,11 @@ describe("every route that uses the service role", () => {
     const usingService = ROUTES.filter((f) =>
       /serviceClient\(|SUPABASE_SERVICE_ROLE_KEY/.test(stripComments(readFileSync(f, "utf8")))
     );
-    expect(usingService.length).toBe(57);
+    // 57 -> 58: /api/admin/permissions, added with the overrides screen. It
+    // reads memberships and user_permissions with the service role, and its
+    // POST re-reads the target membership to confirm
+    // `organization_id === auth.orgId` before writing — the check whose absence
+    // let the developer-delete preview read across tenants.
+    expect(usingService.length).toBe(58);
   });
 });

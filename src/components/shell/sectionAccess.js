@@ -61,6 +61,7 @@ export const SECTION_PERMISSIONS = Object.freeze({
   clients: "client.view",
   billing: "billing.view",
   "system-health": "system.health",
+  permissions: "permissions.manage",
   // NOT IN THE SIDEBAR — its ADMIN_NAV entry is commented out — but still a
   // live `case` in the dashboard's section switch, so `?section=productivity`
   // rendered it. With no entry here `canAccessAdminSection` fell through to

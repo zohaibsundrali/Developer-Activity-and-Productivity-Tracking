@@ -311,6 +311,18 @@ describe("the catalogue agrees with the section table it replaced", () => {
       // why the assertion below now runs in BOTH directions.
       reason: "reachable by URL with no rule at all; hr and finance could open it",
     },
+    {
+      section: "permissions",
+      key: "permissions.manage",
+      // A NEW SCREEN, so there is nothing to preserve — but it still has to be
+      // declared here rather than slipping in, because this list is the record
+      // of every section that gained a rule it did not have.
+      //
+      // Owner only, and the only section that is not open to admin. Whoever can
+      // write a permission override can write themselves one, so this screen
+      // hands out every other screen.
+      reason: "new screen; owner-only because it grants every other permission",
+    },
   ];
 
   it("does not gate a section nobody had a rule for", () => {
