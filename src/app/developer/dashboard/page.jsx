@@ -6,6 +6,7 @@ import AppShell from "@/components/shell/AppShell";
 import { staffNav, sectionTitle } from "@/components/shell/navConfig";
 import { roleCan } from "@/utils/permissionEngine";
 import MyWork from "@/components/developer/MyWork";
+import MyTimesheet from "@/components/developer/MyTimesheet";
 import NotificationDropdown from "@/components/developer/NotificationDropdown";
 import DashboardOverview from "@/components/developer/DashboardOverview";
 import MyProjects from "@/components/developer/MyProjects";
@@ -341,6 +342,8 @@ function DeveloperDashboardContent() {
     switch (activeSection) {
       case "my-work":
         return <MyWork onViewProjectDetails={handleViewProjectDetails} />;
+      case "timesheet":
+        return <MyTimesheet />;
       case "projects":
         return <MyProjects {...contentProps} />;
       case "team":
