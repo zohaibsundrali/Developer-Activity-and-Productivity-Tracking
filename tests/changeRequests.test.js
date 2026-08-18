@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { roleCan } from "@/utils/permissionEngine";
+import { ROLES } from "@/utils/roles";
 import { canAccessAdminSection } from "@/components/shell/sectionAccess";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -177,12 +179,25 @@ describe("the screens show each side only what it can act on", () => {
   it("tells a manager that approving is somebody else's call", () => {
     // A manager priced it; agreeing to sell at that price is owner/admin. A
     // sentence beats a button that fails.
-    expect(ADMIN_UI).toMatch(/canApprove = \["owner", "admin"\]\.includes/);
+    expect(ADMIN_UI).toContain('canApprove = allowed("change_request.approve")');
+    for (const role of ROLES) {
+      expect(roleCan(role, "change_request.approve"), role).toBe(
+        ["owner", "admin"].includes(role)
+      );
+    }
     expect(ADMIN_UI).toMatch(/waiting on an owner or admin to approve it/i);
   });
 
   it("only offers pricing to the roles that may price", () => {
-    expect(ADMIN_UI).toMatch(/canPrice = \["owner", "admin", "manager"\]\.includes/);
+    // The role list moved into the catalogue; the screen asks for the key.
+    // Asserted for every role, so a widening fails here too — a grep for the
+    // old literal could only ever fail on a rename.
+    expect(ADMIN_UI).toContain('canPrice = allowed("change_request.decide")');
+    for (const role of ROLES) {
+      expect(roleCan(role, "change_request.decide"), role).toBe(
+        ["owner", "admin", "manager"].includes(role)
+      );
+    }
   });
 
   it("defaults the admin queue to what the company still owes an answer on", () => {

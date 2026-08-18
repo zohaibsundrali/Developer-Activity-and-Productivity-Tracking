@@ -161,6 +161,16 @@ export const PERMISSIONS = Object.freeze([
   { key: "change_request.approve", roles: ADMINS, module: "clients", label: "Approve a change request for sale" },
   { key: "client.view", roles: BILLING, module: "clients", label: "View client accounts" },
   { key: "client.notify", roles: DECIDERS, module: "clients", label: "Message a client" },
+  // ITS OWN KEY, deliberately, and role-identical to client.notify today.
+  //
+  // The call site (TaskDetailDrawer) used to name three roles inline and argued
+  // for it: borrowing a capability "whose membership is free to drift for
+  // unrelated reasons" would be wrong. That argument is right, and it is an
+  // argument against REUSING a key — not against having one. A key of its own
+  // gets the pinning the comment wanted AND puts the set where every other
+  // permission lives, so a later divergence is an edit here rather than a
+  // second copy of the role vocabulary in a component.
+  { key: "task.set_client_visibility", roles: DECIDERS, module: "clients", label: "Decide what the client sees on a task" },
 
   // ── Money ───────────────────────────────────────────────────────────────
   { key: "billing.view", roles: BILLING, module: "billing", label: "View billing", legacy: "view_billing" },

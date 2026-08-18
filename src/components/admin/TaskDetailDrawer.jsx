@@ -37,7 +37,7 @@ import {
   PRIORITIES,
 } from "@/utils/pmData";
 import { getOrgContext, isMembershipActive } from "@/utils/orgContext";
-import { hasRole } from "@/utils/permissions";
+import { allowed } from "@/utils/permissions";
 import { showConfirm, showError, showSuccess } from "@/utils/alerts";
 
 /**
@@ -696,7 +696,7 @@ export default function TaskDetailDrawer({
   // the overdue invoice" is something the client gets to read. Naming the three
   // roles through hasRole keeps that set pinned here instead of borrowing a
   // capability whose membership is free to drift for unrelated reasons.
-  const canSetClientVisibility = hasRole("owner", "admin", "manager");
+  const canSetClientVisibility = allowed("task.set_client_visibility");
 
   // Migration 032 adds the column NOT NULL, so a loaded task always carries a
   // real boolean once it has run. undefined/null therefore means "the column is

@@ -98,6 +98,26 @@ export function rankOf(role) {
 export const STAFF_ROLES = ROLES.filter((r) => userTypeForRole(r) === "developer");
 
 /**
+ * Who may BE assigned as a project's manager.
+ *
+ * NOT A PERMISSION. Every entry in permissionCatalogue.js answers "may this
+ * person do X"; this answers "may this person have X done to them", which is a
+ * property of the target and belongs with the role vocabulary instead.
+ *
+ * It lived in two places — ELIGIBLE_MANAGER_ROLES in
+ * /api/projects/[id]/manager and an inline filter in ProjectOverview.jsx — and
+ * two copies of one list is the exact failure this phase exists to end. The
+ * server copy is the one that enforces; this is now the only definition and
+ * both read it.
+ */
+export const MANAGEABLE_BY_ROLES = Object.freeze([
+  "owner",
+  "admin",
+  "manager",
+  "team_lead",
+]);
+
+/**
  * Of those, the ones `callerRole` is actually allowed to grant.
  *
  * This MIRRORS the rule in /api/auth/provision — `requestedRank >= callerRank`
