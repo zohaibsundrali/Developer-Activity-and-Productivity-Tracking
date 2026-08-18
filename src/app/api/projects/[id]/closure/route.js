@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
+import { authCan } from "@/utils/serverPermissions";
 import { PROJECT_STATUS } from "@/utils/projectStatus";
 import { settledFilter } from "@/utils/taskState";
 
@@ -44,8 +45,6 @@ export const dynamic = "force-dynamic";
 
 // Owner and admin can act on any project. A manager or team lead acts on the
 // ones they run — see `mayManage` for why the null case is allowed.
-const SUPERVISORS = ["owner", "admin", "manager", "team_lead"];
-
 const forbidden = (msg = "Your role cannot do that.") =>
   NextResponse.json({ error: msg }, { status: 403 });
 
@@ -62,9 +61,17 @@ const forbidden = (msg = "Your role cannot do that.") =>
  * would read as broken. When a project HAS a manager, that manager is the one.
  */
 function mayManage(auth, project) {
-  if (auth.userType === "client") return false;
+  // THE ROLE HALF ONLY. `project.complete` says the role may complete projects
+  // at all; the `manager_id` comparison below says WHICH ones. Replacing the
+  // whole function with a permission check would let every manager in the
+  // organization complete every project, which is the widening this split
+  // exists to prevent — see DELIBERATE_DIVERGENCES and the PR notes.
+  if (!authCan(auth, "project.complete")) return false;
   if (["owner", "admin"].includes(auth.role)) return true;
-  if (!SUPERVISORS.includes(auth.role)) return false;
+  // The SUPERVISORS re-check that used to sit here is gone, not lost: the
+  // authCan above admits exactly that set, so the line could never change an
+  // answer. A guard no input can reach reads as load-bearing to whoever edits
+  // it next.
   if (!project.manager_id) return true;
   return String(project.manager_id) === String(auth.appUserId);
 }

@@ -3,10 +3,10 @@ import { ROLES, ROLE_RANK as SHARED_ROLE_RANK, rankOf } from "@/utils/roles";
 import crypto from 'crypto';
 import { sendTemplatedEmail } from '@/utils/emailService';
 import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
+import { authCan } from '@/utils/serverPermissions';
 import { checkSeatLimitForRole, checkFeatureAccess } from '@/utils/entitlements';
 
 // Roles allowed to send invitations.
-const INVITER_ROLES = ['owner', 'admin', 'hr', 'manager'];
 // Roles that can be assigned via an invitation: every role except `owner`,
 // which is grantable only by an existing owner (guarded below) so a lower role
 // cannot escalate someone past themselves.
@@ -48,7 +48,10 @@ export async function POST(request) {
         { status: 401 }
       );
     }
-    if (!INVITER_ROLES.includes(auth.role)) {
+    // The rank guard further down is NOT replaced by this: it stops an
+    // inviter granting a role at or above their own, which is a comparison
+    // between two roles and not a capability the catalogue can express.
+    if (!authCan(auth, 'member.invite')) {
       return NextResponse.json(
         { success: false, error: 'Forbidden: you cannot send invitations.' },
         { status: 403 }
@@ -211,7 +214,10 @@ export async function GET(request) {
         { status: 401 }
       );
     }
-    if (!INVITER_ROLES.includes(auth.role)) {
+    // The rank guard further down is NOT replaced by this: it stops an
+    // inviter granting a role at or above their own, which is a comparison
+    // between two roles and not a capability the catalogue can express.
+    if (!authCan(auth, 'member.invite')) {
       return NextResponse.json(
         { success: false, error: 'Forbidden' },
         { status: 403 }

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
+import { authCan } from "@/utils/serverPermissions";
+import { defaultRolesFor } from "@/utils/permissionCatalogue";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +26,6 @@ export const dynamic = "force-dynamic";
  * a bigger change than this feature justifies today.
  */
 
-const STAFF_RAISERS = ["owner", "admin", "manager"];
 const MAX_TITLE = 200;
 const MAX_DESCRIPTION = 10000;
 
@@ -112,7 +113,7 @@ export async function POST(request) {
       if (!link) {
         return NextResponse.json({ error: "That is not one of your projects." }, { status: 403 });
       }
-    } else if (!STAFF_RAISERS.includes(auth.role)) {
+    } else if (!authCan(auth, "change_request.create")) {
       return NextResponse.json(
         { error: "Your role cannot raise a change request." },
         { status: 403 }
@@ -152,7 +153,10 @@ export async function POST(request) {
         .select("user_id, email, user_type, role")
         .eq("organization_id", auth.orgId)
         .eq("status", "active")
-        .in("role", STAFF_RAISERS);
+        // Not a guard — this asks WHO TO NOTIFY, and the answer is the same
+        // set that may raise one. Derived from the catalogue so the notify
+        // list cannot drift from the permission the way the old copy could.
+        .in("role", [...defaultRolesFor("change_request.create")]);
 
       const rows = (staff || []).map((m) => ({
         organization_id: auth.orgId,

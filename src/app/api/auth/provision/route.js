@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { rankOf, userTypeForRole, PROFILE_TABLE } from "@/utils/roles";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
+import { authCan } from "@/utils/serverPermissions";
 import { checkSeatLimitForRole } from "@/utils/entitlements";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +36,6 @@ export const dynamic = "force-dynamic";
 // Roles permitted to provision an account for someone else.
 // Managers provision too: a project manager onboarding a client for their own
 // project should not have to queue behind an admin for the login.
-const PROVISIONER_ROLES = ["owner", "admin", "hr", "manager"];
 
 export async function POST(request) {
   try {
@@ -47,7 +47,9 @@ export async function POST(request) {
     if (auth.userType === "client") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    if (!PROVISIONER_ROLES.includes(auth.role)) {
+    // The `requestedRank >= callerRank` refusal below stays — same reason as
+    // in the invitations route.
+    if (!authCan(auth, "member.provision")) {
       return NextResponse.json(
         { error: "Forbidden: your role cannot create accounts" },
         { status: 403 }

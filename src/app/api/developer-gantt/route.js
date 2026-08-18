@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getAuthedOrg } from '@/utils/serverAuth';
+import { authCan } from '@/utils/serverPermissions';
 
 export const dynamic = 'force-dynamic';
-
-const STAFF_ROLES = ['owner', 'admin', 'manager', 'team_lead'];
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -31,7 +30,7 @@ export async function GET(request) {
       // A developer can only ever view their own gantt chart — never trust a
       // developerId supplied via query string.
       developerId = auth.appUserId;
-    } else if (STAFF_ROLES.includes(auth.role)) {
+    } else if (authCan(auth, "project.view_all")) {
       developerId = developerIdParam;
       if (!developerId) {
         return NextResponse.json({ success: false, error: 'Missing developerId' }, { status: 400 });

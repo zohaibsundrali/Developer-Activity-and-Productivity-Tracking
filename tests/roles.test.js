@@ -313,9 +313,14 @@ describe("every role can actually be given a login", () => {
   });
 
   it("lets managers and HR provision as well as owner/admin", () => {
-    const m = provision.match(/PROVISIONER_ROLES\s*=\s*\[([^\]]*)\]/);
-    for (const role of ["owner", "admin", "hr", "manager"]) {
-      expect(m?.[1], role).toContain(role);
+    // The named array moved into the catalogue as `member.provision`; the route
+    // asks for the permission now. Same question, asked of the thing that
+    // answers it — and asked for every role, so a widening fails too.
+    expect(provision).toContain('authCan(auth, "member.provision")');
+    for (const role of ROLES) {
+      expect(roleCan(role, "member.provision"), role).toBe(
+        ["owner", "admin", "hr", "manager"].includes(role)
+      );
     }
   });
 
