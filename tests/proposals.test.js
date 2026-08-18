@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { canAccessAdminSection } from "@/components/shell/sectionAccess";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -152,9 +153,12 @@ describe("accept is ordered so a failure cannot claim success", () => {
 
 describe("the screens are reachable by the right roles", () => {
   it("puts Requests in the admin sidebar for the deciders and team_lead", () => {
-    const m = NAV.match(/requests:\s*\[([^\]]*)\]/);
+    // The rule itself, not a regex over whichever file currently holds it.
     for (const role of ["owner", "admin", "manager", "team_lead"]) {
-      expect(m?.[1], role).toContain(role);
+      expect(canAccessAdminSection("requests", role), role).toBe(true);
+    }
+    for (const role of ["developer", "designer", "qa", "hr"]) {
+      expect(canAccessAdminSection("requests", role), role).toBe(false);
     }
   });
 

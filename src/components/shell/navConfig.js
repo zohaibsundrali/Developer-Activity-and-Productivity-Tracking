@@ -106,63 +106,17 @@ export const EMPLOYEE_NAV = [
   { id: "account", label: "Account", icon: UserCircle },
 ];
 
-// Which roles may see each ADMIN dashboard section. null = every admin-dashboard
-// user (owner/admin/hr). Used to filter the sidebar AND to gate section access.
-export const ADMIN_SECTION_ROLES = {
-  overview: null,
-  // A project manager who may create a project has to be able to reach the
-  // list of them. Manager and team_lead already had `project-hub`, `views`
-  // and `sprints` — this was the one screen in that set they were locked out
-  // of, which made the others look broken.
-  "all-projects": ["owner", "admin", "manager", "team_lead"],
-  // Everyone who can decide, plus team_lead who can read but not decide —
-  // the route and the RLS policy both refuse a decision from them.
-  requests: ["owner", "admin", "manager", "team_lead"],
-  // Same audience as Requests. Pricing is owner/admin/manager and approving
-  // to sell is owner/admin — the screen tells team_lead which is which
-  // rather than hiding it.
-  "change-requests": ["owner", "admin", "manager", "team_lead"],
-  "project-hub": ["owner", "admin", "manager", "team_lead"],
-  board: ["owner", "admin"],
-  views: ["owner", "admin", "manager", "team_lead"],
-  sprints: ["owner", "admin", "manager", "team_lead"],
-  // QA is here and nowhere else on this map: reviewing submitted work is the
-  // job the role exists for. Manager and team_lead join it because they were
-  // already reviewers everywhere except this sidebar entry.
-  "task-reviews": ["owner", "admin", "manager", "team_lead", "qa"],
-  // Same audience as Task Reviews. Developers and designers see their own
-  // bugs on the board; this queue is for the people who triage them.
-  bugs: ["owner", "admin", "manager", "team_lead", "qa"],
-  "developer-activity": ["owner", "admin"],
-  reports: ["owner", "admin", "manager", "team_lead"],
-  automation: ["owner", "admin"],
-  employees: ["owner", "admin", "hr"],
-  // Founder, admin and HR see the whole structure; a manager and a team lead
-  // need it to see who is free before they assign anything. It is read-only —
-  // nothing on it writes — so the audience is wider than Employees.
-  hierarchy: ["owner", "admin", "hr", "manager", "team_lead"],
-  // Same audience, same reason: a manager deciding who to assign needs this
-  // more than anyone. Read-only — nothing on it writes.
-  capacity: ["owner", "admin", "hr", "manager", "team_lead"],
-  "team-stats": ["owner", "admin", "hr"],
-  organization: ["owner", "admin", "hr"],
-  clients: ["owner", "admin", "finance"],
-  billing: ["owner", "admin", "finance"],
-  // Infrastructure failure detail — same two roles the RLS policy on
-  // system_events admits (migration 038).
-  "system-health": ["owner", "admin"],
-  // null, like `overview`: this shows the caller their OWN details and changes
-  // their OWN password. There is no role that should be denied its own account,
-  // and the route behind it always targets the verified caller, never an id
-  // from the page.
-  account: null,
-};
+// Re-exported so existing imports keep working; the table itself lives in
+// sectionAccess.js, which has no icon dependency and can therefore be read by
+// the edge middleware.
+export {
+  ADMIN_SECTION_ROLES,
+  ADMIN_AREA_ROLES,
+  canAccessAdminSection,
+  canEnterAdminArea,
+} from "@/components/shell/sectionAccess";
 
-export function canAccessAdminSection(section, role) {
-  const allowed = ADMIN_SECTION_ROLES[section];
-  if (allowed === undefined || allowed === null) return true;
-  return allowed.includes(role);
-}
+import { canAccessAdminSection } from "@/components/shell/sectionAccess";
 
 // The admin sidebar filtered to the sections a given role may access.
 export function adminNavFor(role) {

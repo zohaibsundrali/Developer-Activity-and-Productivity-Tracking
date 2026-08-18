@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { canAccessAdminSection } from "@/components/shell/sectionAccess";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -87,14 +88,13 @@ describe("every role exists in every list that decides anything", () => {
 
 describe("finance sees money and NOT monitoring", () => {
   it("reaches billing and clients in the sidebar", () => {
-    expect(NAV).toMatch(/billing:\s*\[[^\]]*"finance"/);
-    expect(NAV).toMatch(/clients:\s*\[[^\]]*"finance"/);
+    expect(canAccessAdminSection("billing", "finance")).toBe(true);
+    expect(canAccessAdminSection("clients", "finance")).toBe(true);
   });
 
   it("does NOT reach developer activity, employees or reports", () => {
-    for (const section of ["developer-activity", '"team-stats"', "employees", "reports"]) {
-      const m = NAV.match(new RegExp(`${section.replace(/"/g, '"?')}:\\s*\\[([^\\]]*)\\]`));
-      if (m) expect(m[1], section).not.toContain("finance");
+    for (const section of ["developer-activity", "team-stats", "employees", "reports"]) {
+      expect(canAccessAdminSection(section, "finance"), section).toBe(false);
     }
   });
 
@@ -131,8 +131,7 @@ describe("qa can review, and that is the point of it", () => {
   });
 
   it("reaches the task-reviews section", () => {
-    const m = NAV.match(/"task-reviews":\s*\[([^\]]*)\]/);
-    expect(m?.[1]).toContain("qa");
+    expect(canAccessAdminSection("task-reviews", "qa")).toBe(true);
   });
 
   it("does NOT get the rest of the oversight surface", () => {

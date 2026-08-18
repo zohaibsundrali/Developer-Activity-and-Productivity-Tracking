@@ -455,7 +455,31 @@ describe("the screen tells the truth about what it is showing", () => {
     // which reads as the product being broken rather than as a permission.
     expect(SCREEN).toMatch(/canAccessAdminSection/);
     expect(SCREEN).toMatch(/canOpen=\{can\("all-projects"\)\}/);
-    expect(SCREEN).toMatch(/can\(t\.section\) && !loading/);
+    // The KPI row filters the catalogue by the same rule before rendering, so
+    // every tile it draws is openable by construction.
+    expect(SCREEN).toMatch(/KPI_CATALOGUE\.filter\(\(entry\) => can\(entry\.section\)\)/);
+  });
+
+  it("gates each PANEL on the section behind it, not just its link", () => {
+    // A bug count HR cannot open is noise on a screen that is supposed to be
+    // their dashboard. One rule — "show it if you could open it" — is what
+    // makes three roles get three different, relevant screens.
+    for (const [panel, section] of [
+      ["ProjectsPanel", "all-projects"],
+      ["TasksPanel", "views"],
+      ["PeoplePanel", "capacity"],
+      ["HierarchyPanel", "hierarchy"],
+      ["ProposalsPanel", "requests"],
+      ["QaPanel", "bugs"],
+      ["ReportsPanel", "reports"],
+    ]) {
+      const re = new RegExp(`can\\("${section}"\\)[\\s\\S]{0,120}<${panel}`);
+      expect(SCREEN, `${panel} must be gated on ${section}`).toMatch(re);
+    }
+    // These two are NOT gated, on purpose: the first is the reader's own
+    // inbox, the second is org context that writes nothing.
+    expect(SCREEN).toMatch(/\n +<NotificationsPanel/);
+    expect(SCREEN).toMatch(/\n +<ActivityPanel/);
   });
 
   it("pauses its polling while nobody is looking", () => {

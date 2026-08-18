@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { canAccessAdminSection } from "@/components/shell/sectionAccess";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -216,9 +217,12 @@ describe("the screens show each side only what it can act on", () => {
   });
 
   it("is reachable from both sidebars", () => {
-    const admin = NAV.match(/"change-requests":\s*\[([^\]]*)\]/);
+    // Asserted against the imported rule rather than a regex over the source.
+    // The table moved out of navConfig.js into sectionAccess.js so the edge
+    // middleware could read it without pulling in an icon library, and a text
+    // match would have broken on the move while the rule itself was untouched.
     for (const role of ["owner", "admin", "manager", "team_lead"]) {
-      expect(admin?.[1], role).toContain(role);
+      expect(canAccessAdminSection("change-requests", role), role).toBe(true);
     }
     // The client nav lists it as an entry, not behind a role gate.
     expect(NAV).toMatch(/id: "change-requests", label: "Change Requests"/);

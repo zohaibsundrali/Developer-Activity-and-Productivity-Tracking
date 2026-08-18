@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { SESSION_COOKIE, verifySession } from '@/utils/sessionCookie'
+import { canEnterAdminArea } from '@/components/shell/sectionAccess'
 
 /**
  * Route protection.
@@ -46,12 +47,32 @@ import { SESSION_COOKIE, verifySession } from '@/utils/sessionCookie'
  * ────────────────────────────────────────────────────────────────────────
  */
 
-// Which session user_type may enter each area. Staff roles all share the
-// /developer surface, so anything that is not a client or admin lands there.
-const AREA_RULES: { prefix: string; allow: (userType: string | null | undefined) => boolean }[] = [
-  { prefix: '/admin', allow: (t) => t === 'admin' },
-  { prefix: '/client', allow: (t) => t === 'client' },
-  { prefix: '/developer', allow: (t) => t === 'developer' || t === 'admin' },
+/**
+ * Which session may enter each area.
+ *
+ * `/admin` USED TO BE `userType === 'admin'` AND THAT WAS A BUG.
+ *
+ * `userTypeForRole` (utils/roles.js) puts every role except owner and admin in
+ * the `developers` table, so a project manager, a team lead, an HR user, a QA
+ * and a finance user all carry `userType: "developer"`. This rule therefore
+ * turned all five away from /admin — while ADMIN_SECTION_ROLES granted them
+ * fifteen sections between them. The area gate refused everybody the section
+ * gate was written for, and nothing failed loudly: those roles saw MANAGER_NAV
+ * on the staff dashboard, four entries, and never learnt the rest existed.
+ *
+ * The membership role is read from the SIGNED cookie, which already carried it
+ * — the browser cannot write it, and `verifySession` rejects a tampered
+ * payload before this line runs. Letting a role into the area is not letting it
+ * do anything: every section is still checked by canAccessAdminSection when the
+ * dashboard renders it, every request is still checked by getAuthedOrg against
+ * a verified JWT, and every table is still behind RLS.
+ */
+type Session = { userType?: string | null; role?: string | null }
+
+const AREA_RULES: { prefix: string; allow: (s: Session) => boolean }[] = [
+  { prefix: '/admin', allow: (s) => s.userType === 'admin' || canEnterAdminArea(s.role) },
+  { prefix: '/client', allow: (s) => s.userType === 'client' },
+  { prefix: '/developer', allow: (s) => s.userType === 'developer' || s.userType === 'admin' },
 ]
 
 /**
@@ -86,7 +107,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if (!rule.allow(session.userType)) {
+  if (!rule.allow(session)) {
     // Signed in, but not for this area — send them to login rather than
     // leaking which areas exist.
     return NextResponse.redirect(new URL('/login', request.url))

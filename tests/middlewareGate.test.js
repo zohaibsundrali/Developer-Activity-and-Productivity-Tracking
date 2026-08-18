@@ -94,6 +94,6 @@ describe("what it gates, and what it must not", () => {
 
   it("fails closed — no session and a wrong user type both redirect", () => {
     expect(source).toMatch(/if \(!session\) \{[\s\S]{0,200}redirect/);
-    expect(source).toMatch(/if \(!rule\.allow\(session\.userType\)\)[\s\S]{0,160}redirect/);
+    expect(source).toMatch(/if \(!rule\.allow\(session\)\)[\s\S]{0,160}redirect/);
   });
 });

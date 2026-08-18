@@ -618,7 +618,13 @@ describe("authentication logic is untouched", () => {
     expect(source).toMatch(/'\/admin\/:path\*'/);
     expect(source).toMatch(/'\/client\/:path\*'/);
     expect(source).toMatch(/verifySession\(raw\)/);
-    expect(source).toMatch(/prefix: '\/admin', allow: \(t\) => t === 'admin'/);
+    // The /admin rule used to be `t === 'admin'` and that turned away every
+    // role the section table was written for — a project manager, a team lead,
+    // HR, QA and finance all carry userType 'developer'. What must survive is
+    // that the rule still consults the SESSION and still fails closed for a
+    // contributor, not the exact predicate.
+    expect(source).toMatch(/prefix: '\/admin', allow: \(s\) =>[^\n]*canEnterAdminArea\(s\.role\)/);
+    expect(source).toMatch(/prefix: '\/client', allow: \(s\) => s\.userType === 'client'/);
   });
 
   it("AuthContext still decides sessions the same way", () => {
