@@ -118,7 +118,7 @@ describe('atLeast (ROLE_RANK ordering)', () => {
 });
 
 describe('can — signed out', () => {
-  it('denies everything, including the permissive default branch', () => {
+  it('denies everything, unknown actions included', () => {
     asRole(null);
     ['manage_org', 'manage_members', 'create_project', 'review_tasks', 'submit_task', 'anything_else'].forEach(
       (action) => expect(can(action)).toBe(false)
@@ -143,9 +143,17 @@ describe('can — owner-only actions', () => {
 });
 
 describe('can — people operations (owner, admin, hr)', () => {
+  // `invite_members` MOVED OUT of this list, and it is the only change here.
+  //
+  // It never belonged: /api/invitations has always used INVITER_ROLES —
+  // owner, admin, hr AND manager — so the server accepted a manager's
+  // invitations while this helper said they could not send one. Two sources,
+  // one of which runs. The server won; see DELIBERATE_DIVERGENCES in
+  // tests/permissionParity.test.js for the argument and
+  // tests/permissionEngine.test.js for the rule itself. Its own assertion is
+  // below, so the capability is still pinned — just to the right set.
   const PEOPLE_ACTIONS = [
     'manage_members',
-    'invite_members',
     'create_developer',
     'delete_developer',
     'manage_employees',
@@ -163,10 +171,20 @@ describe('can — people operations (owner, admin, hr)', () => {
     });
   });
 
-  it('does not let a manager invite members or delete developers', () => {
+  it('does not let a manager delete developers', () => {
     asRole('manager');
-    expect(can('invite_members')).toBe(false);
     expect(can('delete_developer')).toBe(false);
+  });
+
+  it('lets a manager invite, because the invitations route always has', () => {
+    // The capability a project manager genuinely holds: bringing a developer
+    // onto their own project without queueing behind HR. What changed is that
+    // the helper now agrees with the route instead of contradicting it.
+    for (const role of ALL_ROLES) {
+      asRole(role);
+      const expected = ['owner', 'admin', 'hr', 'manager'].includes(role);
+      expect(can('invite_members'), `${role} -> invite_members`).toBe(expected);
+    }
   });
 });
 
@@ -194,9 +212,16 @@ describe('can — task/team oversight (owner, admin, manager, team_lead)', () =>
   // review_tasks deliberately NOT here: QA reviews too, so it has its own
   // block. Leaving it in this list would assert that QA cannot review, which
   // is the opposite of why the role exists.
+  // `view_tracking` MOVED OUT, to the owner/admin block below.
+  //
+  // This helper had it as a supervisor capability. The Developer Activity
+  // screen has always been owner/admin, and the RLS policies on the monitoring
+  // tables (migration 040) admit the same two — so a manager was told yes by
+  // this function and no by the screen, the route and the database. Screen
+  // captures and keystroke counts of a named employee are the most sensitive
+  // thing this product stores; where sources disagreed, the smaller list won.
   const SUPERVISOR_ACTIONS = [
     'manage_tasks',
-    'view_tracking',
     'view_reports',
     'view_team',
   ];
@@ -214,6 +239,15 @@ describe('can — task/team oversight (owner, admin, manager, team_lead)', () =>
     expect(can('view_tracking')).toBe(false);
     expect(can('view_reports')).toBe(false);
   });
+
+  it('keeps monitoring to the two roles the screen and RLS admit', () => {
+    for (const role of ALL_ROLES) {
+      asRole(role);
+      expect(can('view_tracking'), `${role} -> view_tracking`).toBe(
+        ['owner', 'admin'].includes(role)
+      );
+    }
+  });
 });
 
 describe('can — submit_task', () => {
@@ -229,11 +263,28 @@ describe('can — submit_task', () => {
 });
 
 describe('can — unknown actions', () => {
-  it('defaults to allow for any signed-in role (documented permissive default)', () => {
-    // This is the current, deliberate behaviour: unlisted actions are not gated
-    // here. Pinning it means an accidental change to the default is caught.
-    asRole('client');
-    expect(can('some_unlisted_action')).toBe(true);
+  /**
+   * THIS TEST USED TO ASSERT THE OPPOSITE, and it was right to: the switch
+   * ended `default: return true`, that was deliberate, and pinning it meant an
+   * accidental change would be caught. The behaviour has now been changed on
+   * purpose, so the pin moves with it.
+   *
+   * The old default made every action nobody had listed — and every typo —
+   * answer yes for anyone signed in. `can('manage_setting')` was true for a
+   * developer, and there is no way to tell that apart from a real permission
+   * by reading the call site.
+   *
+   * Flipping it is only safe because tests/permissionEngine.test.js now scans
+   * the source and asserts that every key passed to `can()` is a key that
+   * exists. Without that, fail-closed would silently break whichever call
+   * sites had been relying on the default; with it, there are provably none.
+   */
+  it('refuses an action nobody defined, for every role', () => {
+    for (const role of ALL_ROLES) {
+      asRole(role);
+      expect(can('some_unlisted_action'), role).toBe(false);
+      expect(can('manage_setting'), `${role} (typo of manage_settings)`).toBe(false);
+    }
   });
 
   it('never allows an unknown action while signed out', () => {

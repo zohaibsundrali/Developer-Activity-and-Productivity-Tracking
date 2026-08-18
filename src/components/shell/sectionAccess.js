@@ -8,10 +8,17 @@
  * bundle to learn it is not a trade worth making. sectionTitles.js was carved
  * off the same file for the same reason.
  *
- * Deliberately PURE: no imports, no icons, no session. That is what lets the
- * middleware, the login page, the sidebar and the dashboard's own section guard
- * all read the SAME table. `navConfig.js` re-exports these names, so every
- * existing import keeps working.
+ * Deliberately PURE: no icons, no session, and nothing imported that is not
+ * itself pure. That is what lets the middleware, the login page, the sidebar
+ * and the dashboard's own section guard all read the SAME rules. `navConfig.js`
+ * re-exports these names, so every existing import keeps working.
+ *
+ * THE ROLE LISTS MOVED. Each section now names a PERMISSION, and the roles that
+ * hold it live in utils/permissionCatalogue.js beside every other permission in
+ * the product. The table below used to be one of four independent copies of the
+ * access rules, and the copies had drifted; `ADMIN_SECTION_ROLES` is still
+ * exported, but it is now DERIVED from the catalogue rather than typed out, so
+ * it cannot drift from it again.
  *
  * THE THREE GATES THIS FEEDS, none of which replaces the others:
  *   1. this file       — which area and which section the UI will show
@@ -20,62 +27,70 @@
  * Hiding a sidebar entry is not a permission. It is the first of three.
  */
 
-// Which roles may see each ADMIN dashboard section. null = every admin-dashboard
-// user (owner/admin/hr). Used to filter the sidebar AND to gate section access.
-export const ADMIN_SECTION_ROLES = {
+import { defaultRolesFor } from "@/utils/permissionCatalogue";
+import { roleCan } from "@/utils/permissionEngine";
+
+/**
+ * Section → the permission that opens it. `null` means "every admin-dashboard
+ * user": `overview` and `account` are statements about people already inside
+ * the area, not gates, and inventing a permission for someone's own account
+ * screen would be a new restriction rather than a move.
+ *
+ * The comments that used to sit beside each role list have moved to the
+ * catalogue entries, next to the roles they explain.
+ */
+export const SECTION_PERMISSIONS = Object.freeze({
   overview: null,
-  // A project manager who may create a project has to be able to reach the
-  // list of them. Manager and team_lead already had `project-hub`, `views`
-  // and `sprints` — this was the one screen in that set they were locked out
-  // of, which made the others look broken.
-  "all-projects": ["owner", "admin", "manager", "team_lead"],
-  // Everyone who can decide, plus team_lead who can read but not decide —
-  // the route and the RLS policy both refuse a decision from them.
-  requests: ["owner", "admin", "manager", "team_lead"],
-  // Same audience as Requests. Pricing is owner/admin/manager and approving
-  // to sell is owner/admin — the screen tells team_lead which is which
-  // rather than hiding it.
-  "change-requests": ["owner", "admin", "manager", "team_lead"],
-  "project-hub": ["owner", "admin", "manager", "team_lead"],
-  board: ["owner", "admin"],
-  views: ["owner", "admin", "manager", "team_lead"],
-  sprints: ["owner", "admin", "manager", "team_lead"],
-  // QA is here and nowhere else on this map: reviewing submitted work is the
-  // job the role exists for. Manager and team_lead join it because they were
-  // already reviewers everywhere except this sidebar entry.
-  "task-reviews": ["owner", "admin", "manager", "team_lead", "qa"],
-  // Same audience as Task Reviews. Developers and designers see their own
-  // bugs on the board; this queue is for the people who triage them.
-  bugs: ["owner", "admin", "manager", "team_lead", "qa"],
-  "developer-activity": ["owner", "admin"],
-  reports: ["owner", "admin", "manager", "team_lead"],
-  automation: ["owner", "admin"],
-  employees: ["owner", "admin", "hr"],
-  // Founder, admin and HR see the whole structure; a manager and a team lead
-  // need it to see who is free before they assign anything. It is read-only —
-  // nothing on it writes — so the audience is wider than Employees.
-  hierarchy: ["owner", "admin", "hr", "manager", "team_lead"],
-  // Same audience, same reason: a manager deciding who to assign needs this
-  // more than anyone. Read-only — nothing on it writes.
-  capacity: ["owner", "admin", "hr", "manager", "team_lead"],
-  "team-stats": ["owner", "admin", "hr"],
-  organization: ["owner", "admin", "hr"],
-  clients: ["owner", "admin", "finance"],
-  billing: ["owner", "admin", "finance"],
-  // Infrastructure failure detail — same two roles the RLS policy on
-  // system_events admits (migration 038).
-  "system-health": ["owner", "admin"],
-  // null, like `overview`: this shows the caller their OWN details and changes
-  // their OWN password. There is no role that should be denied its own account,
-  // and the route behind it always targets the verified caller, never an id
-  // from the page.
+  "all-projects": "project.view_all",
+  requests: "proposal.view",
+  "change-requests": "change_request.view",
+  "project-hub": "project.hub",
+  board: "project.board",
+  views: "task.view_all",
+  sprints: "sprint.view",
+  "task-reviews": "task.review",
+  bugs: "bug.triage",
+  "developer-activity": "monitoring.view",
+  reports: "report.view",
+  automation: "automation.manage",
+  employees: "member.view",
+  hierarchy: "hierarchy.view",
+  capacity: "capacity.view",
+  "team-stats": "team_stats.view",
+  organization: "organization.view",
+  clients: "client.view",
+  billing: "billing.view",
+  "system-health": "system.health",
   account: null,
-};
+});
+
+/**
+ * The old shape, derived rather than typed.
+ *
+ * Kept because the sidebar, the tests and the login page all read it, and
+ * because "which roles can open this" is a genuinely useful thing to be able to
+ * ask. What changed is that nobody maintains it: it is computed from the
+ * catalogue, so adding a role to a permission moves this with it.
+ */
+export const ADMIN_SECTION_ROLES = Object.freeze(
+  Object.fromEntries(
+    Object.entries(SECTION_PERMISSIONS).map(([section, key]) => [
+      section,
+      key === null ? null : Object.freeze([...defaultRolesFor(key)]),
+    ])
+  )
+);
 
 export function canAccessAdminSection(section, role) {
-  const allowed = ADMIN_SECTION_ROLES[section];
-  if (allowed === undefined || allowed === null) return true;
-  return allowed.includes(role);
+  // `undefined` — a section nobody wrote a rule for — stays open, exactly as
+  // before. That is deliberate and it is NOT the fail-open default the old
+  // `can()` had: every id here is a tab in a dashboard the caller has already
+  // been admitted to, and the API and RLS behind each one gate the data. A new
+  // tab appearing blank because somebody forgot a map entry would be a worse
+  // failure than it appearing.
+  const key = SECTION_PERMISSIONS[section];
+  if (key === undefined || key === null) return true;
+  return roleCan(role, key);
 }
 
 /**

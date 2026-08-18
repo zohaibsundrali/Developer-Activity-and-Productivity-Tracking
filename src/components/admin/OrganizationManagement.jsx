@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { ROLES } from "@/utils/roles";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
 import { can } from "@/utils/permissions";
@@ -18,23 +19,13 @@ import {
 } from "lucide-react";
 import OrganizationSettings from "@/components/admin/OrganizationSettings";
 
-// Ordered highest → lowest, matching ROLE_RANK in src/utils/permissions.js and
-// the CHECK constraint in database/058. A picker that lists roles in a
-// different order from the one the product ranks them in is a small thing that
-// makes people pick the wrong one.
-const ROLES = [
-  "owner",
-  "admin",
-  "manager",
-  "hr",
-  "finance",
-  "team_lead",
-  "qa",
-  "developer",
-  "designer",
-  "employee",
-  "client",
-];
+// The role list is IMPORTED, not retyped. This file held its own copy, ordered
+// by rank so a picker would not present them arbitrarily — and that copy was
+// missing `devops`, which migration 067 added. The effect was that a DevOps
+// engineer could exist in the database, hold a role the CHECK constraint
+// allows, and be un-invitable, because the only dropdown that grants roles had
+// never heard of them. utils/roles.js already keeps ROLES in rank order, which
+// is the property this copy existed to preserve.
 
 // Slugs whose display form is not just Title Case. "Qa" reads as a name; the
 // role is QA.

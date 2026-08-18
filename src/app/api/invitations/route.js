@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { ROLE_RANK as SHARED_ROLE_RANK, rankOf } from "@/utils/roles";
+import { ROLES, ROLE_RANK as SHARED_ROLE_RANK, rankOf } from "@/utils/roles";
 import crypto from 'crypto';
 import { sendTemplatedEmail } from '@/utils/emailService';
 import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
@@ -7,9 +7,19 @@ import { checkSeatLimitForRole, checkFeatureAccess } from '@/utils/entitlements'
 
 // Roles allowed to send invitations.
 const INVITER_ROLES = ['owner', 'admin', 'hr', 'manager'];
-// Roles that can be assigned via an invitation. "owner" is only grantable by an
-// existing owner (guarded below) so a lower role can't escalate someone to owner.
-const ASSIGNABLE_ROLES = ['admin', 'manager', 'team_lead', 'hr', 'developer', 'employee', 'client'];
+// Roles that can be assigned via an invitation: every role except `owner`,
+// which is grantable only by an existing owner (guarded below) so a lower role
+// cannot escalate someone past themselves.
+//
+// DERIVED, NOT TYPED OUT — and this is the third time that lesson has been
+// learned in this one file. ROLE_RANK below used to be a local copy and went
+// stale when designer/qa/finance were added. This list was the same mistake
+// one line up and nobody noticed, because it fails in the quietest possible
+// way: the invite form offered Finance, QA and Designer, and choosing any of
+// them answered `400 Invalid role.` — a role the product had shipped two
+// migrations earlier, refused by the one screen that hands it out. `devops`
+// (migration 067) never reached the form at all.
+const ASSIGNABLE_ROLES = ROLES.filter((r) => r !== 'owner');
 // Mirrors ROLE_RANK in src/utils/permissions.js — an inviter can only grant a
 // role that ranks strictly below their own.
 // ROLE_RANK is imported, not redeclared. This file kept its own copy, and

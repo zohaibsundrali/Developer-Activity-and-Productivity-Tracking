@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { canAccessAdminSection } from "@/components/shell/sectionAccess";
+import { defaultRolesFor, permissionsForRole } from "@/utils/permissionCatalogue";
+import { roleCan } from "@/utils/permissionEngine";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -54,8 +56,24 @@ describe("every role exists in every list that decides anything", () => {
     expect(provision).toContain('from "@/utils/roles"');
   });
 
-  it.each(ROLES)("the member role picker offers %s", (role) => {
-    expect(ORGMGMT).toContain(`"${role}"`);
+  /**
+   * THE PICKER NO LONGER HOLDS A LIST, which is why this stopped being a
+   * string search. It used to keep its own copy of the roles, ordered by rank,
+   * and that copy was missing `devops` — so a DevOps engineer could hold a
+   * role the CHECK constraint allows and be un-invitable, because the one
+   * dropdown that grants roles had never heard of them.
+   *
+   * It now maps over the imported ROLES, so "offers every role" is structural
+   * rather than something to re-check per role. These two assertions are what
+   * keep it that way.
+   */
+  it("the member role picker maps over the shared list rather than its own", () => {
+    expect(ORGMGMT).toContain('import { ROLES } from "@/utils/roles"');
+    expect(ORGMGMT).toMatch(/ROLES\.filter\(\(r\) => r !== "owner"\)\.map\(/);
+  });
+
+  it("the member role picker keeps no local copy of the roles", () => {
+    expect(ORGMGMT).not.toMatch(/const ROLES\s*=\s*\[/);
   });
 
   it.each(ROLES)("the database CHECK constraint accepts %s", (role) => {
@@ -110,19 +128,30 @@ describe("finance sees money and NOT monitoring", () => {
   });
 
   it("gets billing capabilities but not oversight ones", () => {
-    const billing = PERMISSIONS.match(/const BILLING\s*=\s*\[([^\]]*)\]/);
-    const supervisors = PERMISSIONS.match(/const SUPERVISORS\s*=\s*\[([^\]]*)\]/);
-    const people = PERMISSIONS.match(/const PEOPLE_MANAGERS\s*=\s*\[([^\]]*)\]/);
-    expect(billing?.[1]).toContain("finance");
-    expect(supervisors?.[1]).not.toContain("finance");
-    expect(people?.[1]).not.toContain("finance");
+    // Asked of the resolver rather than of the source text. The capability
+    // groups this used to grep for moved into the catalogue, and a test that
+    // reads the file the rules live in only ever proves they are written down.
+    expect(roleCan("finance", "billing.view")).toBe(true);
+    expect(roleCan("finance", "billing.manage")).toBe(true);
+    // The whole reason the role exists: money WITHOUT the monitoring surface.
+    // Before it, an accountant had to be made admin to read an invoice, which
+    // also handed them every employee's screen captures.
+    for (const denied of [
+      "monitoring.view",
+      "report.view",
+      "task.manage",
+      "member.manage",
+      "project.view_all",
+    ]) {
+      expect(roleCan("finance", denied), denied).toBe(false);
+    }
   });
 });
 
 describe("qa can review, and that is the point of it", () => {
   it("is a reviewer in the shared capability module", () => {
-    const reviewers = PERMISSIONS.match(/const REVIEWERS\s*=\s*\[([^\]]*)\]/);
-    expect(reviewers?.[1]).toContain("qa");
+    expect(defaultRolesFor("task.review")).toContain("qa");
+    expect(roleCan("qa", "task.review")).toBe(true);
   });
 
   it("is a reviewer in both review routes", () => {
@@ -135,21 +164,29 @@ describe("qa can review, and that is the point of it", () => {
   });
 
   it("does NOT get the rest of the oversight surface", () => {
-    const supervisors = PERMISSIONS.match(/const SUPERVISORS\s*=\s*\[([^\]]*)\]/);
-    expect(supervisors?.[1]).not.toContain("qa");
+    // Reviewing is the job. It does not come with project administration,
+    // reports, monitoring or money.
+    for (const denied of [
+      "task.manage",
+      "report.view",
+      "monitoring.view",
+      "automation.manage",
+      "billing.view",
+      "project.view_all",
+    ]) {
+      expect(roleCan("qa", denied), denied).toBe(false);
+    }
     for (const section of ["developer-activity", "automation", "billing"]) {
-      const m = NAV.match(new RegExp(`"?${section}"?:\\s*\\[([^\\]]*)\\]`));
-      if (m) expect(m[1], section).not.toContain("qa");
+      expect(canAccessAdminSection(section, "qa"), section).toBe(false);
     }
   });
 });
 
 describe("designer and qa can file work like a developer", () => {
   it("both may submit a task", () => {
-    const m = PERMISSIONS.match(/case "submit_task":\s*\n\s*return \[([^\]]*)\]/);
-    expect(m?.[1]).toContain("designer");
-    expect(m?.[1]).toContain("qa");
-    expect(m?.[1]).toContain("developer");
+    for (const role of ["designer", "qa", "developer", "devops", "employee", "team_lead"]) {
+      expect(roleCan(role, "task.submit"), role).toBe(true);
+    }
   });
 });
 
