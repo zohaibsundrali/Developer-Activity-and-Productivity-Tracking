@@ -124,6 +124,32 @@ export async function POST(request) {
       );
     }
 
+    // ── SEPARATION OF DUTIES: nobody approves their own plan ───────────────
+    //
+    // The same hole as /api/admin-review, one step earlier in the workflow.
+    // /api/task-plan/submit only lets the project's `assigned_developer_id`
+    // submit the plan, so the assignee IS the submitter here — and a team_lead
+    // who creates a project is both its created_by (which satisfies the
+    // ownership check above) and, if they assign it to themselves, its
+    // assigned_developer_id. Approving your own plan is the gate that decides
+    // whether the work you scoped for yourself is the work that counts.
+    //
+    // The DB trigger in database/048_submission_review_guard.sql is no backstop:
+    // it exempts `service_role`, which is the key this route holds.
+    //
+    // OWNER AND ADMIN ARE NOT EXEMPT. Separation of duties that stops at the
+    // top of the org chart is not separation of duties.
+    const isOwnPlan =
+      Boolean(auth.appUserId) &&
+      String(project.assigned_developer_id) === String(auth.appUserId);
+
+    if (isOwnPlan) {
+      return NextResponse.json(
+        { success: false, error: 'You cannot review your own task plan. Ask another reviewer.' },
+        { status: 403 }
+      );
+    }
+
     if (!project.task_plan_submitted || project.task_plan_status !== 'pending') {
       return NextResponse.json(
         {

@@ -406,7 +406,15 @@ describe("invitation accept records the acceptance", () => {
     ["employee", "developer", "dev-1"],
     ["owner", "admin", "admin-1"],
     ["admin", "admin", "admin-1"],
-    ["hr", "admin", "admin-1"],
+    // hr USED TO BE ["hr", "admin", "admin-1"] HERE, AND THAT ROW ENCODED A BUG.
+    // The accept route computed its own `isAdminLike` (owner/admin/hr) instead
+    // of calling userTypeForRole(), which has always answered "developer" for
+    // hr — so the same role got user_type "developer" when provisioned and
+    // "admin" when invited, and "admin" is the answer that opens the
+    // userType-keyed branches in /api/productivity, /api/keyboard-stats and
+    // /api/task-submission. The route now calls userTypeForRole(); this row
+    // follows it. See database/073 FINDING 3 and tests/roleIdentityAndRls.test.js.
+    ["hr", "developer", "dev-1"],
     ["client", "client", "client-1"],
   ])("records the correct user_type for an invited %s", async (role, userType, userId) => {
     resetState();

@@ -112,7 +112,7 @@ export default function ClientTaskDetail({ taskId, onBack }) {
     return (
       <ClientPage width="wide">
         <BackButton onBack={onBack} />
-        <ErrorState message={error || "This task could not be loaded."} onRetry={load} />
+        <ErrorState description={error || "This task could not be loaded."} onRetry={load} />
       </ClientPage>
     );
   }
@@ -260,7 +260,7 @@ function Attachments({ attachments }) {
       <EmptyState
         icon={Paperclip}
         title="No files on this task"
-        message="Files your team attaches to this task will appear here."
+        description="Files your team attaches to this task will appear here."
       />
     );
   }
@@ -314,7 +314,7 @@ function Activity({ activity }) {
       <EmptyState
         icon={CalendarDays}
         title="No history yet"
-        message="Status changes and approvals on this task will appear here."
+        description="Status changes and approvals on this task will appear here."
       />
     );
   }
@@ -503,12 +503,12 @@ function TaskComments({ taskId }) {
       {loading ? (
         <ConversationSkeleton count={2} />
       ) : error ? (
-        <ErrorState message={error} onRetry={load} />
+        <ErrorState description={error} onRetry={load} />
       ) : comments.length === 0 ? (
         <EmptyState
           icon={MessagesSquare}
           title="No messages yet"
-          message="Ask a question or share feedback — your team will see it against this task."
+          description="Ask a question or share feedback — your team will see it against this task."
         />
       ) : (
         <div className="space-y-5">
@@ -516,7 +516,7 @@ function TaskComments({ taskId }) {
             <CommentRow key={comment.id} comment={comment} />
           ))}
 
-          {pageError && <ErrorState message={pageError} onRetry={loadMore} />}
+          {pageError && <ErrorState description={pageError} onRetry={loadMore} />}
 
           {hasMore && !pageError && (
             <LoadMoreButton onClick={loadMore} loading={pageLoading} label="Load older messages" />

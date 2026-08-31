@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
+import { authCan } from '@/utils/serverPermissions';
 import { requireUnlocked } from '@/utils/entitlements';
 
 export const dynamic = 'force-dynamic';
@@ -17,6 +18,30 @@ const supabase = createClient(
  * submit fabricated proof-of-work against any task in any organization.
  *
  * Both are now fail-closed, and every query is scoped to the caller's org.
+ *
+ * ── AND WHOSE TASK IT IS (the follow-up finding) ─────────────────────────
+ *
+ * Closing C7 scoped the task lookup to the organization and stopped there. The
+ * route still never asked whether the caller was the person the task was
+ * ASSIGNED to, so any authenticated colleague could submit against anybody's
+ * task — and the status update below clears `reviewed_by`, `reviewed_at`,
+ * `rejection_reason` and `admin_comments`, so doing it to a rejected task threw
+ * away the reviewer's verdict and the reason for it. The victim's work went
+ * back into the review queue carrying a stranger's proof of work.
+ *
+ * Two rules now, both applied once the task row has been read:
+ *
+ *   1. Ordinarily you submit YOUR OWN task, and "your own" means the task row's
+ *      developer_id, not a field in the request body.
+ *   2. Submitting on someone else's behalf is a supervisor action and needs
+ *      `task.manage` — and even then the submission is attributed to the real
+ *      assignee, never to an id the caller chose.
+ *
+ * `developerId` in the body is now inert. It was the attribution-forgery hole:
+ * the id was forced to the token identity only when `auth.userType ===
+ * 'developer'`, so an owner, admin or HR user (all userType "admin") could name
+ * anyone and the submission, the activity log and the notification would all say
+ * that person filed it.
  */
 
 // Submit task for review (Developer)
@@ -69,11 +94,6 @@ export async function POST(request) {
       );
     }
 
-    // A developer may only submit as themselves; the id is taken from the
-    // verified token rather than the request body.
-    const actingDeveloperId =
-      auth.userType === 'developer' ? auth.appUserId || developerId : developerId;
-
     // Get task details to validate deadline. Scoped to the caller's org so a
     // task id from another tenant cannot be acted on.
     const { data: task, error: taskError } = await supabase
@@ -107,6 +127,36 @@ export async function POST(request) {
         { status: 409 }
       );
     }
+
+    // WHOSE TASK IS THIS. Resolved from the row, checked against the token, and
+    // never from `developerId` in the body — see the file header.
+    const assigneeId = task.developer_id;
+    if (!assigneeId) {
+      return NextResponse.json(
+        { error: 'This task has no assignee, so there is nobody to submit it as' },
+        { status: 409 }
+      );
+    }
+
+    const isAssignee =
+      Boolean(auth.appUserId) && String(assigneeId) === String(auth.appUserId);
+
+    // The one way to submit work that is not yours. `task.manage` is
+    // owner/admin/manager/team_lead — the people who assign the work in the
+    // first place — and it is checked explicitly rather than inferred from
+    // userType, which is how the old code let every "admin" userType (owner,
+    // admin AND hr) name any developer they liked.
+    if (!isAssignee && !authCan(auth, 'task.manage')) {
+      return NextResponse.json(
+        { error: 'You can only submit work for a task assigned to you' },
+        { status: 403 }
+      );
+    }
+
+    // Attribution is the assignee either way. A supervisor submitting on
+    // somebody's behalf files it AS that person because that is who did the
+    // work; what they cannot do is file it as a third party.
+    const actingDeveloperId = assigneeId;
 
     // Check if task already has a pending submission (skip if table doesn't exist)
     try {
@@ -177,7 +227,14 @@ export async function POST(request) {
 
     // Update task status to awaiting_approval. Rework of a rejected task starts
     // a fresh review, so the previous verdict is cleared rather than left on the
-    // row where the reviewer would still see it.
+    // row where the reviewer would still see it. The verdict being cleared is
+    // copied into the activity log below before it is lost — clearing it is
+    // correct, clearing it with no record of what it said was not.
+    //
+    // The organization filter is redundant with the org-scoped lookup above and
+    // is here for the same reason every other write in this file has one: this
+    // is the service-role client, so RLS will not catch a mistake. It was the
+    // one write in the file without it.
     const { error: updateError } = await supabase
       .from('developer_tasks')
       .update({
@@ -189,7 +246,8 @@ export async function POST(request) {
         admin_comments: null,
         updated_at: submittedAt
       })
-      .eq('id', taskId);
+      .eq('id', taskId)
+      .eq('organization_id', auth.orgId);
 
     if (updateError) {
       console.error('Task update error:', updateError);
@@ -199,8 +257,19 @@ export async function POST(request) {
       );
     }
 
-    // Create activity log (don't fail if this doesn't work)
+    // Create activity log (don't fail if this doesn't work).
+    //
+    // This is the audit copy of the verdict the update above just cleared. It
+    // is not a substitute for the columns — an activity log is best-effort —
+    // but "rejected, by whom, for what reason" now survives the resubmission
+    // somewhere, and a submission filed by a supervisor says so instead of
+    // reading as the assignee's own.
     try {
+      const clearedVerdict =
+        task.status === 'rejected' && task.rejection_reason
+          ? ` (previous verdict cleared: rejected — ${task.rejection_reason})`
+          : '';
+      const onBehalf = isAssignee ? '' : ' on their behalf by a supervisor';
       await supabase
         .from('activity_logs')
         .insert({
@@ -208,7 +277,8 @@ export async function POST(request) {
           project_id: projectId,
           task_id: taskId,
           action_type: 'task_submitted',
-          action_description: `Task "${task.task_title}" submitted for review`,
+          action_description: `Task "${task.task_title}" submitted for review${onBehalf}${clearedVerdict}`,
+          old_value: task.status || null,
           new_value: 'awaiting_approval'
         });
     } catch (logErr) {

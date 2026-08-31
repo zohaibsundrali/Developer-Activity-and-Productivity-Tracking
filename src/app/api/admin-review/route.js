@@ -146,6 +146,42 @@ export async function POST(request) {
       );
     }
 
+    // ── SEPARATION OF DUTIES: nobody reviews their own work ────────────────
+    //
+    // Nothing compared the reviewer with the person who did the work, and the
+    // shortest path to a productivity point was to walk both halves yourself.
+    // A team_lead holds `task.review`, `task.submit` AND `project.create`, so
+    // the whole loop is available to one person: start a project (which makes
+    // them its created_by and satisfies the ownership check above), assign
+    // themselves a task, submit it, approve it, bank +1.
+    //
+    // There is no database backstop. The trigger in
+    // database/048_submission_review_guard.sql exempts `service_role`, and
+    // service_role is exactly what this route holds, so the guard has never
+    // fired on a single request that came through here.
+    //
+    // BOTH IDENTITIES ARE CHECKED. The task's assignee is who the points and
+    // the metrics land on; the submission's developer_id is who filed it. They
+    // are normally the same person and a mismatch means one of them is being
+    // used to route around the other.
+    //
+    // OWNER AND ADMIN ARE NOT EXEMPT, deliberately. An exemption for the two
+    // roles most likely to be reviewing their own work is not a separation of
+    // duties, it is a note saying we thought about it. Somebody else with
+    // `task.review` reviews it — and if nobody else has the permission, that is
+    // the thing to fix.
+    const reviewerId = auth.appUserId;
+    const isOwnTask = Boolean(reviewerId) && String(task.developer_id) === String(reviewerId);
+    const isOwnSubmission =
+      Boolean(reviewerId) && String(submission.developer_id) === String(reviewerId);
+
+    if (isOwnTask || isOwnSubmission) {
+      return NextResponse.json(
+        { error: 'You cannot review your own submitted work. Ask another reviewer.' },
+        { status: 403 }
+      );
+    }
+
     if (submission.review_status !== 'pending' || submission.is_reviewed) {
       return NextResponse.json(
         { error: 'This submission has already been reviewed' },

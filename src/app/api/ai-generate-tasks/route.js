@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import mammoth from 'mammoth';
 import { createClient } from '@supabase/supabase-js';
 import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
+import { requirePermission } from '@/utils/serverPermissions';
 import { requireUnlocked } from '@/utils/entitlements';
 
 const supabaseAdmin = createClient(
@@ -12,6 +13,25 @@ const supabaseAdmin = createClient(
 // Hugging Face Router URL (OpenAI-compatible)
 const HF_ROUTER_URL = 'https://router.huggingface.co/v1/chat/completions';
 const HF_TOKEN = process.env.HUGGINGFACE_API_KEY;
+
+/**
+ * Caps on what one generation may write.
+ *
+ * The model's answer is parsed from free text and inserted straight into
+ * `developer_tasks` with the service role, so the length of that array was
+ * decided by whatever the model felt like returning against a document the
+ * caller supplied. A prompt-injected requirements file asking for four thousand
+ * tasks got four thousand rows, and every board, gantt and rollup in the project
+ * is then unusable until somebody deletes them by hand. The title and
+ * description caps are the same argument one column down.
+ *
+ * Truncating rather than refusing: the tasks are a draft a human edits, so a
+ * clipped title is a worse draft, while a refusal throws away a real generation
+ * over one long string.
+ */
+const MAX_GENERATED_TASKS = 100;
+const MAX_TASK_TITLE = 200;
+const MAX_TASK_DESCRIPTION = 2000;
 
 function addDays(dateStr, days) {
   if (!dateStr) return null;
@@ -101,6 +121,15 @@ export async function POST(request) {
     if (auth.userType === 'client') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    // WHO MAY MINT TASKS. "Authenticated and not a client" was the entire
+    // authorization on a route that writes rows into any project in the
+    // organization and spends money at a third-party model provider on every
+    // call — so a designer or a QA could do both, against a project they have
+    // nothing to do with. Creating and assigning tasks is `task.manage`
+    // (owner/admin/manager/team_lead), the same capability the task screens
+    // claim to require; it simply had no API call site until now.
+    const denied = requirePermission(auth, 'task.manage');
+    if (denied) return denied;
 
     // Billing lock — see the note in src/app/api/task-submission/route.js.
     // Worth having here for a second reason: this route spends money with a
@@ -228,6 +257,12 @@ ${extractedText.substring(0, 6000)}`;
     }
 
     // 4. Insert tasks with sequential dates
+    // Capped BEFORE the map, so the template written back to the project below
+    // describes the same set of tasks that was actually inserted.
+    if (tasks.length > MAX_GENERATED_TASKS) {
+      tasks = tasks.slice(0, MAX_GENERATED_TASKS);
+    }
+
     let currentDate = defaultStartDate;
     const tasksToInsert = tasks.map((task, index) => {
       const noOfDays = Math.max(1, Math.min(10, task.noOfDays || 2));
@@ -236,10 +271,16 @@ ${extractedText.substring(0, 6000)}`;
       currentDate = addDays(endDate, 1);
 
       return {
+        // From the VERIFIED token, never the body. This insert runs on the
+        // service-role client, which bypasses RLS and therefore also bypasses
+        // the stamp that would otherwise fill this in — so every task this
+        // route has ever generated landed with a null organization_id, invisible
+        // to every org-scoped read and to the policies that depend on it.
+        organization_id: auth.orgId,
         project_id: projectId,
         developer_id: developerId,
-        task_title: task.title,
-        task_description: task.description || '',
+        task_title: String(task.title).slice(0, MAX_TASK_TITLE),
+        task_description: String(task.description || '').slice(0, MAX_TASK_DESCRIPTION),
         task_order: index,
         start_date: startDate,
         end_date: endDate,
@@ -259,8 +300,8 @@ ${extractedText.substring(0, 6000)}`;
 
     // 5. Update project template
     const templateData = tasks.map(task => ({
-      title: task.title,
-      description: task.description || '',
+      title: String(task.title).slice(0, MAX_TASK_TITLE),
+      description: String(task.description || '').slice(0, MAX_TASK_DESCRIPTION),
       noOfDays: task.noOfDays || 2,
       status: 'pending',
     }));

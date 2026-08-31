@@ -3,6 +3,7 @@ import { CircleAlert, RefreshCw } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { warnAliasedProps } from "@/components/ui/prop-aliases"
 
 /**
  * ErrorState — for a failed fetch, with retry.
@@ -57,6 +58,16 @@ function ErrorState({
   // part of both Error instances and supabase-js results. Fall back to a JSON
   // dump rather than "[object Object]", which tells nobody anything.
   const message = toMessage(description)
+
+  // `message=` was passed by twenty call sites and silently became a DOM
+  // attribute on the div below, so every one of them rendered the generic
+  // title with no reason underneath. Fixed at the call sites; this is what
+  // stops the next one being written. See components/ui/prop-aliases.js.
+  warnAliasedProps("ErrorState", props, {
+    message: "description",
+    error: "description",
+    text: "description",
+  })
 
   return (
     <div

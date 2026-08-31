@@ -175,7 +175,7 @@ export default function MyTimesheet() {
     return (
       <div className="space-y-6">
         <PageHeader title="My Timesheet" />
-        <ErrorState message={error} onRetry={load} />
+        <ErrorState description={error} onRetry={load} />
       </div>
     );
   }

@@ -228,7 +228,7 @@ export default function ClientOverview({ user, onViewProject, onSectionChange })
   if (error) {
     return (
       <ClientPage title={title} description={description} width="wide">
-        <ErrorState message={error} onRetry={loadProjects} />
+        <ErrorState description={error} onRetry={loadProjects} />
       </ClientPage>
     );
   }
@@ -268,7 +268,7 @@ export default function ClientOverview({ user, onViewProject, onSectionChange })
           <EmptyState
             icon={FolderKanban}
             title="No active projects"
-            message="Once your agency links a project to your account, it will appear here."
+            description="Once your agency links a project to your account, it will appear here."
           />
         ) : (
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
@@ -361,7 +361,7 @@ export default function ClientOverview({ user, onViewProject, onSectionChange })
           {approvalsLoading ? (
             <RowsSkeleton count={2} />
           ) : approvalsError ? (
-            <ErrorState message={approvalsError} onRetry={loadApprovals} />
+            <ErrorState description={approvalsError} onRetry={loadApprovals} />
           ) : pendingApprovals.length === 0 ? (
             <p className="py-8 text-center text-[15px] text-muted-foreground">
               Nothing is waiting on your sign-off right now.
@@ -396,7 +396,7 @@ export default function ClientOverview({ user, onViewProject, onSectionChange })
         {activityLoading ? (
           <RowsSkeleton count={3} />
         ) : activityError ? (
-          <ErrorState message={activityError} onRetry={loadActivity} />
+          <ErrorState description={activityError} onRetry={loadActivity} />
         ) : recentActivity.length === 0 ? (
           <p className="py-8 text-center text-[15px] text-muted-foreground">
             Nothing has happened on your projects yet.

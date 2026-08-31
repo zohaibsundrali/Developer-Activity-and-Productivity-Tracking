@@ -178,7 +178,7 @@ export default function PermissionsPanel() {
     return (
       <div className="space-y-6">
         <PageHeader title={sectionTitle("permissions", "admin")} />
-        <ErrorState message={error} onRetry={load} />
+        <ErrorState description={error} onRetry={load} />
       </div>
     );
   }
