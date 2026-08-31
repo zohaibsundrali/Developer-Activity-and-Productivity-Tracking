@@ -23,7 +23,15 @@ const ORG_ID = '22222222-2222-2222-2222-222222222222';
 const SECRET = 'f0e1d2c3b4a596887766554433221100ffeeddccbbaa99887766554433221100';
 const SAME_LENGTH_WRONG = SECRET.slice(0, -1) + 'f';
 const SHORT_WRONG = 'nope';
-const PNG_BASE64 = Buffer.from('fake-png-bytes').toString('base64');
+// A REAL 1x1 PNG. This was Buffer.from('fake-png-bytes'), which is not a PNG
+// and is not an image at all — upload-screenshot now checks the decoded bytes
+// for the eight-byte PNG signature, because Buffer.from(_, 'base64') silently
+// drops what it cannot decode and therefore never rejected anything. These
+// tests are about the ingest AUTH stages, so the payload has to be valid for
+// them to reach the code they are testing.
+const PNG_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+const NOT_A_PNG_BASE64 = Buffer.from('fake-png-bytes').toString('base64');
 
 const { supabaseState, recordEventMock, timingSafeEqualSpy } = vi.hoisted(() => ({
   supabaseState: { client: null },
@@ -110,18 +118,18 @@ function bodyFor(name) {
     : { developer_id: DEV_ID, image_data: PNG_BASE64, context: 'unit test' };
 }
 
-function makeRequest(name, headers = {}) {
+function makeRequest(name, headers = {}, bodyOverride = null) {
   return new Request(`http://localhost/api/${name}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...headers },
-    body: JSON.stringify(bodyFor(name)),
+    body: JSON.stringify({ ...bodyFor(name), ...(bodyOverride || {}) }),
   });
 }
 
 /** POST once with a freshly loaded route module. */
-async function post(name, headers = {}) {
+async function post(name, headers = {}, bodyOverride = null) {
   const mod = await loadRoute(name);
-  const response = await mod.POST(makeRequest(name, headers));
+  const response = await mod.POST(makeRequest(name, headers, bodyOverride));
   return { response, body: await response.json() };
 }
 
@@ -166,6 +174,29 @@ describe('stage "open": neither variable set', () => {
       const { response } = await post(name, { 'x-ingest-secret': 'whatever' });
       expect(response.status).toBe(200);
     });
+
+    if (name === 'upload-screenshot') {
+      it('refuses a payload whose decoded bytes are not a PNG', async () => {
+        // The open stage means this is reachable with no credential at all, and
+        // Buffer.from(_, 'base64') never rejects anything — it drops what it
+        // cannot decode. Without a check on the decoded bytes the private
+        // monitoring bucket is a free, unmetered blob store: the `screenshots`
+        // plan limit is enforced nowhere.
+        const { response } = await post(name, {}, { image_data: NOT_A_PNG_BASE64 });
+        expect(response.status).toBe(415);
+      });
+
+      it('refuses a payload too short to carry a PNG signature', async () => {
+        // The signature is eight bytes. A buffer shorter than that cannot be
+        // checked against it, and the length guard has to REFUSE rather than
+        // fall through — mutation testing caught this: flipping that guard to
+        // `return true` left every other assertion green, because the other
+        // fixtures all decode to more than eight bytes.
+        const twoBytes = Buffer.from('ab').toString('base64');
+        const { response } = await post(name, {}, { image_data: twoBytes });
+        expect(response.status).toBe(415);
+      });
+    }
 
     it(`${name} warns loudly at import time that the endpoint is open`, async () => {
       await loadRoute(name);

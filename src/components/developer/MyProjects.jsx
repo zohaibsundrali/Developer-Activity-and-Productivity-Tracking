@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { showInfo, showWarning } from "@/utils/alerts";
 import { authFetch } from "@/utils/authFetch";
+import { projectStatusMeta } from "@/utils/projectStatus";
 import {
   BarChart3,
   CalendarClock,

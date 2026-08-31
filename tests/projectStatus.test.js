@@ -245,13 +245,24 @@ describe("every writer uses the constant, never a literal", () => {
 describe("the reader maps are gone", () => {
   it("developer MyProjects reads the shared vocabulary", () => {
     const f = code("src/components/developer/MyProjects.jsx");
-    expect(f).toContain("projectStatusMeta");
+    // ASSERT THE IMPORT, NOT THE MENTION. This test used to be
+    // `expect(f).toContain("projectStatusMeta")`, which an UNDEFINED CALL
+    // satisfies just as well as a working one. It passed for the whole time
+    // MyProjects.jsx called projectStatusMeta without importing it — a
+    // ReferenceError on every developer dashboard holding at least one
+    // project, under 1824 green tests.
+    expect(f).toMatch(
+      /import\s*\{[^}]*\bprojectStatusMeta\b[^}]*\}\s*from\s*["']@\/utils\/projectStatus["']/
+    );
+    expect(f).toContain("projectStatusMeta(");
     expect(f).not.toMatch(/const PROJECT_STATUS = \{/);
   });
 
   it("developer DashboardOverview reads it too, and stopped hiding bad values", () => {
     const f = code("src/components/developer/DashboardOverview.jsx");
-    expect(f).toContain("projectStatusMeta");
+    expect(f).toMatch(
+      /import\s*\{[^}]*\bprojectStatusMeta\b[^}]*\}\s*from\s*["']@\/utils\/projectStatus["']/
+    );
     expect(f).not.toMatch(/const PROJECT_STATUS = \{/);
     // The old fallback.
     expect(f).not.toMatch(/\|\| \{ status: "pending", label: "Pending" \}/);

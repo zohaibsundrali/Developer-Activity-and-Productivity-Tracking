@@ -3,6 +3,7 @@ import { rankOf, userTypeForRole, PROFILE_TABLE } from "@/utils/roles";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { authCan } from "@/utils/serverPermissions";
 import { checkSeatLimitForRole } from "@/utils/entitlements";
+import { recordEvent } from "@/utils/systemEvents";
 
 export const dynamic = "force-dynamic";
 
@@ -85,6 +86,75 @@ export async function POST(request) {
     }
 
     const svc = serviceClient();
+
+    // ── The address must not already belong to another tenant ──
+    //
+    // THE HOLE THIS CLOSES. This route creates a Supabase Auth account with
+    // `email_confirm: true` for whatever address it is handed. It carefully
+    // checks the caller's organization, permission, rank, and any supplied
+    // appUserId — and never checked the EMAIL against anything.
+    //
+    // /api/auth/repair-claims resolves an identity by confirmed email across
+    // every membership row on the platform, unscoped by organization, on the
+    // stated reasoning that "every account-creation path in this codebase sets
+    // email_confirm, so an unconfirmed address means an unverified self-signup".
+    // This route is that path, and it sets email_confirm unconditionally — so
+    // the flag proved nothing about who controls the mailbox.
+    //
+    // Composed, the two were a cross-tenant takeover: provision an account for
+    // a member of ANOTHER organization who has a membership row but no auth
+    // account yet, sign in as it, POST repair-claims, and the token is rewritten
+    // to that person's organization, identity and role — up to owner.
+    //
+    // The population this needs is not hypothetical: it is exactly what
+    // /api/admin/legacy-auth-audit exists to count, and staffAccounts.js
+    // produces one every time a membership is written and the provision call
+    // that follows it fails.
+    //
+    // Matched the way 052 and repair-claims match, on lower(btrim(email)), so a
+    // row stored as "ME@Example.com " is still found. Refused with 409 whether
+    // the conflict is in this organization or another, and the message names
+    // neither — "already in use" tells an attacker nothing about which tenant,
+    // or that another tenant exists at all.
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const { data: emailRows, error: emailErr } = await svc
+      .from("memberships")
+      .select("id, organization_id")
+      .ilike("email", normalizedEmail);
+
+    if (emailErr) {
+      // Fail closed. Not knowing whether the address is taken is not a reason
+      // to mint a confirmed credential for it.
+      console.error("[auth/provision] Could not check the address:", emailErr);
+      return NextResponse.json(
+        { error: "Could not verify that address right now. Try again." },
+        { status: 503 }
+      );
+    }
+
+    const foreign = (emailRows || []).filter(
+      (row) => String(row.organization_id || "") !== String(auth.orgId || "")
+    );
+    if (foreign.length > 0) {
+      await recordEvent({
+        orgId: auth.orgId,
+        type: "auth.provision_refused",
+        severity: "critical",
+        source: "auth",
+        message:
+          "Provisioning was refused: the address already belongs to another organization.",
+        context: {
+          route: "/api/auth/provision",
+          actorUserId: auth.appUserId ?? null,
+          reason: "email_belongs_to_another_org",
+          statusCode: 409,
+        },
+      });
+      return NextResponse.json(
+        { error: "That email address is already in use.", code: "email_taken" },
+        { status: 409 }
+      );
+    }
 
     // ── A supplied app user id must belong to the caller's organization ──
     let seatAlreadyWritten = false;

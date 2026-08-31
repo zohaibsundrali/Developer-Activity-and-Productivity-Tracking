@@ -43,7 +43,7 @@ const GUARDS = [
   { file: "src/app/api/billing/cancel/route.js", key: "billing.purchase", roles: ["owner"] },
   { file: "src/app/api/billing/portal/route.js", key: "billing.purchase", roles: ["owner"] },
   { file: "src/app/api/billing/subscription/route.js", key: "billing.view", roles: ["owner", "admin", "finance"] },
-  { file: "src/app/api/billing/demo-activate/route.js", key: "billing.manage", roles: ["owner", "admin", "finance"] },
+  { file: "src/app/api/billing/demo-activate/route.js", key: "billing.purchase", roles: ["owner"] },
   { file: "src/app/api/admin/health/route.js", key: "system.health", roles: ["owner", "admin"] },
   { file: "src/app/api/admin/legacy-auth-audit/route.js", key: "system.audit", roles: ["owner", "admin"] },
   { file: "src/app/api/admin/members/sync-roles/route.js", key: "member.sync_roles", roles: ["owner", "admin"] },
@@ -83,6 +83,13 @@ describe("each converted route asks for the permission it is supposed to", () =>
       "src/app/api/billing/checkout/route.js",
       "src/app/api/billing/cancel/route.js",
       "src/app/api/billing/portal/route.js",
+      // ADDED AFTER THE AUDIT. demo-activate was listed above as
+      // `billing.manage` — the exact swap this test was written to catch,
+      // sitting in the table of expectations rather than in the code, so the
+      // test asserted the bug. And it is the worst route to have it on: it
+      // grants a paid plan without taking payment, so `billing.manage` let a
+      // FINANCE user put the organization on Enterprise for nothing.
+      "src/app/api/billing/demo-activate/route.js",
     ]) {
       expect(read(file), file).not.toMatch(/billing\.manage/);
       expect(read(file), file).not.toMatch(/billing\.view/);
