@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import { recordEvent } from '@/utils/systemEvents';
+import { rateLimited } from '@/utils/rateLimit';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -52,6 +53,13 @@ const supabase = createClient(
 
 // ~8 MB of base64 ≈ 6 MB of PNG.
 const MAX_BASE64_CHARS = 8 * 1024 * 1024;
+
+// How many captures one person can have written against them in a window.
+// A desktop agent on a 30-second interval sends 120 in an hour; 240 leaves
+// generous headroom for retries and clock drift while still bounding what an
+// anonymous caller can do in the open stage. Per-process — see utils/rateLimit.
+const MAX_UPLOADS_PER_WINDOW = 240;
+const UPLOAD_WINDOW_MS = 60 * 60 * 1000;
 
 // Private bucket — must match SCREENSHOT_BUCKET in src/utils/screenshotFiles.js.
 const SCREENSHOT_BUCKET = 'monitoring';
@@ -223,6 +231,32 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Screenshot too large' }, { status: 413 });
     }
 
+    // THE PAYLOAD MUST ACTUALLY BE A PNG.
+    //
+    // `Buffer.from(str, 'base64')` silently discards anything that is not a
+    // base64 character, so it never throws and never rejects: arbitrary bytes
+    // landed in the monitoring bucket labelled image/png. The stored
+    // content-type is hardcoded below, so this was not a stored-XSS route —
+    // it was a free, unmetered blob store (the `screenshots` plan limit is
+    // enforced nowhere) reachable, in the open stage, with no credential.
+    //
+    // Checked on the DECODED bytes, because that is what gets stored.
+    const buffer = base64ToBuffer(image_data);
+    if (!isPng(buffer)) {
+      return NextResponse.json(
+        { error: 'image_data must be a base64-encoded PNG' },
+        { status: 415 }
+      );
+    }
+
+    // RATE LIMIT. Keyed on the subject, not the caller: in the open stage there
+    // is no caller identity to key on, and the thing worth bounding is how much
+    // can be written against one person. An authenticated agent capturing on a
+    // normal interval stays far below this.
+    if (rateLimited(`screenshot:${developer_id}`, { max: MAX_UPLOADS_PER_WINDOW, windowMs: UPLOAD_WINDOW_MS })) {
+      return NextResponse.json({ error: 'Too many screenshots' }, { status: 429 });
+    }
+
     // Identity must be real; organization comes from the developer row.
     const { data: developer } = await supabase
       .from('developers')
@@ -231,6 +265,15 @@ export async function POST(request) {
       .maybeSingle();
 
     if (!developer) {
+      // NO ORACLE WHEN UNAUTHENTICATED. `403 Unknown developer` versus a 200
+      // told an anonymous caller whether a given uuid names a real person, in
+      // any tenant — a free identifier-validation service, and the first step
+      // of forging captures against a named employee. Authenticated agents
+      // still get the diagnostic, because by then the caller has proved it is
+      // ours and a misconfigured agent is worth reporting.
+      if (!auth.authenticated) {
+        return NextResponse.json({ success: true, message: 'Accepted' }, { status: 202 });
+      }
       return NextResponse.json({ error: 'Unknown developer' }, { status: 403 });
     }
 
@@ -262,7 +305,7 @@ export async function POST(request) {
 
     const { error: uploadError } = await supabase.storage
       .from(SCREENSHOT_BUCKET)
-      .upload(fileName, base64ToBuffer(image_data), {
+      .upload(fileName, buffer, {
         contentType: 'image/png',
         upsert: false
       });
@@ -310,4 +353,24 @@ function safeTimestamp(value) {
 
 function base64ToBuffer(base64String) {
   return Buffer.from(base64String, 'base64');
+}
+
+/**
+ * The eight-byte PNG signature.
+ *
+ * Buffer.from(..., 'base64') accepts anything — it drops non-base64 characters
+ * rather than failing — so the only way to know the payload is an image is to
+ * look at the decoded bytes. The magic number is checked rather than a declared
+ * content-type because nothing here declares one: the stored object's type is
+ * hardcoded to image/png at the upload call, so an unchecked payload would be
+ * arbitrary bytes served under an image type.
+ *
+ * PNG only, deliberately: the desktop agent sends PNG, and a checker that
+ * accepted "any image" would be a longer list to keep correct for no gain.
+ */
+function isPng(buffer) {
+  if (!buffer || buffer.length < 8) return false;
+  return buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e &&
+         buffer[3] === 0x47 && buffer[4] === 0x0d && buffer[5] === 0x0a &&
+         buffer[6] === 0x1a && buffer[7] === 0x0a;
 }

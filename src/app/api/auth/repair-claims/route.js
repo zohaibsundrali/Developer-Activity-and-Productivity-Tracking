@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getBearerToken, serviceClient } from "@/utils/serverAuth";
+import { wouldEscalateRole } from "@/utils/claimRepair";
 import { recordEvent } from "@/utils/systemEvents";
 
 export const dynamic = "force-dynamic";
@@ -244,6 +245,45 @@ async function resolveSelf(request, svc, { route }) {
 
   const membership = memberships[0];
   const claims = authUser.app_metadata || {};
+
+  // REFUSED BEFORE ANYTHING IS WRITTEN, and refused for GET too, so the
+  // read-only inspection cannot report "will_repair" for a repair that POST
+  // will decline. A raised role here means the membership row says something
+  // the token does not, in the one direction that grants power — either the
+  // row was edited directly, or a role change was applied to the row and not
+  // to the token. Both need a human; neither is self-service.
+  if (wouldEscalateRole(claims, membership)) {
+    await recordEvent({
+      orgId: membership.organization_id,
+      type: "auth.self_repair_refused",
+      severity: "critical",
+      source: "auth",
+      message:
+        "Self-repair of auth claims was refused: it would have raised the caller's role.",
+      context: {
+        route,
+        userId: authUser.id,
+        reason: "role_would_escalate",
+        fromRole: claims?.role ?? null,
+        toRole: membership.role ?? null,
+        membershipId: membership.id,
+        statusCode: 409,
+      },
+    });
+    return {
+      response: NextResponse.json(
+        {
+          error:
+            "Your membership records a higher role than your sign-in does. This cannot be applied automatically — ask an owner or admin to set your role from the Members screen.",
+          code: "role_would_escalate",
+          repairable: false,
+          activeMemberships: 1,
+        },
+        { status: 409 }
+      ),
+    };
+  }
+
   return { authUser, membership, claims, drift: driftedFields(membership, claims) };
 }
 

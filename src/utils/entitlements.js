@@ -148,6 +148,25 @@ export function isSubscriptionEntitled(subscription, now = new Date()) {
     if (trialEnd && now > trialEnd) return false;
   }
 
+  // A DEMO GRANT EXPIRES. /api/billing/demo-activate writes status 'active'
+  // with a 30-day `current_period_end` and the marker `demo_paid`, and its own
+  // comment says the period exists "so a demo deployment still exercises
+  // renewal instead of quietly becoming permanent". Nothing read it back:
+  // `current_period_end` appeared only in display payloads, never in a
+  // comparison, so every demo activation was permanent.
+  //
+  // Scoped to `demo_paid` on purpose. A REAL subscription must not be cut off
+  // when its period end passes — Stripe renews it, and the webhook moves the
+  // date afterwards; treating a lapsed `current_period_end` as unentitled would
+  // lock out paying customers during the window between renewal and webhook.
+  // A demo grant has no such renewal, which is exactly why it needs the check.
+  if (subscription.last_payment_status === "demo_paid") {
+    const periodEnd = subscription.current_period_end
+      ? new Date(subscription.current_period_end)
+      : null;
+    if (periodEnd && !Number.isNaN(periodEnd.getTime()) && now > periodEnd) return false;
+  }
+
   return true;
 }
 

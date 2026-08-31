@@ -32,15 +32,29 @@ export const dynamic = "force-dynamic";
  *  distinguishable from a real one in the data.
  *
  * WHO MAY CALL IT
- *  Owner and admin only — the same two roles /api/billing/subscription allows,
- *  for the same reason: a bill is something a person can be held responsible
- *  for. A developer cannot upgrade the company's plan.
+ *  THE OWNER, and nobody else — `billing.purchase`, the same key that guards
+ *  /checkout, /cancel and /portal.
+ *
+ *  It used to be `billing.manage`, which is owner + admin + FINANCE. That is
+ *  the key for looking after an existing subscription, not for committing to
+ *  one, and permissionCatalogue.js says so at the definition of
+ *  `billing.purchase`: it was split out precisely so that starting a
+ *  subscription "would not be handed to admin and finance under cover of a
+ *  refactor". This route is the one place that happened — and since it grants
+ *  a plan for free, it was the worst place for it. A finance user could put
+ *  the organization on Enterprise.
  */
 
 
 // One month, matching the `billing_interval` on every seeded plan. The demo
 // grant is a period like any other rather than an unbounded one, so a demo
 // deployment still exercises renewal instead of quietly becoming permanent.
+//
+// THAT SENTENCE WAS ASPIRATIONAL UNTIL NOW. `current_period_end` was written
+// here and never compared anywhere — it appeared only in display payloads — so
+// a demo activation did become permanent. isSubscriptionEntitled() now reads it
+// back for rows marked `demo_paid`, which is why that marker matters beyond
+// bookkeeping.
 const DEMO_PERIOD_DAYS = 30;
 
 export async function POST(request) {
@@ -54,7 +68,7 @@ export async function POST(request) {
     // Permission, not a role list. See utils/permissionCatalogue.js — the
     // hand-typed array this replaces was one of fifteen, and roles added to the
     // product reached some of them and not others.
-    const denied = requirePermission(auth, "billing.manage");
+    const denied = requirePermission(auth, "billing.purchase");
     if (denied) return denied;
 
     if (billingConfigured()) {
