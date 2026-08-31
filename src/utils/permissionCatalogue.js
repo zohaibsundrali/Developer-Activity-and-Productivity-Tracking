@@ -131,6 +131,16 @@ export const PERMISSIONS = Object.freeze([
   { key: "project.create", roles: SUPERVISORS, module: "projects", label: "Start a project", legacy: "create_project" },
   { key: "project.delete", roles: ADMINS, module: "projects", label: "Delete a project", legacy: "delete_project" },
   { key: "project.assign_manager", roles: ADMINS, module: "projects", label: "Assign a project manager" },
+  // DECIDERS, not ADMINS: assembling a project team is what a manager does.
+  // Deliberately NOT widened to team_lead — being able to add yourself to a
+  // project would make project scoping self-service and defeat the point.
+  //
+  // This key is also the first one that means something PER PROJECT. Because
+  // `manager` is in the list, a person whose project_members row on THIS
+  // project says 'manager' matches it through permissionEngine's projectRoles
+  // branch, even without the organization-wide role. The route pairs it with
+  // mayActOnProject(), which is the half that restricts.
+  { key: "project.manage_members", roles: DECIDERS, module: "projects", label: "Add and remove people on a project" },
   { key: "project.close", roles: ADMINS, module: "projects", label: "Close a project" },
   // THE OUTER GATE ONLY. The closure route also requires that a manager or
   // team lead own the project they are completing (`manager_id` is them, or

@@ -61,7 +61,14 @@ const ROLE_CHECK_MIGRATION = (() => {
     .reverse();
   for (const f of files) {
     const src = readFileSync(path.join(dir, f), "utf8");
-    if (/check\s*\(\s*role\s+in\s*\(/i.test(src) || /'owner'\s*,\s*'admin'/.test(src)) {
+    // ONLY a real CHECK definition. This used to also accept any file merely
+    // containing `'owner','admin'`, which matches an ordinary role test inside
+    // a policy or a plpgsql guard — so the "constraint in force" could be a
+    // migration that never mentions the constraint. It went unnoticed because
+    // 070 happens to list every role in its role_rank() function and therefore
+    // satisfied the assertions by accident; 071 lists three roles in an RLS
+    // policy and did not.
+    if (/check\s*\(\s*role\s+in\s*\(/i.test(src)) {
       return { name: f, src };
     }
   }
