@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { ArrowLeft, Lock } from "lucide-react";
+import { ArrowLeft, Lock, RefreshCw } from "lucide-react";
 
 import { authFetch } from "@/utils/authFetch";
 import { showError, showSuccess } from "@/utils/alerts";
@@ -56,16 +56,57 @@ export default function UpgradePage() {
   const [cardErrors, setCardErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // Separate from `error` on purpose. `error` also carries submit failures, and
+  // only a failed LOAD gets a Retry button — retrying a declined card by
+  // re-fetching the plan list would be nonsense.
+  const [loadFailed, setLoadFailed] = useState(false);
 
+  /**
+   * Load the plan list and the org's current billing state.
+   *
+   * THE DEAD END THIS FIXES. This function used to read `planRes` without ever
+   * checking `planRes.ok`, and swallowed a bad body with `.catch(() => ({}))`.
+   * So a 500 from /api/billing/plans produced `plans = []` and NO error at all
+   * — the catch below could not fire, because nothing had thrown. `chosen` is
+   * derived from `plans`, so it stayed null forever, and the page's only submit
+   * button is `disabled={saving || loading || !chosen}`. A billing-locked admin
+   * — who is REDIRECTED here by BillingGate and cannot see any other admin
+   * screen — landed on a page with an empty plan list, no explanation and a
+   * permanently greyed-out button. There was no way out of the product.
+   *
+   * Every failure now ends in the same place: a message saying what went wrong
+   * and a Retry button that calls this again.
+   */
   const load = useCallback(async () => {
+    setLoading(true);
+    setLoadFailed(false);
+    setError("");
     try {
       const [planRes, accessRes] = await Promise.all([
         fetch("/api/billing/plans"),
         authFetch("/api/billing/access"),
       ]);
 
-      const planData = await planRes.json().catch(() => ({}));
-      const list = Array.isArray(planData.plans) ? planData.plans : [];
+      // A non-2xx is a failure even though fetch resolved. fetch only rejects
+      // on a network error, which is exactly why the old `try` never caught
+      // anything: an HTTP 500 is a perfectly successful promise.
+      if (!planRes.ok) {
+        throw new Error(`We couldn't load the plans (server said ${planRes.status}).`);
+      }
+
+      const planData = await planRes.json().catch(() => null);
+      if (!planData || !Array.isArray(planData.plans)) {
+        throw new Error("We couldn't read the plan list. Please try again.");
+      }
+      // An EMPTY list is a failure too, not an empty state: this page's whole
+      // job is to let someone pick a plan, and nothing here can recover from
+      // there being none. Rendering a bare page would be the same dead end with
+      // better manners.
+      if (planData.plans.length === 0) {
+        throw new Error("No plans are available right now. Please try again, or contact support.");
+      }
+
+      const list = planData.plans;
       setPlans(list);
       setDemo(planData.demo !== false);
 
@@ -84,8 +125,12 @@ export default function UpgradePage() {
         const paid = list.find((p) => Number(p.amount_cents || 0) > 0);
         return paid?.code || current || "free";
       });
-    } catch {
-      setError("We couldn't load the plans. Refresh to try again.");
+    } catch (err) {
+      // Clear the list rather than leaving a half-loaded one behind: a retry
+      // must not be able to submit against stale plans.
+      setPlans([]);
+      setLoadFailed(true);
+      setError(err?.message || "We couldn't load the plans. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -217,6 +262,22 @@ export default function UpgradePage() {
         />
 
         {error && <AuthError message={error} className="mt-6" />}
+
+        {/* The way out. Without this the only recovery from a failed plan load
+            was for the user to know to reload the page — and a locked admin has
+            nowhere else in the product to go. */}
+        {loadFailed && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={load}
+            disabled={loading}
+            className="mt-4 w-full gap-2"
+          >
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+            {loading ? "Retrying…" : "Try again"}
+          </Button>
+        )}
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-5">
           <PlanChoice

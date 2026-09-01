@@ -162,7 +162,7 @@ export default function ClientProjectDetail({ projectId, onBack }) {
     return (
       <ClientPage width="wide">
         <BackButton onBack={onBack} />
-        <ErrorState message={error || "This project could not be loaded."} onRetry={load} />
+        <ErrorState description={error || "This project could not be loaded."} onRetry={load} />
       </ClientPage>
     );
   }
@@ -321,7 +321,7 @@ function MilestonesTab({ milestones }) {
       <EmptyState
         icon={Flag}
         title="No milestones yet"
-        message="Milestones for this project will show up here."
+        description="Milestones for this project will show up here."
       />
     );
   }
@@ -377,7 +377,7 @@ function TasksTab({ tasks, onOpenTask }) {
       <EmptyState
         icon={ListTodo}
         title="No tasks to show"
-        message="Tasks shared with you will appear here as work progresses."
+        description="Tasks shared with you will appear here as work progresses."
       />
     );
   }
@@ -463,7 +463,7 @@ function TeamTab({ team }) {
       <EmptyState
         icon={Users}
         title="No team members listed"
-        message="The people assigned to your project will appear here."
+        description="The people assigned to your project will appear here."
       />
     );
   }
@@ -494,7 +494,7 @@ function TeamTab({ team }) {
 function DeliverablesTab({ deliverables, onDownload, downloadingId }) {
   if (deliverables.length === 0) {
     return (
-      <EmptyState icon={Package} title="No deliverables yet" message="Files shared with you will appear here." />
+      <EmptyState icon={Package} title="No deliverables yet" description="Files shared with you will appear here." />
     );
   }
 
@@ -543,7 +543,7 @@ function DeliverablesTab({ deliverables, onDownload, downloadingId }) {
 function UpdatesTab({ updates }) {
   if (updates.length === 0) {
     return (
-      <EmptyState icon={Megaphone} title="No updates yet" message="Project updates from your team will appear here." />
+      <EmptyState icon={Megaphone} title="No updates yet" description="Project updates from your team will appear here." />
     );
   }
 

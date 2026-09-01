@@ -256,12 +256,12 @@ export default function ClientProjectComments({ projectId, showHeader = false, p
       {loading ? (
         <ConversationSkeleton />
       ) : error ? (
-        <ErrorState message={error} onRetry={load} />
+        <ErrorState description={error} onRetry={load} />
       ) : comments.length === 0 ? (
         <EmptyState
           icon={MessagesSquare}
           title="No messages yet"
-          message="Ask a question or share feedback — your team will see it against this project."
+          description="Ask a question or share feedback — your team will see it against this project."
         />
       ) : (
         <div className="space-y-5">
@@ -269,7 +269,7 @@ export default function ClientProjectComments({ projectId, showHeader = false, p
             <CommentRow key={comment.id} comment={comment} />
           ))}
 
-          {pageError && <ErrorState message={pageError} onRetry={loadMore} />}
+          {pageError && <ErrorState description={pageError} onRetry={loadMore} />}
 
           {hasMore && !pageError && (
             <LoadMoreButton onClick={loadMore} loading={pageLoading} label="Load older messages" />

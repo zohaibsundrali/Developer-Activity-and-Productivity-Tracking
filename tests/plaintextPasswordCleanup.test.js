@@ -256,7 +256,14 @@ describe("invitation acceptance creates no plaintext password row", () => {
     ["employee", "developers"],
     ["admin", "admin_users"],
     ["owner", "admin_users"],
-    ["hr", "admin_users"],
+    // hr USED TO BE ["hr", "admin_users"] HERE. That was the accept route's own
+    // `isAdminLike` (owner/admin/hr) disagreeing with userTypeForRole(), which
+    // files hr in `developers` — as /api/auth/provision and the Employees
+    // screen always have. The route now calls userTypeForRole(); an invited hr
+    // gets a developers row like a provisioned one. What this file is actually
+    // testing — that no profile insert carries a `password` column — is
+    // unaffected either way. See database/073 FINDING 3.
+    ["hr", "developers"],
     ["client", "clients"],
   ];
 

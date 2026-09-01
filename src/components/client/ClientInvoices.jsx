@@ -150,7 +150,7 @@ export default function ClientInvoices() {
   if (error) {
     return (
       <ClientPage title="Invoices" description="Your billing history and documents" width="wide">
-        <ErrorState message={error} onRetry={load} />
+        <ErrorState description={error} onRetry={load} />
       </ClientPage>
     );
   }
@@ -168,7 +168,7 @@ export default function ClientInvoices() {
           <EmptyState
             icon={Receipt}
             title="No invoices yet"
-            message="Invoices issued to you will appear here."
+            description="Invoices issued to you will appear here."
           />
         }
       />

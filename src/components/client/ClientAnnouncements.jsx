@@ -51,7 +51,7 @@ export default function ClientAnnouncements() {
   if (error) {
     return (
       <ClientPage title="Announcements" description="News and updates from your agency">
-        <ErrorState message={error} onRetry={load} />
+        <ErrorState description={error} onRetry={load} />
       </ClientPage>
     );
   }
@@ -62,7 +62,7 @@ export default function ClientAnnouncements() {
         <EmptyState
           icon={Megaphone}
           title="No announcements yet"
-          message="When your agency posts an update, you'll see it here."
+          description="When your agency posts an update, you'll see it here."
         />
       ) : (
         <div className="space-y-6">

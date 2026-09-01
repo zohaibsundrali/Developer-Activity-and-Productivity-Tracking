@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
+import { requirePermission } from "@/utils/serverPermissions";
 import { checkFeatureAccess } from "@/utils/entitlements";
 import { sendTemplatedEmail, emailMode } from "@/utils/emailService";
 
@@ -10,10 +11,19 @@ export const dynamic = "force-dynamic";
  *
  * POST { userIds: string[], taskId?, subject?, message?, sendEmail?: boolean }
  *
- * Security: the caller must be an authenticated org member, and every recipient
- * is re-checked against `memberships` for the SAME organization before anything
- * is written or emailed. That keeps this from being an open relay — a caller can
+ * Security: the caller must hold `automation.manage`, and every recipient is
+ * re-checked against `memberships` for the SAME organization before anything is
+ * written or emailed. That keeps this from being an open relay — a caller can
  * only notify people inside their own org.
+ *
+ * THE PERMISSION USED TO BE MISSING. The whole gate was "authenticated, and not
+ * a client", so every developer, designer and QA in the organization could POST
+ * fifty colleague ids with `sendEmail: true` and fan out in-app notifications
+ * AND email from the company's own sending domain. `automation.manage` existed
+ * and was enforced in exactly one place — the sidebar map in
+ * components/shell/sectionAccess.js — so the screen that drives this route was
+ * hidden from them while the route itself answered 200. Hiding a menu entry has
+ * never been security; the gate belongs here, where the send happens.
  */
 export async function POST(request) {
   try {
@@ -21,10 +31,16 @@ export async function POST(request) {
     if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    // Clients must never drive internal automations.
+    // Clients must never drive internal automations. requirePermission refuses
+    // them too; this stays because it says so at the top of the file rather
+    // than as a consequence of a role list.
     if (auth.userType === "client") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+    // Sending on behalf of the organization is an owner/admin capability.
+    // Permission, not a role list — see utils/permissionCatalogue.js.
+    const denied = requirePermission(auth, "automation.manage");
+    if (denied) return denied;
 
     const body = await request.json().catch(() => ({}));
     const userIds = Array.isArray(body.userIds) ? body.userIds.filter(Boolean).slice(0, 50) : [];

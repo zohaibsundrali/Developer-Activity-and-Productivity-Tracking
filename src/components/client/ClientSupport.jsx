@@ -96,12 +96,12 @@ function SupportList({ onOpen, onNew }) {
       {loading ? (
         <RowsSkeleton count={3} />
       ) : error ? (
-        <ErrorState message={error} onRetry={load} />
+        <ErrorState description={error} onRetry={load} />
       ) : threads.length === 0 ? (
         <EmptyState
           icon={LifeBuoy}
           title="No support requests yet"
-          message="Start a conversation with your agency and it will appear here."
+          description="Start a conversation with your agency and it will appear here."
           action={
             <Button size="lg" onClick={onNew}>
               <Plus className="h-4 w-4" aria-hidden="true" />
@@ -250,7 +250,7 @@ function SupportThread({ threadId, user, onBack }) {
     return (
       <ClientPage>
         <BackBtn onBack={onBack} />
-        <ErrorState message={error} onRetry={load} />
+        <ErrorState description={error} onRetry={load} />
       </ClientPage>
     );
   }

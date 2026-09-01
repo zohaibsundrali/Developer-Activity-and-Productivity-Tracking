@@ -201,7 +201,7 @@ export default function ClientApprovals({ onViewProject }) {
   if (error) {
     return (
       <ClientPage title="Approvals" description="Review and respond to items awaiting your sign-off">
-        <ErrorState message={error} onRetry={load} />
+        <ErrorState description={error} onRetry={load} />
       </ClientPage>
     );
   }
@@ -220,7 +220,7 @@ export default function ClientApprovals({ onViewProject }) {
         <EmptyState
           icon={CheckSquare}
           title="Nothing to approve"
-          message="When your agency requests approval on something, it'll show up here."
+          description="When your agency requests approval on something, it'll show up here."
         />
       ) : (
         <div className="space-y-6">

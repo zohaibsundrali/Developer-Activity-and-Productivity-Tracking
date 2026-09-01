@@ -2,6 +2,7 @@ import * as React from "react"
 import { Inbox } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { warnAliasedProps } from "@/components/ui/prop-aliases"
 
 /**
  * EmptyState
@@ -17,6 +18,15 @@ function EmptyState({
   className,
   ...props
 }) {
+  // Sixteen call sites passed `message=` here, which this component does not
+  // take — it went onto the root div as an attribute and the explanatory line
+  // simply did not render. Same defect as ErrorState's, same guard.
+  warnAliasedProps("EmptyState", props, {
+    message: "description",
+    subtitle: "description",
+    text: "description",
+  })
+
   return (
     <div
       data-slot="empty-state"

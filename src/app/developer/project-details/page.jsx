@@ -23,6 +23,9 @@ const GANTT_BAR_CLASS = {
 import { showError, showInfo, showWarning } from "@/utils/alerts";
 import Swal from 'sweetalert2';
 import { isSessionExpired, clearDeveloperSession } from '@/utils/sessionPolicy';
+// Scheme check for anything this page is about to hand to fetch(), an anchor's
+// href or window.open. See the download handler for what went wrong without it.
+import { safeHref } from '@/utils/safeUrl';
 
 export default function ProjectDetailsPage() {
   const router = useRouter();
@@ -49,7 +52,17 @@ export default function ProjectDetailsPage() {
       progress: parseInt(searchParams.get('progress') || '0'),
       deadline: searchParams.get('deadline'),
       created_at: searchParams.get('created_at'),
-      file_url: searchParams.get('file_url'),
+      // SANITISED AT THE SOURCE, not at each sink.
+      //
+      // Everything else in this object is text that gets rendered; `file_url`
+      // is the one field that gets FOLLOWED, and this object is authoritative
+      // whenever the id is missing or the row lookup fails — which an attacker
+      // controls, because the id is also a query parameter. A `javascript:`
+      // value here reached `link.href = ...; link.click()` in the download
+      // handler's catch block and executed in this page's origin, with the
+      // signed-in session. `safeHref` returns "" for every scheme that is not
+      // http(s), so the three sinks below have nothing to follow.
+      file_url: safeHref(searchParams.get('file_url')),
       file_name: decodeURIComponent(searchParams.get('file_name') || ''),
       assigned_at: searchParams.get('assigned_at'),
       assigned_date: searchParams.get('assigned_date'),
@@ -59,6 +72,17 @@ export default function ProjectDetailsPage() {
   };
 
   const project = projectData || getProjectDataFromURL();
+
+  // The ONE value on this page that gets followed rather than rendered, and the
+  // only place any of the three sinks below is allowed to read it from.
+  //
+  // `getProjectDataFromURL` already sanitises the query-string copy; this
+  // re-checks whatever won, because the other branch is `setProjectData(data)`
+  // from a `select('*')` — a stored `javascript:` in `projects.file_url` is the
+  // same DOM XSS with one more step. The 'null' literal is the string Next puts
+  // in the URL for a missing value, and safeHref rejects it anyway (no scheme,
+  // no leading slash); it is spelled out here because the old conditionals did.
+  const fileHref = safeHref(project.file_url);
 
   // Get assigned date
   const getAssignedDate = () => {
@@ -818,16 +842,31 @@ export default function ProjectDetailsPage() {
   }, [project, currentDeveloper, developerLoading]);
 
   // File Download Function
+  //
+  // THE XSS THAT WAS HERE. Every one of the three steps below used to read
+  // `project.file_url` directly, and that value comes from `?file_url=` on a
+  // DB miss. The fetch is not the dangerous one — a `javascript:` URL makes it
+  // THROW, which is precisely how control reached the fallback, and the
+  // fallback set `link.href` to the same value and clicked it. A programmatic
+  // click on a `javascript:` anchor runs the script in this document's origin,
+  // so anyone who could get a signed-in user to open a crafted link ran code as
+  // them. `window.open(project.file_url)` in the second fallback was the same
+  // bug again.
+  //
+  // Everything now goes through `fileHref`, which is "" unless the URL is
+  // http(s), and the guard at the top turns "" into a message instead of a
+  // navigation. Note the ORDER: the check has to happen before the try block,
+  // not inside it, or the catch becomes the bypass all over again.
   const handleDownloadFile = async () => {
-    if (!project.file_url || project.file_url === 'null') {
+    if (!fileHref) {
       showInfo("No file", "No file available for download.");
       return;
     }
 
     try {
       setDownloading(true);
-      
-      const response = await fetch(project.file_url, {
+
+      const response = await fetch(fileHref, {
         mode: 'cors',
         credentials: 'omit'
       });
@@ -840,9 +879,9 @@ export default function ProjectDetailsPage() {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      
-      const fileName = project.file_name || 
-                      project.file_url.split('/').pop() || 
+
+      const fileName = project.file_name ||
+                      fileHref.split('/').pop() ||
                       'project_file';
       
       link.download = fileName;
@@ -856,7 +895,7 @@ export default function ProjectDetailsPage() {
       
       try {
         const link = document.createElement('a');
-        link.href = project.file_url;
+        link.href = fileHref;
         link.download = project.file_name || 'project_file';
         link.style.display = 'none';
         document.body.appendChild(link);
@@ -867,7 +906,7 @@ export default function ProjectDetailsPage() {
           "Opening in new tab",
           "Opening file in new tab. Please use the browser's Save as option to download."
         );
-        window.open(project.file_url, '_blank');
+        window.open(fileHref, '_blank');
       }
       
     } finally {
@@ -1478,7 +1517,7 @@ export default function ProjectDetailsPage() {
                 </div>
 
                 {/* File Attachment */}
-                {project.file_url && project.file_url !== 'null' && (
+                {fileHref && (
                   <div className="mb-6">
                     <h2 className="text-lg font-semibold mb-3 text-foreground">Project Files</h2>
                     <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">

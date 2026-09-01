@@ -53,17 +53,39 @@ const MIGRATION = read("database/058_software_house_roles.sql");
  * So: find every migration that redefines the constraint and take the
  * highest-numbered one, which is the definition actually in force.
  */
+/**
+ * TWO PASSES, AND THE SECOND ONE IS THE FALLBACK IT ALWAYS MEANT TO BE.
+ *
+ * This used to be one loop whose condition was
+ *   `check ( role in (` OR `'owner', 'admin'`
+ * so the FIRST file in reverse order matching EITHER pattern won. The second
+ * pattern is not a definition of anything — it is just two role names next to
+ * each other — and any later migration that happens to name owner and admin in
+ * a list hijacked the search. database/073 does exactly that: its trigger
+ * entitles `v_role in ('owner','admin','manager')`, which is a permission
+ * check, not a CHECK constraint, and 073 sorts above 067. The suite then
+ * reported that the "role CHECK constraint" rejects designer, devops, employee,
+ * finance and qa — a five-role false alarm about a file that constrains nothing.
+ *
+ * The loose pattern is kept, because the comment above explains it exists for a
+ * migration that writes the constraint in some other shape, but it is now only
+ * consulted when NO file declares the constraint properly. A real definition
+ * always beats a coincidence.
+ */
 const ROLE_CHECK_MIGRATION = (() => {
   const dir = path.join(root, "database");
   const files = readdirSync(dir)
     .filter((f) => /^\d{3}_.*\.sql$/.test(f))
     .sort()
     .reverse();
+  const sourceOf = (f) => readFileSync(path.join(dir, f), "utf8");
   for (const f of files) {
-    const src = readFileSync(path.join(dir, f), "utf8");
-    if (/check\s*\(\s*role\s+in\s*\(/i.test(src) || /'owner'\s*,\s*'admin'/.test(src)) {
-      return { name: f, src };
-    }
+    const src = sourceOf(f);
+    if (/check\s*\(\s*role\s+in\s*\(/i.test(src)) return { name: f, src };
+  }
+  for (const f of files) {
+    const src = sourceOf(f);
+    if (/'owner'\s*,\s*'admin'/.test(src)) return { name: f, src };
   }
   throw new Error("no migration defines the role CHECK constraint");
 })();

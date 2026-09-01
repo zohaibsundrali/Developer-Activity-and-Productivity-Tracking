@@ -53,7 +53,7 @@ export default function ClientProjects({ onViewProject }) {
   if (error) {
     return (
       <ClientPage title="My Projects" description="Track the status and progress of your projects" width="wide">
-        <ErrorState message={error} onRetry={load} />
+        <ErrorState description={error} onRetry={load} />
       </ClientPage>
     );
   }
@@ -73,7 +73,7 @@ export default function ClientProjects({ onViewProject }) {
         <EmptyState
           icon={FolderKanban}
           title="No projects linked yet"
-          message="Once your agency links a project to your account, it will appear here."
+          description="Once your agency links a project to your account, it will appear here."
         />
       ) : (
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
