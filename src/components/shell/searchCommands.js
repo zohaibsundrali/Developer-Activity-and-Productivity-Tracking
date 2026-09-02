@@ -10,6 +10,7 @@ import {
   FileText,
 } from "lucide-react";
 import { adminNavFor, staffNav, CLIENT_NAV, canAccessAdminSection } from "./navConfig";
+import { canEnterAdminArea } from "./sectionAccess";
 import { DASHBOARD_HOME } from "@/utils/dashboardHome";
 
 /**
@@ -45,30 +46,71 @@ export const RECENT_SEARCHES_LIMIT = 6;
 const DASHBOARD_ROUTE = DASHBOARD_HOME;
 
 /**
+ * The membership role to judge this session by.
+ *
+ * `membership_role` can be absent on legacy admin rows — the admin dashboard
+ * itself falls back to "admin", so the palette has to fall back identically or
+ * the two lists disagree about what that person may open.
+ */
+export function roleFor(ctx) {
+  return ctx?.role || (ctx?.userType === "admin" ? "admin" : "developer");
+}
+
+/**
+ * WHICH SHELL this session actually lives in: "admin", "developer", "client",
+ * or null when nobody is signed in.
+ *
+ * THE BUG THIS EXISTS TO FIX, and it is a role/user_type confusion.
+ *
+ *  `navCommandsFor` used to branch on `userType`, and userType cannot answer
+ *  this question. `userTypeForRole` files EVERY role except owner and admin in
+ *  the `developers` table, so a manager, a team lead, an HR user, a QA and a
+ *  finance user all sign in carrying `userType: "developer"`. Meanwhile
+ *  `dashboardHomeFor` routes anyone matching `canEnterAdminArea(role)` to
+ *  /admin/dashboard — which is all five of them.
+ *
+ *  So a manager landed on the admin dashboard, pressed Ctrl+K, and was offered
+ *  the six-entry STAFF nav pointing at `/developer/dashboard?section=…`: not
+ *  one of the sections they actually work in (All Projects, Sprints, Task
+ *  Reviews, Employees…), and clicking any of them navigated them clean out of
+ *  their own shell. The palette is always mounted with an ungated Cmd/Ctrl+K
+ *  listener, so this was one keystroke away on every screen they had.
+ *
+ * The answer is the ROLE, via the same `canEnterAdminArea` the middleware, the
+ * login page and `dashboardHomeFor` use — one rule, four readers, no fourth
+ * copy invented here.
+ */
+export function shellFor(ctx) {
+  const userType = ctx?.userType || null;
+  if (!userType) return null;
+  // A client is a client whatever else is on the session: the client portal is
+  // not reachable by role, and canEnterAdminArea has no opinion about "client".
+  if (userType === "client") return "client";
+  return canEnterAdminArea(roleFor(ctx)) ? "admin" : "developer";
+}
+
+/**
  * Navigation commands for the signed-in user.
  *
- * The role split mirrors the dashboards exactly: admin-shell users get
+ * The split mirrors the dashboards exactly: admin-shell users get
  * adminNavFor(role) (already filtered by ADMIN_SECTION_ROLES), staff get
  * staffNav(role) (which is what decides whether Team appears), and a client gets
  * the client portal sections and nothing else.
  */
 export function navCommandsFor(ctx) {
-  const userType = ctx?.userType || null;
-  if (!userType) return [];
+  const shell = shellFor(ctx);
+  if (!shell) return [];
 
-  if (userType === "client") {
+  if (shell === "client") {
     return toCommands(CLIENT_NAV, DASHBOARD_ROUTE.client, "client");
   }
 
-  if (userType === "admin") {
-    // membership_role can be absent on legacy admin rows — the dashboard itself
-    // falls back to "admin", so the palette must fall back identically or the
-    // two lists disagree.
-    const role = ctx?.role || "admin";
+  const role = roleFor(ctx);
+
+  if (shell === "admin") {
     return toCommands(adminNavFor(role), DASHBOARD_ROUTE.admin, "admin");
   }
 
-  const role = ctx?.role || "developer";
   return toCommands(staffNav(role), DASHBOARD_ROUTE.developer, "developer");
 }
 
@@ -96,10 +138,14 @@ function toCommands(navItems, basePath, userType) {
  */
 export function isNavCommandAllowed(command, ctx) {
   if (!command || command.kind !== "command") return true;
-  const userType = ctx?.userType || null;
-  if (command.userType !== userType) return false;
-  if (userType !== "admin") return true;
-  return canAccessAdminSection(command.sectionId, ctx?.role || "admin");
+  // Compared against the SHELL, not against ctx.userType. A manager's commands
+  // are tagged "admin" because that is the shell they live in, while their
+  // userType is "developer" — comparing the two directly would have rejected
+  // every command the palette had just built for them.
+  const shell = shellFor(ctx);
+  if (command.userType !== shell) return false;
+  if (shell !== "admin") return true;
+  return canAccessAdminSection(command.sectionId, roleFor(ctx));
 }
 
 // Stable render order for the eight contract types. An explicit array means the

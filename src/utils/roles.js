@@ -62,7 +62,41 @@ export const ROLE_RANK = {
   client: 10,
 };
 
-/** Which profile table a role's account lives in. */
+/**
+ * Which profile table a role's account lives in. THE ONLY DEFINITION.
+ *
+ * `user_type` is a STORAGE fact — which of `admin_users`, `developers` and
+ * `clients` holds this person's profile row — and it is written to three places
+ * in one act of account creation: `memberships.user_type`, the table the row
+ * goes in, and `app_metadata.user_type` on the Supabase Auth user. Anything
+ * that computes it must call this function.
+ *
+ * THERE WAS A SECOND COPY AND IT DISAGREED. /api/invitations/accept computed
+ * `isAdminLike = role === "owner" || role === "admin" || role === "hr"` and
+ * wrote user_type "admin" for hr, while this function — and therefore
+ * /api/auth/provision and the Employees screen — wrote "developer". The same
+ * role produced a different claim depending on which door the person came
+ * through, and the "admin" answer was the LOOSER one: /api/productivity,
+ * /api/keyboard-stats and /api/task-submission each branch on `userType`
+ * rather than on `role`, so an invited hr escaped self-scoping on the
+ * monitoring routes that `monitoring.view` (owner + admin) is meant to close.
+ * The accept route now imports this. See database/073, FINDING 3, for the
+ * existing rows that change does NOT repair.
+ *
+ * hr IS "developer" ON PURPOSE, and it is not an oversight to be tidied up:
+ * STAFF_ROLES below is DERIVED from this function and hr is in it, so an hr
+ * created from the Employees directory has always had a `developers` row;
+ * tests/roleDashboards.test.js pins the same fact for manager, team_lead, hr,
+ * qa and finance. Admin-console access for those roles does NOT come from
+ * user_type — middleware.ts admits /admin on `canEnterAdminArea(role)` too,
+ * and the section table is derived from permissionCatalogue.js. Moving a role
+ * to "admin" to give it a screen would hand it every `userType === 'admin'`
+ * branch in the API along with the screen.
+ *
+ * Unknown roles fall through to "developer". That is a safe default for a
+ * display decision and NOT a safe one for account creation, so callers that
+ * create accounts validate with `isRole()` first rather than trusting it.
+ */
 export function userTypeForRole(role) {
   if (role === "client") return "client";
   if (role === "owner" || role === "admin") return "admin";

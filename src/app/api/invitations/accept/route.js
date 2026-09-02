@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { checkSeatLimitForRole, checkFeatureAccess } from "@/utils/entitlements";
+import { isRole, userTypeForRole, PROFILE_TABLE } from "@/utils/roles";
 import { meta as termsMeta } from "@/content/legal/terms";
 
 // Server-side invite acceptance (service_role): validates the token, creates the
@@ -88,20 +89,52 @@ export async function POST(request) {
     }
 
     const email = invite.email;
-    // Owner + Admin + HR share the admin_users profile table (they run the admin
-    // console: HR manages the employee directory). The real role lives on the
-    // membership + JWT, so an invited owner/hr keeps their true role while getting
-    // admin-dashboard access.
-    const isAdminLike =
-      invite.role === "owner" || invite.role === "admin" || invite.role === "hr";
-    const isClient = invite.role === "client";
-    // Clients get their own user_type + `clients` profile row (NO developers row,
-    // so they never appear in staff lists or inherit developer data access).
-    // Manager / Employee / Developer are internal staff → developers table with
-    // user_type "developer"; their real role is preserved on the membership row
-    // and JWT app_metadata.role, which drives the role-aware staff dashboard.
-    const userType = isAdminLike ? "admin" : isClient ? "client" : "developer";
-    const profileTable = isAdminLike ? "admin_users" : isClient ? "clients" : "developers";
+
+    // user_type comes from ONE place, and this is not it.
+    //
+    // THIS BLOCK USED TO COMPUTE ITS OWN ANSWER:
+    //
+    //   const isAdminLike = invite.role === "owner" || invite.role === "admin"
+    //                       || invite.role === "hr";
+    //
+    // — and it disagreed with `userTypeForRole()` in utils/roles.js, which maps
+    // owner/admin to "admin", client to "client" and EVERYTHING ELSE, hr
+    // included, to "developer". So the same hr role came out as "developer" when
+    // provisioned through /api/auth/provision (which already calls that
+    // function) and as "admin" when INVITED through here. The value is written
+    // to three places in one request — memberships.user_type below, the profile
+    // table the row is created in, and app_metadata.user_type on the Auth user —
+    // so an invited hr carried a claim a provisioned hr did not.
+    //
+    // That was not cosmetic. Several routes branch on `userType` instead of on
+    // `role`, and for user_type "admin" those branches are LOOSER than the
+    // permission catalogue, which puts `monitoring.view` at owner+admin only:
+    // /api/productivity returns 403 unless userType === 'admin';
+    // /api/keyboard-stats self-scopes only when userType === "developer";
+    // /api/task-submission lets a non-'developer' userType submit as any
+    // developer. An invited hr escaped all three.
+    //
+    // `userTypeForRole` is now the single source. hr resolves to "developer",
+    // which is the tighter answer, is what provisioning and the Employees screen
+    // have always done (roles.js STAFF_ROLES is DERIVED from this function and
+    // contains hr), and costs hr nothing it should have: middleware.ts admits
+    // /admin on canEnterAdminArea(role) as well as on userType, and the
+    // catalogue grants hr the people-ops sections.
+    //
+    // EXISTING invited hr accounts are NOT repaired by this — their rows and
+    // claims still say "admin". See database/073, FINDING 3 and PART 1 query 1e,
+    // for how to measure and remedy them.
+    //
+    // Unknown roles are refused rather than defaulted. userTypeForRole would
+    // answer "developer" for a typo, which is a fine default for a display
+    // decision and a bad one for "which table does this person's account go in";
+    // the invitations CHECK constraint (058/067) should make this unreachable,
+    // so reaching it means something upstream is wrong. Fail closed.
+    if (!isRole(invite.role) || !PROFILE_TABLE[userTypeForRole(invite.role)]) {
+      return NextResponse.json({ error: "This invitation carries a role this system does not recognise." }, { status: 400 });
+    }
+    const userType = userTypeForRole(invite.role);
+    const profileTable = PROFILE_TABLE[userType];
 
     // 2) create the profile row
     //
@@ -113,8 +146,12 @@ export async function POST(request) {
     // reads the column as a credential now — GET /api/admin/legacy-auth-audit
     // only counts rows by its shape. The real credential is created in step 4,
     // by Supabase Auth, which stores it hashed.
+    // Branching on `userType` rather than on the role keeps the three writes
+    // below — profile row, membership row, Auth claim — provably in step with
+    // the one function that decided it. There is no second copy of the mapping
+    // left in this file.
     let newUser = null;
-    if (isAdminLike) {
+    if (userType === "admin") {
       const { data, error } = await admin.from("admin_users").insert([{
         full_name: fullName || null, email, company: null,
         role: "admin", is_verified: true, organization_id: invite.organization_id,
@@ -125,7 +162,10 @@ export async function POST(request) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
       newUser = data;
-    } else if (isClient) {
+    } else if (userType === "client") {
+      // Clients get their own user_type + `clients` profile row (NO developers
+      // row, so they never appear in staff lists or inherit developer data
+      // access).
       const { data, error } = await admin.from("clients").insert([{
         name: fullName || null, email, status: "active",
         organization_id: invite.organization_id, created_at: new Date().toISOString(),
@@ -145,6 +185,12 @@ export async function POST(request) {
         }]);
       }
     } else {
+      // Every remaining role — manager, hr, finance, team_lead, qa, developer,
+      // designer, devops, employee. Their real role is preserved on the
+      // membership row and on app_metadata.role, which is what the role-aware
+      // dashboard, the section table and every RLS policy actually read; the
+      // profile table is storage, not authorisation. hr lands HERE now, which
+      // is where /api/auth/provision has always put it.
       const { data, error } = await admin.from("developers").insert([{
         name: fullName || null, email, status: "active",
         organization_id: invite.organization_id, created_at: new Date().toISOString(),

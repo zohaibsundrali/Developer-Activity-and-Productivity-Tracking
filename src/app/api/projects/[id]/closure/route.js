@@ -231,6 +231,23 @@ export async function POST(request, { params }) {
     const now = new Date().toISOString();
     let patch = null;
     let logEntry = null;
+    /**
+     * The compare-and-swap for this action, applied to the write at the bottom.
+     *
+     * THE GATE AND THE WRITE WERE NOT THE SAME MOMENT. Every branch below reads
+     * `project`, decides, and then writes with `.eq("id")` — nothing said "and
+     * only if it is still how I found it". Two `complete` calls arriving
+     * together both read `completed_at: null`, both passed the 409, and both
+     * wrote: two `project_completed` rows in pm_activity, the second person
+     * recorded as the completer, and the same race sitting under `close` and
+     * `reopen`.
+     *
+     * Each guard names the TIMESTAMP the action consumes, not the status
+     * string. This file decides nothing from `status` (see the note at the top)
+     * and a lock is a decision — a status-based CAS would also be wrong on its
+     * own terms, since `sign_off` does not change it at all.
+     */
+    let compareAndSwap = null;
 
     switch (action) {
       // ── The work is done ──────────────────────────────────────────────
@@ -258,6 +275,8 @@ export async function POST(request, { params }) {
           );
         }
 
+        // Only if nobody has completed it since the read above.
+        compareAndSwap = (q) => q.is("completed_at", null);
         patch = {
           completed_at: now,
           completed_by: auth.appUserId || null,
@@ -300,6 +319,7 @@ export async function POST(request, { params }) {
         // The sign-off goes in the SAME patch as the rating. Split across two
         // writes, the rating would arrive at a row whose sign-off was still
         // null and the trigger would refuse it.
+        compareAndSwap = (q) => q.is("client_signed_off_at", null);
         patch = {
           client_signed_off_at: now,
           client_rating: rating,
@@ -328,6 +348,7 @@ export async function POST(request, { params }) {
         // quiet, and a project the company has finished and been paid for
         // should not stay open forever waiting for a reply. The unsigned
         // closure is visible in the record, which is the honest version of it.
+        compareAndSwap = (q) => q.is("closed_at", null);
         patch = {
           closed_at: now,
           closed_by: auth.appUserId || null,
@@ -372,6 +393,9 @@ export async function POST(request, { params }) {
         // `active`, not `in_progress`. They meant the same thing and that
         // duplication is what migration 065 removed; the CHECK now refuses
         // `in_progress`, so this write would fail. See utils/projectStatus.js.
+        // The mirror image: reopening consumes a closure, so it may only win
+        // while there is still one to consume.
+        compareAndSwap = (q) => q.not("closed_at", "is", null);
         patch = { closed_at: null, closed_by: null, status: PROJECT_STATUS.active };
         // Already logged above, with the values that are about to be lost.
         logEntry = null;
@@ -382,18 +406,30 @@ export async function POST(request, { params }) {
         return NextResponse.json({ error: "Unknown action." }, { status: 400 });
     }
 
-    const { data: updated, error } = await svc
-      .from("projects")
-      .update(patch)
-      .eq("id", project.id)
-      .eq("organization_id", auth.orgId)
-      .select(CLOSURE_COLUMNS)
-      .maybeSingle();
+    // The org filter is the tenant boundary (serviceClient bypasses RLS); the
+    // compare-and-swap is the concurrency boundary. Both go on the same write,
+    // because a check performed anywhere other than the write itself is a
+    // check something can slip between.
+    const write = compareAndSwap(
+      svc.from("projects").update(patch).eq("id", project.id).eq("organization_id", auth.orgId)
+    );
+    const { data: updated, error } = await write.select(CLOSURE_COLUMNS).maybeSingle();
 
     if (error) {
       // The trigger's messages are written to be read by a person, so they are
       // passed through rather than replaced with "something went wrong".
       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    if (!updated) {
+      // Zero rows matched: somebody else took this same step between the read
+      // and the write. 409, the same answer the pre-checks give for "already
+      // done" — from the caller's side it IS the same thing, and it is a
+      // conflict rather than a fault, so nothing should retry it.
+      return NextResponse.json(
+        { error: "Somebody else changed this project while you were deciding." },
+        { status: 409 }
+      );
     }
 
     if (logEntry) await log(svc, { auth, project, ...logEntry });

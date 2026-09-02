@@ -86,6 +86,14 @@ function fakeClient() {
             Object.assign(state.project, patch);
             const u = {
               eq: () => u,
+              // `is` and `not` because the write now carries a compare-and-swap
+              // on the timestamp the action consumes — `.is("completed_at",
+              // null)` and, for reopen, `.not("closed_at", "is", null)`. The
+              // filters are not modelled here (this fake has one project and no
+              // concurrency); tests/deletionAndStateMachines.test.js drives a
+              // fake that DOES honour them, which is where the lock is proved.
+              is: () => u,
+              not: () => u,
               select: () => u,
               maybeSingle: async () => ({ data: state.project, error: null }),
             };

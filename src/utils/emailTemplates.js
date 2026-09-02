@@ -27,43 +27,26 @@
  */
 
 import { BRAND_NAME } from "@/components/brand/brand";
+// `escapeHtml` and `safeUrl` USED TO BE DEFINED HERE. They moved to
+// utils/safeUrl.js unchanged, and are re-exported below so every existing
+// caller — and tests/emailSystem.test.js — keeps importing them from this
+// module.
+//
+// WHY THEY MOVED. The scheme check they perform is not an email concern; it is
+// the check any sink that follows a user-supplied URL needs. The developer
+// project-details screen had none, so a `?file_url=javascript:...` link reached
+// `link.href = ...; link.click()` and ran in the page's own origin. That screen
+// needs the SAME answer about which schemes are allowed, must not pull a
+// template library into the client bundle to get it, and needs the URL
+// UNESCAPED — `?a=1&b=2` must not reach fetch() as `?a=1&amp;b=2`.
+// utils/safeUrl.js splits those two halves apart: `safeHref` decides, `safeUrl`
+// escapes the survivor. `safeUrl` here is byte-for-byte the same function it
+// always was.
+import { escapeHtml, safeUrl } from "@/utils/safeUrl";
 
-// ── Escaping / sanitising ────────────────────────────────────────────
+// ── Escaping / sanitising ────────────────────
 
-/**
- * HTML-escape a value for interpolation into element content or a quoted
- * attribute. Same implementation as the one in send-verification/route.js.
- *
- * The slice happens BEFORE escaping so `maxLen` bounds the source text rather
- * than the entity-expanded output; the escape then runs over the slice, so it
- * is impossible to cut an entity in half.
- */
-export function escapeHtml(value, maxLen = 500) {
-  return String(value ?? "")
-    .slice(0, maxLen)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-/**
- * Return an href that is safe to place in a link, or "" when it is not.
- *
- * Only absolute http/https URLs and site-relative paths are allowed.
- * `javascript:`, `data:` and `vbscript:` are dropped entirely — escaping a
- * quote does nothing about a scheme, and some clients still honour those.
- * The survivor is then attribute-escaped like everything else.
- */
-export function safeUrl(value) {
-  const raw = String(value ?? "").trim();
-  if (!raw) return "";
-  // Control characters are how `java\nscript:` gets past a naive prefix check.
-  const flat = raw.replace(/[\u0000-\u0020\u007f]/g, "");
-  if (/^https?:\/\//i.test(flat) || /^\//.test(flat)) return escapeHtml(flat, 2000);
-  return "";
-}
+export { escapeHtml, safeUrl };
 
 /**
  * Sanitise a value destined for a mail header (subject, display name).

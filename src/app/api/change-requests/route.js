@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
-import { authCan } from "@/utils/serverPermissions";
+import { authCan, requirePermission } from "@/utils/serverPermissions";
 import { defaultRolesFor } from "@/utils/permissionCatalogue";
 
 export const dynamic = "force-dynamic";
@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic";
 /**
  * /api/change-requests
  *
- *   GET   list. Clients see their own projects'; staff see the organization's.
+ *   GET   list. Clients see their own projects'; staff who hold
+ *         `change_request.view` see the organization's.
  *   POST  raise one. Clients on their own projects; owner/admin/manager anywhere.
  *
  * `pm_notes` IS STRIPPED FOR CLIENTS HERE.
@@ -39,6 +40,24 @@ export async function GET(request) {
     const auth = await getAuthedOrg(request);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    // THE COMMERCIAL PIPELINE IS NOT ALL-STAFF READING. Every row this returns
+    // carries `estimated_cost`, `estimated_hours` and `pm_notes` — what we
+    // quoted, how long we said it would take, and the pricing argument behind
+    // it — and the only gate was "is authenticated". A developer, a designer, a
+    // QA or a contractor on one project could list the whole organization's
+    // change requests and read the margin on all of them. `change_request.view`
+    // (owner/admin/manager/team_lead) has been in the catalogue since it was
+    // written and had no API call site.
+    //
+    // The permission guards the STAFF branch only: requirePermission 403s every
+    // client, and a client reading its own project's change requests is the
+    // other half of this handler.
+    const isClient = auth.userType === "client";
+    if (!isClient) {
+      const denied = requirePermission(auth, "change_request.view");
+      if (denied) return denied;
+    }
+
     const svc = serviceClient();
     const url = new URL(request.url);
     const projectId = url.searchParams.get("projectId");
@@ -52,7 +71,6 @@ export async function GET(request) {
 
     if (projectId) q = q.eq("project_id", projectId);
 
-    const isClient = auth.userType === "client";
     if (isClient) {
       // The service client bypasses RLS, so the route re-applies the scope the
       // policy would have. Without this a client sees every project's changes.

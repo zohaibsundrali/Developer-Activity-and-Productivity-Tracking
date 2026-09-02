@@ -107,7 +107,7 @@ export default function ClientTimeline({ projectId, showHeader = false, projectN
   if (error) {
     return (
       <ClientPage title={title} description={description}>
-        <ErrorState message={error} onRetry={load} />
+        <ErrorState description={error} onRetry={load} />
       </ClientPage>
     );
   }
@@ -118,7 +118,7 @@ export default function ClientTimeline({ projectId, showHeader = false, projectN
         <EmptyState
           icon={CalendarDays}
           title="No activity yet"
-          message="Updates, milestones, comments and approvals will appear here as your project moves."
+          description="Updates, milestones, comments and approvals will appear here as your project moves."
         />
       </ClientPage>
     );
@@ -162,7 +162,7 @@ export default function ClientTimeline({ projectId, showHeader = false, projectN
         })}
       </ol>
 
-      {pageError && <ErrorState message={pageError} onRetry={loadMore} />}
+      {pageError && <ErrorState description={pageError} onRetry={loadMore} />}
 
       {hasMore && !pageError && <LoadMoreButton onClick={loadMore} loading={pageLoading} label="Load older activity" />}
     </ClientPage>

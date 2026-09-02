@@ -28,6 +28,46 @@ export const dynamic = "force-dynamic";
 
 const STAFF_DECIDERS = ["owner", "admin", "manager"];
 
+/**
+ * WHERE EACH STEP MAY BE TAKEN FROM.
+ *
+ * `admin_approve`, `client_approve` and `implement` each carried their own
+ * stage check from the start. `estimate` and the staff half of `reject` did
+ * not — they checked the caller's ROLE and nothing else — and the gap in
+ * `estimate` was not cosmetic:
+ *
+ *   database/060 refuses reopening from `implemented`, `rejected` and
+ *   `withdrawn`. It does NOT refuse it from `approved`. So an approved change
+ *   request — one whose cost has already been added to `projects.budget` —
+ *   could be re-estimated back to `awaiting_admin`, walked forward through
+ *   admin_approve and client_approve again, and `applyImpact` would add the
+ *   same cost to the same budget a SECOND time. Worse, the second pass
+ *   overwrites `previous_budget` with the already-inflated figure, so the trail
+ *   that exists to unwind the change now points at the wrong number and the
+ *   inflation is permanent.
+ *
+ * Re-pricing is legitimate right up to the moment the client agrees, including
+ * while it sits with them — "we underquoted, here is the real number" sends it
+ * back for internal approval, which is exactly what `estimate` does. It stops
+ * being legitimate the moment money has moved. After that the answer is a new
+ * change request, which is also what the database says about the other three
+ * settled states.
+ */
+const ESTIMATABLE = ["submitted", "estimating", "awaiting_admin", "awaiting_client"];
+
+/**
+ * Staff may decline a change request until it has been agreed.
+ *
+ * A client could only ever reject at `awaiting_client`; staff could reject from
+ * anywhere, including `approved` and `implemented`. Rejecting an approved one
+ * is the same double-accounting hazard from the other side: the budget has
+ * already moved and nothing in a rejection moves it back, so the project keeps
+ * the money for work the record now says was declined. (The database refuses
+ * the `implemented` case with an exception, which arrived here as a generic
+ * 503 — a wrong answer to a wrong request.)
+ */
+const STAFF_REJECTABLE = ["submitted", "estimating", "awaiting_admin", "awaiting_client"];
+
 export async function POST(request, { params }) {
   try {
     const auth = await getAuthedOrg(request);
@@ -70,6 +110,10 @@ export async function POST(request, { params }) {
     switch (action) {
       case "estimate": {
         if (!isStaffDecider) return forbidden();
+        // The check this step never had. See ESTIMATABLE — without it an
+        // already-applied change request can be walked round the chain again
+        // and charged to the project twice.
+        if (!ESTIMATABLE.includes(cr.status)) return wrongStage(cr.status);
         const cost = numberOrNull(body.estimatedCost);
         const hours = numberOrNull(body.estimatedHours);
         const days = numberOrNull(body.timelineImpactDays);
@@ -115,6 +159,19 @@ export async function POST(request, { params }) {
           );
         }
         if (cr.status !== "awaiting_client") return wrongStage(cr.status);
+        // BELT AND BRACES ON THE DOUBLE-CHARGE. `applied_at` is set the first
+        // time the impact reaches the project and is never cleared, so a
+        // request carrying one has already moved the budget once. With the
+        // stage check on `estimate` above there is no path back to
+        // `awaiting_client` that keeps it — which is the point: if this ever
+        // fires, a route has grown a new way round and the answer is a refusal,
+        // not a second charge.
+        if (cr.applied_at) {
+          return NextResponse.json(
+            { error: "This change request has already been applied to the project." },
+            { status: 409 }
+          );
+        }
         patch = { status: "approved", client_decided_at: now };
         break;
       }
@@ -137,6 +194,8 @@ export async function POST(request, { params }) {
         // decline.
         if (isClient && cr.status !== "awaiting_client") return wrongStage(cr.status);
         if (!isClient && !isStaffDecider) return forbidden();
+        // Staff had no stage check here at all. See STAFF_REJECTABLE.
+        if (!isClient && !STAFF_REJECTABLE.includes(cr.status)) return wrongStage(cr.status);
         patch = {
           status: "rejected",
           decision_reason: reason,
@@ -166,23 +225,23 @@ export async function POST(request, { params }) {
         return NextResponse.json({ error: "Unknown action." }, { status: 400 });
     }
 
-    // Applying the impact happens BEFORE the status moves, so a failure leaves
-    // the request still awaiting the client rather than approved-but-unapplied.
-    // The trigger in 060 does not know about the project, so this ordering is
-    // the only thing protecting that pair.
-    if (action === "client_approve") {
-      const applied = await applyImpact(svc, auth.orgId, cr);
-      if (applied.error) {
-        console.error("[change-requests advance] apply failed:", applied.error);
-        return NextResponse.json(
-          { error: "Could not update the project's budget. Nothing was changed." },
-          { status: 503 }
-        );
-      }
-      patch = { ...patch, ...applied.patch };
-    }
-
-    const { data, error } = await svc
+    // ── THE TRANSITION IS WON FIRST, THEN THE MONEY MOVES ────────────────────
+    //
+    // This used to run the other way round: `applyImpact` mutated
+    // `projects.budget` and `projects.deadline` and only THEN did the
+    // compare-and-swap below run. The lock was real and it was in the wrong
+    // place — it protected the change request's status and nothing else. A
+    // client double-clicking Approve sent two requests that both read
+    // `awaiting_client`, both added the cost to the budget, and then one of
+    // them lost the CAS and answered 503. The budget had gone up twice and the
+    // record of it existed once.
+    //
+    // The compare-and-swap is now the thing that decides who is allowed to act.
+    // Exactly one request can move the row out of `cr.status`; the loser stops
+    // here having written nothing, and gets 409 — a conflict, not a fault. The
+    // old 503 said "the server broke" for the one case where everything worked
+    // exactly as designed, and the client retries a 503.
+    const { data: moved, error } = await svc
       .from("change_requests")
       .update(patch)
       .eq("id", id)
@@ -190,9 +249,78 @@ export async function POST(request, { params }) {
       // Do not move something somebody else just moved.
       .eq("status", cr.status)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
+    if (!moved) {
+      // Zero rows matched: the status moved between our read and our write.
+      return NextResponse.json(
+        { error: "Somebody else moved this change request while you were deciding it." },
+        { status: 409 }
+      );
+    }
+
+    // The row as it now stands. The audit write below refreshes it when there
+    // is an impact to record.
+    let data = moved;
+
+    if (action === "client_approve") {
+      // Reached only by the winner, so this runs at most once per approval.
+      const applied = await applyImpact(svc, auth.orgId, cr);
+
+      if (applied.error) {
+        // COMPENSATE. The trade-off of moving the lock first is that a failure
+        // here leaves a request that says `approved` with nothing behind it —
+        // the state the old ordering was written to avoid. So it is put back,
+        // CAS'd on the status WE wrote so this can only ever undo our own
+        // transition and never somebody else's.
+        console.error("[change-requests advance] apply failed:", applied.error);
+        const { error: undoErr } = await svc
+          .from("change_requests")
+          .update({ status: cr.status, client_decided_at: cr.client_decided_at ?? null })
+          .eq("id", id)
+          .eq("organization_id", auth.orgId)
+          .eq("status", patch.status);
+        if (undoErr) {
+          // Both writes failed. Say so loudly: the row now claims an approval
+          // the project has not been given, and only a human can reconcile it.
+          console.error(
+            "[change-requests advance] COULD NOT UNDO approval",
+            id,
+            undoErr?.message || undoErr
+          );
+        }
+        return NextResponse.json(
+          { error: "Could not update the project's budget. Nothing was changed." },
+          { status: 503 }
+        );
+      }
+
+      // The audit columns — applied_at, and what the budget and deadline WERE.
+      // A second write because the first one had to happen before the money
+      // moved and these values do not exist until after it has.
+      const { data: recorded, error: recordErr } = await svc
+        .from("change_requests")
+        .update(applied.patch)
+        .eq("id", id)
+        .eq("organization_id", auth.orgId)
+        .select()
+        .maybeSingle();
+      if (recordErr || !recorded) {
+        // The decision and the budget are both committed; only the trail is
+        // missing, and unwinding a client's approved change request because a
+        // bookkeeping write failed would be the worse of the two. Logged with
+        // the figures so it can be repaired by hand.
+        console.error(
+          "[change-requests advance] impact applied but not recorded",
+          id,
+          applied.patch,
+          recordErr?.message || "no row returned"
+        );
+      } else {
+        data = recorded;
+      }
+    }
 
     await notify(svc, auth, cr, action, data);
 

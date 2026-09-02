@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
+import { requirePermission } from "@/utils/serverPermissions";
 
 export const dynamic = "force-dynamic";
 
 /**
  * /api/proposals — the client's request for new work.
  *
- *   GET   list. A client sees its own; staff see the organization's.
+ *   GET   list. A client sees its own; staff who hold `proposal.view` see the
+ *         organization's.
  *   POST  file one. Clients only.
  *
  * The organization ALWAYS comes from the verified token and never from the
@@ -37,8 +39,20 @@ const CLIENT_SAFE = (row) => {
 const MAX_TITLE = 200;
 const MAX_DESCRIPTION = 10000;
 
-/** Staff roles that may see the queue. All of them: a designer asked "can we
- *  build this?" needs to read the thing being asked about. */
+/**
+ * Staff, as opposed to a client. NOT an authorization answer.
+ *
+ * It used to be one: `isStaff` was the entire gate on GET, on the reasoning
+ * that "a designer asked 'can we build this?' needs to read the thing being
+ * asked about". A proposal carries the client's `budget` — what they told us
+ * they are willing to spend — so that reasoning handed every developer,
+ * designer, QA and contractor in the organization the price ceiling on every
+ * deal in the pipeline. Reading one proposal you were pointed at is not the
+ * same thing as listing all of them, and the second is what this route does.
+ *
+ * Who may see the queue is now `proposal.view`; this function only answers
+ * which HALF of a dual-audience handler the caller is in.
+ */
 function isStaff(auth) {
   return auth && auth.userType !== "client";
 }
@@ -47,6 +61,14 @@ export async function GET(request) {
   try {
     const auth = await getAuthedOrg(request);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    // Staff reading the whole organization's pipeline need the permission.
+    // Guarded on the staff branch only: requirePermission 403s every client,
+    // and a client listing its own proposals is the other half of this handler.
+    if (isStaff(auth)) {
+      const denied = requirePermission(auth, "proposal.view");
+      if (denied) return denied;
+    }
 
     const svc = serviceClient();
     const url = new URL(request.url);

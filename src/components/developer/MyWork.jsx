@@ -201,9 +201,40 @@ export default function MyWork({ onViewProjectDetails }) {
 
   const view = useMemo(() => (tasks ? bucketMyWork(tasks) : null), [tasks]);
 
+  // THE HANDLER WANTS A PROJECT, NOT AN ID.
+  //
+  // This used to call `onViewProjectDetails(task.project_id)`. The handler it
+  // is wired to — handleViewProjectDetails in app/developer/dashboard/page.jsx
+  // — builds the destination out of `project.id`, `project.name`,
+  // `project.description` and eight more fields, so a bare id string arrived
+  // with every one of them undefined and the push landed on
+  // `/developer/project-details?id=undefined&name=undefined…`. Every task row
+  // on this screen opened the same broken page. MyProjects passes the whole
+  // project row, which is the contract; this passes the same shape.
+  //
+  // The blanks are not padding. `loadMyWork` joins only `id, name, status` —
+  // it deliberately does not select the whole projects row — and the handler
+  // interpolates the rest unguarded, so without them the URL would carry the
+  // literal text "undefined" in six parameters. The project-details page reads
+  // the row from the database off `id` and only falls back to these when that
+  // lookup fails, so blanks are both correct and invisible.
   const open = useCallback(
     (task) => {
-      if (task?.project_id) onViewProjectDetails?.(task.project_id);
+      if (!task?.project_id) return;
+      onViewProjectDetails?.({
+        id: task.project_id,
+        name: task.project?.name || "",
+        status: task.project?.status || "",
+        description: "",
+        progress: 0,
+        deadline: "",
+        created_at: "",
+        file_url: "",
+        file_name: "",
+        assigned_at: "",
+        assigned_developer_name: "",
+        assigned_developer_email: "",
+      });
     },
     [onViewProjectDetails]
   );
@@ -271,7 +302,7 @@ export default function MyWork({ onViewProjectDetails }) {
     return (
       <div className="space-y-6">
         <PageHeader title="My Work" />
-        <ErrorState message={error} onRetry={load} />
+        <ErrorState description={error} onRetry={load} />
       </div>
     );
   }

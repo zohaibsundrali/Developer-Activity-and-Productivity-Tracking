@@ -30,6 +30,24 @@ export const dynamic = "force-dynamic";
 
 const DECISIONS = ["accepted", "rejected", "needs_info", "in_review", "estimate"];
 
+/**
+ * The decisions there is no coming back from.
+ *
+ * `accepted` was treated as terminal from the start. `rejected` was not, and
+ * nothing else stopped it: database/059 refuses un-accepting an accepted
+ * proposal and says nothing about a rejected one. So a proposal the company had
+ * declined — told the client so, in writing, with a reason — could be decided
+ * again. Accepting it created the project, linked the client and assigned a
+ * manager, off a decision that had already been communicated as final; and
+ * `estimate` could quietly put it back into `in_review` so it reappeared in the
+ * queue as live work.
+ *
+ * Both are terminal now. Changing your mind about a declined proposal is a new
+ * proposal, which keeps the refusal and the reversal both on the record instead
+ * of overwriting one with the other.
+ */
+const TERMINAL = ["accepted", "rejected"];
+
 export async function POST(request, { params }) {
   try {
     const auth = await getAuthedOrg(request);
@@ -69,9 +87,14 @@ export async function POST(request, { params }) {
 
     if (readErr) throw readErr;
     if (!proposal) return NextResponse.json({ error: "Not found." }, { status: 404 });
-    if (proposal.status === "accepted") {
+    if (TERMINAL.includes(proposal.status)) {
       return NextResponse.json(
-        { error: "That proposal has already been accepted." },
+        {
+          error:
+            proposal.status === "accepted"
+              ? "That proposal has already been accepted."
+              : "That proposal has already been declined — raise a new one.",
+        },
         { status: 409 }
       );
     }
@@ -106,6 +129,10 @@ export async function POST(request, { params }) {
         .eq("id", proposalId)
         .eq("organization_id", auth.orgId)
         .neq("status", "accepted")
+        // BOTH terminal states, on the write as well as on the read above. The
+        // read is a check; this is the lock. Without the second line a
+        // rejection landing between them turns this estimate into a re-opening.
+        .neq("status", "rejected")
         .select()
         .single();
       if (error) throw error;
@@ -128,8 +155,11 @@ export async function POST(request, { params }) {
         .eq("id", proposalId)
         .eq("organization_id", auth.orgId)
         // Only move a proposal that is still where we think it is. Two admins
-        // deciding at once should not both succeed.
+        // deciding at once should not both succeed — and neither of the two
+        // settled states may be decided out of, which is what makes a decline
+        // final rather than merely current.
         .neq("status", "accepted")
+        .neq("status", "rejected")
         .select()
         .single();
       if (error) throw error;
@@ -219,6 +249,9 @@ export async function POST(request, { params }) {
       .eq("id", proposalId)
       .eq("organization_id", auth.orgId)
       .neq("status", "accepted")
+      // A proposal declined a moment ago must not become an accepted one with a
+      // live project behind it. Losing this race unwinds the project below.
+      .neq("status", "rejected")
       .select()
       .single();
 

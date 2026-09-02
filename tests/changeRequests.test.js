@@ -137,13 +137,44 @@ describe("the chain can only be walked in order", () => {
 });
 
 describe("approval actually moves the project", () => {
-  it("applies the impact BEFORE the status changes", () => {
-    // Otherwise a failure leaves it approved-but-unapplied, and the trigger
-    // knows nothing about the project so nothing else protects that pair.
+  it("WINS THE TRANSITION before it moves the money", () => {
+    /**
+     * REVERSED, DELIBERATELY. This test used to assert the opposite ordering —
+     * impact first, status second — on the grounds that a failure would
+     * otherwise leave a request that says `approved` with nothing behind it.
+     * The cost of that ordering was worse than the thing it prevented: the
+     * compare-and-swap came AFTER the budget write, so it locked the change
+     * request's status and nothing else. Two Approve clicks arriving together
+     * both read `awaiting_client`, both added the cost to `projects.budget`,
+     * and only then did one of them lose the CAS and answer 503. The budget
+     * moved twice; the record of it existed once.
+     *
+     * The lock now decides who is allowed to act, so it goes first, and the
+     * state it used to prevent is paid for by the compensating undo below.
+     */
+    const update = ADVANCE.indexOf(".update(patch)");
     const apply = ADVANCE.indexOf("await applyImpact");
-    const update = ADVANCE.indexOf('.from("change_requests")\n      .update(patch)');
-    expect(apply).toBeGreaterThan(-1);
-    expect(apply).toBeLessThan(update === -1 ? Number.MAX_SAFE_INTEGER : update);
+    expect(update).toBeGreaterThan(-1);
+    expect(apply).toBeGreaterThan(update);
+  });
+
+  it("puts an approval back if the budget write fails", () => {
+    // What pays for the reordering above. The undo is itself CAS'd on the
+    // status this request wrote, so it can only ever unwind its own
+    // transition — never one somebody else made in between.
+    const idx = ADVANCE.indexOf("if (applied.error)");
+    const near = ADVANCE.slice(idx, idx + 700);
+    expect(idx).toBeGreaterThan(-1);
+    expect(near).toMatch(/status: cr\.status/);
+    expect(near).toMatch(/\.eq\("status", patch\.status\)/);
+  });
+
+  it("answers a lost race with 409, not 503", () => {
+    // A 503 says the server broke, and clients retry it — which for this route
+    // means asking again for the money to move. A lost CAS is a conflict.
+    const idx = ADVANCE.indexOf("if (!moved)");
+    expect(idx).toBeGreaterThan(-1);
+    expect(ADVANCE.slice(idx, idx + 300)).toContain("status: 409");
   });
 
   it("records what the budget and deadline WERE", () => {
