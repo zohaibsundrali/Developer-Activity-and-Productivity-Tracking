@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthedOrg, orgScopedClient } from '@/utils/serverAuth';
+import { authCan, requirePermission } from '@/utils/serverPermissions';
 
 /**
  * PRODUCTIVITY CALCULATION API
@@ -36,8 +37,39 @@ export async function GET(request) {
     const projectId = searchParams.get('projectId');
     const type = searchParams.get('type') || 'project'; // 'project', 'developer', 'overall'
 
-    const isAdminViewer = auth.userType === 'admin';
-    const isDeveloperViewer = auth.userType === 'developer';
+    // TWO KEYS, NOT A STORAGE COLUMN.
+    //
+    // These were `auth.userType === 'admin'` and `=== 'developer'`, and
+    // userType is which profile table the row lives in, not what the person may
+    // do: userTypeForRole() files nine of the twelve roles under "developer".
+    // A manager and a team lead therefore came out as `isDeveloperViewer`, were
+    // pinned to their own id, and were refused `type=overall` outright — while
+    // the catalogue grants both of them `report.view`, the key that means
+    // exactly "open reports". Delivery metrics for their own team were
+    // unreachable to the two roles whose job is to read them.
+    //
+    // WIDENING, STATED PLAINLY: manager and team_lead gain org-wide
+    // productivity here. That is `report.view`'s definition and it is what
+    // SUPERVISORS has meant everywhere else since the catalogue was written.
+    // It does NOT hand them the monitoring surface — screenshots and keystrokes
+    // sit behind `monitoring.view`, which is owner+admin, and this route does
+    // not read them.
+    const isAdminViewer = authCan(auth, 'report.view');
+    const isDeveloperViewer = !isAdminViewer && authCan(auth, 'productivity.view_own');
+
+    // NEITHER KEY IS NOW A REFUSAL, and it used to be a fall-through.
+    //
+    // Both flags were false for a client, and nothing below tested for that:
+    // `effectiveDeveloperId` fell back to the developerId in the QUERY STRING
+    // and the `type=overall` refusal was written as `isDeveloperViewer && ...`,
+    // so a client reached the org-wide branch unscoped. RLS saved it — the
+    // org-scoped client reads nothing a client may not see, and track_read
+    // carries `not public.auth_is_client()` — which is why this was an empty
+    // result rather than a leak. A route should not depend on the last gate to
+    // cover for the absence of the first one.
+    if (!isAdminViewer && !isDeveloperViewer) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     // A developer viewer is always scoped to their own identity (from the JWT),
     // never to a developerId supplied in the query string.
@@ -452,9 +484,11 @@ export async function POST(request) {
     if (!auth) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    if (auth.userType !== 'admin') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    // `userType !== 'admin'` meant owner+admin, which is what ADMINS is. Named
+    // as a key so an override can move it and so the check is legible next to
+    // every other one in the product.
+    const denied = requirePermission(auth, 'productivity.recalculate');
+    if (denied) return denied;
     const supabase = orgScopedClient(auth.token);
 
     const body = await request.json();

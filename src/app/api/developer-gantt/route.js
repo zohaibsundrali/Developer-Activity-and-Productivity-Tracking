@@ -25,16 +25,31 @@ export async function GET(request) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
+    // THE PERMISSION IS ASKED FIRST, AND IT DID NOT USED TO BE.
+    //
+    // This block opened with `if (auth.userType === 'developer')`, which self-
+    // scoped the caller and returned. `user_type` is a STORAGE column — it says
+    // which profile table the row lives in — and userTypeForRole() files nine
+    // of the twelve roles under "developer": manager, hr, finance, team_lead,
+    // qa, developer, designer, devops and employee. So a manager and a team
+    // lead, both of whom the catalogue grants `project.view_all`, hit the first
+    // branch every time and could never open anybody's chart but their own. The
+    // `else if` under it was unreachable for them.
+    //
+    // Asking the wide key first and falling back to the narrow one is what the
+    // paired keys exist for. Nobody loses anything: a developer holds
+    // project.view_own and not project.view_all, so they still self-scope — now
+    // because a permission says so rather than because of where their row is
+    // stored.
+    const wantsSomeoneElse =
+      developerIdParam && String(developerIdParam) !== String(auth.appUserId);
+
     let developerId;
-    if (auth.userType === 'developer') {
-      // A developer can only ever view their own gantt chart — never trust a
-      // developerId supplied via query string.
-      developerId = auth.appUserId;
-    } else if (authCan(auth, "project.view_all")) {
-      developerId = developerIdParam;
-      if (!developerId) {
-        return NextResponse.json({ success: false, error: 'Missing developerId' }, { status: 400 });
+    if (wantsSomeoneElse) {
+      if (!authCan(auth, 'project.view_all')) {
+        return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
       }
+      developerId = developerIdParam;
       // Verify the requested developer belongs to the caller's organization.
       const { data: devCheck, error: devCheckError } = await supabase
         .from('developers')
@@ -47,7 +62,11 @@ export async function GET(request) {
         return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
       }
     } else {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      if (!authCan(auth, 'project.view_own')) {
+        return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      }
+      // Their own chart, from the token — never from the query string.
+      developerId = auth.appUserId;
     }
 
     // Enforce project assignment

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, orgScopedClient } from "@/utils/serverAuth";
+import { authCan } from "@/utils/serverPermissions";
 export const dynamic = "force-dynamic";
 
 export async function GET(request) {
@@ -19,9 +20,16 @@ export async function GET(request) {
     const start = searchParams.get("start");
     const end = searchParams.get("end");
 
-    // A developer viewer may only read their own keystroke data — force the
-    // identity filters to their JWT identity regardless of query params.
-    if (auth.userType === "developer") {
+    // Anyone without the monitoring key reads only their own keystroke data —
+    // the identity filters are forced to the JWT identity regardless of query
+    // params.
+    //
+    // Behaviour is UNCHANGED by this rewrite and that is the point: userType
+    // "admin" is exactly owner+admin, and `monitoring.view` is ADMINS. The
+    // check now says what it means, so widening it later is an edit to the
+    // catalogue instead of a search for every route that spells the rule out
+    // in terms of which table a profile row lives in.
+    if (!authCan(auth, "monitoring.view")) {
       developerId = auth.appUserId;
       userId = null;
       email = auth.email;

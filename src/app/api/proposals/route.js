@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { requirePermission } from "@/utils/serverPermissions";
+import { defaultRolesFor } from "@/utils/permissionCatalogue";
 
 export const dynamic = "force-dynamic";
 
@@ -198,7 +199,14 @@ export async function POST(request) {
         .select("user_id, email, user_type, role")
         .eq("organization_id", auth.orgId)
         .eq("status", "active")
-        .in("role", ["owner", "admin", "manager"]);
+        // THE CATALOGUE, not a sixteenth hand-typed copy of a role list. This
+        // array said owner/admin/manager, which is what proposal.decide grants
+        // today — so it was right, and silently so: the day somebody widens
+        // that key this line would have gone on notifying the old three and
+        // the new decider would never learn a proposal had arrived. A wrong
+        // notification list is the kind of bug nobody reports, because the
+        // person who should have been told does not know they were not.
+        .in("role", defaultRolesFor("proposal.decide"));
 
       const rows = (deciders || []).map((m) => ({
         organization_id: auth.orgId,

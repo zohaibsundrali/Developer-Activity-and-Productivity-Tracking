@@ -10,6 +10,24 @@ import { ROLES } from '@/utils/roles';
 process.env.SUPABASE_SERVICE_ROLE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY || 'test-service-role-key';
 
+// WHY THE TIMEOUT IS RAISED HERE AND NOWHERE ELSE.
+//
+// The nine handlers below are pulled in lazily (`await notifyPOST()`), so the
+// FIRST test to reach a given route pays for vite transforming that route and
+// everything it imports. That cost lands inside the test's own budget while
+// seventy files are transforming in parallel, and it has pushed the first case
+// of a describe past the 5s default on a loaded machine — measuring the build,
+// not the handler.
+//
+// It failed in pairs, which is the part worth writing down. vitest gives up on
+// a timed-out test but cannot cancel the request already in flight; that
+// request finishes later and records its insert into `state.queries`, which
+// `beforeEach` has by then replaced with a fresh array for the NEXT test. So
+// the timeout was reported against `owner may send` and the visible assertion
+// failure — two notification inserts where one was expected — against
+// `admin may send`, a test with nothing wrong with it.
+vi.setConfig({ testTimeout: 30_000 });
+
 /**
  * THE ROUTES THAT ASKED WHO YOU WERE AND NEVER ASKED WHAT YOU MAY DO.
  *

@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
-import { requirePermission } from '@/utils/serverPermissions';
+import { authCan, requirePermission } from '@/utils/serverPermissions';
 import { requireUnlocked } from '@/utils/entitlements';
+
+/** The shape of every id column this route interpolates into a filter. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Roles allowed to review task submissions (matches permissions.js `review_tasks`).
 // QA and team_lead join the reviewers. Reviewing submitted work is the whole
@@ -436,11 +439,36 @@ export async function GET(request) {
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') || 'pending';
-    const adminId = searchParams.get('adminId');
+    const requestedAdminId = searchParams.get('adminId');
 
-    if (!adminId) {
+    // WHOSE QUEUE IS THIS? It used to be whoever the query string said.
+    //
+    // `adminId` was taken verbatim and never compared to the caller. The gate
+    // above is `task.review`, which REVIEWERS holds — owner, admin, manager,
+    // team_lead and qa — so any of them could name any other admin's id and
+    // read that person's review queue. The org filter below kept it inside the
+    // tenant, so this was horizontal exposure between colleagues rather than a
+    // cross-tenant leak, but "which projects is that director sitting on"
+    // is not a question a QA account should be able to ask by editing a URL.
+    //
+    // Default to the caller. Naming somebody else needs `task.view_all`, the
+    // key that already means "see work that is not yours".
+    const wantsSomeoneElse =
+      requestedAdminId && String(requestedAdminId) !== String(auth.appUserId);
+    if (wantsSomeoneElse && !authCan(auth, 'task.view_all')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const adminId = wantsSomeoneElse ? requestedAdminId : auth.appUserId;
+
+    // AND IT IS INTERPOLATED INTO A FILTER. `.or()` takes a PostgREST filter
+    // EXPRESSION, not bound parameters, so a comma or a dot in `adminId` is
+    // syntax: `?adminId=x,created_by.not.is.null` would have rewritten the
+    // clause into one that matches every project in the org. Nothing upstream
+    // constrained the shape of the value. A uuid check is the whole fix,
+    // because the column is a uuid and no legitimate id can fail it.
+    if (!UUID_RE.test(String(adminId))) {
       return NextResponse.json(
-        { error: 'Missing required query param: adminId' },
+        { error: 'Invalid adminId' },
         { status: 400 }
       );
     }

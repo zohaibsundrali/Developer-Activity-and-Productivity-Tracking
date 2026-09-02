@@ -172,14 +172,32 @@ describe("the checks a permission cannot express are still there", () => {
   });
 
   it("the self-scoping branches survive, so contributors keep their own data", () => {
-    // developer-gantt forces a developer to their own id BEFORE consulting the
-    // staff permission. Losing that would 403 every developer on the product's
-    // own gantt chart.
+    // THIS ASSERTION USED TO REQUIRE THE OPPOSITE ORDER, AND THAT WAS THE BUG.
+    //
+    // It read: the self-scoping branch must come BEFORE the staff permission —
+    // pinning `if (auth.userType === 'developer')` as the first test in the
+    // route. The fear behind it was real ("losing that would 403 every
+    // developer on the gantt chart") but the mechanism was wrong, because
+    // userType is a storage column: userTypeForRole() files nine of the twelve
+    // roles under "developer", so a manager and a team lead took the self-
+    // scoping branch too and the `authCan(project.view_all)` below it was
+    // unreachable for them. The test was green the whole time it was describing
+    // the defect.
+    //
+    // What the fear actually needs is that a contributor still ends up on their
+    // own id — which is now a permission (`project.view_own`) rather than a
+    // consequence of which table their profile row sits in. So: both keys
+    // present, the WIDE one asked first, and the narrow branch reading the
+    // identity from the token.
     const gantt = read("src/app/api/developer-gantt/route.js");
-    const selfBranch = gantt.indexOf("developerId = auth.appUserId");
-    const staffBranch = gantt.indexOf('authCan(auth, "project.view_all")');
-    expect(selfBranch).toBeGreaterThan(-1);
-    expect(staffBranch).toBeGreaterThan(selfBranch);
+    const wide = gantt.indexOf("project.view_all");
+    const narrow = gantt.indexOf("project.view_own");
+    expect(wide).toBeGreaterThan(-1);
+    expect(narrow).toBeGreaterThan(wide);
+    expect(gantt).toMatch(/developerId\s*=\s*auth\.appUserId/);
+    // and the query string can no longer decide it for a caller without the
+    // wide key — that is what `wantsSomeoneElse` gates
+    expect(gantt).toMatch(/wantsSomeoneElse/);
   });
 
   it("change-requests keeps the client branch the staff permission would refuse", () => {
