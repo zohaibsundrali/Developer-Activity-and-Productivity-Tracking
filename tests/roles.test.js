@@ -81,6 +81,11 @@ const ROLE_CHECK_MIGRATION = (() => {
   const sourceOf = (f) => readFileSync(path.join(dir, f), "utf8");
   for (const f of files) {
     const src = sourceOf(f);
+    // ONLY a real CHECK definition on this pass. The loose pattern below has
+    // twice picked a file that constrains nothing: 070 lists every role in its
+    // role_rank() function and so satisfied the assertions by accident, which
+    // masked the problem until 071 named three roles in an RLS policy and did
+    // not. 073's trigger does the same thing. A real definition always wins.
     if (/check\s*\(\s*role\s+in\s*\(/i.test(src)) return { name: f, src };
   }
   for (const f of files) {

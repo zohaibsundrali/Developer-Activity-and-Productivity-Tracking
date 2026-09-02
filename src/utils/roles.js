@@ -132,6 +132,28 @@ export function rankOf(role) {
 export const STAFF_ROLES = ROLES.filter((r) => userTypeForRole(r) === "developer");
 
 /**
+ * The roles a person can hold ON A PROJECT, as opposed to in the organization.
+ *
+ * The same names as ROLES on purpose: permissionEngine compares a project role
+ * against defaultRolesFor(key), which holds catalogue role names, so a separate
+ * vocabulary would need a mapping table — and a mapping table is the thing that
+ * goes stale. Kept in step with the CHECK constraint in migration 071.
+ *
+ * `owner`, `admin` and `client` are absent. The first two are organization-wide
+ * by definition and gain nothing from a project scope; a client's access to a
+ * project is decided by project_clients, which is a different question.
+ */
+export const PROJECT_ROLES = Object.freeze([
+  "manager",
+  "team_lead",
+  "qa",
+  "developer",
+  "designer",
+  "devops",
+  "employee",
+]);
+
+/**
  * Who may BE assigned as a project's manager.
  *
  * NOT A PERMISSION. Every entry in permissionCatalogue.js answers "may this

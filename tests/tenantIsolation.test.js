@@ -94,6 +94,11 @@ describe("every route that uses the service role", () => {
     // POST re-reads the target membership to confirm
     // `organization_id === auth.orgId` before writing — the check whose absence
     // let the developer-delete preview read across tenants.
-    expect(usingService.length).toBe(58);
+    //
+    // 58 -> 59: /api/projects/[id]/members. It resolves the project with
+    // `.eq("organization_id", auth.orgId)` before anything else, and answers
+    // 404 rather than 403 when that misses, so the route cannot confirm that a
+    // project id exists in another tenant.
+    expect(usingService.length).toBe(59);
   });
 });
