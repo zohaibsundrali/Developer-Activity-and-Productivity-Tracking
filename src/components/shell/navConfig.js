@@ -92,6 +92,9 @@ export const ADMIN_NAV = [
   { id: "team-stats", label: "Team Stats", icon: BarChart3 },
   { id: "organization", label: "Organization", icon: Building2 },
   { id: "clients", label: "Clients", icon: Handshake },
+  // The tenant billing ITS clients. `billing` below is what the tenant pays
+  // us for the subscription — two different moneys, kept apart.
+  { id: "invoicing", label: "Invoicing", icon: Receipt },
   { id: "billing", label: "Billing", icon: CreditCard },
   { id: "system-health", label: "System Health", icon: HeartPulse },
   // Beside System Health rather than beside Employees: this screen is about

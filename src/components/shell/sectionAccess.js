@@ -70,6 +70,10 @@ export const SECTION_PERMISSIONS = Object.freeze({
   // Delivery oversight rather than people operations: owner/admin/manager/
   // team_lead, all of whom are in the area already, so this widens nobody.
   "timesheet-approvals": "timesheet.approve",
+  // Client invoices and project margin. `invoice.view` rather than
+  // `pnl.view`: the P&L tab re-checks its own key at the route, so somebody
+  // with invoicing access but not P&L opens the screen and gets one tab.
+  invoicing: "invoice.view",
   // NOT IN THE SIDEBAR — its ADMIN_NAV entry is commented out — but still a
   // live `case` in the dashboard's section switch, so `?section=productivity`
   // rendered it. With no entry here `canAccessAdminSection` fell through to

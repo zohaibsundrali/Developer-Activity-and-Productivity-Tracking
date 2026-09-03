@@ -48,18 +48,27 @@ describe("the keys the feature introduced", () => {
     expect([...defaultRolesFor("timesheet.submit_own")].sort()).toEqual([...STAFF].sort());
   });
 
-  it("keeps approving to delivery oversight", () => {
+  it("keeps APPROVING to delivery oversight", () => {
     expect([...defaultRolesFor("timesheet.approve")].sort()).toEqual([...SUPERVISORS].sort());
-    expect([...defaultRolesFor("timesheet.view_all")].sort()).toEqual([...SUPERVISORS].sort());
   });
 
-  it("does not give finance the timesheet surface yet", () => {
-    // Billable hours feed invoicing and finance will need them — but with an
-    // invoice in front of it, as that feature's own decision. Asserted so the
-    // widening is a deliberate edit here rather than a quiet one elsewhere.
-    for (const key of ["timesheet.view_all", "timesheet.approve"]) {
-      expect(defaultRolesFor(key), key).not.toContain("finance");
-    }
+  it("lets finance READ hours, because invoicing needs them", () => {
+    // THIS TEST USED TO SAY THE OPPOSITE, and that is the point of it.
+    //
+    // 077 introduced `timesheet.view_all` without finance and this file
+    // asserted the absence, so that granting it later would have to be a
+    // deliberate edit here rather than a quiet one in the catalogue. 079 —
+    // invoicing from approved hours — is the invoice that was being waited for,
+    // and this is that edit.
+    //
+    // Reading hours to bill them is not approving them. `timesheet.approve` is
+    // untouched above: whether a week is right is still the call of the lead
+    // whose project the hours were booked to.
+    expect(defaultRolesFor("timesheet.view_all")).toContain("finance");
+    expect(defaultRolesFor("timesheet.approve")).not.toContain("finance");
+    expect([...defaultRolesFor("timesheet.view_all")].sort()).toEqual(
+      [...SUPERVISORS, "finance"].sort()
+    );
   });
 
   it("gives hr no say over delivery hours", () => {

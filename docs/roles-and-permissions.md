@@ -4,7 +4,7 @@
 
 # Roles and permissions
 
-12 roles, 77 permissions. Generated from `src/utils/permissionCatalogue.js`, which is the only place the defaults are written down.
+12 roles, 80 permissions. Generated from `src/utils/permissionCatalogue.js`, which is the only place the defaults are written down.
 
 A role says what somebody may **do**. It is not a job title — those live in `employee_profiles.designation` and can say anything. Two roles with identical permissions are one role with two names.
 
@@ -12,15 +12,15 @@ These are **defaults**. A tenant that wants something else gets it through the p
 
 ## Permissions by role
 
-How many of the 77 keys each role holds by default.
+How many of the 80 keys each role holds by default.
 
 | Role | Keys | What the role is for |
 |---|---:|---|
-| `owner` | 76 | Everything, and the only role that may buy, cancel or change the plan, delete the organization, or grant another person a permission. |
-| `admin` | 71 | Runs the organization day to day. Everything except the four owner-only keys. |
+| `owner` | 79 | Everything, and the only role that may buy, cancel or change the plan, delete the organization, or grant another person a permission. |
+| `admin` | 74 | Runs the organization day to day. Everything except the four owner-only keys. |
 | `manager` | 43 | Delivery. Projects, task assignment, the client-facing decisions, and reports. |
 | `hr` | 35 | People operations. Hiring, onboarding, the reporting line — and no access to delivery or money. |
-| `finance` | 17 | Money only. Billing and client accounts, deliberately WITHOUT the monitoring surface. |
+| `finance` | 21 | Money only. Billing and client accounts, deliberately WITHOUT the monitoring surface. |
 | `team_lead` | 33 | A contributor who also runs a team: reviews work, sees every task and project, reads reports. |
 | `qa` | 17 | A contributor who may also review other people's submissions and triage the bug queue. |
 | `developer` | 15 | Contributes. Own work, plus submitting it for review. |
@@ -66,7 +66,7 @@ How many of the 77 keys each role holds by default.
 | `leave.view_all` | See everyone's leave | `owner`, `admin`, `hr`, `manager` |
 | `leave.approve` | Approve or reject leave | `owner`, `admin`, `hr`, `manager` |
 | `leave.manage_types` | Configure leave types and quotas | `owner`, `admin`, `hr` |
-| `timesheet.view_all` | See everyone's timesheets | `owner`, `admin`, `manager`, `team_lead` |
+| `timesheet.view_all` | See everyone's timesheets | `owner`, `admin`, `manager`, `team_lead`, `finance` |
 | `timesheet.approve` | Approve or reject a submitted week | `owner`, `admin`, `manager`, `team_lead` |
 
 ### Projects
@@ -134,6 +134,9 @@ How many of the 77 keys each role holds by default.
 | `billing.view` | View billing | `owner`, `admin`, `finance` |
 | `billing.manage` | Change the subscription | `owner`, `admin`, `finance` |
 | `billing.purchase` | Buy, cancel or change the plan | `owner` |
+| `invoice.view` | View client invoices | `owner`, `admin`, `finance` |
+| `invoice.manage` | Raise and edit client invoices | `owner`, `admin`, `finance` |
+| `pnl.view` | View project profit and loss | `owner`, `admin`, `finance` |
 
 ### Oversight
 

@@ -40,6 +40,7 @@ import MyAttendance from "@/components/shared/MyAttendance";
 import MyLeave from "@/components/shared/MyLeave";
 import LeaveApprovals from "@/components/admin/LeaveApprovals";
 import TimesheetApprovals from "@/components/admin/TimesheetApprovals";
+import Invoicing from "@/components/admin/Invoicing";
 import { isSessionExpired, clearAdminSession, clearDeveloperSession } from "@/utils/sessionPolicy";
 import { Skeleton } from "@/components/ui";
 // The app's one dialog pattern (sweetalert2, wrapped). No second toast library.
@@ -99,6 +100,7 @@ const ADMIN_NAV_GROUPS = {
   "team-stats": "People",
   organization: "Workspace",
   clients: "Workspace",
+  invoicing: "Workspace",
   billing: "Workspace",
   "system-health": "Workspace",
 };
@@ -458,6 +460,8 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
         return <LeaveApprovals />;
       case "timesheet-approvals":
         return <TimesheetApprovals />;
+      case "invoicing":
+        return <Invoicing />;
       case "all-projects":
         return <AllProjects {...contentProps} />;
       case "requests":

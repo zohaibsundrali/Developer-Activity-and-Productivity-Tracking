@@ -112,6 +112,11 @@ describe("every route that uses the service role", () => {
     // read and write is scoped by `auth.orgId`, the week's totals are summed
     // from task_time_logs by the route rather than accepted from the body, and
     // the target timesheet is re-read scoped to the org before it is decided.
-    expect(usingService.length).toBe(62);
+    //
+    // 62 -> 63: /api/invoicing, added with invoicing and P&L (079). Every read
+    // is `.eq("organization_id", auth.orgId)`, the project is re-read scoped to
+    // the org before anything hangs off it, and the hours and rates on each
+    // line are read back from billable_hours_v rather than taken from the body.
+    expect(usingService.length).toBe(63);
   });
 });
