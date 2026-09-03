@@ -126,6 +126,7 @@ export const SECTION_PERMISSIONS = Object.freeze({
   "my-attendance": "attendance.view_own",
   "my-leave": "leave.request_own",
   "my-reviews": "review.view_own",
+  "my-activity": "productivity.view_own",
 
   account: null,
 });
@@ -156,6 +157,7 @@ export const NON_WIDENING_SECTIONS = Object.freeze([
   "my-attendance",
   "my-leave",
   "my-reviews",
+  "my-activity",
 ]);
 
 /**

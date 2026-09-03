@@ -16,6 +16,7 @@ import TeamPanel from "@/components/developer/TeamPanel";
 import MyAttendance from "@/components/shared/MyAttendance";
 import MyLeave from "@/components/shared/MyLeave";
 import MyReviews from "@/components/shared/MyReviews";
+import MyActivity from "@/components/shared/MyActivity";
 import { isSessionExpired, clearDeveloperSession, touchDeveloperSession } from "@/utils/sessionPolicy";
 import { Skeleton } from "@/components/ui";
 
@@ -357,6 +358,8 @@ function DeveloperDashboardContent() {
         return <MyLeave />;
       case "my-reviews":
         return <MyReviews />;
+      case "my-activity":
+        return <MyActivity />;
       case "account":
         return <Account user={user} />;
       case "overview":

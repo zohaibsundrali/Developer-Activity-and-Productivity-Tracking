@@ -437,6 +437,15 @@ describe("the catalogue agrees with the section table it replaced", () => {
       // owner/admin/manager/finance, all in the area already.
       reason: "new module; client contracts, owner/admin/manager/finance",
     },
+    {
+      section: "my-activity",
+      key: "productivity.view_own",
+      // The LAST of the nine `*_own` keys to get a surface. #74 created them
+      // because `user_type` was standing in for authorization; six got a screen
+      // then, and productivity.view_own, monitoring.view_own and team.view_own
+      // did not. A key with no screen is the fault #74 existed to fix.
+      reason: "new screen; the last three *_own keys that had no surface",
+    },
   ];
 
   it("does not gate a section nobody had a rule for", () => {
