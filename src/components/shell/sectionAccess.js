@@ -83,6 +83,10 @@ export const SECTION_PERMISSIONS = Object.freeze({
   quality: "test_case.view",
   // Running the cycle is people operations: owner/admin/hr, all in the area.
   performance: "review_cycle.manage",
+  // An OPENING is not PII; a candidate is. The section is gated on job.view
+  // (owner/admin/hr/manager/team_lead, all in the area) and the applicants
+  // inside it are gated again by the route and by RLS.
+  recruitment: "job.view",
   // NOT IN THE SIDEBAR — its ADMIN_NAV entry is commented out — but still a
   // live `case` in the dashboard's section switch, so `?section=productivity`
   // rendered it. With no entry here `canAccessAdminSection` fell through to

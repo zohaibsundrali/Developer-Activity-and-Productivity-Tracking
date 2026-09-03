@@ -410,6 +410,15 @@ describe("the catalogue agrees with the section table it replaced", () => {
       // process to produce one. owner/admin/hr, all in the area already.
       reason: "new module; review cycles, owner/admin/hr",
     },
+    {
+      section: "recruitment",
+      key: "job.view",
+      // A NEW SCREEN. Everything about a person AFTER they join existed;
+      // nothing before. Gated on job.view rather than candidate.view on
+      // purpose: an opening is not PII, and the applicants inside it are gated
+      // again by the route and by RLS.
+      reason: "new module; job openings, owner/admin/hr/manager/team_lead",
+    },
   ];
 
   it("does not gate a section nobody had a rule for", () => {
