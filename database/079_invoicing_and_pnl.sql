@@ -233,7 +233,12 @@ create trigger trg_invoice_lines_sync
 --  `rate` may be NULL. The screen shows those rows and refuses to bill them,
 --  rather than hiding hours somebody worked because nobody set a price.
 
-create or replace view public.billable_hours_v as
+--  `security_invoker` so this view reads its base tables AS THE CALLER.
+--  Without it a view runs with its OWNER's privileges and every RLS policy
+--  underneath is skipped -- see 087, which is the migration that had to go
+--  and fix all six of these after the fact.
+create or replace view public.billable_hours_v
+  with (security_invoker = true) as
 --  AGGREGATED FIRST, THEN ASKED ABOUT.
 --
 --  The obvious shape puts the `exists (... invoiced ...)` in the select list of
@@ -303,7 +308,12 @@ join public.projects p on p.id = a.project_id;
 --  `total_hours` so the gap is visible. A margin computed as if unpriced people
 --  were free is the single most misleading number this view could produce.
 
-create or replace view public.project_pnl_v as
+--  `security_invoker` so this view reads its base tables AS THE CALLER.
+--  Without it a view runs with its OWNER's privileges and every RLS policy
+--  underneath is skipped -- see 087, which is the migration that had to go
+--  and fix all six of these after the fact.
+create or replace view public.project_pnl_v
+  with (security_invoker = true) as
 with hours as (
   select
     l.organization_id,
