@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { defaultRolesFor } from "@/utils/permissionCatalogue";
+import { authCan } from "@/utils/serverPermissions";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +28,19 @@ export const dynamic = "force-dynamic";
  * unwound.
  */
 
-const STAFF_DECIDERS = ["owner", "admin", "manager"];
+/**
+ * Who decides a change request, read from the catalogue rather than typed here.
+ *
+ * This was `["owner", "admin", "manager"]` — the same three roles
+ * `change_request.decide` already grants, written down a second time. The
+ * proposals route had the identical pattern and it was replaced for the same
+ * reason: two copies of one answer drift, and the one nobody is looking at
+ * drifts first.
+ *
+ * Still an ARRAY because it is used twice over: once as a guard, and once as a
+ * PostgREST `.in("role", …)` filter to find who to notify.
+ */
+const STAFF_DECIDERS = defaultRolesFor("change_request.decide");
 
 /**
  * WHERE EACH STEP MAY BE TAKEN FROM.
@@ -90,7 +104,10 @@ export async function POST(request, { params }) {
     if (!cr) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
     const isClient = auth.userType === "client";
-    const isStaffDecider = !isClient && STAFF_DECIDERS.includes(auth.role);
+    // The GUARD asks the key — that is what honours a per-person override. The
+    // array above is still right for the notification query, which is asking
+    // "which roles should hear about this", not "may this caller act".
+    const isStaffDecider = !isClient && authCan(auth, "change_request.decide");
 
     // A client may only act on a change request for a project it is on.
     if (isClient) {

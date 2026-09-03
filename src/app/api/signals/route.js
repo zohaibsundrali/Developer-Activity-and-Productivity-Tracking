@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { resolveEntitlement, getUsage } from "@/utils/entitlements";
-import { runDetectors, filterForViewer, SIGNAL_ROLES, DEFAULTS } from "@/utils/signals";
+import { runDetectors, filterForViewer, DEFAULTS } from "@/utils/signals";
+import { authCan } from "@/utils/serverPermissions";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,11 @@ export async function GET(request) {
   try {
     const auth = await getAuthedOrg(request);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    if (auth.userType === "client" || !SIGNAL_ROLES.includes(auth.role)) {
+    // ASK THE KEY, NOT THE LIST. `SIGNAL_ROLES` is owner/admin/hr + manager +
+    // team_lead, which is exactly what `signal.view` grants — the two were the
+    // same set written down twice, which is how they stop being the same set.
+    // `authCan` also honours a per-person override; a role array cannot.
+    if (!authCan(auth, "signal.view")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
