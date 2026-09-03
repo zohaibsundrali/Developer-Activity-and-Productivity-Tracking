@@ -183,12 +183,33 @@ describe("finance sees money and NOT monitoring", () => {
   });
 
   it("can act on billing in the API layer", () => {
-    // billing/subscription now asks for the permission; billing/access still
-    // names finance inline, and both must keep admitting them.
+    // billing/subscription asks for the permission, and finance holds it.
     expect(read("src/app/api/billing/subscription/route.js"))
       .toContain('requirePermission(auth, "billing.view")');
     expect(roleCan("finance", "billing.view")).toBe(true);
-    expect(read("src/app/api/billing/access/route.js")).toContain('"finance"');
+  });
+
+  it("is not offered a payment path it would be refused at", () => {
+    // THIS ASSERTION USED TO READ `expect(access).toContain('"finance"')`, and
+    // its own comment admitted what it was doing: "billing/access still names
+    // finance inline". It was pinning the old implementation's TEXT, not a
+    // rule — and the text was a bug.
+    //
+    // `canPay` was the BILLING set (owner, admin, finance). Checkout and cancel
+    // both require `billing.purchase`, which is OWNER ONLY and deliberately so
+    // — the test below this one says exactly that. So an admin or a finance
+    // lead on a locked organization was told they could pay, sent to
+    // /admin/upgrade, and refused when they arrived.
+    //
+    // The rule, asserted instead of the text: whatever decides `canPay` is the
+    // same key that decides whether paying works.
+    const access = read("src/app/api/billing/access/route.js");
+    expect(access).toContain('canPay: authCan(auth, "billing.purchase")');
+    for (const route of ["checkout", "cancel"]) {
+      expect(read(`src/app/api/billing/${route}/route.js`), route)
+        .toContain('requirePermission(auth, "billing.purchase")');
+    }
+    expect(roleCan("finance", "billing.purchase")).toBe(false);
   });
 
   it("still cannot buy, cancel or open the Stripe portal", () => {

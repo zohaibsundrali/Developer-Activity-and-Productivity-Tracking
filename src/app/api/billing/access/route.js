@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { authCan } from "@/utils/serverPermissions";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { accessState, lockMessage } from "@/utils/billingAccess";
 
@@ -74,9 +75,22 @@ export async function GET(request) {
       // the gate shows them "ask your admin" instead. Decided here because the
       // server already knows the role and the browser should not be the one
       // deciding who may pay.
-      canPay: !auth.userType || auth.userType !== "client"
-        ? ["owner", "admin", "finance"].includes(auth.role)
-        : false,
+      //
+      // A BUG, NOT A TIDY-UP. This said ["owner","admin","finance"] — the
+      // BILLING set — while /api/billing/checkout and /api/billing/cancel both
+      // require `billing.purchase`, which is OWNER ONLY and deliberately so:
+      // the catalogue argues at length that starting or cancelling a
+      // subscription spends money and does not belong to admin.
+      //
+      // So an admin or a finance lead on a locked organization was told they
+      // could pay, sent to /admin/upgrade, and refused by checkout when they
+      // got there. That is exactly the dead end the comment above says this
+      // field exists to prevent, and the field itself was causing it.
+      //
+      // Asking the same key checkout asks is the fix. It NARROWS what the UI
+      // offers — admin and finance now see "ask your owner" instead of a button
+      // that fails — and it makes the promise match what happens.
+      canPay: authCan(auth, "billing.purchase"),
       // Where the UI should send a locked user who can pay. One place, so the
       // screen and the route cannot disagree about the destination.
       payUrl: "/admin/upgrade",
