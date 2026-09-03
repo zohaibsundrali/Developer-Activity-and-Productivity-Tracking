@@ -42,6 +42,8 @@ import LeaveApprovals from "@/components/admin/LeaveApprovals";
 import TimesheetApprovals from "@/components/admin/TimesheetApprovals";
 import Invoicing from "@/components/admin/Invoicing";
 import Quality from "@/components/admin/Quality";
+import Performance from "@/components/admin/Performance";
+import MyReviews from "@/components/shared/MyReviews";
 import { isSessionExpired, clearAdminSession, clearDeveloperSession } from "@/utils/sessionPolicy";
 import { Skeleton } from "@/components/ui";
 // The app's one dialog pattern (sweetalert2, wrapped). No second toast library.
@@ -81,6 +83,7 @@ const ADMIN_NAV_GROUPS = {
   projects: "My Work",
   "my-attendance": "My Work",
   "my-leave": "My Work",
+  "my-reviews": "My Work",
   "all-projects": "Delivery",
   requests: "Delivery",
   "change-requests": "Delivery",
@@ -98,6 +101,7 @@ const ADMIN_NAV_GROUPS = {
   employees: "People",
   hierarchy: "People",
   "leave-approvals": "People",
+  performance: "People",
   capacity: "People",
   "team-stats": "People",
   organization: "Workspace",
@@ -458,6 +462,8 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
         return <MyAttendance />;
       case "my-leave":
         return <MyLeave />;
+      case "my-reviews":
+        return <MyReviews />;
       case "leave-approvals":
         return <LeaveApprovals />;
       case "timesheet-approvals":
@@ -466,6 +472,8 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
         return <Invoicing />;
       case "quality":
         return <Quality projects={projects} />;
+      case "performance":
+        return <Performance developers={developers} />;
       case "all-projects":
         return <AllProjects {...contentProps} />;
       case "requests":

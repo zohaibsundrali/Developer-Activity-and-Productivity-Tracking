@@ -205,6 +205,7 @@ describe("the two shells still say the same thing", () => {
       "projects",
       "my-attendance",
       "my-leave",
+      "my-reviews",
       "account",
     ]);
   });

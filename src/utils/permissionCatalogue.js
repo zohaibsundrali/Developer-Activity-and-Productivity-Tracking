@@ -179,6 +179,20 @@ export const PERMISSIONS = Object.freeze([
   // is untouched.
   { key: "timesheet.view_all", roles: [...SUPERVISORS, "finance"], module: "people", label: "See everyone's timesheets" },
   { key: "timesheet.approve", roles: SUPERVISORS, module: "people", label: "Approve or reject a submitted week" },
+  // ── Performance ───────────────────────────────────────────────────────
+  //
+  // WRITING a review is wider than RUNNING the cycle: a manager and a team lead
+  // assess the people they work with, while opening and closing the period is
+  // people operations. PEOPLE_READERS is exactly that set and already exists.
+  //
+  // There is no `review.view_all` for manager or team_lead. A reviewer reads
+  // the reviews they wrote — the RLS policy in 083 grants that on authorship,
+  // not on a key — and reading everybody else's assessment of everybody is a
+  // different thing that belongs with HR.
+  { key: "review_cycle.manage", roles: PEOPLE, module: "people", label: "Open and close a review cycle" },
+  { key: "review.write", roles: PEOPLE_READERS, module: "people", label: "Write a performance review" },
+  { key: "review.view_all", roles: PEOPLE, module: "people", label: "Read everyone's reviews" },
+  { key: "goal.manage", roles: PEOPLE_READERS, module: "people", label: "Set and update goals" },
 
   // ── Projects ────────────────────────────────────────────────────────────
   { key: "project.view_all", roles: SUPERVISORS, module: "projects", label: "View every project" },
@@ -310,6 +324,7 @@ export const PERMISSIONS = Object.freeze([
   { key: "attendance.log_own", roles: STAFF, module: "own", label: "Check yourself in and out" },
   { key: "leave.view_own", roles: STAFF, module: "own", label: "See your own leave" },
   { key: "leave.request_own", roles: STAFF, module: "own", label: "Request leave" },
+  { key: "review.view_own", roles: STAFF, module: "own", label: "Read your shared review and goals" },
 
   // ── Money ───────────────────────────────────────────────────────────────
   { key: "billing.view", roles: BILLING, module: "billing", label: "View billing", legacy: "view_billing" },
