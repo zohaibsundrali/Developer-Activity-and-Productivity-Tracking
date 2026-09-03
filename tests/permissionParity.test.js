@@ -380,6 +380,14 @@ describe("the catalogue agrees with the section table it replaced", () => {
       // area already, so it admits nobody new.
       reason: "new module; delivery oversight, all four roles already in the area",
     },
+    {
+      section: "invoicing",
+      key: "invoice.view",
+      // A NEW SCREEN. Client invoices existed as rows inside Client Management
+      // with a hand-typed amount; nothing gated them as their own surface, and
+      // owner/admin/finance are all in the area already.
+      reason: "new screen; client invoicing and P&L, owner/admin/finance",
+    },
   ];
 
   it("does not gate a section nobody had a rule for", () => {

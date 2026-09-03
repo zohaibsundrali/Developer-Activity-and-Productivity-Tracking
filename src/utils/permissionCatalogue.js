@@ -170,7 +170,13 @@ export const PERMISSIONS = Object.freeze([
   // billable hours feed invoicing and finance will need them, but that is the
   // invoicing feature's decision to make with an invoice in front of it, not a
   // widening smuggled in early.
-  { key: "timesheet.view_all", roles: SUPERVISORS, module: "people", label: "See everyone's timesheets" },
+  // WIDENED BY ONE, deliberately and later than the key itself. 077 introduced
+  // this without `finance` and said so: billable hours feed invoicing and
+  // finance would need them, but with an invoice in front of it rather than as
+  // a widening smuggled in early. 079 is that invoice. Finance reads hours to
+  // bill them; approving a week is still delivery's call, so `timesheet.approve`
+  // is untouched.
+  { key: "timesheet.view_all", roles: [...SUPERVISORS, "finance"], module: "people", label: "See everyone's timesheets" },
   { key: "timesheet.approve", roles: SUPERVISORS, module: "people", label: "Approve or reject a submitted week" },
 
   // ── Projects ────────────────────────────────────────────────────────────
@@ -285,6 +291,20 @@ export const PERMISSIONS = Object.freeze([
   // charge. Mapping them to `billing.manage` would have handed that to admin
   // and finance under cover of a refactor.
   { key: "billing.purchase", roles: OWNER_ONLY, module: "billing", label: "Buy, cancel or change the plan" },
+  // CLIENT invoices, which are not the same thing as the `billing.*` keys above.
+  // Those govern what this organization pays US for the subscription; these
+  // govern what this organization bills its own clients. One is the product's
+  // revenue, the other is the tenant's — reusing billing.view for both would
+  // have made "can see billing" mean two unrelated things.
+  { key: "invoice.view", roles: BILLING, module: "billing", label: "View client invoices" },
+  { key: "invoice.manage", roles: BILLING, module: "billing", label: "Raise and edit client invoices" },
+  // NOT manager, and this is the one exclusion in the file worth arguing about.
+  // P&L is revenue minus cost, and cost is hours times `employee_profiles.
+  // cost_rate` — which is what a person is paid, spread over an hour. A manager
+  // wanting their project's margin is a fair ask; it does not outweigh their
+  // team's pay staying private, and there is no way to show one without the
+  // other while cost is computed per person.
+  { key: "pnl.view", roles: BILLING, module: "billing", label: "View project profit and loss" },
 
   // ── Oversight ───────────────────────────────────────────────────────────
   { key: "report.view", roles: SUPERVISORS, module: "oversight", label: "Open reports", legacy: "view_reports" },
