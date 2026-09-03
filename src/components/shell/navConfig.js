@@ -3,6 +3,7 @@ import {
   ListChecks,
   FolderKanban,
   ClipboardCheck,
+  ClipboardList,
   Clock,
   Activity,
   Users,
@@ -67,6 +68,9 @@ export const ADMIN_NAV = [
   // Beside Task Reviews: both are a queue of somebody else's work waiting on
   // a decision, and a lead works through them in the same sitting.
   { id: "timesheet-approvals", label: "Timesheet Approvals", icon: Clock },
+  // Directly above Bugs: a defect is what comes OUT of a test run, and the
+  // two screens are read in that order.
+  { id: "quality", label: "Quality", icon: ClipboardList },
   { id: "bugs", label: "Bugs", icon: Bug },
   { id: "developer-activity", label: "Developer Activity", icon: Activity },
   { id: "reports", label: "Reports", icon: FileBarChart },

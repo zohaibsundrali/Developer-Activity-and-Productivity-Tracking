@@ -112,6 +112,7 @@ const STAFF = ROLES.filter((r) => r !== "client");
  */
 const ATTENDANCE_OVERSIGHT = ["owner", "admin", "hr", "manager"];
 
+
 /**
  * The registry.
  *
@@ -211,6 +212,35 @@ export const PERMISSIONS = Object.freeze([
   { key: "task.submit", roles: CONTRIBUTORS, module: "delivery", label: "Submit work for review", legacy: "submit_task" },
   { key: "sprint.view", roles: SUPERVISORS, module: "delivery", label: "Open sprints" },
   { key: "bug.triage", roles: REVIEWERS, module: "delivery", label: "Triage the bug queue" },
+  // ── Quality ───────────────────────────────────────────────────────────
+  //
+  // A test case is not a task, which is why 081 gives it a table rather than a
+  // task_type. A task is done once; a test case is a question you ask again of
+  // every build, and its history is the answer changing over time.
+  //
+  // ALL FOUR ARE REVIEWERS TODAY, and the four keys are kept separate for what
+  // comes next rather than for what is here now.
+  //
+  // The design wants reading and EXECUTING to be wider than writing: a
+  // developer should see what will be checked before calling something
+  // finished, and testing is not something QA does alone. That widening is
+  // NOT made here, and the reason is the one this codebase keeps relearning —
+  // `developer`, `designer` and `devops` cannot enter /admin, so granting them
+  // test_case.view would have handed them a key with no screen. Worse, the
+  // Quality section is gated on a key, and ADMIN_AREA_ROLES is derived by
+  // flattening every gated section's roles, so it would have opened the admin
+  // FRONT DOOR to all three. tests/roleDashboards.test.js caught exactly that.
+  //
+  // The widening lands when the staff shell gets a Quality surface, the same
+  // way finance waited for an invoice before gaining timesheet.view_all.
+  //
+  // What IS already true: writing a case is a QA decision, and a developer
+  // editing the test that judges their own work is the shape this module
+  // refuses whatever else changes.
+  { key: "test_case.view", roles: REVIEWERS, module: "delivery", label: "See the test cases" },
+  { key: "test_case.manage", roles: REVIEWERS, module: "delivery", label: "Write and edit test cases" },
+  { key: "test_run.manage", roles: REVIEWERS, module: "delivery", label: "Start and close a test run" },
+  { key: "test_run.execute", roles: REVIEWERS, module: "delivery", label: "Record a test result" },
 
   // ── Client-facing ───────────────────────────────────────────────────────
   { key: "proposal.view", roles: SUPERVISORS, module: "clients", label: "View incoming requests" },

@@ -4,7 +4,7 @@
 
 # Roles and permissions
 
-12 roles, 80 permissions. Generated from `src/utils/permissionCatalogue.js`, which is the only place the defaults are written down.
+12 roles, 84 permissions. Generated from `src/utils/permissionCatalogue.js`, which is the only place the defaults are written down.
 
 A role says what somebody may **do**. It is not a job title — those live in `employee_profiles.designation` and can say anything. Two roles with identical permissions are one role with two names.
 
@@ -12,17 +12,17 @@ These are **defaults**. A tenant that wants something else gets it through the p
 
 ## Permissions by role
 
-How many of the 80 keys each role holds by default.
+How many of the 84 keys each role holds by default.
 
 | Role | Keys | What the role is for |
 |---|---:|---|
-| `owner` | 79 | Everything, and the only role that may buy, cancel or change the plan, delete the organization, or grant another person a permission. |
-| `admin` | 74 | Runs the organization day to day. Everything except the four owner-only keys. |
-| `manager` | 43 | Delivery. Projects, task assignment, the client-facing decisions, and reports. |
+| `owner` | 83 | Everything, and the only role that may buy, cancel or change the plan, delete the organization, or grant another person a permission. |
+| `admin` | 78 | Runs the organization day to day. Everything except the four owner-only keys. |
+| `manager` | 47 | Delivery. Projects, task assignment, the client-facing decisions, and reports. |
 | `hr` | 35 | People operations. Hiring, onboarding, the reporting line — and no access to delivery or money. |
 | `finance` | 21 | Money only. Billing and client accounts, deliberately WITHOUT the monitoring surface. |
-| `team_lead` | 33 | A contributor who also runs a team: reviews work, sees every task and project, reads reports. |
-| `qa` | 17 | A contributor who may also review other people's submissions and triage the bug queue. |
+| `team_lead` | 37 | A contributor who also runs a team: reviews work, sees every task and project, reads reports. |
+| `qa` | 21 | A contributor who may also review other people's submissions and triage the bug queue. |
 | `developer` | 15 | Contributes. Own work, plus submitting it for review. |
 | `designer` | 15 | Identical to developer today. Separate so the two can diverge without a data migration. |
 | `devops` | 15 | Identical to developer today (migration 067). |
@@ -93,6 +93,10 @@ How many of the 80 keys each role holds by default.
 | `task.submit` | Submit work for review | `developer`, `designer`, `devops`, `qa`, `employee`, `team_lead` |
 | `sprint.view` | Open sprints | `owner`, `admin`, `manager`, `team_lead` |
 | `bug.triage` | Triage the bug queue | `owner`, `admin`, `manager`, `team_lead`, `qa` |
+| `test_case.view` | See the test cases | `owner`, `admin`, `manager`, `team_lead`, `qa` |
+| `test_case.manage` | Write and edit test cases | `owner`, `admin`, `manager`, `team_lead`, `qa` |
+| `test_run.manage` | Start and close a test run | `owner`, `admin`, `manager`, `team_lead`, `qa` |
+| `test_run.execute` | Record a test result | `owner`, `admin`, `manager`, `team_lead`, `qa` |
 
 ### Clients
 
