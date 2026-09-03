@@ -419,6 +419,15 @@ describe("the catalogue agrees with the section table it replaced", () => {
       // again by the route and by RLS.
       reason: "new module; job openings, owner/admin/hr/manager/team_lead",
     },
+    {
+      section: "assets",
+      key: "asset.view",
+      // A NEW SCREEN. `employee.onboard` and `employee.activate` have existed
+      // since 058 and offboarding never had anything to hand back — the product
+      // could hire, review, pay and release somebody without ever saying what
+      // they were holding. owner/admin/hr/finance, all in the area already.
+      reason: "new module; asset register, owner/admin/hr/finance",
+    },
   ];
 
   it("does not gate a section nobody had a rule for", () => {
