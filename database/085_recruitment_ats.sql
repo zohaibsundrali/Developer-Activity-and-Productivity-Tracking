@@ -225,7 +225,12 @@ create trigger trg_candidate_outcome_final
 --  `in_play` excludes anybody with an outcome, which is why stage and outcome
 --  had to be separate columns.
 
-create or replace view public.job_opening_pipeline_v as
+--  `security_invoker` so this view reads its base tables AS THE CALLER.
+--  Without it a view runs with its OWNER's privileges and every RLS policy
+--  underneath is skipped -- see 087, which is the migration that had to go
+--  and fix all six of these after the fact.
+create or replace view public.job_opening_pipeline_v
+  with (security_invoker = true) as
 select
   o.organization_id,
   o.id                                                              as job_opening_id,
