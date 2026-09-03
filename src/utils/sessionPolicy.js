@@ -1,3 +1,4 @@
+import { clearPermissionSet } from "@/utils/permissions";
 export const SESSION_MAX_AGE_DAYS = 7;
 export const SESSION_MAX_AGE_MS = SESSION_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
 // Cookie expiry has a small grace window so middleware doesn't redirect right at the boundary.
@@ -85,6 +86,9 @@ function clearServerSession() {
 }
 
 export function clearAdminSession() {
+  // The next person to sign in on this browser must not inherit this one's
+  // permission set — including their exceptions.
+  try { clearPermissionSet(); } catch { /* nothing to clear */ }
   const primary = getPrimaryStorage();
   const legacy = getLegacyStorage();
   safeRemove(primary, 'adminUser');
@@ -95,6 +99,9 @@ export function clearAdminSession() {
 }
 
 export function clearDeveloperSession() {
+  // The next person to sign in on this browser must not inherit this one's
+  // permission set — including their exceptions.
+  try { clearPermissionSet(); } catch { /* nothing to clear */ }
   const primary = getPrimaryStorage();
   const legacy = getLegacyStorage();
   safeRemove(primary, 'developerUser');

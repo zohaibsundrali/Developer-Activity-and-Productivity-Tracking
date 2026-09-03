@@ -5,6 +5,7 @@ import { supabase } from "@/utils/supabaseClient";
 import { useRouter } from "next/navigation";
 import { SESSION_MAX_AGE_DAYS } from "@/utils/sessionPolicy";
 import { loadOrgContext, isMembershipActive } from "@/utils/orgContext";
+import { loadPermissionSet } from "@/utils/permissions";
 import { authFetch } from "@/utils/authFetch";
 import { dashboardHomeFor } from "@/utils/dashboardHome";
 
@@ -145,6 +146,17 @@ export default function LoginPage() {
         throw new Error(
           "Your account has been deactivated. Please contact your administrator."
         );
+      }
+
+      // Fetch the permission set — the role PLUS whatever exceptions have been
+      // written against this person. Until 094 the browser only ever knew the
+      // role, so a denied capability still showed its button and RLS refused it
+      // on the way through. Best effort: a failure leaves the role-only
+      // fallback, which is what this screen has always used.
+      try {
+        await loadPermissionSet(authFetch);
+      } catch {
+        // Never blocks a sign-in. The routes and RLS remain the real gates.
       }
 
       const userSession = {
