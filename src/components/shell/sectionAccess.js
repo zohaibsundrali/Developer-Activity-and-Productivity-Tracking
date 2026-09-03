@@ -81,6 +81,8 @@ export const SECTION_PERMISSIONS = Object.freeze({
   // front door to all three; roleDashboards caught it. See the note beside the
   // key in permissionCatalogue.js.
   quality: "test_case.view",
+  // Running the cycle is people operations: owner/admin/hr, all in the area.
+  performance: "review_cycle.manage",
   // NOT IN THE SIDEBAR — its ADMIN_NAV entry is commented out — but still a
   // live `case` in the dashboard's section switch, so `?section=productivity`
   // rendered it. With no entry here `canAccessAdminSection` fell through to
@@ -114,6 +116,7 @@ export const SECTION_PERMISSIONS = Object.freeze({
   // staff member with no delivery role opened it and found nothing.
   "my-attendance": "attendance.view_own",
   "my-leave": "leave.request_own",
+  "my-reviews": "review.view_own",
 
   account: null,
 });
@@ -143,6 +146,7 @@ export const NON_WIDENING_SECTIONS = Object.freeze([
   "projects",
   "my-attendance",
   "my-leave",
+  "my-reviews",
 ]);
 
 /**

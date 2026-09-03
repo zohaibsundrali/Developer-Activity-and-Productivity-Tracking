@@ -33,6 +33,8 @@ export const SECTION_TITLES = {
   "my-work": { admin: "My Work", developer: "My Work" },
   "my-attendance": { admin: "My Attendance", developer: "My Attendance" },
   "my-leave": { admin: "My Leave", developer: "My Leave" },
+  "my-reviews": { admin: "My Reviews", developer: "My Reviews" },
+  performance: { admin: "Performance" },
   "leave-approvals": { admin: "Leave Approvals" },
   "timesheet-approvals": { admin: "Timesheet Approvals" },
   invoicing: { admin: "Invoicing" },

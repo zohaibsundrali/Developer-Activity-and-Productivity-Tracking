@@ -123,6 +123,11 @@ describe("every route that uses the service role", () => {
     // the org before its executions are listed, so a run id from another tenant
     // answers 404 rather than leaking its shape; and a run's scope is read from
     // test_cases rather than taken from the body.
-    expect(usingService.length).toBe(64);
+    //
+    // 64 -> 65: /api/performance, added with review cycles (083). Every read
+    // and write is `.eq("organization_id", auth.orgId)`; the cycle and the
+    // review are re-read scoped to the org before either is changed; and the
+    // reviewer is always `auth.appUserId`, never a value from the body.
+    expect(usingService.length).toBe(65);
   });
 });

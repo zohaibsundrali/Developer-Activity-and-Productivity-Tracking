@@ -397,6 +397,19 @@ describe("the catalogue agrees with the section table it replaced", () => {
       // whom are in the area already.
       reason: "new module; test cases and runs, the reviewer roles",
     },
+    {
+      section: "my-reviews",
+      key: "review.view_own",
+      reason: "new module; everybody is reviewed, an owner included",
+    },
+    {
+      section: "performance",
+      key: "review_cycle.manage",
+      // A NEW SCREEN. `employee_profiles.performance` has been a jsonb column
+      // since 015 that nothing ever wrote to — a place to put an answer with no
+      // process to produce one. owner/admin/hr, all in the area already.
+      reason: "new module; review cycles, owner/admin/hr",
+    },
   ];
 
   it("does not gate a section nobody had a rule for", () => {
