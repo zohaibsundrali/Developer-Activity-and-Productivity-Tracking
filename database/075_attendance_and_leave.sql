@@ -275,7 +275,12 @@ create trigger trg_leave_apply_attendance
 --  an organization that has not set a quota has no remaining figure, and 0
 --  would read as "you have none left".
 
-create or replace view public.leave_balances_v as
+--  `security_invoker` so this view reads its base tables AS THE CALLER.
+--  Without it a view runs with its OWNER's privileges and every RLS policy
+--  underneath is skipped -- see 087, which is the migration that had to go
+--  and fix all six of these after the fact.
+create or replace view public.leave_balances_v
+  with (security_invoker = true) as
 select
   lt.organization_id,
   r.user_id,
