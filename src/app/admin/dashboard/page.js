@@ -29,6 +29,13 @@ import BillingSubscription from "@/components/admin/BillingSubscription";
 import SystemHealth from "@/components/admin/SystemHealth";
 import PermissionsPanel from "@/components/admin/PermissionsPanel";
 import AdminAccount from "@/components/admin/AdminAccount";
+// The own-work screens, shared with the staff dashboard rather than rebuilt.
+// Both read their identity from the session through getOrgContext(), so they do
+// not care which shell renders them — see the note on the my-work/timesheet/
+// projects entries in sectionAccess.js for why they had to be here at all.
+import MyWork from "@/components/developer/MyWork";
+import MyTimesheet from "@/components/developer/MyTimesheet";
+import MyProjects from "@/components/developer/MyProjects";
 import { isSessionExpired, clearAdminSession, clearDeveloperSession } from "@/utils/sessionPolicy";
 import { Skeleton } from "@/components/ui";
 // The app's one dialog pattern (sweetalert2, wrapped). No second toast library.
@@ -63,6 +70,9 @@ const resolveSection = (id) => LEGACY_SECTIONS[id] || id || "overview";
 // filtering and no access rule — `adminNavFor(role)` still decides membership.
 const ADMIN_NAV_GROUPS = {
   overview: "Overview",
+  "my-work": "My Work",
+  timesheet: "My Work",
+  projects: "My Work",
   "all-projects": "Delivery",
   requests: "Delivery",
   "change-requests": "Delivery",
@@ -238,6 +248,11 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
   const [loading, setLoading] = useState(true);
   const [developers, setDevelopers] =  useState([]);
   const [projects, setProjects] = useState([]);
+  // The caller's OWN assigned projects, kept separate from `projects` on
+  // purpose: that list is every project in the organization and RLS answers it
+  // EMPTY for qa and finance, who hold no project.view_all. Filtering it would
+  // have shown those two an empty My Projects and looked like they had none.
+  const [myProjects, setMyProjects] = useState([]);
   const router = useRouter();
   const searchParams = useSearchParams();
   const sectionParam = resolveSection(searchParams?.get("section"));
@@ -351,6 +366,19 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
       const { data: projectsData } = await projectsQuery;
       setProjects(projectsData || []);
 
+      // Own assigned projects. `currentUser.id` is the profile-row id — the
+      // same value getOrgContext() surfaces as userId and the one
+      // assigned_developer_id points at. An owner or admin signed in from
+      // `adminUser` correctly matches nothing: they are not assigned work.
+      let mineQuery = supabase
+        .from('projects')
+        .select('*')
+        .eq('assigned_developer_id', currentUser.id)
+        .order('created_at', { ascending: false });
+      if (orgId) mineQuery = mineQuery.eq('organization_id', orgId);
+      const { data: mineData } = await mineQuery;
+      setMyProjects(mineData || []);
+
     } catch (error) {
       // Silently handle error
     } finally {
@@ -390,7 +418,30 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
       return <DashboardOverview {...contentProps} />;
     }
 
+    // Keep the person in their own shell. The staff dashboard sends these to
+    // /developer/project-details; a manager or a QA lead reading their own task
+    // list inside /admin should not be thrown into the other area to open it.
+    const openProjectDetails = (project) => {
+      const id = project?.id ?? project?.project_id;
+      if (!id) return;
+      startNavigation(() => {
+        router.push(`/admin/project-details/${id}`);
+      });
+    };
+
     switch (activeSection) {
+      case "my-work":
+        return <MyWork onViewProjectDetails={openProjectDetails} />;
+      case "timesheet":
+        return <MyTimesheet />;
+      case "projects":
+        return (
+          <MyProjects
+            user={user}
+            assignedProjects={myProjects}
+            onViewProjectDetails={openProjectDetails}
+          />
+        );
       case "all-projects":
         return <AllProjects {...contentProps} />;
       case "requests":
