@@ -156,6 +156,17 @@ export const PERMISSIONS = Object.freeze([
   // refusal in words before the write is attempted.
   { key: "hierarchy.manage", roles: PEOPLE, module: "people", label: "Set who reports to whom" },
   { key: "capacity.view", roles: PEOPLE_READERS, module: "people", label: "View who is free" },
+  // Two DIFFERENT acts, and neither is `capacity.view`.
+  //
+  // Setting a project allocation is a staffing decision — owner/admin/manager,
+  // matching the project_members write policy 071 already wrote, so the key and
+  // the RLS cannot disagree about who may staff a project.
+  //
+  // Setting somebody's contracted hours is an employment fact about a person,
+  // not a project, so it is HR's: owner/admin/hr. A manager who could quietly
+  // raise a report's weekly hours could make their own plan come out right.
+  { key: "capacity.allocate", roles: DECIDERS, module: "people", label: "Set a project allocation" },
+  { key: "employment.set_hours", roles: PEOPLE, module: "people", label: "Set contracted weekly hours" },
   { key: "team_stats.view", roles: PEOPLE, module: "people", label: "View headcount statistics" },
   { key: "team.view", roles: SUPERVISORS, module: "people", label: "View team oversight", legacy: "view_team" },
   { key: "attendance.view_all", roles: ATTENDANCE_OVERSIGHT, module: "people", label: "See everyone's attendance" },

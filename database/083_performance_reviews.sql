@@ -190,7 +190,12 @@ create trigger trg_review_cycle_open
 --  PART 5 - cycle progress, in one place
 -- ---------------------------------------------------------------------
 
-create or replace view public.review_cycle_summary_v as
+--  `security_invoker` so this view reads its base tables AS THE CALLER.
+--  Without it a view runs with its OWNER's privileges and every RLS policy
+--  underneath is skipped -- see 087, which is the migration that had to go
+--  and fix all six of these after the fact.
+create or replace view public.review_cycle_summary_v
+  with (security_invoker = true) as
 select
   c.organization_id,
   c.id                                                     as cycle_id,

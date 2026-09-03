@@ -4,7 +4,7 @@
 
 # Roles and permissions
 
-12 roles, 93 permissions. Generated from `src/utils/permissionCatalogue.js`, which is the only place the defaults are written down.
+12 roles, 95 permissions. Generated from `src/utils/permissionCatalogue.js`, which is the only place the defaults are written down.
 
 A role says what somebody may **do**. It is not a job title — those live in `employee_profiles.designation` and can say anything. Two roles with identical permissions are one role with two names.
 
@@ -12,14 +12,14 @@ These are **defaults**. A tenant that wants something else gets it through the p
 
 ## Permissions by role
 
-How many of the 93 keys each role holds by default.
+How many of the 95 keys each role holds by default.
 
 | Role | Keys | What the role is for |
 |---|---:|---|
-| `owner` | 92 | Everything, and the only role that may buy, cancel or change the plan, delete the organization, or grant another person a permission. |
-| `admin` | 87 | Runs the organization day to day. Everything except the four owner-only keys. |
-| `manager` | 51 | Delivery. Projects, task assignment, the client-facing decisions, and reports. |
-| `hr` | 44 | People operations. Hiring, onboarding, the reporting line — and no access to delivery or money. |
+| `owner` | 94 | Everything, and the only role that may buy, cancel or change the plan, delete the organization, or grant another person a permission. |
+| `admin` | 89 | Runs the organization day to day. Everything except the four owner-only keys. |
+| `manager` | 52 | Delivery. Projects, task assignment, the client-facing decisions, and reports. |
+| `hr` | 45 | People operations. Hiring, onboarding, the reporting line — and no access to delivery or money. |
 | `finance` | 22 | Money only. Billing and client accounts, deliberately WITHOUT the monitoring surface. |
 | `team_lead` | 41 | A contributor who also runs a team: reviews work, sees every task and project, reads reports. |
 | `qa` | 22 | A contributor who may also review other people's submissions and triage the bug queue. |
@@ -59,6 +59,8 @@ How many of the 93 keys each role holds by default.
 | `hierarchy.view` | View the org structure | `owner`, `admin`, `hr`, `manager`, `team_lead` |
 | `hierarchy.manage` | Set who reports to whom | `owner`, `admin`, `hr` |
 | `capacity.view` | View who is free | `owner`, `admin`, `hr`, `manager`, `team_lead` |
+| `capacity.allocate` | Set a project allocation | `owner`, `admin`, `manager` |
+| `employment.set_hours` | Set contracted weekly hours | `owner`, `admin`, `hr` |
 | `team_stats.view` | View headcount statistics | `owner`, `admin`, `hr` |
 | `team.view` | View team oversight | `owner`, `admin`, `manager`, `team_lead` |
 | `attendance.view_all` | See everyone's attendance | `owner`, `admin`, `hr`, `manager` |
