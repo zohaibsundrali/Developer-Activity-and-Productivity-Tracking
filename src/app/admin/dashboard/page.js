@@ -44,6 +44,7 @@ import Invoicing from "@/components/admin/Invoicing";
 import Quality from "@/components/admin/Quality";
 import Performance from "@/components/admin/Performance";
 import Recruitment from "@/components/admin/Recruitment";
+import Assets from "@/components/admin/Assets";
 import MyReviews from "@/components/shared/MyReviews";
 import { isSessionExpired, clearAdminSession, clearDeveloperSession } from "@/utils/sessionPolicy";
 import { Skeleton } from "@/components/ui";
@@ -104,6 +105,7 @@ const ADMIN_NAV_GROUPS = {
   "leave-approvals": "People",
   performance: "People",
   recruitment: "People",
+  assets: "Workspace",
   capacity: "People",
   "team-stats": "People",
   organization: "Workspace",
@@ -478,6 +480,8 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
         return <Performance developers={developers} />;
       case "recruitment":
         return <Recruitment developers={developers} />;
+      case "assets":
+        return <Assets developers={developers} />;
       case "all-projects":
         return <AllProjects {...contentProps} />;
       case "requests":

@@ -140,6 +140,12 @@ describe("every route that uses the service role", () => {
     // writes re-read the target row scoped to the org before updating it, and
     // neither creates one — an allocation describes somebody already on the
     // project, and contracted hours describe a profile that already exists.
-    expect(usingService.length).toBe(67);
+    //
+    // 67 -> 68: /api/assets, added with the asset register (090). Every read
+    // and write is `.eq("organization_id", auth.orgId)`; the asset and the
+    // licence are re-read scoped to the org before either is changed; and the
+    // holdings view answers for the CALLER unless they hold asset.view, so a
+    // uuid from another tenant cannot be used to ask what somebody has.
+    expect(usingService.length).toBe(68);
   });
 });

@@ -111,6 +111,15 @@ const STAFF = ROLES.filter((r) => r !== "client");
  * the other side: who is at work is people operations, not money.
  */
 const ATTENDANCE_OVERSIGHT = ["owner", "admin", "hr", "manager"];
+/**
+ * Who may look at what the company owns.
+ *
+ * People operations plus money: HR issues and collects equipment, finance pays
+ * for it and for the renewals. `manager` is deliberately absent — a project
+ * manager has no reason to read the serial numbers of every laptop in the
+ * building, and an asset register everybody can edit is not a register.
+ */
+const ASSET_READERS = ["owner", "admin", "hr", "finance"];
 
 
 /**
@@ -167,6 +176,24 @@ export const PERMISSIONS = Object.freeze([
   // raise a report's weekly hours could make their own plan come out right.
   { key: "capacity.allocate", roles: DECIDERS, module: "people", label: "Set a project allocation" },
   { key: "employment.set_hours", roles: PEOPLE, module: "people", label: "Set contracted weekly hours" },
+  // ── Assets and licences ───────────────────────────────────────────────
+  //
+  // TWO MANAGE KEYS THAT DIFFER BY ONE ROLE EACH, and the difference is the
+  // reason there are two. Handing somebody a laptop is part of onboarding and
+  // offboarding, which is HR's process. Buying seats is recurring spend against
+  // a renewal date, which is finance's.
+  //
+  // Neither is a manager. An asset register a project manager can edit stops
+  // being a register of what the company owns.
+  //
+  // Seeing what YOU hold is not on this list at all — it is a fact about the
+  // row, granted by RLS in 090, the same way the hiring manager reads their own
+  // opening's candidates. Nobody should need a key to ask what they are signed
+  // out.
+  { key: "asset.view", roles: ASSET_READERS, module: "people", label: "See the asset register" },
+  { key: "asset.manage", roles: PEOPLE, module: "people", label: "Issue and return equipment" },
+  { key: "licence.view", roles: ASSET_READERS, module: "people", label: "See software licences" },
+  { key: "licence.manage", roles: BILLING, module: "people", label: "Manage licences and seats" },
   { key: "team_stats.view", roles: PEOPLE, module: "people", label: "View headcount statistics" },
   { key: "team.view", roles: SUPERVISORS, module: "people", label: "View team oversight", legacy: "view_team" },
   { key: "attendance.view_all", roles: ATTENDANCE_OVERSIGHT, module: "people", label: "See everyone's attendance" },
