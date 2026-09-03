@@ -234,41 +234,61 @@ create trigger trg_invoice_lines_sync
 --  rather than hiding hours somebody worked because nobody set a price.
 
 create or replace view public.billable_hours_v as
+--  AGGREGATED FIRST, THEN ASKED ABOUT.
+--
+--  The obvious shape puts the `exists (... invoiced ...)` in the select list of
+--  the grouped query and correlates it on `public.timesheet_week_of(
+--  l.started_at)`. Postgres refuses it:
+--
+--    42803: subquery uses ungrouped column "l.started_at" from outer query
+--
+--  It will match a grouped EXPRESSION in the select list, but inside a sublink
+--  it sees the bare column and cannot tell that the whole expression is the one
+--  being grouped by. So the week is computed and grouped in `agg`, and the
+--  correlation below is against a plain column that is unambiguously grouped.
+with agg as (
+  select
+    l.organization_id,
+    l.project_id,
+    l.developer_id                         as user_id,
+    public.timesheet_week_of(l.started_at) as week_start,
+    sum(l.seconds)                         as seconds
+  from public.task_time_logs l
+  join public.timesheets t
+    on  t.organization_id = l.organization_id
+    and t.user_id         = l.developer_id
+    and t.week_start      = public.timesheet_week_of(l.started_at)
+    and t.status          = 'approved'
+  where l.is_billable
+    and l.seconds is not null
+    and l.project_id is not null
+  group by l.organization_id, l.project_id, l.developer_id,
+           public.timesheet_week_of(l.started_at)
+)
 select
-  l.organization_id,
-  l.project_id,
+  a.organization_id,
+  a.project_id,
   -- Joined in rather than looked up by the screen: the list groups by project,
   -- and a second round trip per group to learn a name is a screen that renders
   -- "Project" until it finishes.
-  p.name                                           as project_name,
-  l.developer_id                                   as user_id,
-  public.timesheet_week_of(l.started_at)           as week_start,
-  round(sum(l.seconds)::numeric / 3600, 2)         as hours,
-  public.bill_rate_for(l.project_id, l.developer_id) as rate,
+  p.name                                        as project_name,
+  a.user_id,
+  a.week_start,
+  round(a.seconds::numeric / 3600, 2)           as hours,
+  public.bill_rate_for(a.project_id, a.user_id) as rate,
   exists (
     select 1
       from public.invoice_lines il
       join public.invoices i on i.id = il.invoice_id
      where il.source          = 'timesheet'
-       and il.organization_id = l.organization_id
-       and il.project_id      = l.project_id
-       and il.user_id         = l.developer_id
-       and il.week_start      = public.timesheet_week_of(l.started_at)
+       and il.organization_id = a.organization_id
+       and il.project_id      = a.project_id
+       and il.user_id         = a.user_id
+       and il.week_start      = a.week_start
        and i.status          <> 'void'
-  )                                                as invoiced
-from public.task_time_logs l
-join public.timesheets t
-  on  t.organization_id = l.organization_id
-  and t.user_id         = l.developer_id
-  and t.week_start      = public.timesheet_week_of(l.started_at)
-  and t.status          = 'approved'
-join public.projects p
-  on  p.id = l.project_id
-where l.is_billable
-  and l.seconds is not null
-  and l.project_id is not null
-group by l.organization_id, l.project_id, p.name, l.developer_id,
-         public.timesheet_week_of(l.started_at);
+  )                                             as invoiced
+from agg a
+join public.projects p on p.id = a.project_id;
 
 
 -- ---------------------------------------------------------------------
@@ -298,9 +318,24 @@ with hours as (
     and t.user_id         = l.developer_id
     and t.week_start      = public.timesheet_week_of(l.started_at)
     and t.status          = 'approved'
-  left join public.employee_profiles ep
-    on  ep.organization_id = l.organization_id
-    and ep.user_id         = l.developer_id
+  -- LATERAL WITH A LIMIT, NOT A PLAIN JOIN, and this is not a style choice.
+  --
+  -- `employee_profiles` is unique on (organization_id, user_id, USER_TYPE), so
+  -- one person legitimately holds two rows once they move between the admin and
+  -- developer profile tables — a developer promoted to admin is exactly that.
+  -- A plain left join then matches each of their time logs twice and the sums
+  -- above double: not a missing number, a confidently wrong one, on the screen
+  -- that decides whether a project made money.
+  --
+  -- Same reason `bill_rate_for()` limits to one row.
+  left join lateral (
+    select ep2.cost_rate
+      from public.employee_profiles ep2
+     where ep2.organization_id = l.organization_id
+       and ep2.user_id         = l.developer_id
+       and ep2.cost_rate is not null
+     limit 1
+  ) ep on true
   where l.seconds is not null
     and l.project_id is not null
   group by l.organization_id, l.project_id
