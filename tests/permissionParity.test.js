@@ -372,6 +372,14 @@ describe("the catalogue agrees with the section table it replaced", () => {
       key: "leave.approve",
       reason: "new module; owner/admin/hr/manager, who are already in the area",
     },
+    {
+      section: "timesheet-approvals",
+      key: "timesheet.approve",
+      // A NEW SCREEN for a workflow that did not exist: hours were logged and
+      // never agreed by anybody. owner/admin/manager/team_lead are all in the
+      // area already, so it admits nobody new.
+      reason: "new module; delivery oversight, all four roles already in the area",
+    },
   ];
 
   it("does not gate a section nobody had a rule for", () => {

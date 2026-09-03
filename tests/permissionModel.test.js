@@ -158,6 +158,9 @@ describe("user_type is no longer asked authorization questions", () => {
     "src/app/api/leave/route.js":
       "writes leave_requests.user_type, the same storage column; every " +
       "authorization decision in the file is a permission key",
+    "src/app/api/timesheets/route.js":
+      "writes timesheets.user_type, the same storage column; submission and " +
+      "approval are both decided on permission keys",
   };
 
   it("only the recorded storage decisions still read userType", () => {

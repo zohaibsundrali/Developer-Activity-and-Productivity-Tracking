@@ -64,6 +64,9 @@ export const ADMIN_NAV = [
   { id: "views", label: "Views", icon: Columns3 },
   { id: "sprints", label: "Sprints", icon: Rocket },
   { id: "task-reviews", label: "Task Reviews", icon: ClipboardCheck },
+  // Beside Task Reviews: both are a queue of somebody else's work waiting on
+  // a decision, and a lead works through them in the same sitting.
+  { id: "timesheet-approvals", label: "Timesheet Approvals", icon: Clock },
   { id: "bugs", label: "Bugs", icon: Bug },
   { id: "developer-activity", label: "Developer Activity", icon: Activity },
   { id: "reports", label: "Reports", icon: FileBarChart },

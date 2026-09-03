@@ -107,6 +107,11 @@ describe("every route that uses the service role", () => {
     // /api/attendance re-reads the membership before writing somebody else's
     // day, so an HR lead cannot file a record against a uuid from another
     // tenant.
-    expect(usingService.length).toBe(61);
+    //
+    // 61 -> 62: /api/timesheets, added with timesheet approval (077). Every
+    // read and write is scoped by `auth.orgId`, the week's totals are summed
+    // from task_time_logs by the route rather than accepted from the body, and
+    // the target timesheet is re-read scoped to the org before it is decided.
+    expect(usingService.length).toBe(62);
   });
 });
