@@ -185,8 +185,11 @@ describe("the same hours cannot be billed twice", () => {
   it("agrees with the view, which must release the same hours", () => {
     // If the guard excluded voided invoices and the view did not, released
     // hours would be billable-in-principle and refused in practice.
+    // Bounded by the statement terminator. A view definition contains no
+    // semicolons, and the previous bound ("the first ; after the first GROUP
+    // BY") broke the moment the aggregation moved into a CTE.
     const from = sql.indexOf("create or replace view public.billable_hours_v");
-    const view = sql.slice(from, sql.indexOf(";", sql.indexOf("group by", from)));
+    const view = sql.slice(from, sql.indexOf(";", from));
     expect(view).toMatch(/i\.status\s*<>\s*'void'/);
   });
 
@@ -264,6 +267,18 @@ describe("P&L is honest about what it does not know", () => {
   it("shows how much of the hours are actually costed", () => {
     expect(view).toMatch(/costed_hours/);
     expect(view).toMatch(/filter \(where ep\.cost_rate is not null\)/);
+  });
+
+  it("cannot double-count a person who holds two profile rows", () => {
+    // `employee_profiles` is unique on (organization_id, user_id, USER_TYPE),
+    // so somebody promoted from developer to admin legitimately has two rows. A
+    // plain left join matches each of their time logs twice and every sum in
+    // this view doubles — not a missing number, a confidently wrong one, on the
+    // screen that decides whether a project made money.
+    expect(view).toMatch(/left join lateral/);
+    expect(view).toMatch(/limit 1\s*\)\s*ep on true/);
+    // and the naive form is gone
+    expect(view).not.toMatch(/left join public\.employee_profiles ep\s*\n\s*on/);
   });
 
   it("names the gap on screen instead of absorbing it", () => {
