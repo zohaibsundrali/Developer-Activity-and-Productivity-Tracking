@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Clock, Plus, Square } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, Clock, Lock, Plus, Send, Square } from "lucide-react";
 
 import {
+  Badge,
   Button,
   EmptyState,
   ErrorState,
@@ -12,6 +13,8 @@ import {
   PageHeader,
   Skeleton,
 } from "@/components/ui";
+import { authFetch } from "@/utils/authFetch";
+import { supabase } from "@/utils/supabaseClient";
 import { getOrgContext } from "@/utils/orgContext";
 import { showError, showSuccess } from "@/utils/alerts";
 import {
@@ -69,6 +72,11 @@ export default function MyTimesheet() {
   const [entryTask, setEntryTask] = useState("");
   const [entryAmount, setEntryAmount] = useState("");
   const [entryNote, setEntryNote] = useState("");
+  // The submission record for the week on screen, or null while it is still a
+  // draft nobody has sent. A week with no row IS a draft — see migration 077,
+  // which is why nothing was backfilled.
+  const [sheet, setSheet] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -95,6 +103,18 @@ export default function MyTimesheet() {
         }))
       );
       setTasks(myTasks || []);
+
+      // The week's submission state. Failing to read it must not take the
+      // timesheet down with it: the hours are the screen's real content and a
+      // missing banner is a smaller loss than a blank page.
+      try {
+        const res = await authFetch(`/api/timesheets?scope=me`);
+        const json = await res.json().catch(() => ({}));
+        const rows = res.ok && json?.success ? json.timesheets || [] : [];
+        setSheet(rows.find((t) => t.week_start === start) || null);
+      } catch {
+        setSheet(null);
+      }
     } catch (e) {
       setError(e?.message || "Could not load your timesheet.");
     } finally {
@@ -180,6 +200,54 @@ export default function MyTimesheet() {
     );
   }
 
+  const locked = sheet?.status === "submitted" || sheet?.status === "approved";
+
+  const submitWeek = async () => {
+    setSubmitting(true);
+    try {
+      const res = await authFetch("/api/timesheets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ weekStart: start }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.success) throw new Error(json?.error || "Could not submit the week.");
+      setSheet(json.timesheet);
+      showSuccess("Week submitted for approval.");
+    } catch (e) {
+      showError(e?.message || "Could not submit the week.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  /**
+   * Flip a row between billable and not.
+   *
+   * A ROW IS SEVERAL LOGS — one task on one day may be three sittings — so this
+   * writes every id the row carries. Done through PostgREST rather than a route
+   * because that is how every other write on this screen already works; the
+   * lock that matters lives in the database (migration 077), so a submitted or
+   * approved week refuses this from the trigger and the error below is the
+   * trigger's own words.
+   */
+  const setBillable = async (row, value) => {
+    if (!row.logIds?.length) return;
+    setBusy(true);
+    try {
+      const { error } = await supabase
+        .from("task_time_logs")
+        .update({ is_billable: value })
+        .in("id", row.logIds);
+      if (error) throw new Error(error.message);
+      await load();
+    } catch (e) {
+      showError(e?.message || "Could not change that.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const thisWeek = weekStart(new Date());
 
   return (
@@ -189,9 +257,41 @@ export default function MyTimesheet() {
         description={
           week.total === 0
             ? "Nothing logged this week."
-            : `${formatDuration(week.total)} logged this week.`
+            : `${formatDuration(week.total)} logged · ${formatDuration(week.billable)} billable.`
         }
       />
+
+      {/* The week's submission state. Shown for every week, including one that
+          has never been sent, because "you have not submitted this" is the
+          thing a person most needs to know and an absent banner says nothing. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2">
+        <div className="flex items-center gap-2 text-sm">
+          {sheet?.status === "approved" ? (
+            <>
+              <CheckCircle2 className="h-4 w-4 text-primary" aria-hidden="true" />
+              <span>Approved{sheet.decision_note ? ` — ${sheet.decision_note}` : ""}</span>
+            </>
+          ) : sheet?.status === "submitted" ? (
+            <>
+              <Lock className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              <span>Submitted — waiting for approval. The hours are locked until it is decided.</span>
+            </>
+          ) : sheet?.status === "rejected" ? (
+            <>
+              <Badge variant="destructive">Rejected</Badge>
+              <span>{sheet.decision_note || "Correct the week and submit it again."}</span>
+            </>
+          ) : (
+            <span className="text-muted-foreground">Not submitted.</span>
+          )}
+        </div>
+        {!locked && week.total > 0 && (
+          <Button size="sm" onClick={submitWeek} disabled={submitting}>
+            <Send className="mr-2 h-4 w-4" aria-hidden="true" />
+            {sheet?.status === "rejected" ? "Submit again" : "Submit week"}
+          </Button>
+        )}
+      </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1">
@@ -266,8 +366,23 @@ export default function MyTimesheet() {
                           {row.isRunning && " · running"}
                         </span>
                       </span>
-                      <span className="shrink-0 text-sm tabular-nums">
-                        {formatDuration(row.seconds)}
+                      <span className="flex shrink-0 items-center gap-3">
+                        {/* Disabled rather than hidden once the week is locked:
+                            the state is worth seeing even when it cannot be
+                            changed, and a control that vanishes reads as a bug. */}
+                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <input
+                            type="checkbox"
+                            checked={row.billableSeconds > 0}
+                            disabled={locked || busy || !row.logIds?.length}
+                            onChange={(e) => setBillable(row, e.target.checked)}
+                            aria-label={`Mark ${row.title} as billable`}
+                          />
+                          Billable
+                        </label>
+                        <span className="text-sm tabular-nums">
+                          {formatDuration(row.seconds)}
+                        </span>
                       </span>
                     </li>
                   ))}

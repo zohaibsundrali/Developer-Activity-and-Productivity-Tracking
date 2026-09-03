@@ -165,6 +165,13 @@ export const PERMISSIONS = Object.freeze([
   { key: "leave.view_all", roles: ATTENDANCE_OVERSIGHT, module: "people", label: "See everyone's leave" },
   { key: "leave.approve", roles: ATTENDANCE_OVERSIGHT, module: "people", label: "Approve or reject leave" },
   { key: "leave.manage_types", roles: PEOPLE, module: "people", label: "Configure leave types and quotas" },
+  // Delivery oversight, not people operations: a team lead signs off the hours
+  // their team booked to their projects. `finance` is deliberately absent —
+  // billable hours feed invoicing and finance will need them, but that is the
+  // invoicing feature's decision to make with an invoice in front of it, not a
+  // widening smuggled in early.
+  { key: "timesheet.view_all", roles: SUPERVISORS, module: "people", label: "See everyone's timesheets" },
+  { key: "timesheet.approve", roles: SUPERVISORS, module: "people", label: "Approve or reject a submitted week" },
 
   // ── Projects ────────────────────────────────────────────────────────────
   { key: "project.view_all", roles: SUPERVISORS, module: "projects", label: "View every project" },
@@ -254,6 +261,7 @@ export const PERMISSIONS = Object.freeze([
   { key: "project.view_own", roles: STAFF, module: "own", label: "Open a project you are on" },
   { key: "timesheet.view_own", roles: STAFF, module: "own", label: "See your own timesheet" },
   { key: "timesheet.log_own", roles: STAFF, module: "own", label: "Log your own hours" },
+  { key: "timesheet.submit_own", roles: STAFF, module: "own", label: "Submit your week for approval" },
   { key: "team.view_own", roles: STAFF, module: "own", label: "See who else is on your projects" },
   { key: "profile.manage_own", roles: STAFF, module: "own", label: "Edit your profile and password" },
   { key: "productivity.view_own", roles: STAFF, module: "own", label: "See your own delivery metrics" },

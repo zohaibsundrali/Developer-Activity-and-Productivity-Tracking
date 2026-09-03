@@ -99,6 +99,7 @@ export function buildWeek(logs, start, now = new Date()) {
   const days = weekDays(start);
   const byDay = new Map(days.map((d) => [d, new Map()]));
   let total = 0;
+  let billable = 0;
   let running = null;
 
   for (const log of logs || []) {
@@ -119,14 +120,29 @@ export function buildWeek(logs, start, now = new Date()) {
       title: log.task?.task_title || "Untitled task",
       project: log.project?.name || null,
       seconds: 0,
+      // Billable is tracked per ROW as well as summed per week, because the
+      // toggle in the UI acts on a row and a row is several logs: one task on
+      // one day may be three separate sittings.
+      billableSeconds: 0,
+      // The underlying log ids, so a row can be acted on at all. Without these
+      // the screen can display a row and do nothing about it — every write has
+      // to name the rows it changes.
+      logIds: [],
       entries: 0,
       isRunning: false,
     };
     row.seconds += seconds;
+    // `is_billable` defaults to true in the database (migration 077), and the
+    // same reading is applied to a log loaded before that column existed:
+    // undefined means billable, because that is what every row meant when the
+    // table was described as billable time and had no flag.
+    if (log.is_billable !== false) row.billableSeconds += seconds;
+    if (log.id) row.logIds.push(log.id);
     row.entries += 1;
     if (!log.ended_at) row.isRunning = true;
     tasks.set(key, row);
     total += seconds;
+    if (log.is_billable !== false) billable += seconds;
   }
 
   return {
@@ -139,6 +155,7 @@ export function buildWeek(logs, start, now = new Date()) {
       };
     }),
     total,
+    billable,
     running,
   };
 }

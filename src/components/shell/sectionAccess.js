@@ -67,6 +67,9 @@ export const SECTION_PERMISSIONS = Object.freeze({
   // of NON_WIDENING deliberately — the exemption is for sections everybody
   // holds, and quietly parking a real screen there is how the front door drifts.
   "leave-approvals": "leave.approve",
+  // Delivery oversight rather than people operations: owner/admin/manager/
+  // team_lead, all of whom are in the area already, so this widens nobody.
+  "timesheet-approvals": "timesheet.approve",
   // NOT IN THE SIDEBAR — its ADMIN_NAV entry is commented out — but still a
   // live `case` in the dashboard's section switch, so `?section=productivity`
   // rendered it. With no entry here `canAccessAdminSection` fell through to
