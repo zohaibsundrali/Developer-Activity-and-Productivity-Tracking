@@ -4,7 +4,7 @@
 
 # Roles and permissions
 
-12 roles, 65 permissions. Generated from `src/utils/permissionCatalogue.js`, which is the only place the defaults are written down.
+12 roles, 74 permissions. Generated from `src/utils/permissionCatalogue.js`, which is the only place the defaults are written down.
 
 A role says what somebody may **do**. It is not a job title — those live in `employee_profiles.designation` and can say anything. Two roles with identical permissions are one role with two names.
 
@@ -12,21 +12,21 @@ These are **defaults**. A tenant that wants something else gets it through the p
 
 ## Permissions by role
 
-How many of the 65 keys each role holds by default.
+How many of the 74 keys each role holds by default.
 
 | Role | Keys | What the role is for |
 |---|---:|---|
-| `owner` | 64 | Everything, and the only role that may buy, cancel or change the plan, delete the organization, or grant another person a permission. |
-| `admin` | 59 | Runs the organization day to day. Everything except the four owner-only keys. |
-| `manager` | 33 | Delivery. Projects, task assignment, the client-facing decisions, and reports. |
-| `hr` | 25 | People operations. Hiring, onboarding, the reporting line — and no access to delivery or money. |
-| `finance` | 12 | Money only. Billing and client accounts, deliberately WITHOUT the monitoring surface. |
-| `team_lead` | 26 | A contributor who also runs a team: reviews work, sees every task and project, reads reports. |
-| `qa` | 12 | A contributor who may also review other people's submissions and triage the bug queue. |
-| `developer` | 10 | Contributes. Own work, plus submitting it for review. |
-| `designer` | 10 | Identical to developer today. Separate so the two can diverge without a data migration. |
-| `devops` | 10 | Identical to developer today (migration 067). |
-| `employee` | 10 | A staff member with no delivery role. Own work only. |
+| `owner` | 73 | Everything, and the only role that may buy, cancel or change the plan, delete the organization, or grant another person a permission. |
+| `admin` | 68 | Runs the organization day to day. Everything except the four owner-only keys. |
+| `manager` | 40 | Delivery. Projects, task assignment, the client-facing decisions, and reports. |
+| `hr` | 34 | People operations. Hiring, onboarding, the reporting line — and no access to delivery or money. |
+| `finance` | 16 | Money only. Billing and client accounts, deliberately WITHOUT the monitoring surface. |
+| `team_lead` | 30 | A contributor who also runs a team: reviews work, sees every task and project, reads reports. |
+| `qa` | 16 | A contributor who may also review other people's submissions and triage the bug queue. |
+| `developer` | 14 | Contributes. Own work, plus submitting it for review. |
+| `designer` | 14 | Identical to developer today. Separate so the two can diverge without a data migration. |
+| `devops` | 14 | Identical to developer today (migration 067). |
+| `employee` | 14 | A staff member with no delivery role. Own work only. |
 | `client` | 0 | A customer, not staff. Holds no staff permission at all — the portal is a separate surface. |
 
 ## The full matrix
@@ -61,6 +61,11 @@ How many of the 65 keys each role holds by default.
 | `capacity.view` | View who is free | `owner`, `admin`, `hr`, `manager`, `team_lead` |
 | `team_stats.view` | View headcount statistics | `owner`, `admin`, `hr` |
 | `team.view` | View team oversight | `owner`, `admin`, `manager`, `team_lead` |
+| `attendance.view_all` | See everyone's attendance | `owner`, `admin`, `hr`, `manager` |
+| `attendance.manage` | Correct an attendance record | `owner`, `admin`, `hr` |
+| `leave.view_all` | See everyone's leave | `owner`, `admin`, `hr`, `manager` |
+| `leave.approve` | Approve or reject leave | `owner`, `admin`, `hr`, `manager` |
+| `leave.manage_types` | Configure leave types and quotas | `owner`, `admin`, `hr` |
 
 ### Projects
 
@@ -114,6 +119,10 @@ How many of the 65 keys each role holds by default.
 | `profile.manage_own` | Edit your profile and password | everyone except `client` |
 | `productivity.view_own` | See your own delivery metrics | everyone except `client` |
 | `monitoring.view_own` | See your own recorded activity | everyone except `client` |
+| `attendance.view_own` | See your own attendance | everyone except `client` |
+| `attendance.log_own` | Check yourself in and out | everyone except `client` |
+| `leave.view_own` | See your own leave | everyone except `client` |
+| `leave.request_own` | Request leave | everyone except `client` |
 
 ### Money
 

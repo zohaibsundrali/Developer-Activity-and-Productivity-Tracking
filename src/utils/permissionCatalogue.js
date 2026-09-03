@@ -99,6 +99,18 @@ const CONTRIBUTORS = ["developer", "designer", "devops", "qa", "employee", "team
  * that is a different key every time.
  */
 const STAFF = ROLES.filter((r) => r !== "client");
+/**
+ * Who may look at somebody else's attendance and decide their leave.
+ *
+ * Holds the same four roles as INVITERS today, and is a separate constant
+ * because it is a separate decision. Bringing somebody into the organization
+ * and approving their day off are unrelated acts; if `manager` is ever dropped
+ * from one of them it should not silently move in the other.
+ *
+ * `hr` is here and `finance` is not, which is the same line BILLING draws from
+ * the other side: who is at work is people operations, not money.
+ */
+const ATTENDANCE_OVERSIGHT = ["owner", "admin", "hr", "manager"];
 
 /**
  * The registry.
@@ -145,6 +157,14 @@ export const PERMISSIONS = Object.freeze([
   { key: "capacity.view", roles: PEOPLE_READERS, module: "people", label: "View who is free" },
   { key: "team_stats.view", roles: PEOPLE, module: "people", label: "View headcount statistics" },
   { key: "team.view", roles: SUPERVISORS, module: "people", label: "View team oversight", legacy: "view_team" },
+  { key: "attendance.view_all", roles: ATTENDANCE_OVERSIGHT, module: "people", label: "See everyone's attendance" },
+  // Correcting a record is narrower than reading one, and a manager is on the
+  // wrong side of that line on purpose: an attendance record their own manager
+  // can rewrite is not a record.
+  { key: "attendance.manage", roles: PEOPLE, module: "people", label: "Correct an attendance record" },
+  { key: "leave.view_all", roles: ATTENDANCE_OVERSIGHT, module: "people", label: "See everyone's leave" },
+  { key: "leave.approve", roles: ATTENDANCE_OVERSIGHT, module: "people", label: "Approve or reject leave" },
+  { key: "leave.manage_types", roles: PEOPLE, module: "people", label: "Configure leave types and quotas" },
 
   // ── Projects ────────────────────────────────────────────────────────────
   { key: "project.view_all", roles: SUPERVISORS, module: "projects", label: "View every project" },
@@ -242,6 +262,10 @@ export const PERMISSIONS = Object.freeze([
   // about me", and a person being able to see their own captures is a
   // transparency guarantee, not a supervisory power.
   { key: "monitoring.view_own", roles: STAFF, module: "own", label: "See your own recorded activity" },
+  { key: "attendance.view_own", roles: STAFF, module: "own", label: "See your own attendance" },
+  { key: "attendance.log_own", roles: STAFF, module: "own", label: "Check yourself in and out" },
+  { key: "leave.view_own", roles: STAFF, module: "own", label: "See your own leave" },
+  { key: "leave.request_own", roles: STAFF, module: "own", label: "Request leave" },
 
   // ── Money ───────────────────────────────────────────────────────────────
   { key: "billing.view", roles: BILLING, module: "billing", label: "View billing", legacy: "view_billing" },

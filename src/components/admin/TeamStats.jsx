@@ -119,6 +119,9 @@ export default function TeamStats() {
   const [teams, setTeams] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [logins, setLogins] = useState([]);
+  // Real attendance rows for today (migration 075). Empty for an organization
+  // that has not started recording, which is what the fallback below is for.
+  const [attendance, setAttendance] = useState([]);
   const [metrics, setMetrics] = useState([]);
   // Which of the three sources threw. Purely for the error state — every
   // fallback below is exactly what it was before.
@@ -170,6 +173,29 @@ export default function TeamStats() {
       failed.push("attendance");
     }
 
+    // The REAL attendance table, which the login window above is only a proxy
+    // for. Kept side by side rather than replacing it: an organization that has
+    // not recorded a day yet would otherwise watch this number drop to zero on
+    // the day 075 was applied, which reads as a bug rather than as an empty
+    // table. Once they check in once, the real rows win.
+    let attendanceRows = [];
+    try {
+      const todayKey = (() => {
+        const d = new Date();
+        const pad = (n) => String(n).padStart(2, "0");
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      })();
+      const { data } = await supabase
+        .from("attendance_records")
+        .select("user_id, status")
+        .eq("organization_id", orgId)
+        .eq("work_date", todayKey)
+        .limit(2000);
+      attendanceRows = data || [];
+    } catch {
+      attendanceRows = [];
+    }
+
     // Productivity metrics — aggregate per developer_id.
     //
     // The columns are `productivity_percentage` and `productivity_points`.
@@ -196,6 +222,7 @@ export default function TeamStats() {
     setTeams(tms);
     setDepartments(depts);
     setLogins(loginRows);
+    setAttendance(attendanceRows);
     setMetrics(metricRows);
     setFailedSources(failed);
     setLoading(false);
@@ -245,7 +272,23 @@ export default function TeamStats() {
     if (isSameLocalDay(d, today)) presentKeys.add(key);
   }
   const onlineCount = onlineKeys.size;
-  const presentCount = presentKeys.size;
+
+  /**
+   * PRESENT means "recorded as at work today", and falls back to "signed in
+   * today" only while there is nothing recorded.
+   *
+   * These are two different questions and they had one answer. A sign-in cannot
+   * see somebody who is at work with the app closed, and it counts somebody who
+   * checked a notification at midnight. `attendance_records` is the answer to
+   * the question the card actually asks; the login window stays as the answer
+   * for a tenant that has not adopted the module yet, and the caption below
+   * says which one is on screen so the number is never quietly ambiguous.
+   */
+  const recordedPresent = attendance.filter(
+    (r) => r?.status === "present" || r?.status === "remote"
+  ).length;
+  const usingRecords = attendance.length > 0;
+  const presentCount = usingRecords ? recordedPresent : presentKeys.size;
 
   const headcount = employees.length;
   const activeCount = employees.filter((e) => e?.status === "active").length;
@@ -458,7 +501,11 @@ export default function TeamStats() {
       {/* Attendance today — the number an HR manager checks first. */}
       <Section
         title="Attendance today"
-        description="People with at least one sign-in since midnight."
+        description={
+          usingRecords
+            ? "People recorded as present or remote today."
+            : "No attendance recorded yet — showing people with a sign-in since midnight."
+        }
       >
         {headcount === 0 ? (
           <EmptyState

@@ -31,6 +31,8 @@ import {
   KeyRound,
   Network,
   GaugeCircle as Gauge2,
+  CalendarCheck,
+  Plane,
 } from "lucide-react";
 
 // Re-exported so existing imports keep working; the definitions live in
@@ -49,6 +51,8 @@ export const ADMIN_NAV = [
   { id: "my-work", label: "My Work", icon: ListChecks },
   { id: "timesheet", label: "My Timesheet", icon: Clock },
   { id: "projects", label: "My Projects", icon: FolderKanban },
+  { id: "my-attendance", label: "My Attendance", icon: CalendarCheck },
+  { id: "my-leave", label: "My Leave", icon: Plane },
   { id: "all-projects", label: "All Projects", icon: FolderKanban },
   // Sits directly under All Projects: a request IS a project that has not
   // been agreed to yet, so it belongs beside the projects rather than off in
@@ -76,6 +80,9 @@ export const ADMIN_NAV = [
   // other half of the same question: Employees says who works here, this says
   // what they are working on.
   { id: "hierarchy", label: "Team Structure", icon: Network },
+  // Beside Team Structure: both answer a question about people rather than
+  // about work, and an HR lead moves between them in one sitting.
+  { id: "leave-approvals", label: "Leave Approvals", icon: Plane },
   // The same graph from the other end: Team Structure says who is on a
   // project, this says what one person is carrying across all of them.
   { id: "capacity", label: "Capacity", icon: Gauge2 },
@@ -105,6 +112,8 @@ export const DEVELOPER_NAV = [
   // Dashboard. They belong to the CLIENT portal — which renders both, and
   // whose section titles are the only ones defined for them — so that is where
   // they now are. See CLIENT_NAV.
+  { id: "my-attendance", label: "My Attendance", icon: CalendarCheck },
+  { id: "my-leave", label: "My Leave", icon: Plane },
   { id: "account", label: "Account", icon: UserCircle },
 ];
 
@@ -116,6 +125,8 @@ export const MANAGER_NAV = [
   { id: "timesheet", label: "My Timesheet", icon: Clock },
   { id: "projects", label: "My Projects", icon: FolderKanban },
   { id: "team", label: "Team", icon: Users },
+  { id: "my-attendance", label: "My Attendance", icon: CalendarCheck },
+  { id: "my-leave", label: "My Leave", icon: Plane },
   { id: "account", label: "Account", icon: UserCircle },
 ];
 
@@ -125,6 +136,8 @@ export const EMPLOYEE_NAV = [
   { id: "my-work", label: "My Work", icon: ListChecks },
   { id: "timesheet", label: "My Timesheet", icon: Clock },
   { id: "projects", label: "My Projects", icon: FolderKanban },
+  { id: "my-attendance", label: "My Attendance", icon: CalendarCheck },
+  { id: "my-leave", label: "My Leave", icon: Plane },
   { id: "account", label: "Account", icon: UserCircle },
 ];
 

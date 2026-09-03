@@ -13,6 +13,8 @@ import MyProjects from "@/components/developer/MyProjects";
 import ProjectDetails from "@/components/developer/ProjectDetails";
 import Account from "@/components/developer/Account";
 import TeamPanel from "@/components/developer/TeamPanel";
+import MyAttendance from "@/components/shared/MyAttendance";
+import MyLeave from "@/components/shared/MyLeave";
 import { isSessionExpired, clearDeveloperSession, touchDeveloperSession } from "@/utils/sessionPolicy";
 import { Skeleton } from "@/components/ui";
 
@@ -348,6 +350,10 @@ function DeveloperDashboardContent() {
         return <MyProjects {...contentProps} />;
       case "team":
         return isManager ? <TeamPanel /> : <DashboardOverview {...contentProps} />;
+      case "my-attendance":
+        return <MyAttendance />;
+      case "my-leave":
+        return <MyLeave />;
       case "account":
         return <Account user={user} />;
       case "overview":
