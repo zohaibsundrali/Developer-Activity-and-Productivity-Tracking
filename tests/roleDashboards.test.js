@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   ADMIN_AREA_ROLES,
   ADMIN_SECTION_ROLES,
+  NON_WIDENING_SECTIONS,
   canAccessAdminSection,
   canEnterAdminArea,
 } from "@/components/shell/sectionAccess";
@@ -83,18 +84,51 @@ describe("the area gate agrees with the section table", () => {
   it("is derived from the table, not typed out beside it", () => {
     // A hand-written list here is a second copy of the role vocabulary and
     // would go stale the way the provision route's copy of ROLES did.
+    //
+    // NON_WIDENING_SECTIONS is subtracted, and that subtraction is the whole
+    // reason the constant exists. The own-work sections are keyed on `*_own`
+    // permissions, which EVERY staff role holds; flattening them in would admit
+    // developer, designer, devops and employee to /admin — not a wider sidebar,
+    // a wider front door, because canEnterAdminArea feeds the edge middleware.
     const fromTable = new Set(
-      Object.values(ADMIN_SECTION_ROLES).filter(Array.isArray).flat()
+      Object.entries(ADMIN_SECTION_ROLES)
+        .filter(
+          ([section, roles]) =>
+            Array.isArray(roles) && !NON_WIDENING_SECTIONS.includes(section)
+        )
+        .flatMap(([, roles]) => roles)
     );
     expect(new Set(ADMIN_AREA_ROLES)).toEqual(fromTable);
     // And every name in it is a real role.
     for (const role of ADMIN_AREA_ROLES) expect(ROLES).toContain(role);
   });
 
+  it("admits nobody on the strength of an own-work section alone", () => {
+    // The specific regression the subtraction above prevents, stated as a fact
+    // about roles rather than about the derivation — so it still holds if
+    // somebody rewrites how ADMIN_AREA_ROLES is computed.
+    for (const section of NON_WIDENING_SECTIONS) {
+      expect(Object.keys(ADMIN_SECTION_ROLES), section).toContain(section);
+    }
+    for (const role of ["developer", "designer", "devops", "employee"]) {
+      // Holds every own-work section...
+      for (const section of NON_WIDENING_SECTIONS) {
+        expect(canAccessAdminSection(section, role), `${role}/${section}`).toBe(true);
+      }
+      // ...and is still not let in.
+      expect(canEnterAdminArea(role), role).toBe(false);
+    }
+  });
+
   it("covers exactly the roles whose section list is non-empty", () => {
     for (const role of ROLES) {
+      // "A section of their own" means a section that is a REASON to be here —
+      // an own-work section is not, because everybody has one.
       const hasASection = Object.entries(ADMIN_SECTION_ROLES).some(
-        ([section, allowed]) => Array.isArray(allowed) && canAccessAdminSection(section, role)
+        ([section, allowed]) =>
+          Array.isArray(allowed) &&
+          !NON_WIDENING_SECTIONS.includes(section) &&
+          canAccessAdminSection(section, role)
       );
       expect(canEnterAdminArea(role), role).toBe(hasASection);
     }
@@ -337,8 +371,18 @@ describe("what each role actually sees", () => {
     // reaching this function must not be handed a menu either.
     for (const role of ["developer", "designer", "devops", "employee"]) {
       const sections = adminNavFor(role).map((i) => i.id);
-      // Only the two `null` entries, which are "everyone already inside".
-      expect(sections.sort(), role).toEqual(["account", "overview"]);
+      // The two `null` entries plus the three own-work ones — all five mean
+      // "everyone already inside", and a contributor is never inside.
+      expect(sections.sort(), role).toEqual(
+        ["account", "overview", ...NON_WIDENING_SECTIONS].sort()
+      );
+      // The part that actually matters: not one org-wide screen. If a section
+      // that is a reason to be in /admin ever appears here, this fails.
+      const orgWide = Object.keys(ADMIN_SECTION_ROLES).filter(
+        (id) =>
+          Array.isArray(ADMIN_SECTION_ROLES[id]) && !NON_WIDENING_SECTIONS.includes(id)
+      );
+      for (const id of orgWide) expect(sections, `${role}/${id}`).not.toContain(id);
     }
   });
 });

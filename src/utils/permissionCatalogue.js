@@ -85,6 +85,20 @@ const INVITERS = ["owner", "admin", "hr", "manager"];
 const DECIDERS = ["owner", "admin", "manager"];
 /** Who files work for review — everyone who produces something. */
 const CONTRIBUTORS = ["developer", "designer", "devops", "qa", "employee", "team_lead"];
+/**
+ * Everyone who works here — every role except `client`.
+ *
+ * DERIVED, never typed out, for the reason roles.js gives about STAFF_ROLES: a
+ * hand-written list is another copy of the role vocabulary that drifts the next
+ * time a role is added. `devops` reached the product in migration 067 and was
+ * missing from four hand-typed lists at once.
+ *
+ * This is the bundle for the `*_own` keys below. An owner has their own
+ * timesheet exactly as a developer does, so the set really is everyone; what
+ * distinguishes the roles is whether they may also see ANYBODY ELSE'S, and
+ * that is a different key every time.
+ */
+const STAFF = ROLES.filter((r) => r !== "client");
 
 /**
  * The registry.
@@ -122,6 +136,12 @@ export const PERMISSIONS = Object.freeze([
   { key: "employee.activate", roles: PEOPLE, module: "people", label: "Activate or suspend an account", legacy: "activate_employee" },
   { key: "team.manage", roles: PEOPLE, module: "people", label: "Create and edit teams", legacy: "manage_teams" },
   { key: "hierarchy.view", roles: PEOPLE_READERS, module: "people", label: "View the org structure" },
+  // PEOPLE, matching the memberships_update RLS policy in migration 018
+  // (owner/admin/hr) exactly rather than being a second opinion about it.
+  // `reports_to` is the column this governs; migration 037's trigger refuses a
+  // line that closes a loop, and employeesData.reportingCycleError explains the
+  // refusal in words before the write is attempted.
+  { key: "hierarchy.manage", roles: PEOPLE, module: "people", label: "Set who reports to whom" },
   { key: "capacity.view", roles: PEOPLE_READERS, module: "people", label: "View who is free" },
   { key: "team_stats.view", roles: PEOPLE, module: "people", label: "View headcount statistics" },
   { key: "team.view", roles: SUPERVISORS, module: "people", label: "View team oversight", legacy: "view_team" },
@@ -182,6 +202,47 @@ export const PERMISSIONS = Object.freeze([
   // second copy of the role vocabulary in a component.
   { key: "task.set_client_visibility", roles: DECIDERS, module: "clients", label: "Decide what the client sees on a task" },
 
+  // ── Your own work ───────────────────────────────────────────────────────
+  //
+  // THE HALF OF THE MODEL THAT WAS NEVER WRITTEN DOWN.
+  //
+  // Before this section a developer held exactly ONE key out of fifty-three
+  // (`task.submit`), and every other thing they do all day — open their task
+  // list, log an hour, look at their own project, read their own activity —
+  // had no permission expression anywhere. Those screens worked because RLS
+  // scopes the rows to the signed-in user, not because anything had decided
+  // they were allowed. That is a real gate, but it is the LAST one, and it
+  // answers an empty list rather than a 403. There was no way to write "may
+  // this person log time" down, so no route could ask it and no override could
+  // take it away: `permissions.manage` could not revoke what no key named.
+  //
+  // WHY EVERY STAFF ROLE HOLDS THESE, INCLUDING owner. "Own" is not a junior
+  // capability. An owner has a timesheet too. What separates the roles is
+  // whether they may see ANOTHER person's, and that is always a different key
+  // — task.view_all beside task.view_own, report.view beside
+  // productivity.view_own, monitoring.view beside monitoring.view_own. Pairing
+  // them this way is what lets a route ask the wide question first and fall
+  // back to the narrow one, instead of branching on `user_type` and getting
+  // the answer wrong for nine roles (see the note on that in this file's
+  // header and in api/productivity).
+  //
+  // A CLIENT HOLDS NONE OF THEM. Clients are customers with their own portal;
+  // serverPermissions refuses them ahead of any key lookup, and STAFF excludes
+  // them so the two layers cannot disagree.
+  { key: "task.view_own", roles: STAFF, module: "own", label: "See the work assigned to you" },
+  { key: "task.update_own", roles: STAFF, module: "own", label: "Move your own task along" },
+  { key: "project.view_own", roles: STAFF, module: "own", label: "Open a project you are on" },
+  { key: "timesheet.view_own", roles: STAFF, module: "own", label: "See your own timesheet" },
+  { key: "timesheet.log_own", roles: STAFF, module: "own", label: "Log your own hours" },
+  { key: "team.view_own", roles: STAFF, module: "own", label: "See who else is on your projects" },
+  { key: "profile.manage_own", roles: STAFF, module: "own", label: "Edit your profile and password" },
+  { key: "productivity.view_own", roles: STAFF, module: "own", label: "See your own delivery metrics" },
+  // Its own key rather than a scope on monitoring.view, which is ADMINS. The
+  // wide key means "watch the staff"; this one means "read what was recorded
+  // about me", and a person being able to see their own captures is a
+  // transparency guarantee, not a supervisory power.
+  { key: "monitoring.view_own", roles: STAFF, module: "own", label: "See your own recorded activity" },
+
   // ── Money ───────────────────────────────────────────────────────────────
   { key: "billing.view", roles: BILLING, module: "billing", label: "View billing", legacy: "view_billing" },
   { key: "billing.manage", roles: BILLING, module: "billing", label: "Change the subscription", legacy: "manage_billing" },
@@ -195,6 +256,12 @@ export const PERMISSIONS = Object.freeze([
 
   // ── Oversight ───────────────────────────────────────────────────────────
   { key: "report.view", roles: SUPERVISORS, module: "oversight", label: "Open reports", legacy: "view_reports" },
+  // ADMINS, which is what /api/productivity POST has always enforced — it read
+  // `userType !== 'admin'`, and userType "admin" is exactly owner+admin. Named
+  // here so the route can stop asking a storage column an authorization
+  // question. Recalculation rewrites stored metrics for the whole org, so it
+  // stays narrower than report.view, which only reads them.
+  { key: "productivity.recalculate", roles: ADMINS, module: "oversight", label: "Recalculate productivity metrics" },
   { key: "monitoring.view", roles: ADMINS, module: "oversight", label: "View developer activity", legacy: "view_tracking" },
   { key: "automation.manage", roles: ADMINS, module: "oversight", label: "Configure automation", legacy: "manage_automation" },
   { key: "system.health", roles: ADMINS, module: "oversight", label: "Open system health" },

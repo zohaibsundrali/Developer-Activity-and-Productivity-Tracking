@@ -358,9 +358,16 @@ export async function GET(request) {
     const requestedDeveloperId = searchParams.get('developerId');
     const status = searchParams.get('status');
 
-    // Developers may only ever see their own submissions.
-    const developerId =
-      auth.userType === 'developer' ? auth.appUserId : requestedDeveloperId;
+    // WHO MAY READ SOMEBODY ELSE'S SUBMISSIONS, asked as a permission.
+    //
+    // This was `auth.userType === 'developer' ? own : requested`, and userType
+    // is a storage column covering nine roles — so a manager, a team lead and a
+    // QA were all pinned to their own submissions. The QA case is the plain
+    // one: `task.review` exists so QA can review OTHER people's work, and this
+    // is the endpoint that lists it. They could not read a single row.
+    const canReadAnyone =
+      authCan(auth, 'task.view_all') || authCan(auth, 'task.review');
+    const developerId = canReadAnyone ? requestedDeveloperId : auth.appUserId;
 
     let query = supabase
       .from('task_submissions')

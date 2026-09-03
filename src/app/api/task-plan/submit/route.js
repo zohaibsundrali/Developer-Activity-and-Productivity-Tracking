@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
+import { authCan } from '@/utils/serverPermissions';
 import { requireUnlocked } from '@/utils/entitlements';
 
 const supabaseAdmin = createClient(
@@ -27,11 +28,22 @@ export async function POST(request) {
     const body = await request.json().catch(() => ({}));
     let { projectId, developerId } = body;
 
-    // A developer caller can only ever submit as themselves — never trust the
-    // body's developerId for that role.
-    if (auth.userType === 'developer') {
-      developerId = auth.appUserId;
+    // EVERYONE SUBMITS AS THEMSELVES. This used to read `if (auth.userType ===
+    // 'developer')`, which self-scoped nine of the twelve roles and left the
+    // other two — owner and admin — free to name ANY developerId in the body
+    // and file a task plan under that person's name.
+    //
+    // Narrowed rather than re-expressed, because nothing wanted the wide form:
+    // the only caller is the developer's own project-details page, which sends
+    // its own id. A plan is a statement about how the person who wrote it
+    // intends to work, so submitting one on somebody else's behalf is not a
+    // capability worth keeping just because a storage column happened to grant
+    // it. The identity comes from the token; the body's developerId is now
+    // ignored entirely.
+    if (!authCan(auth, 'task.update_own')) {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
+    developerId = auth.appUserId;
 
     if (!projectId || !developerId) {
       return NextResponse.json(

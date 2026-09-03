@@ -40,6 +40,15 @@ export { SECTION_TITLES, sectionTitle } from "@/components/shell/sectionTitles";
 // Admin sidebar items — ids MUST match the ?section= switch in the admin dashboard.
 export const ADMIN_NAV = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
+  // The signed-in person's OWN work, directly under Overview and above the
+  // org-wide screens. Five roles — manager, hr, finance, qa, team_lead — were
+  // moved into this dashboard and lost these three entirely; for qa and
+  // finance, whose whole admin sidebar is two entries, this IS most of what
+  // they do all day. `adminNavFor` filters them on the `*_own` keys like any
+  // other entry, so an explicit deny still removes them.
+  { id: "my-work", label: "My Work", icon: ListChecks },
+  { id: "timesheet", label: "My Timesheet", icon: Clock },
+  { id: "projects", label: "My Projects", icon: FolderKanban },
   { id: "all-projects", label: "All Projects", icon: FolderKanban },
   // Sits directly under All Projects: a request IS a project that has not
   // been agreed to yet, so it belongs beside the projects rather than off in

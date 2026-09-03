@@ -323,6 +323,34 @@ describe("the catalogue agrees with the section table it replaced", () => {
       // hands out every other screen.
       reason: "new screen; owner-only because it grants every other permission",
     },
+    // ── The own-work sections ─────────────────────────────────────────────
+    //
+    // NEW SCREENS IN THIS SHELL, and not a restriction on anybody: before them
+    // the admin dashboard rendered no own-work screen at all, so there is no
+    // access being taken away. They are listed here because this file is the
+    // record of every section that gained a rule it did not have, and "it was
+    // not gated before because it did not exist" still has to be written down.
+    //
+    // Keyed on the narrow `*_own` permissions rather than left `null`: unlike
+    // somebody's own Account screen, logging time is a thing an organization
+    // might want to take away from one person, and a `null` could not express
+    // that. See NON_WIDENING_SECTIONS for why naming a permission here does not
+    // widen who may enter the area.
+    {
+      section: "my-work",
+      key: "task.view_own",
+      reason: "new screen in the admin shell; qa/finance had no own-work surface",
+    },
+    {
+      section: "timesheet",
+      key: "timesheet.view_own",
+      reason: "new screen in the admin shell; five roles could not log an hour",
+    },
+    {
+      section: "projects",
+      key: "project.view_own",
+      reason: "new screen in the admin shell; distinct from all-projects",
+    },
   ];
 
   it("does not gate a section nobody had a rule for", () => {

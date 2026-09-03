@@ -73,8 +73,47 @@ export const SECTION_PERMISSIONS = Object.freeze({
   // anything links to it. tests/permissionEngine.test.js now asserts that
   // every case in that switch has an entry here.
   productivity: "monitoring.view",
+
+  // ── The signed-in person's OWN work ───────────────────────────────────
+  //
+  // These three exist because admitting manager, hr, finance, qa and team_lead
+  // to /admin took their own-work screens away. Those five hold all nine
+  // `*_own` keys — own tasks, own timesheet, own projects — and the admin shell
+  // rendered no screen for any of them, so a QA engineer or a finance lead
+  // could not log an hour. The keys were right, the API was right, RLS was
+  // right; there was nowhere to click.
+  //
+  // Keyed on the narrow `*_own` permissions rather than left `null` like
+  // `overview` and `account`, so an explicit DENY against one person still
+  // hides the screen. See NON_WIDENING_SECTIONS for why that is not enough on
+  // its own.
+  "my-work": "task.view_own",
+  timesheet: "timesheet.view_own",
+  projects: "project.view_own",
+
   account: null,
 });
+
+/**
+ * Sections that must NOT be read as a reason to let somebody into /admin.
+ *
+ * ADMIN_AREA_ROLES is derived by flattening every section's role list, which is
+ * what stops it going stale. But the three own-work sections above are keyed on
+ * `*_own` permissions, and EVERY staff role holds those — an owner has a
+ * timesheet and so does an employee. Flattening them in would have quietly
+ * admitted developer, designer, devops and employee to the admin dashboard: not
+ * a widened sidebar, a widened FRONT DOOR, since `canEnterAdminArea` feeds the
+ * edge middleware.
+ *
+ * So the rule these encode is the same one `overview` and `account` encode —
+ * "everybody already inside may open this" — and the difference is only that
+ * these three still name a permission, because unlike somebody's own account
+ * screen they are a thing an organization might want to take away.
+ *
+ * A section belongs here when its permission is held by roles that do NOT
+ * otherwise belong in /admin. Adding one is a decision about the front door.
+ */
+export const NON_WIDENING_SECTIONS = Object.freeze(["my-work", "timesheet", "projects"]);
 
 /**
  * The old shape, derived rather than typed.
@@ -130,13 +169,20 @@ export function canAccessAdminSection(section, role) {
  * admin-dashboard user", which is a statement about people already inside the
  * area; reading them as "every role" would admit a developer to the admin
  * dashboard on the strength of the Account screen.
+ *
+ * NON_WIDENING_SECTIONS is skipped for exactly that reason and not for a new
+ * one — those sections mean the same "already inside" thing, they just say it
+ * with a permission instead of a `null`.
  */
 export const ADMIN_AREA_ROLES = Object.freeze(
   Array.from(
     new Set(
-      Object.values(ADMIN_SECTION_ROLES)
-        .filter((roles) => Array.isArray(roles))
-        .flat()
+      Object.entries(ADMIN_SECTION_ROLES)
+        .filter(
+          ([section, roles]) =>
+            Array.isArray(roles) && !NON_WIDENING_SECTIONS.includes(section)
+        )
+        .flatMap(([, roles]) => roles)
     )
   ).sort()
 );
