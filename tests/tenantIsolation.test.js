@@ -134,6 +134,12 @@ describe("every route that uses the service role", () => {
     // scoped to the org before its candidates are listed, so an opening id from
     // another tenant answers 404; and the hiring-manager exemption is checked
     // against that same re-read row rather than against anything in the body.
-    expect(usingService.length).toBe(66);
+    //
+    // 66 -> 67: /api/capacity, added with capacity planning (088). The read is
+    // `.eq("organization_id", auth.orgId)` on a security_invoker view; both
+    // writes re-read the target row scoped to the org before updating it, and
+    // neither creates one — an allocation describes somebody already on the
+    // project, and contracted hours describe a profile that already exists.
+    expect(usingService.length).toBe(67);
   });
 });

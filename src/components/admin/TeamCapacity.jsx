@@ -34,6 +34,11 @@ import {
   isOverdue,
 } from "@/utils/orgWorkGraph";
 import { roleIcon, roleLabel, roleVariant, roleOrder } from "@/components/shared/roleMeta";
+// The MEASURED half of this screen (migration 088). Kept in its own component
+// and rendered above, not merged into the load model below: the two answer the
+// same question from different evidence, and the counts still work on the day
+// nobody has set an hour — which is most organizations on day one.
+import CapacityPlan from "@/components/admin/CapacityPlan";
 import { projectStatusMeta } from "@/utils/projectStatus";
 
 /**
@@ -413,6 +418,8 @@ export default function TeamCapacity() {
   return (
     <div className="space-y-6">
       {header}
+
+      <CapacityPlan people={people.map((p) => ({ id: p.userId, name: p.name, email: p.email }))} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard title="Available" value={stats.free} icon={UserCheck} tone="success" />
