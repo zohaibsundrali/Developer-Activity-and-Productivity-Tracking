@@ -9,6 +9,7 @@ import {
   Award,
   Users,
   UserCircle,
+  Briefcase,
   Building2,
   Megaphone,
   CheckSquare,
@@ -93,6 +94,7 @@ export const ADMIN_NAV = [
   // about work, and an HR lead moves between them in one sitting.
   { id: "leave-approvals", label: "Leave Approvals", icon: Plane },
   { id: "performance", label: "Performance", icon: Award },
+  { id: "recruitment", label: "Recruitment", icon: Briefcase },
   // The same graph from the other end: Team Structure says who is on a
   // project, this says what one person is carrying across all of them.
   { id: "capacity", label: "Capacity", icon: Gauge2 },

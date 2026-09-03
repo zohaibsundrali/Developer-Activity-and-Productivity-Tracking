@@ -128,6 +128,12 @@ describe("every route that uses the service role", () => {
     // and write is `.eq("organization_id", auth.orgId)`; the cycle and the
     // review are re-read scoped to the org before either is changed; and the
     // reviewer is always `auth.appUserId`, never a value from the body.
-    expect(usingService.length).toBe(65);
+    //
+    // 65 -> 66: /api/recruitment, added with the ATS (085). Every read and
+    // write is `.eq("organization_id", auth.orgId)`; the opening is re-read
+    // scoped to the org before its candidates are listed, so an opening id from
+    // another tenant answers 404; and the hiring-manager exemption is checked
+    // against that same re-read row rather than against anything in the body.
+    expect(usingService.length).toBe(66);
   });
 });

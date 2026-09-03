@@ -193,6 +193,22 @@ export const PERMISSIONS = Object.freeze([
   { key: "review.write", roles: PEOPLE_READERS, module: "people", label: "Write a performance review" },
   { key: "review.view_all", roles: PEOPLE, module: "people", label: "Read everyone's reviews" },
   { key: "goal.manage", roles: PEOPLE_READERS, module: "people", label: "Set and update goals" },
+  // ── Recruitment ───────────────────────────────────────────────────────
+  //
+  // AN OPENING IS NOT PII; A CANDIDATE IS. That asymmetry is the whole reason
+  // there are four keys rather than two. Knowing the company is hiring a QA
+  // engineer is ordinary workplace information — a manager planning next
+  // quarter needs it. Knowing that a named person applied, and what an
+  // interviewer thought of them, is information about somebody who is not in
+  // this organization and never agreed to be discussed in it.
+  //
+  // The hiring manager is the one exception and is NOT a key: whoever is named
+  // on the opening reads that opening's candidates, granted on the row by RLS,
+  // the same way a reviewer reads what they wrote in 083.
+  { key: "job.view", roles: PEOPLE_READERS, module: "people", label: "See the open roles" },
+  { key: "job.manage", roles: PEOPLE, module: "people", label: "Post and close a job opening" },
+  { key: "candidate.view", roles: PEOPLE, module: "people", label: "See applicants" },
+  { key: "candidate.manage", roles: PEOPLE, module: "people", label: "Move a candidate through hiring" },
 
   // ── Projects ────────────────────────────────────────────────────────────
   { key: "project.view_all", roles: SUPERVISORS, module: "projects", label: "View every project" },

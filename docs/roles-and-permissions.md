@@ -4,7 +4,7 @@
 
 # Roles and permissions
 
-12 roles, 89 permissions. Generated from `src/utils/permissionCatalogue.js`, which is the only place the defaults are written down.
+12 roles, 93 permissions. Generated from `src/utils/permissionCatalogue.js`, which is the only place the defaults are written down.
 
 A role says what somebody may **do**. It is not a job title — those live in `employee_profiles.designation` and can say anything. Two roles with identical permissions are one role with two names.
 
@@ -12,16 +12,16 @@ These are **defaults**. A tenant that wants something else gets it through the p
 
 ## Permissions by role
 
-How many of the 89 keys each role holds by default.
+How many of the 93 keys each role holds by default.
 
 | Role | Keys | What the role is for |
 |---|---:|---|
-| `owner` | 88 | Everything, and the only role that may buy, cancel or change the plan, delete the organization, or grant another person a permission. |
-| `admin` | 83 | Runs the organization day to day. Everything except the four owner-only keys. |
-| `manager` | 50 | Delivery. Projects, task assignment, the client-facing decisions, and reports. |
-| `hr` | 40 | People operations. Hiring, onboarding, the reporting line — and no access to delivery or money. |
+| `owner` | 92 | Everything, and the only role that may buy, cancel or change the plan, delete the organization, or grant another person a permission. |
+| `admin` | 87 | Runs the organization day to day. Everything except the four owner-only keys. |
+| `manager` | 51 | Delivery. Projects, task assignment, the client-facing decisions, and reports. |
+| `hr` | 44 | People operations. Hiring, onboarding, the reporting line — and no access to delivery or money. |
 | `finance` | 22 | Money only. Billing and client accounts, deliberately WITHOUT the monitoring surface. |
-| `team_lead` | 40 | A contributor who also runs a team: reviews work, sees every task and project, reads reports. |
+| `team_lead` | 41 | A contributor who also runs a team: reviews work, sees every task and project, reads reports. |
 | `qa` | 22 | A contributor who may also review other people's submissions and triage the bug queue. |
 | `developer` | 16 | Contributes. Own work, plus submitting it for review. |
 | `designer` | 16 | Identical to developer today. Separate so the two can diverge without a data migration. |
@@ -72,6 +72,10 @@ How many of the 89 keys each role holds by default.
 | `review.write` | Write a performance review | `owner`, `admin`, `hr`, `manager`, `team_lead` |
 | `review.view_all` | Read everyone's reviews | `owner`, `admin`, `hr` |
 | `goal.manage` | Set and update goals | `owner`, `admin`, `hr`, `manager`, `team_lead` |
+| `job.view` | See the open roles | `owner`, `admin`, `hr`, `manager`, `team_lead` |
+| `job.manage` | Post and close a job opening | `owner`, `admin`, `hr` |
+| `candidate.view` | See applicants | `owner`, `admin`, `hr` |
+| `candidate.manage` | Move a candidate through hiring | `owner`, `admin`, `hr` |
 
 ### Projects
 
