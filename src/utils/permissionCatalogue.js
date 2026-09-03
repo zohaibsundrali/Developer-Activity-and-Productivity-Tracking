@@ -404,6 +404,21 @@ export const PERMISSIONS = Object.freeze([
   // team's pay staying private, and there is no way to show one without the
   // other while cost is computed per person.
   { key: "pnl.view", roles: BILLING, module: "billing", label: "View project profit and loss" },
+  // ── Contracts ─────────────────────────────────────────────────────────
+  //
+  // THREE KEYS, NARROWING. A manager READS: delivering against a contract means
+  // knowing what it says — the scope, the dates, the milestones. Committing the
+  // company to a number is a different act and belongs with the people who
+  // answer for the money. And AMENDING something already signed is narrower
+  // still: it is the most consequential edit in this schema, because it changes
+  // what both sides are recorded as having agreed.
+  //
+  // The `contract_amendments` log is what makes that last one safe rather than
+  // forbidden — the previous value is written down, so a change is a fact
+  // rather than a disappearance.
+  { key: "contract.view", roles: [...DECIDERS, "finance"], module: "billing", label: "Read client contracts" },
+  { key: "contract.manage", roles: BILLING, module: "billing", label: "Draft and sign a contract" },
+  { key: "contract.amend", roles: ADMINS, module: "billing", label: "Amend a signed contract" },
 
   // ── Oversight ───────────────────────────────────────────────────────────
   { key: "report.view", roles: SUPERVISORS, module: "oversight", label: "Open reports", legacy: "view_reports" },

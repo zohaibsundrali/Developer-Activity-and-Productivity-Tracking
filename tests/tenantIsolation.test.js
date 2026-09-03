@@ -146,6 +146,12 @@ describe("every route that uses the service role", () => {
     // licence are re-read scoped to the org before either is changed; and the
     // holdings view answers for the CALLER unless they hold asset.view, so a
     // uuid from another tenant cannot be used to ask what somebody has.
-    expect(usingService.length).toBe(68);
+    //
+    // 68 -> 69: /api/contracts, added with client contracts (092). Every read
+    // and write is `.eq("organization_id", auth.orgId)`; the contract is
+    // re-read scoped to the org before its milestones, amendments or status are
+    // touched, so an id from another tenant answers 404; and an amendment is
+    // written from the row that was read back, never from the body.
+    expect(usingService.length).toBe(69);
   });
 });
