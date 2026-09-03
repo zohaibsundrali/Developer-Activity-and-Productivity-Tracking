@@ -98,9 +98,52 @@ export function atLeast(role) {
  *      settled in favour of whichever one actually runs. See
  *      DELIBERATE_DIVERGENCES in that test file for the argument.
  */
+/**
+ * The permission set this browser was told it holds, or null if it has not
+ * been fetched yet.
+ *
+ * WHY THIS EXISTS. `roleCan(getRole(), key)` passes `{ role }` — a subject with
+ * no `overrides`. `resolvePermission` has honoured overrides since 069 and the
+ * browser has never given it any, so an exception written against one person
+ * changed what the SERVER allowed and nothing about what the screen offered.
+ * Migration 094 makes those exceptions bite at the database too, which turns
+ * that mismatch from cosmetic into a dead end: the button is there, and
+ * pressing it fails.
+ *
+ * `loadPermissionSet()` fills this from /api/me/permissions at sign-in. Until
+ * it does, every check falls back to the role alone — the behaviour this file
+ * has always had, which is right for a first paint and wrong to rely on.
+ */
+let PERMISSION_SET = null;
+
+/** Called once after sign-in. Safe to call again; safe to fail. */
+export async function loadPermissionSet(fetcher) {
+  try {
+    const res = await fetcher("/api/me/permissions");
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.success || !Array.isArray(json.permissions)) return false;
+    PERMISSION_SET = new Set(json.permissions);
+    return true;
+  } catch {
+    // A failed fetch leaves the role-only fallback in place rather than
+    // stranding somebody with an empty menu. The routes and RLS still decide.
+    return false;
+  }
+}
+
+/** Cleared on sign-out, so the next person does not inherit this one's set. */
+export function clearPermissionSet() {
+  PERMISSION_SET = null;
+}
+
+/** For tests and for anything that needs to know whether the set is loaded. */
+export function permissionSetLoaded() {
+  return PERMISSION_SET !== null;
+}
+
 export function can(action) {
   const key = LEGACY_KEYS[action] || action;
-  return roleCan(getRole(), key);
+  return allowed(key);
 }
 
 /**
@@ -110,5 +153,10 @@ export function can(action) {
  * `team.manage`. Both end at the same resolver, so they can never disagree.
  */
 export function allowed(key, scope) {
+  // The fetched set wins when it is there, because only it knows about the
+  // exceptions. A scoped question (a project role) still goes to the resolver:
+  // the set is the caller's ORGANIZATION-wide answer and cannot speak for one
+  // project.
+  if (PERMISSION_SET && !scope?.projectId) return PERMISSION_SET.has(key);
   return roleCan(getRole(), key, scope);
 }
