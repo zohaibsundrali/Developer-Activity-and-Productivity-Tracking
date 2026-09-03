@@ -59,6 +59,7 @@ export const ADMIN_NAV = [
   { id: "my-attendance", label: "My Attendance", icon: CalendarCheck },
   { id: "my-leave", label: "My Leave", icon: Plane },
   { id: "my-reviews", label: "My Reviews", icon: Award },
+  { id: "my-activity", label: "My Activity", icon: Activity },
   { id: "all-projects", label: "All Projects", icon: FolderKanban },
   // Sits directly under All Projects: a request IS a project that has not
   // been agreed to yet, so it belongs beside the projects rather than off in
@@ -136,6 +137,7 @@ export const DEVELOPER_NAV = [
   { id: "my-attendance", label: "My Attendance", icon: CalendarCheck },
   { id: "my-leave", label: "My Leave", icon: Plane },
   { id: "my-reviews", label: "My Reviews", icon: Award },
+  { id: "my-activity", label: "My Activity", icon: Activity },
   { id: "account", label: "Account", icon: UserCircle },
 ];
 
@@ -150,6 +152,7 @@ export const MANAGER_NAV = [
   { id: "my-attendance", label: "My Attendance", icon: CalendarCheck },
   { id: "my-leave", label: "My Leave", icon: Plane },
   { id: "my-reviews", label: "My Reviews", icon: Award },
+  { id: "my-activity", label: "My Activity", icon: Activity },
   { id: "account", label: "Account", icon: UserCircle },
 ];
 
@@ -162,6 +165,7 @@ export const EMPLOYEE_NAV = [
   { id: "my-attendance", label: "My Attendance", icon: CalendarCheck },
   { id: "my-leave", label: "My Leave", icon: Plane },
   { id: "my-reviews", label: "My Reviews", icon: Award },
+  { id: "my-activity", label: "My Activity", icon: Activity },
   { id: "account", label: "Account", icon: UserCircle },
 ];
 

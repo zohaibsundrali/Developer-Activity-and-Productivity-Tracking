@@ -47,6 +47,7 @@ import Recruitment from "@/components/admin/Recruitment";
 import Assets from "@/components/admin/Assets";
 import Contracts from "@/components/admin/Contracts";
 import MyReviews from "@/components/shared/MyReviews";
+import MyActivity from "@/components/shared/MyActivity";
 import { isSessionExpired, clearAdminSession, clearDeveloperSession } from "@/utils/sessionPolicy";
 import { Skeleton } from "@/components/ui";
 // The app's one dialog pattern (sweetalert2, wrapped). No second toast library.
@@ -87,6 +88,7 @@ const ADMIN_NAV_GROUPS = {
   "my-attendance": "My Work",
   "my-leave": "My Work",
   "my-reviews": "My Work",
+  "my-activity": "My Work",
   "all-projects": "Delivery",
   requests: "Delivery",
   "change-requests": "Delivery",
@@ -470,6 +472,8 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
         return <MyLeave />;
       case "my-reviews":
         return <MyReviews />;
+      case "my-activity":
+        return <MyActivity />;
       case "leave-approvals":
         return <LeaveApprovals />;
       case "timesheet-approvals":
