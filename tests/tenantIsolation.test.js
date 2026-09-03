@@ -99,6 +99,14 @@ describe("every route that uses the service role", () => {
     // `.eq("organization_id", auth.orgId)` before anything else, and answers
     // 404 rather than 403 when that misses, so the route cannot confirm that a
     // project id exists in another tenant.
-    expect(usingService.length).toBe(59);
+    //
+    // 59 -> 61: /api/attendance and /api/leave, added with the attendance and
+    // leave module (migration 075). Both take `organization_id` from
+    // `auth.orgId` on every read and every write, never from the body; both
+    // re-read the target row scoped to that org before updating it; and
+    // /api/attendance re-reads the membership before writing somebody else's
+    // day, so an HR lead cannot file a record against a uuid from another
+    // tenant.
+    expect(usingService.length).toBe(61);
   });
 });

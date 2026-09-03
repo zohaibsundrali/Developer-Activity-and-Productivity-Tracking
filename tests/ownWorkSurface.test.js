@@ -203,6 +203,8 @@ describe("the two shells still say the same thing", () => {
       "my-work",
       "timesheet",
       "projects",
+      "my-attendance",
+      "my-leave",
       "account",
     ]);
   });

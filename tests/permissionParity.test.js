@@ -351,6 +351,27 @@ describe("the catalogue agrees with the section table it replaced", () => {
       key: "project.view_own",
       reason: "new screen in the admin shell; distinct from all-projects",
     },
+    // ── Attendance and leave (migration 075) ──────────────────────────────
+    //
+    // A NEW MODULE, so again nothing is being taken away: none of these three
+    // screens existed under any rule before. `employee` is why the module was
+    // built — ten permissions and a delivery-shaped dashboard, so a staff
+    // member with no delivery role opened it and found nothing to do.
+    {
+      section: "my-attendance",
+      key: "attendance.view_own",
+      reason: "new module; every staff role has a working day",
+    },
+    {
+      section: "my-leave",
+      key: "leave.request_own",
+      reason: "new module; every staff role takes leave",
+    },
+    {
+      section: "leave-approvals",
+      key: "leave.approve",
+      reason: "new module; owner/admin/hr/manager, who are already in the area",
+    },
   ];
 
   it("does not gate a section nobody had a rule for", () => {

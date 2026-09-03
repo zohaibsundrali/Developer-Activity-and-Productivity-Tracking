@@ -151,6 +151,13 @@ describe("user_type is no longer asked authorization questions", () => {
     "src/app/api/search/route.js":
       "builds the result URL (/admin/... vs /developer/...) and filters " +
       "candidates by which directory they came from",
+    "src/app/api/attendance/route.js":
+      "writes attendance_records.user_type — which profile table the person's " +
+      "row lives in. For somebody else it reads the membership rather than " +
+      "guessing; the authorization is attendance.log_own / attendance.manage",
+    "src/app/api/leave/route.js":
+      "writes leave_requests.user_type, the same storage column; every " +
+      "authorization decision in the file is a permission key",
   };
 
   it("only the recorded storage decisions still read userType", () => {
@@ -264,8 +271,36 @@ describe("proposals notifies whoever the catalogue says decides", () => {
   });
 });
 
-describe("migration 074 mirrors the catalogue exactly", () => {
-  const sql = raw("database/074_permission_model_resync.sql");
+describe("the newest mirror migration matches the catalogue exactly", () => {
+  /**
+   * WHICH FILE, decided by reading the directory rather than by naming one.
+   *
+   * This used to say `074_permission_model_resync.sql`. That was correct for
+   * exactly as long as 074 was the newest sync, and the next module to add a
+   * key (075's attendance and leave) broke it in a way that reads like the
+   * catalogue is wrong when in fact the test is looking at a superseded file.
+   * The mirror is whatever the LAST sync migration wrote, so that is what gets
+   * checked — and a new sync that forgets a key now fails here on the day it
+   * lands rather than the day somebody reads the table.
+   */
+  const SYNC = (() => {
+    const dir = path.join(root, "database");
+    const files = readdirSync(dir)
+      .filter((f) => /^\d{3}_.*\.sql$/.test(f))
+      .sort()
+      .reverse();
+    for (const f of files) {
+      const src = readFileSync(path.join(dir, f), "utf8");
+      // A sync migration is one that upserts the whole mirror. The orphan
+      // query alone is not enough — 074 and 076 both have one.
+      if (/insert into public\.role_permissions \(role, resource, action, allowed\) values/.test(src)) {
+        return { name: f, src };
+      }
+    }
+    throw new Error("no migration re-syncs role_permissions");
+  })();
+
+  const sql = SYNC.src;
 
   /** Only the VALUES rows — the PART 3 orphan query lists keys in comments. */
   const rows = [...sql.matchAll(/^\s*\('([a-z_]+)',\s*'([a-z_]+)',\s*'([a-z_]+)',\s*true\)/gm)].map(

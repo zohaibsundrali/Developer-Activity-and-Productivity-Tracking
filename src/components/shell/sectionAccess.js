@@ -62,6 +62,11 @@ export const SECTION_PERMISSIONS = Object.freeze({
   billing: "billing.view",
   "system-health": "system.health",
   permissions: "permissions.manage",
+  // Widening, unlike the two above: `leave.approve` is owner/admin/hr/manager,
+  // all four of whom are in the area already, so it adds nobody. It is left out
+  // of NON_WIDENING deliberately — the exemption is for sections everybody
+  // holds, and quietly parking a real screen there is how the front door drifts.
+  "leave-approvals": "leave.approve",
   // NOT IN THE SIDEBAR — its ADMIN_NAV entry is commented out — but still a
   // live `case` in the dashboard's section switch, so `?section=productivity`
   // rendered it. With no entry here `canAccessAdminSection` fell through to
@@ -90,6 +95,11 @@ export const SECTION_PERMISSIONS = Object.freeze({
   "my-work": "task.view_own",
   timesheet: "timesheet.view_own",
   projects: "project.view_own",
+  // Attendance and leave (migration 075). The `employee` role is the reason
+  // these exist: it had ten permissions and a delivery-shaped dashboard, so a
+  // staff member with no delivery role opened it and found nothing.
+  "my-attendance": "attendance.view_own",
+  "my-leave": "leave.request_own",
 
   account: null,
 });
@@ -113,7 +123,13 @@ export const SECTION_PERMISSIONS = Object.freeze({
  * A section belongs here when its permission is held by roles that do NOT
  * otherwise belong in /admin. Adding one is a decision about the front door.
  */
-export const NON_WIDENING_SECTIONS = Object.freeze(["my-work", "timesheet", "projects"]);
+export const NON_WIDENING_SECTIONS = Object.freeze([
+  "my-work",
+  "timesheet",
+  "projects",
+  "my-attendance",
+  "my-leave",
+]);
 
 /**
  * The old shape, derived rather than typed.
