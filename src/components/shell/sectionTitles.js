@@ -39,6 +39,7 @@ export const SECTION_TITLES = {
   assets: { admin: "Assets" },
   "leave-approvals": { admin: "Leave Approvals" },
   "timesheet-approvals": { admin: "Timesheet Approvals" },
+  contracts: { admin: "Contracts" },
   invoicing: { admin: "Invoicing" },
   quality: { admin: "Quality" },
   timesheet: { admin: "My Timesheet", developer: "My Timesheet" },

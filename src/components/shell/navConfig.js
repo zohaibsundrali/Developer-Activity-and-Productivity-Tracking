@@ -14,6 +14,7 @@ import {
   Building2,
   Megaphone,
   CheckSquare,
+  FileSignature,
   FileText,
   LifeBuoy,
   Receipt,
@@ -105,6 +106,9 @@ export const ADMIN_NAV = [
   { id: "clients", label: "Clients", icon: Handshake },
   // The tenant billing ITS clients. `billing` below is what the tenant pays
   // us for the subscription — two different moneys, kept apart.
+  // Above Invoicing: an invoice is a consequence of a contract, and the two
+  // are read in that order.
+  { id: "contracts", label: "Contracts", icon: FileSignature },
   { id: "invoicing", label: "Invoicing", icon: Receipt },
   { id: "billing", label: "Billing", icon: CreditCard },
   { id: "system-health", label: "System Health", icon: HeartPulse },

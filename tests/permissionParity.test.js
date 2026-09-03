@@ -428,6 +428,15 @@ describe("the catalogue agrees with the section table it replaced", () => {
       // they were holding. owner/admin/hr/finance, all in the area already.
       reason: "new module; asset register, owner/admin/hr/finance",
     },
+    {
+      section: "contracts",
+      key: "contract.view",
+      // A NEW SCREEN, and the last of the ten. The commercial chain was
+      // complete at both ends and empty in the middle: a proposal could be
+      // raised and an invoice sent, and nothing recorded what had been AGREED.
+      // owner/admin/manager/finance, all in the area already.
+      reason: "new module; client contracts, owner/admin/manager/finance",
+    },
   ];
 
   it("does not gate a section nobody had a rule for", () => {

@@ -89,6 +89,9 @@ export const SECTION_PERMISSIONS = Object.freeze({
   recruitment: "job.view",
   // What the company owns. owner/admin/hr/finance — all in the area.
   assets: "asset.view",
+  // What was agreed with a client. owner/admin/manager/finance — all in the
+  // area; a manager reads to deliver against it and does not write.
+  contracts: "contract.view",
   // NOT IN THE SIDEBAR — its ADMIN_NAV entry is commented out — but still a
   // live `case` in the dashboard's section switch, so `?section=productivity`
   // rendered it. With no entry here `canAccessAdminSection` fell through to

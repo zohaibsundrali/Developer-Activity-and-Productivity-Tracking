@@ -4,7 +4,7 @@
 
 # Roles and permissions
 
-12 roles, 99 permissions. Generated from `src/utils/permissionCatalogue.js`, which is the only place the defaults are written down.
+12 roles, 102 permissions. Generated from `src/utils/permissionCatalogue.js`, which is the only place the defaults are written down.
 
 A role says what somebody may **do**. It is not a job title — those live in `employee_profiles.designation` and can say anything. Two roles with identical permissions are one role with two names.
 
@@ -12,15 +12,15 @@ These are **defaults**. A tenant that wants something else gets it through the p
 
 ## Permissions by role
 
-How many of the 99 keys each role holds by default.
+How many of the 102 keys each role holds by default.
 
 | Role | Keys | What the role is for |
 |---|---:|---|
-| `owner` | 98 | Everything, and the only role that may buy, cancel or change the plan, delete the organization, or grant another person a permission. |
-| `admin` | 93 | Runs the organization day to day. Everything except the four owner-only keys. |
-| `manager` | 52 | Delivery. Projects, task assignment, the client-facing decisions, and reports. |
+| `owner` | 101 | Everything, and the only role that may buy, cancel or change the plan, delete the organization, or grant another person a permission. |
+| `admin` | 96 | Runs the organization day to day. Everything except the four owner-only keys. |
+| `manager` | 53 | Delivery. Projects, task assignment, the client-facing decisions, and reports. |
 | `hr` | 48 | People operations. Hiring, onboarding, the reporting line — and no access to delivery or money. |
-| `finance` | 25 | Money only. Billing and client accounts, deliberately WITHOUT the monitoring surface. |
+| `finance` | 27 | Money only. Billing and client accounts, deliberately WITHOUT the monitoring surface. |
 | `team_lead` | 41 | A contributor who also runs a team: reviews work, sees every task and project, reads reports. |
 | `qa` | 22 | A contributor who may also review other people's submissions and triage the bug queue. |
 | `developer` | 16 | Contributes. Own work, plus submitting it for review. |
@@ -156,6 +156,9 @@ How many of the 99 keys each role holds by default.
 | `invoice.view` | View client invoices | `owner`, `admin`, `finance` |
 | `invoice.manage` | Raise and edit client invoices | `owner`, `admin`, `finance` |
 | `pnl.view` | View project profit and loss | `owner`, `admin`, `finance` |
+| `contract.view` | Read client contracts | `owner`, `admin`, `manager`, `finance` |
+| `contract.manage` | Draft and sign a contract | `owner`, `admin`, `finance` |
+| `contract.amend` | Amend a signed contract | `owner`, `admin` |
 
 ### Oversight
 
