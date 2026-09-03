@@ -117,6 +117,12 @@ describe("every route that uses the service role", () => {
     // is `.eq("organization_id", auth.orgId)`, the project is re-read scoped to
     // the org before anything hangs off it, and the hours and rates on each
     // line are read back from billable_hours_v rather than taken from the body.
-    expect(usingService.length).toBe(63);
+    //
+    // 63 -> 64: /api/quality, added with the QA module (081). Every read and
+    // write is `.eq("organization_id", auth.orgId)`; a run is re-read scoped to
+    // the org before its executions are listed, so a run id from another tenant
+    // answers 404 rather than leaking its shape; and a run's scope is read from
+    // test_cases rather than taken from the body.
+    expect(usingService.length).toBe(64);
   });
 });

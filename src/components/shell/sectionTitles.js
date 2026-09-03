@@ -36,6 +36,7 @@ export const SECTION_TITLES = {
   "leave-approvals": { admin: "Leave Approvals" },
   "timesheet-approvals": { admin: "Timesheet Approvals" },
   invoicing: { admin: "Invoicing" },
+  quality: { admin: "Quality" },
   timesheet: { admin: "My Timesheet", developer: "My Timesheet" },
   "developer-activity": { admin: "Developer Activity" },
   reports: { admin: "Reports & Analytics" },

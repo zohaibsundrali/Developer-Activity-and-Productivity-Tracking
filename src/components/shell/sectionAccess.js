@@ -74,6 +74,13 @@ export const SECTION_PERMISSIONS = Object.freeze({
   // `pnl.view`: the P&L tab re-checks its own key at the route, so somebody
   // with invoicing access but not P&L opens the screen and gets one tab.
   invoicing: "invoice.view",
+  // Test cases and runs. Gated on `test_case.view`, which is REVIEWERS —
+  // owner, admin, manager, team_lead, qa, all already in the area, so this
+  // widens nobody. An earlier draft made that key DELIVERY (adding developer,
+  // designer and devops) and the derivation below quietly opened the admin
+  // front door to all three; roleDashboards caught it. See the note beside the
+  // key in permissionCatalogue.js.
+  quality: "test_case.view",
   // NOT IN THE SIDEBAR — its ADMIN_NAV entry is commented out — but still a
   // live `case` in the dashboard's section switch, so `?section=productivity`
   // rendered it. With no entry here `canAccessAdminSection` fell through to

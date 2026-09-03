@@ -388,6 +388,15 @@ describe("the catalogue agrees with the section table it replaced", () => {
       // owner/admin/finance are all in the area already.
       reason: "new screen; client invoicing and P&L, owner/admin/finance",
     },
+    {
+      section: "quality",
+      key: "test_case.view",
+      // A NEW SCREEN for something the product had no table for. 061 modelled a
+      // bug as a developer_tasks row and explicitly did not build a test-case
+      // manager; 081 does, without a second bug pipeline. REVIEWERS, all of
+      // whom are in the area already.
+      reason: "new module; test cases and runs, the reviewer roles",
+    },
   ];
 
   it("does not gate a section nobody had a rule for", () => {
