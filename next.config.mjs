@@ -10,8 +10,10 @@
  * CSP is deliberately shipped as **Report-Only**. An enforced policy that blocks
  * Supabase Storage images or the Realtime websocket would be worse than no CSP
  * at all, and this app has not yet been observed under the policy. Report-Only
- * gives violation telemetry with zero risk of breaking the UI. Promote it to the
- * enforcing `Content-Security-Policy` header only after the reports are clean.
+ * gives violation telemetry with zero risk of breaking the UI. The policy's
+ * `report-uri`/`report-to` now point at /api/csp-report, which records each
+ * violation to system_events (Admin -> System Health). Promote it to the
+ * enforcing `Content-Security-Policy` header only after those reports are clean.
  */
 const cspDirectives = [
   "default-src 'self'",
@@ -33,6 +35,13 @@ const cspDirectives = [
   "form-action 'self'",
   "frame-ancestors 'none'",
   "upgrade-insecure-requests",
+  // Where violations are sent. `report-uri` is the widely-supported legacy
+  // directive; `report-to` is its modern replacement and needs the
+  // `Reporting-Endpoints` header below. Both name the same sink,
+  // /api/csp-report, which records to system_events (Admin -> System Health).
+  // Without these the Report-Only policy reported to nobody.
+  "report-uri /api/csp-report",
+  "report-to csp-endpoint",
 ].join('; ');
 
 const securityHeaders = [
@@ -55,7 +64,10 @@ const securityHeaders = [
   },
   // Legacy XSS filter — off is the current guidance, CSP supersedes it.
   { key: 'X-XSS-Protection', value: '0' },
-  // Report-Only: observe before enforcing. See note above.
+  // Names the `csp-endpoint` group that the policy's `report-to` points at.
+  { key: 'Reporting-Endpoints', value: 'csp-endpoint="/api/csp-report"' },
+  // Report-Only: observe before enforcing. See note above. Violations now reach
+  // /api/csp-report (system_events) instead of being discarded.
   { key: 'Content-Security-Policy-Report-Only', value: cspDirectives },
 ];
 
