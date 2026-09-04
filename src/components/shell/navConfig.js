@@ -138,6 +138,10 @@ export const DEVELOPER_NAV = [
   { id: "my-leave", label: "My Leave", icon: Plane },
   { id: "my-reviews", label: "My Reviews", icon: Award },
   { id: "my-activity", label: "My Activity", icon: Activity },
+  // The staff half of the Quality module (migrations 095/096). Filtered by
+  // `staffNav` on `test_case.view`, so hr — who shares MANAGER_NAV below and
+  // holds no test key — does not see it.
+  { id: "my-tests", label: "Tests", icon: ClipboardList },
   { id: "account", label: "Account", icon: UserCircle },
 ];
 
@@ -153,6 +157,7 @@ export const MANAGER_NAV = [
   { id: "my-leave", label: "My Leave", icon: Plane },
   { id: "my-reviews", label: "My Reviews", icon: Award },
   { id: "my-activity", label: "My Activity", icon: Activity },
+  { id: "my-tests", label: "Tests", icon: ClipboardList },
   { id: "account", label: "Account", icon: UserCircle },
 ];
 
@@ -166,6 +171,7 @@ export const EMPLOYEE_NAV = [
   { id: "my-leave", label: "My Leave", icon: Plane },
   { id: "my-reviews", label: "My Reviews", icon: Award },
   { id: "my-activity", label: "My Activity", icon: Activity },
+  { id: "my-tests", label: "Tests", icon: ClipboardList },
   { id: "account", label: "Account", icon: UserCircle },
 ];
 
@@ -188,11 +194,27 @@ export function adminNavFor(role) {
 
 // Resolve the correct nav for a staff member based on their membership role.
 // developer/manager/employee all share the staff (/developer) dashboard.
+//
+// FILTERED THE SAME WAY THE ADMIN SIDEBAR IS, and it was not before. Three
+// hand-picked lists decided what a staff member saw, so a new entry was
+// offered to everybody the list covered whether or not they held its key —
+// which is fine while every entry is an `*_own` permission that every staff
+// role holds, and stops being fine the moment one is not. `my-tests` is the
+// first: hr shares MANAGER_NAV and holds no test key.
+//
+// Every existing entry is unaffected, and deliberately so rather than by luck:
+// `overview` and `account` are null in SECTION_PERMISSIONS, `team` has no
+// entry at all (unknown ids stay open), and the seven own-work entries are
+// keyed on permissions every staff role holds.
 export function staffNav(role) {
   // Supervisory staff (manager, team lead, HR) get the Team oversight section.
-  if (role === "manager" || role === "team_lead" || role === "hr") return MANAGER_NAV;
-  if (role === "employee") return EMPLOYEE_NAV;
-  return DEVELOPER_NAV;
+  const base =
+    role === "manager" || role === "team_lead" || role === "hr"
+      ? MANAGER_NAV
+      : role === "employee"
+        ? EMPLOYEE_NAV
+        : DEVELOPER_NAV;
+  return base.filter((item) => canAccessAdminSection(item.id, role));
 }
 
 // Client portal sidebar items — ids MUST match the ?section= switch in the client dashboard.

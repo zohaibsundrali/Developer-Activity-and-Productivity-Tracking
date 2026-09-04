@@ -4,7 +4,7 @@ import path from "node:path";
 
 import {
   SECTION_PERMISSIONS,
-  NON_WIDENING_SECTIONS,
+  OWN_WORK_SECTIONS,
   canAccessAdminSection,
   canEnterAdminArea,
 } from "@/components/shell/sectionAccess";
@@ -145,7 +145,14 @@ describe("every *_own key has a screen", () => {
 
 describe("the own-work sections reach the people who hold the keys", () => {
   const CONTRIBUTORS = ["developer", "designer", "devops", "employee"];
-  const OWN_SECTIONS = [...NON_WIDENING_SECTIONS];
+  // OWN_WORK_SECTIONS, not the whole non-widening exemption. The two lists were
+  // identical until `my-tests` joined the second: that screen is in the
+  // exemption because four roles that hold its key do not belong in /admin, not
+  // because it is a screen about you. It has no admin title and no admin switch
+  // case on purpose — the admin shell has the fuller Quality screen — so
+  // iterating the exemption here asserted three things that were never meant to
+  // be true. The test below covers it on its own terms.
+  const OWN_SECTIONS = [...OWN_WORK_SECTIONS];
 
   it("offers every own-work section in every staff nav", () => {
     // A contributor cannot enter /admin, so the staff shell is the only place
@@ -185,6 +192,25 @@ describe("the own-work sections reach the people who hold the keys", () => {
       expect(SECTION_TITLES[section].admin, `${section} has no admin title`).toBeTruthy();
       expect(SECTION_TITLES[section].developer, `${section} has no staff title`).toBeTruthy();
     }
+  });
+
+  it("gives the staff Tests screen to everyone who holds its key", () => {
+    // The same rule as the own-work sections, applied to the one exempt section
+    // that is not one of them: a key whose holder cannot reach a screen is the
+    // fault this file exists to catch, and `test_case.view` was exactly that
+    // between 081 and 095.
+    for (const role of ROLES) {
+      const holdsKey = permissionsForRole(role).includes("test_case.view");
+      if (!holdsKey) continue;
+      const reachable =
+        staffNav(role).some((i) => i.id === "my-tests") ||
+        // or the admin shell's fuller screen, which every admin-area role that
+        // can read a test can also write on
+        (canAccessAdminSection("quality", role) && canEnterAdminArea(role));
+      expect(reachable, `${role} holds test_case.view and can reach no screen`).toBe(true);
+    }
+    expect(STAFF_DASHBOARD.includes('case "my-tests":')).toBe(true);
+    expect(SECTION_TITLES["my-tests"]?.developer, "my-tests has no staff title").toBeTruthy();
   });
 
   it("opens them to every staff role and no client", () => {

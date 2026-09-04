@@ -24,15 +24,22 @@ import { PERMISSIONS } from "@/utils/permissionCatalogue";
  *   NO_FEATURE_YET      the product has no way to do this at all. The key
  *                       describes an intention.
  *
- * THE CONSEQUENCE, WHICH IS THE REASON THIS FILE EXISTS. `user_permissions`
- * (migration 069) lets an organization grant or DENY a permission to one named
- * person, and `authCan` honours it. A rule enforced by an RLS role list does
- * not: `public.auth_role() in ('owner','admin','hr')` cannot see an override.
+ * THE CONSEQUENCE THIS FILE WAS WRITTEN TO RECORD, AND WHAT CLOSED IT.
+ * `user_permissions` (migration 069) lets an organization grant or DENY a
+ * permission to one named person, and `authCan` honours it. A rule enforced by
+ * an RLS role list did not: `public.auth_role() in ('owner','admin','hr')`
+ * cannot see an override, so writing an explicit DENY against an individual had
+ * NO EFFECT for every key in ENFORCED_BY_RLS. Not a hole — the role rule still
+ * held — but a promise the Permissions screen appeared to make and did not
+ * keep.
  *
- * So for every key in ENFORCED_BY_RLS below, writing an explicit DENY against
- * an individual has NO EFFECT. That is not a hole — the role rule still holds —
- * but it is a promise the Permissions screen appears to make and does not keep,
- * and it is worth one place saying so rather than fourteen places not.
+ * MIGRATION 094 CLOSED IT for the ten keys listed here, by adding
+ * `public.auth_override(key)` and folding it into each policy. 095 does the
+ * same for the quality module. The list below therefore no longer means "an
+ * override does nothing here"; it means "no route asks this key, so the policy
+ * is the only thing deciding it" — which is still worth one place saying,
+ * because it is where you look when a change to a route mysteriously changes
+ * nothing.
  *
  * WHAT THIS FILE IS FOR. The list can shrink. It must not grow silently: a new
  * key with no caller fails here and has to be argued for.
@@ -74,7 +81,6 @@ const ENFORCED_BY_RLS = {
   "employee.onboard": "employee_profiles_write in 018 — owner/admin/hr",
   "employee.transfer": "the same policy; a transfer is an update to the profile row",
   "employee.activate": "EmployeeProfileEditor writes employment_status directly, under the same policy",
-  "hierarchy.manage": "reports_to is written on memberships, under memberships_update in 018",
   "team.view": "TeamPanel reads memberships and project_members, both org-readable by RLS",
   "project.create": "projects are inserted straight from the browser under 013's org policy",
   "billing.manage": "BillingSubscription reads through /api/billing/subscription, which asks billing.view; there is no separate 'manage' action in the UI",
@@ -118,10 +124,11 @@ describe("every permission key is asked, or recorded as not asked", () => {
 });
 
 describe("what the RLS-enforced keys cost, stated once", () => {
-  it("names them, because an override against one person does nothing there", () => {
-    // `user_permissions` (069) lets an organization DENY a permission to a named
-    // individual, and `authCan` honours it. `public.auth_role() in (…)` cannot.
-    // Anybody wondering why a deny "did not work" should find this list.
+  it("names them, because the policy is the only thing deciding them", () => {
+    // No route asks these keys, so `memberships_update` and friends are the
+    // whole gate. 094 taught those policies to consult `auth_override`, so a
+    // per-person exception now applies here too — but a change to a ROUTE still
+    // does nothing for any of them, which is what this list is for.
     expect(Object.keys(ENFORCED_BY_RLS).length).toBeGreaterThan(0);
     for (const key of Object.keys(ENFORCED_BY_RLS)) {
       expect(PERMISSIONS.map((p) => p.key), key).toContain(key);
@@ -129,8 +136,12 @@ describe("what the RLS-enforced keys cost, stated once", () => {
   });
 
   it("does not let that list quietly grow", () => {
-    // Ten today. Every addition is a capability whose per-person override stops
-    // working, so it should be a decision somebody makes on purpose.
-    expect(Object.keys(ENFORCED_BY_RLS).length).toBe(10);
+    // NINE. It was ten until `hierarchy.manage` got the ReportingLines panel,
+    // which asks it — the good outcome this file is built to force: the entry
+    // failed, and was deleted rather than updated.
+    //
+    // Every addition is a capability no route decides, so it should be a
+    // decision somebody makes on purpose.
+    expect(Object.keys(ENFORCED_BY_RLS).length).toBe(9);
   });
 });

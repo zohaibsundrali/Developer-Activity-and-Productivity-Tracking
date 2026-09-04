@@ -17,6 +17,7 @@ import OrganizationManagement from "@/components/admin/OrganizationManagement";
 import ClientManagement from "@/components/admin/ClientManagement";
 import EmployeeDirectory from "@/components/admin/EmployeeDirectory";
 import ProjectHierarchy from "@/components/admin/ProjectHierarchy";
+import ReportingLines from "@/components/admin/ReportingLines";
 import TeamCapacity from "@/components/admin/TeamCapacity";
 import TeamStats from "@/components/admin/TeamStats";
 import ProjectBoard from "@/components/admin/ProjectBoard";
@@ -516,8 +517,18 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
         return <TaskReviewPanel currentAdmin={user} />;
       case "employees":
         return <EmployeeDirectory />;
+      // Two halves of one question, on one screen. ProjectHierarchy answers
+      // "who is working on what" from the project rows; ReportingLines answers
+      // "who answers to whom", which is the column that chart deliberately
+      // refuses to guess at. Putting the editor anywhere else would leave the
+      // chart explaining a gap the reader cannot close from where they are.
       case "hierarchy":
-        return <ProjectHierarchy />;
+        return (
+          <div className="space-y-8">
+            <ProjectHierarchy />
+            <ReportingLines />
+          </div>
+        );
       case "capacity":
         return <TeamCapacity />;
       case "team-stats":

@@ -7,6 +7,7 @@ import {
   ADMIN_SECTION_ROLES,
   SECTION_PERMISSIONS,
   NON_WIDENING_SECTIONS,
+  OWN_WORK_SECTIONS,
   canAccessAdminSection,
   canEnterAdminArea,
 } from "@/components/shell/sectionAccess";
@@ -57,7 +58,7 @@ describe("the own-work sections exist and are gated on the *_own keys", () => {
     expect(SECTION_PERMISSIONS["my-work"]).toBe("task.view_own");
     expect(SECTION_PERMISSIONS.timesheet).toBe("timesheet.view_own");
     expect(SECTION_PERMISSIONS.projects).toBe("project.view_own");
-    for (const section of NON_WIDENING_SECTIONS) {
+    for (const section of OWN_WORK_SECTIONS) {
       expect(SECTION_PERMISSIONS[section], section).toBeTruthy();
     }
   });
@@ -74,13 +75,18 @@ describe("the own-work sections exist and are gated on the *_own keys", () => {
   });
 
   it("opens for every role that was moved into the admin shell", () => {
+    // OWN_WORK_SECTIONS, not the whole exemption. `my-tests` is in the
+    // exemption for a different reason and is a STAFF-shell screen: hr holds no
+    // test key, and the admin shell has the fuller Quality screen for everyone
+    // who does. Iterating the exemption here asserted a thing that was never
+    // meant to be true.
     for (const role of MOVED) {
-      for (const section of NON_WIDENING_SECTIONS) {
+      for (const section of OWN_WORK_SECTIONS) {
         expect(canAccessAdminSection(section, role), `${role}/${section}`).toBe(true);
       }
       // and the sidebar actually offers them
       const ids = adminNavFor(role).map((i) => i.id);
-      for (const section of NON_WIDENING_SECTIONS) {
+      for (const section of OWN_WORK_SECTIONS) {
         expect(ids, `${role}/${section}`).toContain(section);
       }
     }
@@ -88,7 +94,7 @@ describe("the own-work sections exist and are gated on the *_own keys", () => {
 
   it("opens for owner and admin too — an owner has a timesheet", () => {
     for (const role of ["owner", "admin"]) {
-      for (const section of NON_WIDENING_SECTIONS) {
+      for (const section of OWN_WORK_SECTIONS) {
         expect(canAccessAdminSection(section, role), `${role}/${section}`).toBe(true);
       }
     }
@@ -134,12 +140,28 @@ describe("the own-work sections do not widen the front door", () => {
   it("does not smuggle a real admin screen into the exemption", () => {
     // The exemption is load-bearing, so it must stay small and it must never
     // cover a section that is a reason to be in /admin.
-    for (const section of NON_WIDENING_SECTIONS) {
+    //
+    // TWO SHAPES, and conflating them was how this test nearly failed the wrong
+    // way. An own-work section is held by EVERY staff role — that is what makes
+    // it "already inside". `my-tests` is not: TESTERS leaves out hr and
+    // finance. What makes IT safe is the other half of the same rule — every
+    // role that holds its key can actually reach the screen, either in /admin
+    // or in the staff shell — so nobody is admitted anywhere to use it.
+    const staff = ROLES.filter((r) => r !== "client");
+    for (const section of OWN_WORK_SECTIONS) {
       const roles = ADMIN_SECTION_ROLES[section];
       expect(roles, section).toBeInstanceOf(Array);
-      // every staff role holds it — that is what makes it "already inside"
-      const staff = ROLES.filter((r) => r !== "client");
       expect([...roles].sort(), section).toEqual([...staff].sort());
+    }
+    for (const section of NON_WIDENING_SECTIONS) {
+      if (OWN_WORK_SECTIONS.includes(section)) continue;
+      const roles = ADMIN_SECTION_ROLES[section];
+      expect(roles, section).toBeInstanceOf(Array);
+      for (const role of roles) {
+        const reachable =
+          canEnterAdminArea(role) || staffNav(role).some((i) => i.id === section);
+        expect(reachable, `${section}/${role}`).toBe(true);
+      }
     }
   });
 });
@@ -148,7 +170,7 @@ describe("the admin dashboard actually renders them", () => {
   const src = read(ADMIN_DASHBOARD);
 
   it("has a switch case for every declared own-work section", () => {
-    for (const section of NON_WIDENING_SECTIONS) {
+    for (const section of OWN_WORK_SECTIONS) {
       expect(src, section).toContain(`case "${section}":`);
     }
   });
@@ -179,7 +201,7 @@ describe("the admin dashboard actually renders them", () => {
   });
 
   it("titles them, in the admin shell as well as the staff one", () => {
-    for (const section of NON_WIDENING_SECTIONS) {
+    for (const section of OWN_WORK_SECTIONS) {
       expect(SECTION_TITLES[section], section).toBeTruthy();
       expect(SECTION_TITLES[section].admin, section).toBeTruthy();
     }
@@ -207,6 +229,7 @@ describe("the two shells still say the same thing", () => {
       "my-leave",
       "my-reviews",
       "my-activity",
+      "my-tests",
       "account",
     ]);
   });

@@ -390,11 +390,20 @@ describe("the catalogue agrees with the section table it replaced", () => {
     },
     {
       section: "quality",
-      key: "test_case.view",
+      key: "test_case.manage",
       // A NEW SCREEN for something the product had no table for. 061 modelled a
       // bug as a developer_tasks row and explicitly did not build a test-case
       // manager; 081 does, without a second bug pipeline. REVIEWERS, all of
       // whom are in the area already.
+      //
+      // RE-KEYED from `test_case.view` to `test_case.manage` when 095 widened
+      // view to the contributor roles. The role set this section resolves to
+      // is IDENTICAL either way today — test_case.manage holds exactly what
+      // test_case.view held before 095 — which is the whole point: the admin
+      // front door is derived from these keys, and leaving it on `view` would
+      // have flattened developer, designer, devops and employee into
+      // ADMIN_AREA_ROLES. Not a new restriction; the same one, expressed
+      // against a key that did not move.
       reason: "new module; test cases and runs, the reviewer roles",
     },
     {
@@ -445,6 +454,21 @@ describe("the catalogue agrees with the section table it replaced", () => {
       // then, and productivity.view_own, monitoring.view_own and team.view_own
       // did not. A key with no screen is the fault #74 existed to fix.
       reason: "new screen; the last three *_own keys that had no surface",
+    },
+    {
+      section: "my-tests",
+      key: "test_case.view",
+      // THE SCREEN 081 SAID IT WAS WAITING FOR. That migration gave all four
+      // quality keys to the reviewer roles and wrote down that this was not
+      // the design — reading and executing were meant to be wider — and that
+      // the widening had to wait for a staff surface, because a key with no
+      // screen would have been useless and, worse, would have opened the admin
+      // front door through the derivation.
+      //
+      // It is in NON_WIDENING_SECTIONS for exactly that reason, and it is the
+      // first entry there that is not an `*_own` key: what puts a section on
+      // that list is who holds its key, not what the key is called.
+      reason: "new screen; the staff half of the quality module (095)",
     },
   ];
 

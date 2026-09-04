@@ -86,6 +86,18 @@ const DECIDERS = ["owner", "admin", "manager"];
 /** Who files work for review — everyone who produces something. */
 const CONTRIBUTORS = ["developer", "designer", "devops", "qa", "employee", "team_lead"];
 /**
+ * Everyone with a reason to look at a test: REVIEWERS ∪ CONTRIBUTORS.
+ *
+ * DERIVED from the two bundles rather than typed out, for the reason STAFF
+ * gives: a hand-written third list is another copy of the role vocabulary, and
+ * a role added to either bundle would silently be left out of testing.
+ *
+ * `hr` and `finance` are in neither bundle and so are not here, which is the
+ * intended answer — neither has a reason to read a test case, and a screen
+ * nobody opens is still a surface.
+ */
+const TESTERS = [...new Set([...REVIEWERS, ...CONTRIBUTORS])];
+/**
  * Everyone who works here — every role except `client`.
  *
  * DERIVED, never typed out, for the reason roles.js gives about STAFF_ROLES: a
@@ -280,35 +292,59 @@ export const PERMISSIONS = Object.freeze([
   { key: "task.submit", roles: CONTRIBUTORS, module: "delivery", label: "Submit work for review", legacy: "submit_task" },
   { key: "sprint.view", roles: SUPERVISORS, module: "delivery", label: "Open sprints" },
   { key: "bug.triage", roles: REVIEWERS, module: "delivery", label: "Triage the bug queue" },
+  // ITS OWN KEY, and it exists because `test_run.execute` just got wider.
+  //
+  // /api/quality?action=bug raised the defect on `test_run.execute` — correct
+  // while that key meant REVIEWERS, and the comment there said so: "anybody
+  // running the test may do it". Widening execute to TESTERS would have
+  // carried defect-RAISING along with it, and raising a defect writes a
+  // `developer_tasks` row. Creating a task is SUPERVISORS everywhere else in
+  // this file; letting four more roles do it as a side effect of a Tests
+  // screen is precisely the silent drift this catalogue exists to stop.
+  //
+  // REVIEWERS is the set that held `test_run.execute` yesterday, so nobody
+  // gains or loses the ability to file a defect today. What changes is that
+  // the act now has a name, and widening it later is a decision somebody makes
+  // on this line rather than a consequence of an unrelated one.
+  { key: "bug.raise", roles: REVIEWERS, module: "delivery", label: "Raise a defect from a failed test" },
   // ── Quality ───────────────────────────────────────────────────────────
   //
   // A test case is not a task, which is why 081 gives it a table rather than a
   // task_type. A task is done once; a test case is a question you ask again of
   // every build, and its history is the answer changing over time.
   //
-  // ALL FOUR ARE REVIEWERS TODAY, and the four keys are kept separate for what
-  // comes next rather than for what is here now.
+  // READING AND EXECUTING ARE WIDER THAN WRITING, and that was always the plan.
+  // 081 wrote all four keys as REVIEWERS and said exactly why the widening had
+  // to wait: `developer`, `designer` and `devops` cannot enter /admin, so
+  // `test_case.view` would have been a key with no screen. Worse, the admin
+  // Quality SECTION was gated on that key while ADMIN_AREA_ROLES is derived by
+  // flattening every gated section's roles — so widening it would have opened
+  // the admin FRONT DOOR to all three. tests/roleDashboards.test.js caught
+  // exactly that, and it is why this waited for a screen rather than being
+  // argued about.
   //
-  // The design wants reading and EXECUTING to be wider than writing: a
-  // developer should see what will be checked before calling something
-  // finished, and testing is not something QA does alone. That widening is
-  // NOT made here, and the reason is the one this codebase keeps relearning —
-  // `developer`, `designer` and `devops` cannot enter /admin, so granting them
-  // test_case.view would have handed them a key with no screen. Worse, the
-  // Quality section is gated on a key, and ADMIN_AREA_ROLES is derived by
-  // flattening every gated section's roles, so it would have opened the admin
-  // FRONT DOOR to all three. tests/roleDashboards.test.js caught exactly that.
+  // The staff shell now has a Tests surface, so the widening lands, and the
+  // front door is held still by two separate changes in sectionAccess.js:
   //
-  // The widening lands when the staff shell gets a Quality surface, the same
-  // way finance waited for an invoice before gaining timesheet.view_all.
+  //   - the admin `quality` section is re-keyed to `test_case.manage`, which
+  //     holds precisely the roles `test_case.view` held before today, so the
+  //     derivation produces the same set it produced yesterday;
+  //   - the new `my-tests` section is keyed on `test_case.view` and listed in
+  //     NON_WIDENING_SECTIONS, so it cannot widen the door either.
   //
-  // What IS already true: writing a case is a QA decision, and a developer
-  // editing the test that judges their own work is the shape this module
-  // refuses whatever else changes.
-  { key: "test_case.view", roles: REVIEWERS, module: "delivery", label: "See the test cases" },
+  // Neither alone would be enough. Doing only the first would let `my-tests`
+  // admit four more roles to /admin; doing only the second would leave the
+  // Quality section widening it instead.
+  //
+  // WRITING STAYS WITH THE REVIEWERS, unchanged. A developer editing the test
+  // that judges their own work is the shape this module refuses whatever else
+  // changes. Raising a defect from a failed result stays REVIEWERS too — see
+  // the keyFor map in api/quality, which moves that act onto `bug.triage`
+  // rather than letting it ride along with the widened execute key.
+  { key: "test_case.view", roles: TESTERS, module: "delivery", label: "See the test cases" },
   { key: "test_case.manage", roles: REVIEWERS, module: "delivery", label: "Write and edit test cases" },
   { key: "test_run.manage", roles: REVIEWERS, module: "delivery", label: "Start and close a test run" },
-  { key: "test_run.execute", roles: REVIEWERS, module: "delivery", label: "Record a test result" },
+  { key: "test_run.execute", roles: TESTERS, module: "delivery", label: "Record a test result" },
 
   // ── Client-facing ───────────────────────────────────────────────────────
   { key: "proposal.view", roles: SUPERVISORS, module: "clients", label: "View incoming requests" },

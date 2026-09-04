@@ -17,6 +17,7 @@ import MyAttendance from "@/components/shared/MyAttendance";
 import MyLeave from "@/components/shared/MyLeave";
 import MyReviews from "@/components/shared/MyReviews";
 import MyActivity from "@/components/shared/MyActivity";
+import TestCases from "@/components/shared/TestCases";
 import { isSessionExpired, clearDeveloperSession, touchDeveloperSession } from "@/utils/sessionPolicy";
 import { Skeleton } from "@/components/ui";
 
@@ -360,6 +361,12 @@ function DeveloperDashboardContent() {
         return <MyReviews />;
       case "my-activity":
         return <MyActivity />;
+      // Gated by the sidebar (staffNav filters on `test_case.view`), by
+      // /api/quality on the verified token, and by RLS in 095. This case
+      // renders the screen for anybody who reaches the URL; the route answers
+      // 403 to a role that may not read tests, and the screen shows that.
+      case "my-tests":
+        return <TestCases />;
       case "account":
         return <Account user={user} />;
       case "overview":
