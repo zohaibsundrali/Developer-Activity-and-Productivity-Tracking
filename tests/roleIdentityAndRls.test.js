@@ -314,7 +314,15 @@ function makeDb(invite) {
           rec.updates.push({ table, patch });
           return chain;
         },
-        maybeSingle: async () => ({ data: table === "invitations" ? invite : null, error: null }),
+        maybeSingle: async () => ({
+          data:
+            table === "invitations" ? invite
+            // The accept route reads the organization's name for an invited
+            // admin's admin_users.company (NOT NULL); answer it like PostgREST.
+            : table === "organizations" ? { id: "org-1", name: "Analytical Engines" }
+            : null,
+          error: null,
+        }),
         single: async () => ({ data: rowFor(table), error: null }),
         then: (resolve) => Promise.resolve({ data: null, error: null }).then(resolve),
       };
@@ -391,6 +399,42 @@ describe("H-3 · one role, one user_type", () => {
 
     // No admin_users row is created for them at all.
     expect(rec.inserts.map((i) => i.table)).not.toContain("admin_users");
+  });
+
+  it("files an INVITED admin under the organization's name, because admin_users.company is NOT NULL", async () => {
+    /**
+     * THE BUG: this insert wrote `company: null`. The column is NOT NULL (the
+     * table predates database/010; signup fills it from the founder's company
+     * name), so Postgres refused the row and every admin invitation in the
+     * product's history failed at "Accept & create account" with a raw
+     * constraint error. The invitee has no company to type — the organization
+     * they are joining is the answer, read from the organizations row rather
+     * than guessed.
+     */
+    const { res, rec } = await accept("admin");
+    expect(res.status).toBe(200);
+    const profile = profileRowIn(rec);
+    expect(profile.table).toBe("admin_users");
+    expect(profile.row.company).toBe("Analytical Engines");
+    expect(profile.row.company).not.toBeNull();
+  });
+
+  it("refuses an admin invitation whose organization cannot be read, instead of inventing a company", async () => {
+    db = makeDb({
+      id: "inv-1", token: "tok", email: "admin@example.com", role: "admin", status: "pending",
+      organization_id: "org-1", expires_at: null, project_id: null, team_id: null, department_id: null,
+    });
+    const realFrom = db.from.bind(db);
+    db.from = (table) => {
+      const chain = realFrom(table);
+      if (table === "organizations") chain.maybeSingle = async () => ({ data: null, error: null });
+      return chain;
+    };
+    const res = await POST(request());
+    expect(res.status).toBe(500);
+    // Nothing was written: no profile row, no membership, no Auth account.
+    expect(db.rec.inserts).toHaveLength(0);
+    expect(db.rec.createUser).toBeNull();
   });
 
   it("keeps hr's REAL role on the membership and in the claim", async () => {

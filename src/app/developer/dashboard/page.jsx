@@ -18,6 +18,7 @@ import MyLeave from "@/components/shared/MyLeave";
 import MyReviews from "@/components/shared/MyReviews";
 import MyActivity from "@/components/shared/MyActivity";
 import TestCases from "@/components/shared/TestCases";
+import { projectDetailsHref } from "@/utils/queryDates";
 import { isSessionExpired, clearDeveloperSession, touchDeveloperSession } from "@/utils/sessionPolicy";
 import { Skeleton } from "@/components/ui";
 
@@ -314,7 +315,9 @@ function DeveloperDashboardContent() {
   const handleViewProjectDetails = (project) => {
     // Navigate to project details page
     startNavigation(() => {
-      router.push(`/developer/project-details?id=${project.id}&name=${encodeURIComponent(project.name)}&description=${encodeURIComponent(project.description || '')}&status=${project.status}&progress=${project.progress}&deadline=${project.deadline}&created_at=${project.created_at}&file_url=${project.file_url || ''}&file_name=${encodeURIComponent(project.file_name || '')}&assigned_at=${project.assigned_at || ''}&assigned_developer_name=${encodeURIComponent(project.assigned_developer_name || '')}&assigned_developer_email=${project.assigned_developer_email || ''}`);
+      // URLSearchParams, not a template literal: the timestamps carry a `+00:00`
+      // offset, and a raw `+` in a query string is a space. See utils/queryDates.js.
+      router.push(projectDetailsHref(project));
     });
   };
 

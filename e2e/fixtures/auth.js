@@ -49,8 +49,11 @@ export async function login(page, credentials) {
     );
   }
 
-  // The shell is up once the topbar heading renders.
-  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  // The shell is up once its sidebar renders. Not the <h1>: the topbar no
+  // longer carries one (each screen renders its own through PageHeader), and
+  // the staff dashboard's overview is a profile card with no <h1> at all, so
+  // waiting for a level-1 heading failed every staff login.
+  await expect(page.getByRole('navigation', { name: 'Sections' })).toBeVisible();
 }
 
 /**
@@ -75,16 +78,20 @@ export async function logout(page) {
  */
 export async function accessToken(page) {
   return page.evaluate(() => {
-    const key = Object.keys(window.localStorage).find(
-      (k) => k.startsWith('sb-') && k.includes('auth-token')
-    );
-    if (!key) return null;
-    try {
-      const parsed = JSON.parse(window.localStorage.getItem(key));
-      return parsed?.access_token || parsed?.currentSession?.access_token || null;
-    } catch {
-      return null;
+    // src/utils/supabaseClient.js keeps the session in sessionStorage (so it
+    // dies with the tab); localStorage is checked second for older builds.
+    for (const store of [window.sessionStorage, window.localStorage]) {
+      const key = Object.keys(store).find((k) => k.startsWith('sb-') && k.includes('auth-token'));
+      if (!key) continue;
+      try {
+        const parsed = JSON.parse(store.getItem(key));
+        const token = parsed?.access_token || parsed?.currentSession?.access_token || null;
+        if (token) return token;
+      } catch {
+        // fall through to the next store
+      }
     }
+    return null;
   });
 }
 

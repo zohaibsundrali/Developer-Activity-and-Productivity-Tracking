@@ -105,7 +105,22 @@ describe("loadOverrides", () => {
     expect(src).toContain('.eq("memberships.organization_id", auth.orgId)');
     expect(src).toContain('.eq("memberships.user_id", auth.appUserId)');
     expect(src).toContain('.eq("memberships.user_type", auth.userType)');
-    expect(src).toContain("memberships!inner");
+    expect(src).toContain("memberships!membership_id!inner");
+  });
+
+  it("names WHICH foreign key it embeds through, because there are two", () => {
+    // user_permissions reaches memberships twice: membership_id (whose row) and
+    // granted_by (who wrote it). An unhinted `memberships!inner` is ambiguous,
+    // PostgREST answers PGRST201 instead of rows, loadOverrides throws, and
+    // every permission-gated route in the product fails closed with a 503 —
+    // for everyone, in every organization. That is what this pins.
+    const src = read("src/utils/permissionOverrides.js");
+    expect(src).not.toMatch(/memberships!inner\(/);
+    expect(src).toMatch(/memberships!membership_id!inner\(organization_id, user_id, user_type\)/);
+    // And the failure, should it ever come back, is no longer silent.
+    const auth = read("src/utils/serverAuth.js");
+    expect(auth).toMatch(/catch \(e\) \{[\s\S]*console\.error\([\s\S]*overridesUnavailable = true;/);
+    expect(auth).not.toMatch(/catch \{\s*overridesUnavailable = true;/);
   });
 });
 

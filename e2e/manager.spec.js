@@ -24,7 +24,7 @@ test.describe('Manager', () => {
   });
 
   test('lands on the staff dashboard with the Team oversight section', async ({ page }) => {
-    if (manager.portalName === 'admin') {
+    if (manager.area === 'admin') {
       await expect(page).toHaveURL(/\/admin\/dashboard/);
       await expectNav(page, {
         visible: ['Overview', 'Project Hub', 'Views', 'Sprints', 'Reports'],
@@ -40,7 +40,7 @@ test.describe('Manager', () => {
   });
 
   test('team: the roster and headcount summary render', async ({ page }) => {
-    test.skip(manager.portalName === 'admin', 'The Team panel lives on the staff dashboard.');
+    test.skip(manager.area === 'admin', 'The Team panel lives on the staff dashboard.');
 
     await openSection(page, 'Team', 'Team');
 
@@ -50,7 +50,7 @@ test.describe('Manager', () => {
   });
 
   test('employees: the roster names people and their roles', async ({ page }) => {
-    test.skip(manager.portalName === 'admin', 'Covered by the HR spec on the admin console.');
+    test.skip(manager.area === 'admin', 'Covered by the HR spec on the admin console.');
 
     await openSection(page, 'Team', 'Team');
     await page.getByRole('button', { name: 'Refresh', exact: true }).first().click();
@@ -63,17 +63,17 @@ test.describe('Manager', () => {
   });
 
   test('projects: the assigned project list is reachable', async ({ page }) => {
-    const heading = manager.portalName === 'admin' ? 'Project Hub' : 'My Projects';
-    const navLabel = manager.portalName === 'admin' ? 'Project Hub' : 'My Projects';
+    const heading = manager.area === 'admin' ? 'Project Hub' : 'My Projects';
+    const navLabel = manager.area === 'admin' ? 'Project Hub' : 'My Projects';
     await openSection(page, navLabel, heading);
   });
 
   test('tasks: opening a project reaches its task plan', async ({ page }) => {
-    test.skip(manager.portalName === 'admin', 'Admin task surfaces are covered by the owner spec.');
+    test.skip(manager.area === 'admin', 'Admin task surfaces are covered by the owner spec.');
 
     await openSection(page, 'My Projects', 'My Projects');
 
-    const openDetail = page.getByRole('button', { name: /View Detail/ });
+    const openDetail = page.getByRole('button', { name: /^View details for / });
     const count = await openDetail.count();
     test.skip(count === 0, 'No project is assigned to the seeded manager — seed one to cover this flow.');
 
@@ -83,7 +83,7 @@ test.describe('Manager', () => {
   });
 
   test('a hand-edited ?section= cannot open a section the role has no claim to', async ({ page }) => {
-    test.skip(manager.portalName === 'admin', 'The admin console guard is covered by the HR spec.');
+    test.skip(manager.area === 'admin', 'The admin console guard is covered by the HR spec.');
 
     // `team` IS allowed for a manager — this proves the URL route works before
     // the negative case in isolation.spec.js proves the guard bites.

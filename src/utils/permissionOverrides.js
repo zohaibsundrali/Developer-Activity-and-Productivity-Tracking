@@ -82,9 +82,19 @@ export async function loadOverrides(svc, auth) {
   // permissions is not the same question and must not require them to hold the
   // management permission. The organization + user filters below are what scope
   // this, and they come from a verified token.
+  //
+  // `memberships!membership_id!inner`, with the column NAMED. user_permissions
+  // has two foreign keys into memberships — `membership_id` (whose row this
+  // is) and `granted_by` (who wrote it) — and PostgREST refuses an embed it
+  // cannot pick between: PGRST201, "more than one relationship was found". An
+  // unhinted `memberships!inner` did exactly that on every call, which the
+  // caller read as "overrides unreadable" and, correctly, failed closed: every
+  // route that asks a permission answered 503 for every organization. Hinted
+  // by column rather than by constraint name so a renamed constraint cannot
+  // bring it back.
   const { data, error } = await svc
     .from("user_permissions")
-    .select("permission_key, allowed, memberships!inner(organization_id, user_id, user_type)")
+    .select("permission_key, allowed, memberships!membership_id!inner(organization_id, user_id, user_type)")
     .eq("memberships.organization_id", auth.orgId)
     .eq("memberships.user_id", auth.appUserId)
     .eq("memberships.user_type", auth.userType);

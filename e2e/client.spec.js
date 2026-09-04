@@ -18,7 +18,10 @@ const client = credentialsFor('client');
 async function openFirstProject(page) {
   await openSection(page, 'My Projects', 'My Projects');
 
-  const empty = page.getByRole('heading', { name: 'No projects linked yet' });
+  // Wait for the list to answer — cards or the empty state — before deciding;
+  // a count taken during the fetch read "no empty state" as "has projects".
+  const empty = page.getByText('No projects linked yet', { exact: true });
+  await expect(page.getByRole('heading', { level: 3 }).first().or(empty)).toBeVisible();
   if (await empty.count()) {
     test.skip(true, 'No project is linked to the seeded client — link one to cover the project flows.');
   }
@@ -36,7 +39,8 @@ test.describe('Client', () => {
 
   test('lands in the client portal with the customer-facing navigation', async ({ page }) => {
     await expect(page).toHaveURL(/\/client/);
-    await expect(pageHeading(page, 'Overview')).toBeVisible();
+    // The overview greets the person by name rather than repeating "Overview".
+    await expect(pageHeading(page, /^Welcome back/)).toBeVisible();
 
     await expectNav(page, {
       visible: [
@@ -57,7 +61,8 @@ test.describe('Client', () => {
     await openSection(page, 'My Projects', 'My Projects');
 
     const cards = page.getByRole('heading', { level: 3 });
-    const empty = page.getByRole('heading', { name: 'No projects linked yet' });
+    // EmptyState renders its title as text, not as a heading.
+    const empty = page.getByText('No projects linked yet', { exact: true });
     await expect(cards.first().or(empty)).toBeVisible();
   });
 
@@ -65,10 +70,10 @@ test.describe('Client', () => {
     await openFirstProject(page);
 
     for (const tab of ['Milestones', 'Tasks', 'Deliverables', 'Conversation']) {
-      await expect(page.getByRole('button', { name: tab, exact: true })).toBeVisible();
+      await expect(page.getByRole('tab', { name: tab, exact: true })).toBeVisible();
     }
 
-    await page.getByRole('button', { name: 'Tasks', exact: true }).click();
+    await page.getByRole('tab', { name: 'Tasks', exact: true }).click();
     // Only client_visible tasks reach this list (migration 032) — the isolation
     // spec proves an internal task cannot be pulled in by id.
   });
@@ -77,7 +82,7 @@ test.describe('Client', () => {
     await openSection(page, 'Invoices', 'Invoices');
 
     const table = page.getByRole('columnheader', { name: 'Number', exact: true });
-    const empty = page.getByRole('heading', { name: 'No invoices yet' });
+    const empty = page.getByText('No invoices yet', { exact: true });
     await expect(table.or(empty)).toBeVisible();
   });
 
@@ -99,7 +104,7 @@ test.describe('Client', () => {
   test('messaging: the per-project conversation is available', async ({ page }) => {
     await openFirstProject(page);
 
-    await page.getByRole('button', { name: 'Conversation', exact: true }).click();
+    await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
     await expect(page.getByPlaceholder('Write a message to your team…')).toBeVisible();
   });
 

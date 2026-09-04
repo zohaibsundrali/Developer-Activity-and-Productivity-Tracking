@@ -44,20 +44,23 @@ test.describe('Owner', () => {
   test('organisation: departments, teams, members, invitations and settings', async ({ page }) => {
     await openSection(page, 'Organization', 'Organization');
 
+    // Real tabs (role="tab" in a tablist), each carrying a live count badge —
+    // "Departments 0" — so the accessible name starts with the label.
     for (const tab of ['Departments', 'Teams', 'Members', 'Invitations', 'Settings']) {
-      await expect(page.getByRole('button', { name: tab, exact: true })).toBeVisible();
+      await expect(page.getByRole('tab', { name: new RegExp(`^${tab}\\b`) })).toBeVisible();
     }
 
-    // Departments is the default tab and offers the create form.
-    await expect(page.getByRole('heading', { name: 'New department' })).toBeVisible();
+    // Departments is the default tab and offers the create form. CardTitle
+    // renders a <div>, so these are text assertions rather than heading ones.
+    await expect(page.getByText('New department', { exact: true })).toBeVisible();
 
-    await page.getByRole('button', { name: 'Teams', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'New team' })).toBeVisible();
+    await page.getByRole('tab', { name: /^Teams\b/ }).click();
+    await expect(page.getByText('New team', { exact: true })).toBeVisible();
   });
 
   test('members: the roster lists the owner and ownership cannot be reassigned', async ({ page }) => {
     await openSection(page, 'Organization', 'Organization');
-    await page.getByRole('button', { name: 'Members', exact: true }).click();
+    await page.getByRole('tab', { name: /^Members\b/ }).click();
 
     for (const column of ['Member', 'Role', 'Team', 'Department', 'Type']) {
       await expect(page.getByRole('columnheader', { name: column, exact: true })).toBeVisible();
@@ -74,9 +77,9 @@ test.describe('Owner', () => {
 
   test('invitations: the invite form is available with role and team scoping', async ({ page }) => {
     await openSection(page, 'Organization', 'Organization');
-    await page.getByRole('button', { name: 'Invitations', exact: true }).click();
+    await page.getByRole('tab', { name: /^Invitations\b/ }).click();
 
-    await expect(page.getByRole('heading', { name: 'Invite a member' })).toBeVisible();
+    await expect(page.getByText('Invite a member', { exact: true })).toBeVisible();
     await expect(page.getByPlaceholder('teammate@company.com')).toBeVisible();
     await expect(page.getByRole('button', { name: /Send invitation/ })).toBeVisible();
 
@@ -113,8 +116,9 @@ test.describe('Owner', () => {
       ['Delays', 'Deadline delays'],
     ];
 
+    // Real tabs, so the sidebar's own "Overview" button is not a candidate.
     for (const [tab, panelHeading] of tabs) {
-      await page.getByRole('button', { name: tab, exact: true }).click();
+      await page.getByRole('tab', { name: tab, exact: true }).click();
       await expect(page.getByRole('heading', { name: panelHeading })).toBeVisible();
     }
   });

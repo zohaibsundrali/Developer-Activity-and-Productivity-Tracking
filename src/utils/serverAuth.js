@@ -164,7 +164,12 @@ export async function getAuthedOrg(request) {
   let overridesUnavailable = false;
   try {
     overrides = await loadOverrides(admin, { orgId, appUserId, userType });
-  } catch {
+  } catch (e) {
+    // Fail closed AND say so. This used to be a bare `catch {}`, and the
+    // silence is how an ambiguous PostgREST embed in loadOverrides turned every
+    // permission-gated route into a 503 for every organization without one
+    // line in any log to point at the cause.
+    console.error("[serverAuth] overrides unreadable; failing closed:", e?.cause?.message || e?.message || e);
     overridesUnavailable = true;
   }
 

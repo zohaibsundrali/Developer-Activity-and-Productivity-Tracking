@@ -22,6 +22,10 @@ import { envValue } from './env.js';
 export const PORTALS = {
   admin: { tab: 'Admin', landing: '/admin/dashboard' },
   team: { tab: 'Team Member', landing: '/developer/dashboard' },
+  // A staff-table member (created by Add employee, so in `developers`) whose
+  // ROLE enters the admin area: manager, team_lead, hr, finance, qa. They sign
+  // in on the Team Member tab and dashboardHomeFor() routes them to the console.
+  'team-admin': { tab: 'Team Member', landing: '/admin/dashboard' },
   client: { tab: 'Client', landing: '/client' },
 };
 
@@ -41,6 +45,16 @@ export const ROLES = {
   developer: { prefix: 'E2E_DEVELOPER', portal: 'team' },
   employee: { prefix: 'E2E_EMPLOYEE', portal: 'team' },
   client: { prefix: 'E2E_CLIENT', portal: 'client' },
+  // The rest of the staff roles. All created by Add employee, so all live in
+  // `developers` and sign in on the Team Member tab; the shell then routes
+  // team_lead, qa and finance wherever their role may go. `admin` arrives by
+  // invitation and lives in `admin_users`.
+  team_lead: { prefix: 'E2E_TEAM_LEAD', portal: 'team-admin' },
+  finance: { prefix: 'E2E_FINANCE', portal: 'team-admin' },
+  qa: { prefix: 'E2E_QA', portal: 'team-admin' },
+  designer: { prefix: 'E2E_DESIGNER', portal: 'team' },
+  devops: { prefix: 'E2E_DEVOPS', portal: 'team' },
+  admin: { prefix: 'E2E_ADMIN', portal: 'admin' },
   // Organisation B — only the isolation spec needs it.
   orgBOwner: { prefix: 'E2E_ORG_B_OWNER', portal: 'admin' },
 };
@@ -94,7 +108,19 @@ export function credentialsFor(role) {
     portalName,
     tab: portal.tab,
     landing: portal.landing,
+    // Which SHELL answers after login — what a spec's assertions actually
+    // depend on. Two portals land on the admin console (`admin` and
+    // `team-admin`), so a spec that branched on portalName === 'admin' read a
+    // manager on the console as being on the staff dashboard.
+    area: areaOf(portal.landing),
   };
+}
+
+/** admin console, staff dashboard or client portal, from where a portal lands. */
+export function areaOf(landing) {
+  if (landing.startsWith('/admin')) return 'admin';
+  if (landing.startsWith('/client')) return 'client';
+  return 'staff';
 }
 
 /**
