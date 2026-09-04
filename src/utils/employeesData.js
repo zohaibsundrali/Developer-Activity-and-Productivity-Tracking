@@ -417,3 +417,31 @@ export async function setEmployeeStatus(emp, status) {
 export async function uploadEmployeePhoto(orgId, userId, file) {
   return uploadOrgFile({ orgId, category: "employee-photos", subPath: String(userId || "unassigned"), file });
 }
+
+/**
+ * The ladder above one person: their manager, that manager's manager, and so
+ * on, as rows from `employees`. The counterpart of `reportingCycleError` —
+ * that one refuses to CREATE a loop, this one survives READING one, which
+ * matters because a directory loaded mid-edit can hold a stale row.
+ *
+ * Stops at the top, at a manager who is not in the list, at the first person
+ * seen twice, or at `limit` — whichever comes first. Never throws, never
+ * hangs.
+ */
+export function reportingChain(employees, userId, limit = 16) {
+  const list = Array.isArray(employees) ? employees : [];
+  const byId = new Map(list.map((e) => [String(e.userId), e]));
+  const seen = new Set([String(userId)]);
+  const out = [];
+  let cursor = byId.get(String(userId))?.reportsTo;
+  while (cursor && out.length < limit) {
+    const id = String(cursor);
+    if (seen.has(id)) break;
+    const next = byId.get(id);
+    if (!next) break;
+    seen.add(id);
+    out.push(next);
+    cursor = next.reportsTo;
+  }
+  return out;
+}

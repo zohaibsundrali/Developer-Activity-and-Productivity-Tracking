@@ -6,6 +6,7 @@ import {
   ADMIN_AREA_ROLES,
   ADMIN_SECTION_ROLES,
   NON_WIDENING_SECTIONS,
+  OWN_WORK_SECTIONS,
   canAccessAdminSection,
   canEnterAdminArea,
 } from "@/components/shell/sectionAccess";
@@ -373,8 +374,11 @@ describe("what each role actually sees", () => {
       const sections = adminNavFor(role).map((i) => i.id);
       // The two `null` entries plus the three own-work ones — all five mean
       // "everyone already inside", and a contributor is never inside.
+      // OWN_WORK_SECTIONS, not the whole exemption: `my-tests` is exempt for
+      // the same reason but is a STAFF-shell screen, so it is not in ADMIN_NAV
+      // and adminNavFor cannot return it.
       expect(sections.sort(), role).toEqual(
-        ["account", "overview", ...NON_WIDENING_SECTIONS].sort()
+        ["account", "overview", ...OWN_WORK_SECTIONS].sort()
       );
       // The part that actually matters: not one org-wide screen. If a section
       // that is a reason to be in /admin ever appears here, this fails.

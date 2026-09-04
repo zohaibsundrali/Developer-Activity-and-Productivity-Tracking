@@ -80,7 +80,15 @@ export const SECTION_PERMISSIONS = Object.freeze({
   // designer and devops) and the derivation below quietly opened the admin
   // front door to all three; roleDashboards caught it. See the note beside the
   // key in permissionCatalogue.js.
-  quality: "test_case.view",
+  // RE-KEYED to the WRITE key, and that is what holds the front door still.
+  // `test_case.view` has just been widened to TESTERS (adding developer,
+  // designer, devops and employee) so the staff shell can have a Tests screen.
+  // Left gated on `view`, this section would have flattened all four into
+  // ADMIN_AREA_ROLES — the exact fault the note above describes an earlier
+  // draft committing. `test_case.manage` holds precisely the roles
+  // `test_case.view` held yesterday, so the derived set does not move, and the
+  // section is the one where cases are WRITTEN in any case.
+  quality: "test_case.manage",
   // Running the cycle is people operations: owner/admin/hr, all in the area.
   performance: "review_cycle.manage",
   // An OPENING is not PII; a candidate is. The section is gated on job.view
@@ -127,6 +135,13 @@ export const SECTION_PERMISSIONS = Object.freeze({
   "my-leave": "leave.request_own",
   "my-reviews": "review.view_own",
   "my-activity": "productivity.view_own",
+  // The staff Tests surface (migration 095). NOT an `*_own` key — a test case
+  // belongs to the project, not to the person reading it — but it is in
+  // NON_WIDENING_SECTIONS for the same reason those are: `test_case.view` is
+  // held by developer, designer, devops and employee, none of whom belong in
+  // /admin, and flattening this entry would put all four through the front
+  // door.
+  "my-tests": "test_case.view",
 
   account: null,
 });
@@ -147,10 +162,27 @@ export const SECTION_PERMISSIONS = Object.freeze({
  * these three still name a permission, because unlike somebody's own account
  * screen they are a thing an organization might want to take away.
  *
+ * `my-tests` is here for the same reason and NOT for the same cause. Its key,
+ * `test_case.view`, is not an `*_own` permission at all — a test case belongs
+ * to the project rather than to the person reading it — but TESTERS includes
+ * developer, designer, devops and employee, so flattening the entry would open
+ * the door to exactly those four. What puts a section on this list is who
+ * holds its key, never what the key is called.
+ *
  * A section belongs here when its permission is held by roles that do NOT
  * otherwise belong in /admin. Adding one is a decision about the front door.
  */
-export const NON_WIDENING_SECTIONS = Object.freeze([
+/**
+ * The signed-in person's OWN work, and only that.
+ *
+ * A SUBSET of NON_WIDENING_SECTIONS, and separate from it because the two lists
+ * answer different questions. This one means "a screen about you, which every
+ * shell renders and every staff role holds"; the other means "not a reason to
+ * be in /admin". They were the same seven entries until `my-tests` joined the
+ * second and not the first, and several tests iterate one while meaning the
+ * other.
+ */
+export const OWN_WORK_SECTIONS = Object.freeze([
   "my-work",
   "timesheet",
   "projects",
@@ -158,6 +190,13 @@ export const NON_WIDENING_SECTIONS = Object.freeze([
   "my-leave",
   "my-reviews",
   "my-activity",
+]);
+
+export const NON_WIDENING_SECTIONS = Object.freeze([
+  ...OWN_WORK_SECTIONS,
+  // Not an own-work screen: a test case belongs to the project. It is here
+  // because TESTERS includes four roles that do not belong in /admin.
+  "my-tests",
 ]);
 
 /**

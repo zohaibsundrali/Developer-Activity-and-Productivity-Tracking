@@ -35,6 +35,9 @@ export const SECTION_TITLES = {
   "my-leave": { admin: "My Leave", developer: "My Leave" },
   "my-reviews": { admin: "My Reviews", developer: "My Reviews" },
   "my-activity": { admin: "My Activity", developer: "My Activity" },
+  // Staff only. The admin shell has the fuller `quality` screen instead, and
+  // every role admitted to /admin that can read a test can also write one.
+  "my-tests": { developer: "Tests" },
   performance: { admin: "Performance" },
   recruitment: { admin: "Recruitment" },
   assets: { admin: "Assets" },

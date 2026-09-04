@@ -4,7 +4,7 @@
 
 # Roles and permissions
 
-12 roles, 102 permissions. Generated from `src/utils/permissionCatalogue.js`, which is the only place the defaults are written down.
+12 roles, 103 permissions. Generated from `src/utils/permissionCatalogue.js`, which is the only place the defaults are written down.
 
 A role says what somebody may **do**. It is not a job title — those live in `employee_profiles.designation` and can say anything. Two roles with identical permissions are one role with two names.
 
@@ -12,21 +12,21 @@ These are **defaults**. A tenant that wants something else gets it through the p
 
 ## Permissions by role
 
-How many of the 102 keys each role holds by default.
+How many of the 103 keys each role holds by default.
 
 | Role | Keys | What the role is for |
 |---|---:|---|
-| `owner` | 101 | Everything, and the only role that may buy, cancel or change the plan, delete the organization, or grant another person a permission. |
-| `admin` | 96 | Runs the organization day to day. Everything except the four owner-only keys. |
-| `manager` | 53 | Delivery. Projects, task assignment, the client-facing decisions, and reports. |
+| `owner` | 102 | Everything, and the only role that may buy, cancel or change the plan, delete the organization, or grant another person a permission. |
+| `admin` | 97 | Runs the organization day to day. Everything except the four owner-only keys. |
+| `manager` | 54 | Delivery. Projects, task assignment, the client-facing decisions, and reports. |
 | `hr` | 48 | People operations. Hiring, onboarding, the reporting line — and no access to delivery or money. |
 | `finance` | 27 | Money only. Billing and client accounts, deliberately WITHOUT the monitoring surface. |
-| `team_lead` | 41 | A contributor who also runs a team: reviews work, sees every task and project, reads reports. |
-| `qa` | 22 | A contributor who may also review other people's submissions and triage the bug queue. |
-| `developer` | 16 | Contributes. Own work, plus submitting it for review. |
-| `designer` | 16 | Identical to developer today. Separate so the two can diverge without a data migration. |
-| `devops` | 16 | Identical to developer today (migration 067). |
-| `employee` | 16 | A staff member with no delivery role. Own work only. |
+| `team_lead` | 42 | A contributor who also runs a team: reviews work, sees every task and project, reads reports. |
+| `qa` | 23 | A contributor who may also review other people's submissions and triage the bug queue. |
+| `developer` | 18 | Contributes. Own work, plus submitting it for review. |
+| `designer` | 18 | Identical to developer today. Separate so the two can diverge without a data migration. |
+| `devops` | 18 | Identical to developer today (migration 067). |
+| `employee` | 18 | A staff member with no delivery role. Own work only. |
 | `client` | 0 | A customer, not staff. Holds no staff permission at all — the portal is a separate surface. |
 
 ## The full matrix
@@ -107,10 +107,11 @@ How many of the 102 keys each role holds by default.
 | `task.submit` | Submit work for review | `developer`, `designer`, `devops`, `qa`, `employee`, `team_lead` |
 | `sprint.view` | Open sprints | `owner`, `admin`, `manager`, `team_lead` |
 | `bug.triage` | Triage the bug queue | `owner`, `admin`, `manager`, `team_lead`, `qa` |
-| `test_case.view` | See the test cases | `owner`, `admin`, `manager`, `team_lead`, `qa` |
+| `bug.raise` | Raise a defect from a failed test | `owner`, `admin`, `manager`, `team_lead`, `qa` |
+| `test_case.view` | See the test cases | `owner`, `admin`, `manager`, `team_lead`, `qa`, `developer`, `designer`, `devops`, `employee` |
 | `test_case.manage` | Write and edit test cases | `owner`, `admin`, `manager`, `team_lead`, `qa` |
 | `test_run.manage` | Start and close a test run | `owner`, `admin`, `manager`, `team_lead`, `qa` |
-| `test_run.execute` | Record a test result | `owner`, `admin`, `manager`, `team_lead`, `qa` |
+| `test_run.execute` | Record a test result | `owner`, `admin`, `manager`, `team_lead`, `qa`, `developer`, `designer`, `devops`, `employee` |
 
 ### Clients
 

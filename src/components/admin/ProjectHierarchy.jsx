@@ -115,12 +115,17 @@ function formatDate(value) {
  *   ── one branch per role ──   Developers · Designers · QA · …
  *
  * NO LINE IS DRAWN FROM A TEAM LEAD TO A MEMBER, and that is deliberate.
- * `memberships.reports_to` is null for every member of this organization —
- * checked, not assumed — so there is no data saying who reports to which lead.
- * Drawing one would invent a reporting structure and then be believed. The
- * leads sit as their own level under the manager; the role branches hang from
- * the same trunk, which claims only what is true: these people are all on this
- * project.
+ * `memberships.reports_to` is what would say who reports to which lead, and
+ * drawing a line without it would invent a reporting structure and then be
+ * believed. The leads sit as their own level under the manager; the role
+ * branches hang from the same trunk, which claims only what is true: these
+ * people are all on this project.
+ *
+ * This chart is PROJECT-shaped and the reporting line is not — somebody's
+ * manager is the same person on every project they are on. That is why the
+ * ReportingLines panel below this one edits the column instead of this chart
+ * drawing it: the two answer different questions and only one of them is about
+ * a project.
  */
 function ProjectChart({ project, expanded, onToggle }) {
   const { health, manager, byRole, team } = project;

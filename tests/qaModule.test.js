@@ -50,33 +50,43 @@ const REVIEWERS = ["owner", "admin", "manager", "team_lead", "qa"];
 const CONTRIBUTORS = ["developer", "designer", "devops", "employee"];
 
 describe("the keys the module introduced", () => {
-  it("is the reviewer set today, all four of them", () => {
-    for (const key of [
-      "test_case.view",
-      "test_case.manage",
-      "test_run.manage",
-      "test_run.execute",
-    ]) {
+  it("keeps WRITING with the reviewers", () => {
+    // Unchanged since 081 and the half of the model that must not move: a
+    // developer editing the test that judges their own work is the shape this
+    // module refuses whatever else changes.
+    for (const key of ["test_case.manage", "test_run.manage"]) {
       expect([...defaultRolesFor(key)].sort(), key).toEqual([...REVIEWERS].sort());
     }
   });
 
-  it("holds the widening back until there is a screen to widen onto", () => {
-    // The design wants view and execute wider than manage — a developer should
-    // see what will be checked. It is not done here because those three roles
-    // cannot enter /admin: the key would have no surface, and gating a section
-    // on it would open the front door. Asserted so the widening has to arrive
-    // WITH a staff-shell screen rather than on its own.
-    for (const role of ["developer", "designer", "devops"]) {
-      expect(defaultRolesFor("test_case.view"), role).not.toContain(role);
-      expect(defaultRolesFor("test_run.execute"), role).not.toContain(role);
+  it("widened reading and executing, now that there is a screen to widen onto", () => {
+    // 081 wrote all four keys as REVIEWERS and said in as many words that this
+    // was not the design — view and execute were meant to be wider — and that
+    // the widening had to wait, because developer, designer and devops cannot
+    // enter /admin, so the key would have had no surface and gating a section
+    // on it would have opened the front door.
+    //
+    // 095 is that widening and it arrived WITH the screen, which is the
+    // condition the previous version of this test enforced.
+    for (const role of ["developer", "designer", "devops", "employee"]) {
+      expect(defaultRolesFor("test_case.view"), role).toContain(role);
+      expect(defaultRolesFor("test_run.execute"), role).toContain(role);
+      // And the door it was waiting on is STILL shut. This is the assertion
+      // that matters: the widening was supposed to give them a screen in the
+      // staff shell, not admission to /admin.
       expect(canEnterAdminArea(role), role).toBe(false);
     }
+    expect(SECTION_PERMISSIONS["my-tests"]).toBe("test_case.view");
+    expect(NON_WIDENING_SECTIONS).toContain("my-tests");
   });
 
-  it("keeps the people who are not on a project out of it", () => {
+  it("keeps the people with no reason to read a test out of it", () => {
+    // hr and finance are in neither REVIEWERS nor CONTRIBUTORS, so TESTERS
+    // leaves them out. `employee` used to be here and is not any more: it is a
+    // delivery role with a staff dashboard, and the whole point of 075 was that
+    // giving it nothing to do was the defect.
     for (const key of ["test_case.view", "test_run.execute"]) {
-      for (const role of ["hr", "finance", "employee"]) {
+      for (const role of ["hr", "finance"]) {
         expect(defaultRolesFor(key), `${key}/${role}`).not.toContain(role);
       }
     }
@@ -195,7 +205,13 @@ describe("the route decides who may do what, per act", () => {
   it("uses a different key for writing a case, a run, and a result", () => {
     expect(route).toMatch(/case: "test_case\.manage"/);
     expect(route).toMatch(/run: "test_run\.manage"/);
-    expect(route).toMatch(/bug: "test_run\.execute"/);
+    // `bug` MOVED OFF test_run.execute when 095 widened that key. Filing a
+    // defect writes a `developer_tasks` row, and creating a task is SUPERVISORS
+    // everywhere else in this product; `bug.raise` holds exactly the roles
+    // execute held before, so nobody gained or lost it.
+    expect(route).toMatch(/bug: "bug\.raise"/);
+    expect(route).not.toMatch(/bug: "test_run\.execute"/);
+    expect([...defaultRolesFor("bug.raise")].sort()).toEqual([...REVIEWERS].sort());
   });
 
   it("reads a run's scope from the database, not from the body", () => {
@@ -278,7 +294,13 @@ describe("the module does not widen the admin front door", () => {
 
   it("is a real screen, so it stays out of the non-widening exemption", () => {
     expect(NON_WIDENING_SECTIONS).not.toContain("quality");
-    expect(SECTION_PERMISSIONS.quality).toBe("test_case.view");
+    // GATED ON THE WRITE KEY since 095. `test_case.view` is now held by four
+    // roles that do not belong in /admin, and ADMIN_AREA_ROLES is derived by
+    // flattening the roles of every section NOT in the exemption — so leaving
+    // this on `view` would have admitted all four through the front door.
+    // `test_case.manage` holds precisely what `view` held before 095, so the
+    // derived set is unchanged, which the test above asserts directly.
+    expect(SECTION_PERMISSIONS.quality).toBe("test_case.manage");
   });
 });
 

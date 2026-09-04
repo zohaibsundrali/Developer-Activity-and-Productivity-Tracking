@@ -132,9 +132,18 @@ export async function POST(request) {
     const action = searchParams.get("action") || "case";
 
     // Three different acts, three different keys. Writing a case is a QA
-    // decision; raising a defect from a failed test is something anybody
-    // running the test may do.
-    const keyFor = { case: "test_case.manage", run: "test_run.manage", bug: "test_run.execute" };
+    // decision; running a test and filing what it found are two more.
+    //
+    // `bug` USED TO ASK `test_run.execute`, on the reasoning that anybody
+    // running the test may file what it found. That held while execute meant
+    // REVIEWERS. It no longer does: execute is now TESTERS, so developer,
+    // designer, devops and employee can record a result — and filing a defect
+    // writes a `developer_tasks` row, which is task creation, which is
+    // SUPERVISORS everywhere else in the product. `bug.raise` holds exactly
+    // the roles execute held before, so this line changes nothing for anybody
+    // today; it stops the Tests screen widening task creation as a side
+    // effect.
+    const keyFor = { case: "test_case.manage", run: "test_run.manage", bug: "bug.raise" };
     if (!keyFor[action]) {
       return NextResponse.json({ success: false, error: "Unknown action" }, { status: 400 });
     }
