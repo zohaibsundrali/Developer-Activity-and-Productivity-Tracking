@@ -152,8 +152,30 @@ export async function POST(request) {
     // left in this file.
     let newUser = null;
     if (userType === "admin") {
+      // admin_users.company is NOT NULL. The table predates database/010 and
+      // the signup route fills the column from the company name the founder
+      // typed; this insert used to write `company: null`, so EVERY admin
+      // invitation failed at the database with "null value in column
+      // \"company\" ... violates not-null constraint" and no admin could ever
+      // be added through Organization → Invitations. An invitee has nothing to
+      // type: the organization they are joining is their company, which is the
+      // same mapping 011_saas_backfill applied in the other direction (org name
+      // from admin_users.company). It is READ, not guessed — an invitation
+      // whose organization cannot be read is refused rather than filed under a
+      // made-up name. Nothing has been written yet, so refusing is clean.
+      const { data: org, error: orgError } = await admin
+        .from("organizations")
+        .select("name")
+        .eq("id", invite.organization_id)
+        .maybeSingle();
+      if (orgError || !org?.name) {
+        return NextResponse.json(
+          { error: "The organization behind this invitation could not be read." },
+          { status: 500 }
+        );
+      }
       const { data, error } = await admin.from("admin_users").insert([{
-        full_name: fullName || null, email, company: null,
+        full_name: fullName || null, email, company: org.name,
         role: "admin", is_verified: true, organization_id: invite.organization_id,
         created_at: new Date().toISOString(),
       }]).select().single();

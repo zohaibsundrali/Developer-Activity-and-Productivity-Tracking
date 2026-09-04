@@ -118,7 +118,10 @@ function fakeClient() {
           return {
             eq: () => ({
               maybeSingle: async () => ({
-                data: table === "invitations" ? state.invitation : null,
+                data:
+                  table === "invitations" ? state.invitation
+                  : table === "organizations" ? { id: "org-1", name: "Analytical Engines" }
+                  : null,
                 error: null,
               }),
             }),

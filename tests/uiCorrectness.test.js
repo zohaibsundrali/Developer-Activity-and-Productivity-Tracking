@@ -809,10 +809,14 @@ describe("MyWork hands the details handler a project, not an id", () => {
      * blanks — the project-details page reads the row from the database off
      * `id` and only falls back to these when that lookup fails.
      */
+    // The handler now delegates to projectDetailsHref (utils/queryDates.js),
+    // which is where `project.<field>` is read — so that is the contract.
     const handler = stripComments(read(DASHBOARD));
-    const start = handler.indexOf("const handleViewProjectDetails");
+    expect(handler).toMatch(/const handleViewProjectDetails[\s\S]*projectDetailsHref\(project\)/);
+    const util = stripComments(read("src/utils/queryDates.js"));
+    const start = util.indexOf("export function projectDetailsHref");
     expect(start).toBeGreaterThan(-1);
-    const body = handler.slice(start, handler.indexOf("};", start));
+    const body = util.slice(start, util.indexOf("return `/developer/project-details", start));
 
     const required = [...new Set([...body.matchAll(/project\.([A-Za-z_][A-Za-z0-9_]*)/g)].map((m) => m[1]))];
     // Guard against the slice silently coming back empty and this asserting

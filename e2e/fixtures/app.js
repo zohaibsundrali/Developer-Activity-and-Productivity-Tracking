@@ -10,9 +10,41 @@
 
 import { expect } from '@playwright/test';
 
+/** The sidebar's section list (Sidebar.jsx renders <nav aria-label="Sections">). */
+export function sectionNav(page) {
+  return page.getByRole('navigation', { name: 'Sections' });
+}
+
 /** Sidebar entry, addressed by its accessible name. */
 export function navItem(page, label) {
-  return page.getByRole('button', { name: label, exact: true });
+  return sectionNav(page).getByRole('button', { name: label, exact: true });
+}
+
+/** Every sidebar entry the signed-in role was offered, in order. */
+export async function navLabels(page) {
+  const buttons = sectionNav(page).getByRole('button');
+  await expect(buttons.first()).toBeVisible();
+  return (await buttons.allInnerTexts()).map((t) => t.trim()).filter(Boolean);
+}
+
+/**
+ * Assert the screen rendered rather than erroring.
+ *
+ * ErrorState (components/ui/error-state.jsx) is role="alert" with a "Try
+ * again" button; the permission layer's outage message and Next's own error
+ * boundary are the other two ways a screen fails. An EMPTY screen is fine —
+ * "Nobody in the directory yet" is an answer — an error is not.
+ */
+export async function expectNoErrorState(page, context) {
+  const alerts = page.getByRole('alert').filter({
+    hasText: /try again|something went wrong|couldn't load|could not load|unavailable|failed/i,
+  });
+  const count = await alerts.count();
+  if (count) {
+    const text = (await alerts.first().innerText()).replace(/\s+/g, ' ').trim();
+    expect(count, `${context}: the screen shows an error state — "${text}"`).toBe(0);
+  }
+  await expect(page.getByText(/Application error|Permissions are temporarily unavailable/), context).toHaveCount(0);
 }
 
 /** The topbar section heading. */
@@ -67,4 +99,26 @@ export async function expectTextAbsent(page, needle, context) {
     body.toLowerCase().includes(String(needle).toLowerCase()),
     `${context}: "${needle}" must not appear on ${page.url()}`
   ).toBe(false);
+}
+
+/**
+ * Click a sidebar entry and return the section id it opened.
+ *
+ * The sidebar marks the entry active at once, but the `?section=` push happens
+ * inside a React transition, so reading the URL straight after the click gave
+ * the PREVIOUS section. Wait for the URL to move on unless the entry was
+ * already the active one.
+ */
+export async function clickAndResolveSection(page, label) {
+  const item = navItem(page, label);
+  const wasActive = (await item.getAttribute('aria-current')) === 'page';
+  const before = new URL(page.url()).searchParams.get('section');
+  await item.click();
+  await expect(item).toHaveAttribute('aria-current', 'page');
+  if (!wasActive) {
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('section'), { timeout: 10_000 })
+      .not.toBe(before);
+  }
+  return new URL(page.url()).searchParams.get('section') || before || 'overview';
 }

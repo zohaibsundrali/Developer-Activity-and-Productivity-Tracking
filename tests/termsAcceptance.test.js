@@ -139,6 +139,7 @@ function fakeClient() {
               data:
                 table === "invitations" ? state.invitation
                 : table === "billing_plans" ? state.plan
+                : table === "organizations" ? { id: "org-1", name: "Analytical Engines" }
                 : null,
               error: null,
             }),

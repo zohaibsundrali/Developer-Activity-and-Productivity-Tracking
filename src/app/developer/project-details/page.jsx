@@ -1,5 +1,6 @@
 "use client";
 import { useRouter, useSearchParams } from 'next/navigation';
+import { dateOnlyFromQuery } from "@/utils/queryDates";
 import { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabaseClient';
 import { authFetch } from '@/utils/authFetch';
@@ -85,15 +86,16 @@ export default function ProjectDetailsPage() {
   const fileHref = safeHref(project.file_url);
 
   // Get assigned date
-  const getAssignedDate = () => {
-    if (project.assigned_at && project.assigned_at !== 'null' && project.assigned_at !== 'undefined') {
-      return project.assigned_at;
-    }
-    if (project.assigned_date && project.assigned_date !== 'null' && project.assigned_date !== 'undefined') {
-      return project.assigned_date;
-    }
-    return project.created_at;
-  };
+  // Each candidate goes through dateFromQuery: a timestamp that arrived via
+  // the query string may have lost the `+` of its offset to URL decoding, and
+  // an unparsable value here used to become an "Invalid Date" default plan.
+  // Date-only, because the plan's end dates are date-only: a full timestamp
+  // as the start put the same day's end "before" it and the plan would not save.
+  const getAssignedDate = () =>
+    dateOnlyFromQuery(project.assigned_at) ||
+    dateOnlyFromQuery(project.assigned_date) ||
+    dateOnlyFromQuery(project.created_at) ||
+    null;
 
   const assignedDate = getAssignedDate();
 

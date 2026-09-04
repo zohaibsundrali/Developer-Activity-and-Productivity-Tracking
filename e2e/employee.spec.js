@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { credentialsFor, skipUnless } from './fixtures/credentials.js';
 import { login } from './fixtures/auth.js';
-import { expectBouncedToLogin, expectNav, gotoSection, openSection, pageHeading } from './fixtures/app.js';
+import { expectBouncedToLogin, expectNav, gotoSection, navItem, openSection, pageHeading } from './fixtures/app.js';
 
 /**
  * EMPLOYEE — the narrowest internal role.
@@ -22,7 +22,9 @@ test.describe('Employee', () => {
 
   test('lands on the staff dashboard with only individual-contributor sections', async ({ page }) => {
     await expect(page).toHaveURL(/\/developer\/dashboard/);
-    await expect(pageHeading(page, 'Dashboard')).toBeVisible();
+    // The staff overview is a profile card (no <h1>); the sidebar marks the
+    // current section instead.
+    await expect(navItem(page, 'Dashboard')).toHaveAttribute('aria-current', 'page');
 
     await expectNav(page, {
       visible: ['Dashboard', 'My Projects', 'Account'],
@@ -31,15 +33,16 @@ test.describe('Employee', () => {
   });
 
   test('own profile: the account section shows the signed-in identity', async ({ page }) => {
-    await openSection(page, 'Account', 'Account');
+    await navItem(page, 'Account').click();
+    await expect(page.getByText('Account Information', { exact: true })).toBeVisible();
     await expect(page.getByText(employee.email).first()).toBeVisible();
   });
 
   test('assigned work: only their own projects are listed', async ({ page }) => {
     await openSection(page, 'My Projects', 'My Projects');
 
-    const projectCards = page.getByRole('button', { name: /View Detail/ });
-    const emptyState = page.getByRole('heading', { name: 'No Projects Found' });
+    const projectCards = page.getByRole('button', { name: /^View details for / });
+    const emptyState = page.getByText('No projects yet', { exact: true });
     await expect(projectCards.first().or(emptyState)).toBeVisible();
   });
 

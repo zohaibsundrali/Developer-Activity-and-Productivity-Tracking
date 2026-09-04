@@ -59,7 +59,7 @@ test.describe('Cross-organisation isolation', () => {
 
     // RLS returns no row, so `.single()` fails and the page shows its error
     // state rather than another tenant's project.
-    await expect(page.getByText('Error Loading Project')).toBeVisible();
+    await expect(page.getByRole('alert').filter({ hasText: "Couldn't load this project" })).toBeVisible();
     await expectTextAbsent(
       page,
       orgBProject.values.E2E_ORG_B_PROJECT_NAME,
@@ -107,11 +107,15 @@ test.describe('Cross-organisation isolation', () => {
 
     expect(res.status, 'search must answer the signed-in owner').toBeLessThan(500);
 
-    const serialized = JSON.stringify(res.body || '').toLowerCase();
+    // The route echoes the query string back (`"query": "…"`), so the whole
+    // body always contains the term; only the RESULTS may not.
+    const results = res.body?.results || res.body || {};
+    const serialized = JSON.stringify(results).toLowerCase();
     expect(
       serialized.includes(term.toLowerCase()),
       `search as org A returned org B's project "${term}": ${serialized.slice(0, 300)}`
     ).toBe(false);
+    expect(res.body?.totals?.project ?? 0, 'no project may match another tenant\'s name').toBe(0);
   });
 });
 

@@ -49,6 +49,15 @@ saying what to seed.
 | `E2E_EMPLOYEE_EMAIL`, `E2E_EMPLOYEE_PASSWORD` | `employee.spec.js` | Org A employee |
 | `E2E_CLIENT_EMAIL`, `E2E_CLIENT_PASSWORD` | `client.spec.js`, `isolation.spec.js` | Org A client |
 | `E2E_ORG_B_OWNER_EMAIL`, `E2E_ORG_B_OWNER_PASSWORD` | `isolation.spec.js` | Org B owner |
+| `E2E_TEAM_LEAD_EMAIL`, `E2E_TEAM_LEAD_PASSWORD` | `roles-extra.spec.js`, `api-probe.spec.js` | Org A team lead |
+| `E2E_FINANCE_EMAIL`, `E2E_FINANCE_PASSWORD` | `roles-extra.spec.js`, `api-probe.spec.js` | Org A finance |
+| `E2E_QA_EMAIL`, `E2E_QA_PASSWORD` | `roles-extra.spec.js`, `api-probe.spec.js` | Org A QA |
+| `E2E_DESIGNER_EMAIL`, `E2E_DESIGNER_PASSWORD` | `roles-extra.spec.js`, `api-probe.spec.js` | Org A designer |
+| `E2E_DEVOPS_EMAIL`, `E2E_DEVOPS_PASSWORD` | `roles-extra.spec.js`, `api-probe.spec.js` | Org A devops |
+| `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD` | `admin-modules.spec.js`, `roles-extra.spec.js`, `api-probe.spec.js` | Org A admin (invited, in `admin_users`) |
+| `E2E_ORG_B_DEVELOPER_EMAIL`, `E2E_ORG_B_DEVELOPER_PASSWORD` | written by `seed.spec.js` | Org B developer |
+
+Every role is optional: a missing pair skips that role's tests with a message.
 
 ### 2.2 Which portal a role signs in through
 
@@ -56,9 +65,16 @@ The login screen has three tabs and each lands somewhere different. Defaults:
 
 | Role | Default portal | Lands on |
 | --- | --- | --- |
-| owner, hr, org B owner | `admin` (Admin tab) | `/admin/dashboard` |
-| manager, developer, employee | `team` (Team Member tab) | `/developer/dashboard` |
+| owner, hr, admin, org B owner | `admin` (Admin tab) | `/admin/dashboard` |
+| manager, developer, employee, designer, devops | `team` (Team Member tab) | `/developer/dashboard` |
+| team_lead, finance, qa | `team-admin` (Team Member tab) | `/admin/dashboard` |
 | client | `client` (Client tab) | `/client` |
+
+`team-admin` is for a person created by **Add employee** (so in `developers`,
+signing in on the Team Member tab) whose *role* belongs in the admin console:
+`dashboardHomeFor()` sends manager, team_lead, hr, finance and qa there. A seed
+made through the product therefore needs `E2E_MANAGER_PORTAL=team-admin` and
+`E2E_HR_PORTAL=team-admin`; `seed.spec.js` writes those lines itself.
 
 Override per role when your seed differs — HR and managers can legitimately live
 either in `admin_users` (admin console) or in `developers` (staff dashboard):
@@ -68,8 +84,9 @@ E2E_HR_PORTAL=team          # HR seeded as staff instead of on the admin console
 E2E_MANAGER_PORTAL=admin    # manager seeded in admin_users
 ```
 
-Valid values: `admin`, `team`, `client`. The specs adapt their assertions to the
-portal that answered.
+Valid values: `admin`, `team`, `team-admin`, `client`. `credentialsFor()` also
+exposes `area` — `admin`, `staff` or `client`, derived from where the portal
+lands — and the specs branch on that rather than on the portal name.
 
 ### 2.3 Fixtures the isolation spec needs
 
@@ -80,6 +97,7 @@ portal that answered.
 | `E2E_INTERNAL_PROJECT_ID` | id of an **organisation A** project the client is *not* linked to |
 | `E2E_INTERNAL_PROJECT_NAME` | that project's exact name |
 | `E2E_INTERNAL_TASK_ID` | id of a task on an org A project with `client_visible = false` |
+| `E2E_CLIENT_PROJECT_ID`, `E2E_CLIENT_PROJECT_NAME` | an org A project the client **is** linked to — what `client.spec.js` opens (tabs, conversation) |
 
 Give the two projects distinctive names (`"ORG-B-SECRET-ROADMAP"`,
 `"ORG-A-INTERNAL-ONLY"`). The isolation assertions search the rendered page and
@@ -91,7 +109,8 @@ with unrelated content and produce a false failure.
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `E2E_BASE_URL` | `http://localhost:3000` | Target URL. **When set, Playwright does not start its own server** — it assumes something is already running there (a preview deploy, a local `npm start`). |
-| `E2E_ALLOW_WRITES` | unset (off) | Opts in to the handful of tests that write: submitting a task plan, completing a task, sending a support request. Off by default so a normal run cannot mutate the seeded tenants. |
+| `E2E_ALLOW_WRITES` | unset (off) | Opts in to the tests that write: submitting a task plan, completing a task, sending a support request, creating a department/team/test case/run, recording a test result. Off by default so a normal run cannot mutate the seeded tenants. Every write is idempotent — a rerun finds what the first run created. |
+| `E2E_SEED` | unset (off) | Enables `seed.spec.js`, which creates the accounts and fixtures above through the product's own screens and appends the resulting `E2E_*` lines to `.env.e2e`. See §3.4. |
 | `CI` | unset | Enables retries (2), single worker, `--forbid-only` and the GitHub reporter. |
 
 ### 2.5 Server-side variables (not test config, but the run fails without them)
@@ -192,6 +211,30 @@ opens `ORG-B-SECRET-ROADMAP` — if that test fails, the id is wrong or stale an
 every "org A cannot see it" result below it would have been meaningless. Fix the
 control first.
 
+### 3.4 Or let the product seed itself — `seed.spec.js`
+
+Everything in §3.1–3.2 except the two organisations can be created by the app,
+through the same forms a person would use. With two freshly signed-up owners in
+`.env.e2e` (`E2E_OWNER_*`, `E2E_ORG_B_OWNER_*`):
+
+```bash
+E2E_SEED=1 npx playwright test e2e/seed.spec.js
+```
+
+walks Add employee (one person per staff role), Create client account, Send
+invitation → `/invite/<token>` → Accept (the admin), Add New Project (the
+internal project, assigned to the developer), a second project linked to the
+client through Clients → Project links, the developer's task plan (the
+internal task, `client_visible = false`), and organisation B's developer and
+project — and appends every resulting `E2E_*` line to `.env.e2e`. Each step
+skips when its variable is already there, so a partial failure is resumed by
+running it again. Emails are `verisade-qa-<role>-<a|b>@example.com`; passwords
+are generated and never printed.
+
+Because it goes through the real screens, it is also the first place a broken
+onboarding form shows up: it is how the admin-invitation acceptance bug
+(`admin_users.company` NOT NULL) was found.
+
 ---
 
 ## 4. Running
@@ -217,6 +260,12 @@ E2E_BASE_URL=http://localhost:3000 npm run test:e2e
 ```
 
 Setting `E2E_BASE_URL` disables the managed webServer entirely.
+
+**Not against the Vercel deployment.** Its Security Checkpoint challenges a
+headless browser after a few logins ("Failed to verify your browser, Code 10")
+and every spec then fails at the login form. Run the production build locally
+(`npm run build && npx next start -p 3100`, then `E2E_BASE_URL=http://localhost:3100`)
+against the same Supabase project instead.
 
 ### Useful invocations
 
@@ -366,6 +415,44 @@ Point CI at a **dedicated Supabase project or branch**, never production.
 - **Account** shows the signed-in client.
 - `/admin/dashboard` and `/developer/dashboard` both bounce to `/login`.
 
+### `admin-modules.spec.js` — every console section, and what each is for
+- **Owner and admin** each click *every* sidebar entry they are offered (the
+  list is read off the sidebar, not typed into the spec). Each must render the
+  `<h1>` that `sectionTitles.js` gives the section and no error state —
+  `ErrorState`'s `role="alert"` with "Try again", the permission layer's
+  "temporarily unavailable", or Next's error boundary. The walked list is
+  attached to the report. Permissions is present for the owner and absent for
+  the admin.
+- **Billing** shows the current plan — the screen that displayed the
+  permission-layer outage as "Couldn't load billing".
+- **Organization**: a department and a team are created (idempotent), Members
+  lists the owner, Settings renders.
+- **Employees** lists the seeded people; **Team Structure** renders the
+  reporting-lines editor; **All Projects** opens the internal project's detail
+  page; **Quality** writes a test case and starts a run against it, then opens
+  the run; Leave/Timesheet approvals and Permissions render.
+
+### `roles-extra.spec.js` — team_lead, finance, qa, designer, devops, admin
+- Each lands in the right **area** (console or staff dashboard), walks every
+  sidebar entry it is offered the same way, and is checked against a handful
+  of entries the permission catalogue says it must and must not have — finance
+  gets Billing/Invoicing/Contracts/Assets and not All Projects or Employees; qa
+  gets Task Reviews/Quality/Bugs and not Billing; designer and devops get the
+  staff shell with Tests and no Team, and `/admin/dashboard` bounces them.
+- **The staff Tests screen**: a developer opens the run the admin-modules spec
+  started and records a result (with `E2E_ALLOW_WRITES=1`).
+
+### `api-probe.spec.js` — every role, every readable route, never a 5xx
+- Signs in as each of the twelve roles and calls every parameterless GET route
+  (plus the project-scoped ones when the seed provides an id) with that role's
+  own token. 200/400/403/404 are all acceptable answers; any 5xx fails, and the
+  full status sheet is attached to the report.
+- `/api/me/permissions` must answer 200 for every role, and
+  `/api/billing/subscription` for the billing roles. This is the regression
+  test for the PostgREST-ambiguity outage (migration 069 → the fix in
+  `permissionOverrides.js`) during which every permission-gated route answered
+  503 for every role.
+
 ### `isolation.spec.js` — the one that matters most
 
 Cross-organisation:
@@ -423,11 +510,5 @@ renders nothing is still a failure.
 
 ## 7. Housekeeping
 
-Playwright writes `playwright-report/` and `test-results/`. Neither is in
-`.gitignore` yet — add them:
-
-```
-# playwright
-/playwright-report/
-/test-results/
-```
+Playwright writes `playwright-report/` and `test-results/`; both are
+git-ignored, as is `.env.e2e` (via `.env*`).

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { credentialsFor, skipUnless } from './fixtures/credentials.js';
 import { login } from './fixtures/auth.js';
-import { expectNav, openSection, pageHeading } from './fixtures/app.js';
+import { expectNav, navItem, openSection, pageHeading } from './fixtures/app.js';
 import { writesAllowed } from './fixtures/env.js';
 
 /**
@@ -23,7 +23,7 @@ const developer = credentialsFor('developer');
 async function openFirstProject(page) {
   await openSection(page, 'My Projects', 'My Projects');
 
-  const openDetail = page.getByRole('button', { name: /View Detail/ });
+  const openDetail = page.getByRole('button', { name: /^View details for / });
   const count = await openDetail.count();
   test.skip(
     count === 0,
@@ -43,7 +43,9 @@ test.describe('Developer', () => {
 
   test('lands on the staff dashboard with the individual-contributor navigation', async ({ page }) => {
     await expect(page).toHaveURL(/\/developer\/dashboard/);
-    await expect(pageHeading(page, 'Dashboard')).toBeVisible();
+    // The staff overview is a profile card (no <h1>); the sidebar marks the
+    // current section instead.
+    await expect(navItem(page, 'Dashboard')).toHaveAttribute('aria-current', 'page');
 
     await expectNav(page, {
       visible: ['Dashboard', 'My Projects', 'Account'],
@@ -53,13 +55,13 @@ test.describe('Developer', () => {
   });
 
   test('assigned work: the dashboard summarises the projects assigned to them', async ({ page }) => {
-    await expect(page.getByText('Total Projects', { exact: true })).toBeVisible();
+    await expect(page.getByText(/^Total projects$/i)).toBeVisible();
 
     await openSection(page, 'My Projects', 'My Projects');
     // Either projects are listed, or the empty state says so — a silent blank
     // panel means the fetch failed.
-    const projectCards = page.getByRole('button', { name: /View Detail/ });
-    const emptyState = page.getByRole('heading', { name: 'No Projects Found' });
+    const projectCards = page.getByRole('button', { name: /^View details for / });
+    const emptyState = page.getByText('No projects yet', { exact: true });
     await expect(projectCards.first().or(emptyState)).toBeVisible();
   });
 
@@ -89,7 +91,15 @@ test.describe('Developer', () => {
 
     if (await submit.count()) {
       await submit.click();
-      await expect(page.getByText(/Work submitted|Tasks Submitted|Task Plan Submitted/)).toBeVisible();
+      // A SweetAlert "Confirm Submission" stands between the button and the
+      // write; a validation failure shows inline instead and no dialog opens.
+      const confirm = page.getByRole('button', { name: 'Yes, submit tasks' });
+      const asked = await confirm.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true).catch(() => false);
+      expect(asked, 'the plan must validate — no "Confirm Submission" dialog means a row was refused').toBe(true);
+      await confirm.click();
+      // page.jsx: setValidationSuccess('Tasks submitted successfully! …')
+      // Several banners say it at once (inline toast, status card, log line).
+      await expect(page.getByText(/Tasks submitted successfully|Work submitted|Task Plan (Submitted|Approved)/i).first()).toBeVisible();
     }
   });
 
@@ -99,11 +109,14 @@ test.describe('Developer', () => {
     const start = page.getByRole('button', { name: /Start Task/ });
     const complete = page.getByRole('button', { name: /Mark as Completed/ });
     const locked = page.getByRole('button', { name: /Locked/ });
-    const notYetApproved = page.getByText('Save task plan first to begin working');
+    const notYetSaved = page.getByText('Save task plan first to begin working');
+    const awaitingApproval = page.getByText('Task plan awaiting admin approval');
 
-    // The lifecycle control is always present in one of its four states; which
-    // one depends on where the seeded plan sits in the review workflow.
-    await expect(start.or(complete).or(locked).or(notYetApproved).first()).toBeVisible();
+    // The lifecycle control is always present in one of its five states; which
+    // one depends on where the seeded plan sits in the review workflow. A plan
+    // that has been submitted and not yet reviewed shows the awaiting banner
+    // and no per-task control at all.
+    await expect(start.or(complete).or(locked).or(notYetSaved).or(awaitingApproval).first()).toBeVisible();
 
     if (await complete.count()) {
       test.skip(!writesAllowed(), 'Completing a task writes to the database — set E2E_ALLOW_WRITES=1.');
@@ -136,6 +149,9 @@ test.describe('Developer', () => {
   });
 
   test('account: the developer can open their own profile', async ({ page }) => {
-    await openSection(page, 'Account', 'Account');
+    // The staff Account screen is a card, not a PageHeader, so no <h1>.
+    await navItem(page, 'Account').click();
+    await expect(page.getByText('Account Information', { exact: true })).toBeVisible();
+    await expect(page.getByText(developer.email).first()).toBeVisible();
   });
 });
