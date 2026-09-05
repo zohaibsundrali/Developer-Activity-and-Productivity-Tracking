@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { ROLES } from "@/utils/roles";
+import { ROLES, rankOf } from "@/utils/roles";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
-import { can } from "@/utils/permissions";
+import { can, getRole } from "@/utils/permissions";
 import { authFetch } from "@/utils/authFetch";
 import { showSuccess, showError, showConfirm } from "@/utils/alerts";
 import {
@@ -646,6 +646,11 @@ function MembersTab({ teams, departments, members, reload, loading, loadError })
 function InvitationsTab({ orgId, invitations, teams, departments, reload, loading, loadError }) {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("developer");
+  // Only offer roles the caller may actually grant — strictly below their own
+  // rank, which is exactly what /api/invitations enforces. The dropdown used to
+  // list every non-owner role, so a manager saw "admin" and picked a choice
+  // that always returned 403.
+  const callerRank = rankOf(getRole()) ?? 0;
   const [teamId, setTeamId] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [sending, setSending] = useState(false);
@@ -723,7 +728,7 @@ function InvitationsTab({ orgId, invitations, teams, departments, reload, loadin
             </Field>
             <Field label="Role" htmlFor="invite-role">
               <select id="invite-role" value={role} onChange={(e) => setRole(e.target.value)} className={CONTROL}>
-                {ROLES.filter((r) => r !== "owner").map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
+                {ROLES.filter((r) => r !== "owner" && (rankOf(r) ?? 0) < callerRank).map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
               </select>
             </Field>
             <Field label="Team" htmlFor="invite-team">

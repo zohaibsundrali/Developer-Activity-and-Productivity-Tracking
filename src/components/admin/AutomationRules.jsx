@@ -13,7 +13,7 @@ import {
 } from "@/utils/automation";
 import { loadEmployees } from "@/utils/employeesData";
 import { loadLabels, BOARD_COLUMNS, DRAGGABLE_COLUMNS, PRIORITIES, TASK_TYPES } from "@/utils/pmData";
-import { showError, showSuccess } from "@/utils/alerts";
+import { showConfirm, showError, showSuccess } from "@/utils/alerts";
 // The page <h1> reads the same string the sidebar and topbar do.
 import { sectionTitle } from "@/components/shell/navConfig";
 import {
@@ -351,10 +351,14 @@ export default function AutomationRules() {
 
   const handleDelete = async (rule) => {
     if (!rule?.id) return;
-    if (typeof window !== "undefined") {
-      const ok = window.confirm(`Delete the rule "${rule.name || "Untitled rule"}"? This cannot be undone.`);
-      if (!ok) return;
-    }
+    // The app's single dialog system, not the native window.confirm, so the
+    // prompt matches every other destructive action in the product.
+    const ok = await showConfirm(
+      "Delete this rule?",
+      `"${rule.name || "Untitled rule"}" will be removed. This cannot be undone.`,
+      { confirmButtonText: "Delete" }
+    );
+    if (!ok) return;
     setBusyId(rule.id);
     try {
       const { error } = await deleteRule(rule.id);
