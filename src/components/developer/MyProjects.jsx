@@ -107,7 +107,7 @@ export default function MyProjects({
 
   const handleDownloadFile = (project) => {
     if (project.file_url) {
-      window.open(project.file_url, '_blank');
+      window.open(project.file_url, '_blank', 'noopener,noreferrer');
     } else {
       showInfo("No file", "No file available for this project.");
     }

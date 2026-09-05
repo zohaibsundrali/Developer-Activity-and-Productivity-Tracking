@@ -117,10 +117,18 @@ export default function LoginPage() {
       // 2) Load the profile row for the selected role/table. This read only
       //    returns anything once step 1 has succeeded — see the note above the
       //    component.
+      // Supabase Auth matches the email case-insensitively, but these profile
+      // columns are plain text. A `.eq` here locked out anyone whose stored
+      // email differed in case from what they typed — mobile auto-capitalizing
+      // the first letter is enough: sign-in succeeded, this read returned null,
+      // and the branch below signed them straight back out as "Invalid
+      // credentials", an undiagnosable correct-password lockout. Match caselessly
+      // (wildcards escaped so a literal % or _ in an address stays literal).
+      const emailPattern = email.replace(/([\\%_])/g, "\\$1");
       const { data: profile } = await supabase
         .from(profileTable)
         .select('*')
-        .eq('email', email)
+        .ilike('email', emailPattern)
         .maybeSingle();
 
       if (authData?.user && profile) {

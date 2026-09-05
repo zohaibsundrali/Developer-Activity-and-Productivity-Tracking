@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { GitPullRequestArrow, Check, X, Wallet, CalendarClock, Clock } from "lucide-react";
 import { authFetch } from "@/utils/authFetch";
-import { showError, showSuccess } from "@/utils/alerts";
+import { showConfirm, showError, showSuccess } from "@/utils/alerts";
 import { ClientPage, Panel, formatDate } from "@/components/client/ClientShared";
 import { Button, Field, Input, Badge, EmptyState, ErrorState, SkeletonList } from "@/components/ui";
 
@@ -299,7 +299,18 @@ export default function ClientChangeRequests() {
                           ) : null}
                           <div className="flex flex-wrap gap-2">
                             <Button
-                              onClick={() => decide(cr, "client_approve")}
+                              onClick={async () => {
+                                // A budget-moving approval should not fire on a
+                                // single stray tap — its sibling Decline is
+                                // two-step and the Approvals screen confirms, so
+                                // match that with a confirmation here.
+                                const ok = await showConfirm(
+                                  "Approve this cost?",
+                                  "This updates the project budget and timeline, and can't be undone here.",
+                                  { confirmButtonText: "Approve" }
+                                );
+                                if (ok) decide(cr, "client_approve");
+                              }}
                               disabled={busy}
                             >
                               <Check aria-hidden="true" className="h-4 w-4" />

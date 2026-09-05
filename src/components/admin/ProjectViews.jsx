@@ -15,7 +15,7 @@ import {
   TASK_TYPES,
 } from "@/utils/pmData";
 import { loadEmployees } from "@/utils/employeesData";
-import { showError } from "@/utils/alerts";
+import { showConfirm, showError } from "@/utils/alerts";
 import TaskDetailDrawer from "@/components/admin/TaskDetailDrawer";
 import KanbanView from "@/components/admin/views/KanbanView";
 import ListView from "@/components/admin/views/ListView";
@@ -177,9 +177,21 @@ export default function ProjectViews() {
     if (error) return showError("Could not save view", error.message || String(error));
     await reload();
   };
+  const [deletingView, setDeletingView] = useState(false);
   const handleDeleteView = async () => {
-    if (!activeViewId) return;
+    // Confirm + in-flight guard: this fired deleteView() on a single click with
+    // no confirmation and no disabled state, so one stray tap permanently
+    // removed a saved view (and the button could be double-fired).
+    if (!activeViewId || deletingView) return;
+    const ok = await showConfirm(
+      "Delete this saved view?",
+      "This removes the saved view. It can't be undone.",
+      { confirmButtonText: "Delete" }
+    );
+    if (!ok) return;
+    setDeletingView(true);
     const { error } = await deleteView(activeViewId);
+    setDeletingView(false);
     if (error) return showError("Could not delete view", error.message || String(error));
     setActiveViewId("");
     await reload();
@@ -329,6 +341,7 @@ export default function ProjectViews() {
                   variant="ghost"
                   size="icon"
                   onClick={handleDeleteView}
+                  disabled={deletingView}
                   aria-label="Delete saved view"
                   title="Delete saved view"
                 >
