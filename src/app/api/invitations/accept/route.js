@@ -252,16 +252,45 @@ export async function POST(request) {
       console.error("[invite-accept] terms acceptance not recorded", newUser.id, termsErr.message);
     }
 
-    // 4) Supabase Auth account (with org claim)
-    const { data: au } = await admin.auth.admin.createUser({
+    // 4) Supabase Auth account (with org claim). This is the step that can fail
+    // on a DUPLICATE: the per-org profile insert above only guards this org's
+    // table, but a Supabase Auth email is global — the invitee may already have
+    // an Auth account from another org or an earlier provision. The error used
+    // to be discarded (`const { data: au }`), so on failure auth_user_id stayed
+    // null, the invite was still flipped to accepted, and success was returned:
+    // a seat-consuming account nobody could ever sign in to, behind a dead link.
+    const { data: au, error: authErr } = await admin.auth.admin.createUser({
       email, password, email_confirm: true,
       app_metadata: { organization_id: invite.organization_id, role: invite.role, user_type: userType, app_user_id: newUser.id },
     });
-    if (au?.user?.id) {
-      await admin.from(profileTable).update({ auth_user_id: au.user.id }).eq("id", newUser.id);
-    }
+    if (authErr || !au?.user?.id) {
+      // Roll back everything THIS request wrote so the invite stays usable: the
+      // membership (which consumed a seat), the client→project link, the terms
+      // acceptance, and the freshly-inserted profile row. The invitation is
+      // deliberately NOT marked accepted, so a corrected retry still works.
+      await admin.from("memberships").delete()
+        .eq("organization_id", invite.organization_id).eq("user_id", newUser.id);
+      if (userType === "client" && invite.project_id) {
+        await admin.from("project_clients").delete()
+          .eq("organization_id", invite.organization_id).eq("client_id", newUser.id);
+      }
+      await admin.from("terms_acceptances").delete()
+        .eq("organization_id", invite.organization_id).eq("user_id", newUser.id);
+      await admin.from(profileTable).delete().eq("id", newUser.id);
 
-    // 5) mark accepted
+      const dup = authErr?.status === 422 || /already|exist|registered/i.test(authErr?.message || "");
+      return NextResponse.json(
+        {
+          error: dup
+            ? "An account already exists for this email address. Sign in instead, or ask an admin to remove the old account before re-inviting."
+            : "We couldn't finish creating your account. Please try again.",
+        },
+        { status: dup ? 409 : 400 }
+      );
+    }
+    await admin.from(profileTable).update({ auth_user_id: au.user.id }).eq("id", newUser.id);
+
+    // 5) mark accepted — only now that the Auth account actually exists.
     await admin.from("invitations").update({ status: "accepted" }).eq("id", invite.id);
 
     return NextResponse.json({ success: true, role: invite.role, userType });
