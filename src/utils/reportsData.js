@@ -322,17 +322,21 @@ export function projectPerformance({ projects, tasks, timeLogs }) {
 
 /** 2. Team productivity — one row per employee. */
 export function teamProductivity({ employees, tasks, timeLogs, sessions }) {
-  // Desktop time rolls up by developer identity (id or email).
+  // Desktop time rolls up by user identity (id or email). productivity_sessions
+  // has NO developer_id column (loadDesktopSessions selects user_id), and the
+  // consumer below keys by e.userId — so `s.developer_id` was always undefined,
+  // the byId map stayed empty, and every session with a user_id but no matching
+  // user_email was dropped from tracked hours. Key by s.user_id.
   const byId = new Map();
   const byEmail = new Map();
   (sessions || []).forEach((s) => {
     const secs = Number(s.total_duration) || 0; // treated as seconds (see file header)
-    if (s.developer_id) byId.set(s.developer_id, (byId.get(s.developer_id) || 0) + secs);
+    if (s.user_id) byId.set(s.user_id, (byId.get(s.user_id) || 0) + secs);
     else if (s.user_email) byEmail.set(s.user_email, (byEmail.get(s.user_email) || 0) + secs);
   });
   const scoreById = new Map();
   (sessions || []).forEach((s) => {
-    const key = s.developer_id || s.user_email;
+    const key = s.user_id || s.user_email;
     if (!key) return;
     const cur = scoreById.get(key) || { sum: 0, n: 0 };
     if (s.productivity_score != null) {

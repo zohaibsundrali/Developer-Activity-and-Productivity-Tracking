@@ -247,16 +247,30 @@ export default function SprintBoard({
       // Optimistic local update for snappiness.
       setStatusOverrides((prev) => ({ ...prev, [task.id]: columnId }));
 
+      // Drop the optimistic position so the reloaded server truth is what shows.
+      // Without this a rejected move (illegal transition, network error) left the
+      // card stuck in the target column — sprintTasks kept overlaying the stale
+      // override — until the sprint was switched or the page reloaded.
+      const clearOverride = () =>
+        setStatusOverrides((prev) => {
+          const next = { ...prev };
+          delete next[task.id];
+          return next;
+        });
+
       try {
         const { error } = await changeTaskStatus(task.id, columnId);
         if (error) {
           showError("Move failed", error.message || String(error));
+          clearOverride();
           await onChanged?.(); // revert to server truth
           return;
         }
+        clearOverride();
         await onChanged?.();
       } catch (err) {
         showError("Move failed", err?.message || String(err));
+        clearOverride();
         await onChanged?.();
       }
     },

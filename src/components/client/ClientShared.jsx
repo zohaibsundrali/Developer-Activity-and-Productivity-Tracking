@@ -303,12 +303,14 @@ export function ProgressBar({ value = 0, showLabel = true, tone = "primary", lab
 
 // Thin adapters over the kit so all eleven screens keep calling with `message`,
 // and so the client portal's roomier empty states are tuned in one place.
-export function EmptyState({ icon = Inbox, title = "Nothing here yet", message, action }) {
+export function EmptyState({ icon = Inbox, title = "Nothing here yet", description, message, action }) {
   return (
     <UiEmptyState
       icon={icon}
       title={title}
-      description={message}
+      // Callers pass `description`; `message` is the older name. Accept both so
+      // the explanatory sentence is never silently dropped.
+      description={description ?? message}
       action={action}
       // Roomier, and one step up the type scale: a client meeting an empty
       // screen should get a sentence they can read, not a caption.
@@ -317,11 +319,13 @@ export function EmptyState({ icon = Inbox, title = "Nothing here yet", message, 
   );
 }
 
-export function ErrorState({ message = "Something went wrong.", onRetry }) {
+export function ErrorState({ title = "We couldn't load this", description, message = "Something went wrong.", onRetry }) {
   return (
     <UiErrorState
-      title="We couldn't load this"
-      description={message}
+      title={title}
+      // Callers pass `description` (often the server's own error text); `message`
+      // is the older name and the default. Honour whichever is given.
+      description={description ?? message}
       onRetry={onRetry}
       className="gap-4 py-12 [&_p]:text-base"
     />

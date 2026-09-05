@@ -29,6 +29,10 @@ const HANDLED_EVENTS = new Set([
   "invoice.payment_failed",
   "invoice.paid",
   "invoice.finalized",
+  // Without this the switch case for it was unreachable, so a card detached in
+  // the Stripe portal was never cleared from the Billing screen until an
+  // unrelated subscription event happened to refresh it.
+  "payment_method.detached",
 ]);
 
 // Statuses a subscription does not come back from. Reaching one means the paid

@@ -60,12 +60,19 @@ export default function MyActivity() {
     const missing = [];
     const me = getOrgContext()?.userId || null;
 
+    // keyboard-stats is a ranged query — it answers 400 without a start/end, so
+    // "no window" left the Recorded activity panel dead for every role. Ask for
+    // the last 30 days; the panel prints back the range it received.
+    const end = new Date();
+    const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const activityWindow = `start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`;
+
     // Each panel fails on its own. One dead endpoint should not blank a screen
     // whose other two thirds are fine — and saying WHICH third is missing is
     // the difference between a bug report and a shrug.
     const [prodRes, actRes] = await Promise.allSettled([
       authFetch("/api/productivity?type=developer"),
-      authFetch("/api/keyboard-stats"),
+      authFetch(`/api/keyboard-stats?${activityWindow}`),
     ]);
 
     try {

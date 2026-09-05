@@ -586,6 +586,7 @@ export async function GET(request) {
       const { data: activityLogs } = await supabase
         .from('activity_logs')
         .select('*')
+        .eq('organization_id', auth.orgId)
         .eq('developer_id', submission.developer_id)
         .eq('project_id', submission.project_id)
         .order('created_at', { ascending: false })
@@ -593,9 +594,13 @@ export async function GET(request) {
 
       let screenshots = [];
       try {
+        // Org-scoped: the service client bypasses RLS, and the developer_email
+        // OR-match would otherwise pull a contractor's screenshots from ANOTHER
+        // tenant that reuses the same email. Bind to this reviewer's org.
         const { data: screenshotData } = await supabase
           .from('screenshots')
           .select('*')
+          .eq('organization_id', auth.orgId)
           .or(`developer_id.eq.${submission.developer_id},developer_email.eq.${submission.developers?.email}`)
           .order('timestamp', { ascending: false })
           .limit(5);

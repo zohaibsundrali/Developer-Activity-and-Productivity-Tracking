@@ -64,6 +64,9 @@ export function buildProjectSummary({ project, tasks, pendingApprovals }) {
   return {
     id: project.id,
     name: project.name,
+    // The card renders this; the list route now selects it (it was omitted, so
+    // every client project card fell back to "No description provided").
+    description: project.description ?? null,
     status: project.status,
     progress,
     deadline: project.deadline || null,
