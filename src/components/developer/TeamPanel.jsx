@@ -8,6 +8,7 @@ import {
   Button,
   EmptyState,
   ErrorState,
+  PageHeader,
   Section,
   Skeleton,
   SkeletonTable,
@@ -169,6 +170,11 @@ export default function TeamPanel() {
 
   return (
     <div className="space-y-6">
+      <PageHeader
+        title="Team"
+        description="Your teammates and the people who report to you."
+      />
+
       {/* Direct reports — only shown to a supervisor who has assigned reports. */}
       {myReports.length > 0 && (
         <div className="rounded-xl border border-primary/30 bg-primary/5 p-5 shadow-card">
