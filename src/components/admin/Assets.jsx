@@ -18,6 +18,7 @@ import {
 } from "@/components/ui";
 import StatCard from "@/components/shell/StatCard";
 import { authFetch } from "@/utils/authFetch";
+import { allowed } from "@/utils/permissions";
 import { showError, showSuccess } from "@/utils/alerts";
 
 /**
@@ -65,6 +66,12 @@ const money = (v) =>
     : new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(Number(v));
 
 export default function Assets({ developers = [] }) {
+  // The section opens on asset.view (owner/admin/hr/finance), but equipment
+  // writes need asset.manage (no finance) and licence writes need licence.manage
+  // (no hr). Gate the write controls so a role that would only get a 403 does
+  // not see a button at all. Enforcement remains at the route + RLS.
+  const mayAsset = allowed("asset.manage");
+  const mayLicence = allowed("licence.manage");
   const [tab, setTab] = useState("assets");
   const [assets, setAssets] = useState([]);
   const [licences, setLicences] = useState([]);
@@ -210,16 +217,18 @@ export default function Assets({ developers = [] }) {
         description="Equipment and software seats — what is owned, and who has it."
         actions={
           tab === "assets" ? (
-            <Button onClick={() => setAssetForm({ assetTag: "", name: "", category: "laptop" })}>
-              <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-              Add equipment
-            </Button>
-          ) : (
+            mayAsset ? (
+              <Button onClick={() => setAssetForm({ assetTag: "", name: "", category: "laptop" })}>
+                <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+                Add equipment
+              </Button>
+            ) : null
+          ) : mayLicence ? (
             <Button onClick={() => setLicenceForm({ name: "" })}>
               <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
               Add licence
             </Button>
-          )
+          ) : null
         }
       />
 
@@ -279,7 +288,7 @@ export default function Assets({ developers = [] }) {
                           {money(a.purchase_cost)}
                         </td>
                         <td className="py-2 text-right">
-                          {a.status === "assigned" ? (
+                          {mayAsset && (a.status === "assigned" ? (
                             <Button
                               size="sm"
                               variant="outline"
@@ -298,7 +307,7 @@ export default function Assets({ developers = [] }) {
                             >
                               Issue
                             </Button>
-                          )}
+                          ))}
                         </td>
                       </tr>
                     ))}
@@ -371,9 +380,11 @@ export default function Assets({ developers = [] }) {
                             {money(l.annual_cost)}
                           </td>
                           <td className="py-2 text-right">
-                            <Button size="sm" variant="outline" disabled={busy} onClick={() => setSeating({ licence: l, userId: "" })}>
-                              Give a seat
-                            </Button>
+                            {mayLicence && (
+                              <Button size="sm" variant="outline" disabled={busy} onClick={() => setSeating({ licence: l, userId: "" })}>
+                                Give a seat
+                              </Button>
+                            )}
                           </td>
                         </tr>
                       );
