@@ -23,7 +23,7 @@ export async function GET(request) {
     const svc = serviceClient();
     const { data: projects, error } = await svc
       .from("projects")
-      .select("id, name, status, progress, deadline, created_at")
+      .select("id, name, status, progress, deadline, created_at, description")
       .eq("organization_id", auth.orgId)
       .in("id", auth.projectIds)
       .order("created_at", { ascending: false });

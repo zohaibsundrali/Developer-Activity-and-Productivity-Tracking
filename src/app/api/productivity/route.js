@@ -72,8 +72,14 @@ export async function GET(request) {
     }
 
     // A developer viewer is always scoped to their own identity (from the JWT),
-    // never to a developerId supplied in the query string.
-    const effectiveDeveloperId = isDeveloperViewer ? auth.appUserId : developerId;
+    // never to a developerId supplied in the query string. An admin viewer may
+    // name someone else via developerId; with none given they mean THEMSELVES —
+    // the "My Activity" screen asks `type=developer` with no id, and a
+    // report.view holder (manager/team_lead/owner/admin) used to fall through to
+    // a 400 there instead of getting their own metrics.
+    const effectiveDeveloperId = isDeveloperViewer
+      ? auth.appUserId
+      : (developerId || auth.appUserId);
 
     if (isDeveloperViewer && !effectiveDeveloperId) {
       return NextResponse.json(

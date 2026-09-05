@@ -95,6 +95,10 @@ export default function BugQueue() {
           )
           .eq("organization_id", orgId)
           .eq("task_type", "bug")
+          // Deterministic newest-first. Without an order the 1000-row cap
+          // returned an ARBITRARY slice, so past 1000 lifetime bugs a genuinely
+          // open bug could be silently absent from the queue and its counts.
+          .order("created_at", { ascending: false })
           .limit(1000),
         supabase.from("projects").select("id, name").eq("organization_id", orgId).limit(500),
       ]);
