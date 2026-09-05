@@ -13,6 +13,7 @@ import {
   CardTitle,
   Input,
   Label,
+  PageHeader,
 } from "@/components/ui";
 import { User, Mail, ShieldCheck, Eye, EyeOff, CheckCircle, AlertTriangle, LockKeyhole } from "lucide-react";
 import { authFetch } from "@/utils/authFetch";
@@ -121,6 +122,11 @@ export default function Account({ user }) {
 
   return (
     <div className="space-y-8">
+      <PageHeader
+        title="Account"
+        description="Your profile details and sign-in password."
+      />
+
       <Card className="rounded-xl border border-border bg-card shadow-card">
         <CardHeader>
           <CardTitle className="text-xl font-semibold tracking-tight text-foreground">Account Information</CardTitle>

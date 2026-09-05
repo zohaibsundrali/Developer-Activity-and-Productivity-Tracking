@@ -6,7 +6,7 @@ import { supabase } from "@/utils/supabaseClient";
 import { projectStatusMeta } from "@/utils/projectStatus";
 import { Mail, CalendarDays, FolderKanban, CheckCircle2, Clock, Timer } from "lucide-react";
 import StatCard from "@/components/shell/StatCard";
-import { EmptyState, Section, Skeleton, StatusPill } from "@/components/ui";
+import { EmptyState, PageHeader, Section, Skeleton, StatusPill } from "@/components/ui";
 
 // Project status → StatusPill state. Status is colour + glyph + text, never a
 // bare tinted chip.
@@ -362,6 +362,11 @@ export default function DashboardOverview({ user, assignedProjects = [] }) {
 
   return (
     <div className="space-y-6">
+      <PageHeader
+        title="Dashboard"
+        description="Your projects, hours and activity at a glance."
+      />
+
       {/* Profile Card */}
       <div className="rounded-xl border border-border bg-card p-6 shadow-card sm:p-7">
         <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center">
