@@ -207,3 +207,4 @@ python3 scripts/expand-sql-fixture.py database/tests/fractional_single_day_capac
 docker exec "$audit_container" createdb -U postgres typed_manager_roster_test
 python3 scripts/expand-sql-fixture.py database/tests/typed_project_manager_roster.sql | \
   docker exec -i "$audit_container" psql -U postgres -d typed_manager_roster_test -v ON_ERROR_STOP=1
+python3 scripts/test-manager-roster-concurrency.py "$audit_container" typed_manager_roster_test
