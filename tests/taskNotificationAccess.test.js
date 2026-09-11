@@ -21,6 +21,12 @@ describe('task notification access', () => {
     expect(can(subject('developer', { overrides: { 'task.view_all': true } }), task)).toBe(true);
     expect(can(subject('developer', { appUserId: 'assignee', overrides: { 'task.view_own': false } }), task)).toBe(false);
   });
+  it('matches the independent database bug-triage read grant', () => {
+    const recipient = subject('developer', { overrides: { 'bug.triage': true } });
+    expect(can(recipient, { ...task, task_type: 'bug' })).toBe(true);
+    expect(can(recipient, { ...task, task_type: 'feature' })).toBe(false);
+    expect(can(subject('qa', { overrides: { 'task.review': false, 'bug.triage': false } }), { ...task, task_type: 'bug' })).toBe(false);
+  });
   it('fails closed on unknown permissions or tenant mismatch', () => {
     expect(can(subject('owner', { overridesUnavailable: true }), task)).toBe(false);
     expect(can(subject('owner', { orgId: 'elsewhere' }), task)).toBe(false);

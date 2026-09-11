@@ -39,6 +39,7 @@ import {
 import { getOrgContext, isMembershipActive } from "@/utils/orgContext";
 import { supabase } from "@/utils/supabaseClient";
 import { authFetch } from "@/utils/authFetch";
+import { indexTaskMembers } from "@/utils/taskMemberIdentity";
 import { canRemoveTaskReviewer } from "@/utils/taskReviewerRemoval";
 import { taskUiPermissions } from "@/utils/taskUiPermissions";
 import { allowed } from "@/utils/permissions";
@@ -277,26 +278,20 @@ export default function TaskDetailDrawer({
   }, [taskId]);
 
   // ---- member lookups ------------------------------------------------
-  const memberById = useMemo(() => {
-    const m = new Map();
-    (members || []).forEach((mem) => {
-      if (mem && mem.userId != null) m.set(String(mem.userId), mem);
-    });
-    return m;
-  }, [members]);
+  const memberIndex = useMemo(() => indexTaskMembers(members), [members]);
+  const memberById = memberIndex.byId;
 
   const nameForUser = useCallback(
     (userId, userType) => {
       if (userId == null) return "Unknown";
-      const matches = (members || []).filter(m => String(m.userId) === String(userId) && (!userType || m.userType === userType));
-      const mem = matches.length === 1 ? matches[0] : null;
+      const mem = userType ? memberIndex.byIdentity.get(`${userType}:${userId}`) : memberIndex.byId.get(String(userId));
       if (mem?.name) return mem.name;
-      if (ctx?.userId != null && String(ctx?.userId) === String(userId) && (!userType || ctx?.userType === userType)) {
+      if (ctx?.userId != null && String(ctx?.userId) === String(userId) && userType && ctx?.userType === userType) {
         return ctx.organizationName ? `You` : "You";
       }
       return "User";
     },
-    [members, ctx]
+    [memberIndex, ctx]
   );
 
   // developer_tasks.developer_id is a foreign key onto developers(id), and a
@@ -737,7 +732,7 @@ export default function TaskDetailDrawer({
   const commentAuthorName = (c) => {
     if (!c) return "User";
     if (c.author_name) return c.author_name;
-    if (c.author_id != null) return nameForUser(c.author_id);
+    if (c.author_id != null) return nameForUser(c.author_id, c.author_type);
     if (ctx?.userId != null) return "You";
     return "User";
   };
@@ -782,7 +777,7 @@ export default function TaskDetailDrawer({
 
   const ref = taskRef(task);
   const assigneeLabel = form?.developer_id
-    ? memberById.get(String(form.developer_id))?.name || null
+    ? memberIndex.byIdentity.get(`developer:${form.developer_id}`)?.name || null
     : null;
 
   return (

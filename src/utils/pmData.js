@@ -10,11 +10,6 @@ import { notify, windowedDedupeKey } from "@/utils/notifications";
 // two drags racing the same read of the row — and nothing a person does.
 const STATUS_REPLAY_WINDOW_MS = 2 * 60 * 1000;
 
-// The same idea for assignment. A task legitimately changes hands more than
-// once a day — cover for someone off sick, then hand it back — so a per-day key
-// would announce the first move and silence the one that actually matters.
-const ASSIGN_REPLAY_WINDOW_MS = 2 * 60 * 1000;
-
 /**
  * Data access for the Enterprise Project Management module.
  *
@@ -384,127 +379,26 @@ export async function moveTask(taskId, { status, position }, logCtx = null) {
   return changeTaskStatus(taskId, status, { position, logCtx });
 }
 
-// Assign a task, tell the new assignee, and fire "assigned" automations.
-//
-// Assignment was the one workflow event that produced no notification: the
-// person picked up work only by noticing it on a board. It is also why the
-// "assigned" automation trigger never fired - the drawer wrote the column
-// directly and never came through here.
-/**
- * A hand-over is two pieces of news and neither of them is "you have been
- * assigned a task".
- *
- * The new owner needs to know the work is already underway and whose desk it
- * came off; the previous owner needs to know it is no longer theirs, and that
- * one has no other way of reaching them — a task simply vanishes from their
- * board with nothing to say it was deliberate.
- *
- * Both names come from one directory read rather than one per recipient.
- */
-async function notifyReassignment(task, previousId, nextId) {
-  const { data: people } = await supabase
-    .from("developers")
-    .select("id, name, email")
-    .in("id", [previousId, nextId]);
-
-  const nameById = new Map(
-    (people || []).map((p) => [String(p.id), p.name || (p.email ? p.email.split("@")[0] : "")])
-  );
-  const previousName = nameById.get(String(previousId)) || "a colleague";
-  const nextName = nameById.get(String(nextId)) || "a colleague";
-  const title = task.task_title || "A task";
-
-  // The other person's name is in the message as well as the metadata: a card
-  // that renders the structured form is an improvement, not a prerequisite, and
-  // the notification has to make sense on its own either way.
-  const metadata = {
-    taskTitle: task.task_title || null,
-    previousAssigneeId: previousId,
-    previousAssigneeName: previousName,
-    newAssigneeId: nextId,
-    newAssigneeName: nextName,
-  };
-  // One key per transition, so the two recipients' rows never collide and a
-  // hand-back later in the day is still its own event.
-  const kind = `reassigned:${previousId}>${nextId}`;
-  const common = {
-    audience: "developer",
-    category: "assignment",
-    taskId: task.id,
-    projectId: task.project_id || null,
-    metadata,
-  };
-
-  await Promise.all([
-    notify({
-      ...common,
-      recipientId: nextId,
-      type: "task_reassigned",
-      title: "Task reassigned to you",
-      message: `"${title}" moved to you from ${previousName}.`,
-      dedupeKey: windowedDedupeKey(kind, task.id, nextId, ASSIGN_REPLAY_WINDOW_MS),
-    }),
-    notify({
-      ...common,
-      recipientId: previousId,
-      type: "task_reassigned_away",
-      title: "Task reassigned",
-      message: `"${title}" moved from you to ${nextName}.`,
-      dedupeKey: windowedDedupeKey(kind, task.id, previousId, ASSIGN_REPLAY_WINDOW_MS),
-    }),
-  ]);
-}
-
+// Assignment notifications are generated from the database's actual OLD/NEW
+// rows in the same transaction, including initial assignment and removal.
 export async function assignTask(taskId, developerId, logCtx = null) {
-  // Who held the task before the write. The update overwrites developer_id, so
-  // "moved from X to Y" cannot be reconstructed afterwards — and a read that
-  // fails costs the hand-over notice, never the assignment itself.
-  let previousId = null;
-  try {
-    const { data: before } = await supabase
-      .from("developer_tasks")
-      .select("developer_id")
-      .eq("id", taskId)
-      .single();
-    previousId = before?.developer_id || null;
-  } catch {
-    /* the assignment does not depend on knowing who held it */
-  }
-
   const res = await updateTask(taskId, { developer_id: developerId || null }, logCtx);
   if (res.error || !developerId) return res;
 
   try {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("developer_tasks")
       .select("id, status, priority, task_type, developer_id, project_id, labels, task_title, organization_id")
+      .eq("organization_id", getOrgId())
       .eq("id", taskId)
       .single();
-    if (!data) return res;
-
-    // Re-saving the same assignee is not a hand-over, so it keeps the plain
-    // "assigned to you" notice. A genuine hand-over gets the pair instead of
-    // that one — telling the new owner both that they were assigned it and that
-    // it moved to them is the same fact twice.
-    if (previousId && String(previousId) !== String(developerId)) {
-      await notifyReassignment(data, previousId, developerId);
-    } else {
-      await supabase.from("notifications").insert({
-        organization_id: data.organization_id || getOrgId(),
-        developer_id: developerId,
-        task_id: taskId,
-        project_id: data.project_id || null,
-        type: "task_assigned",
-        title: "Task assigned to you",
-        message: `You have been assigned "${data.task_title || "a task"}".`,
-        read: false,
-      });
-    }
-
+    // A concurrent assignment may already have superseded this one. Its
+    // database notice is durable; don't run an automation for another target.
+    if (error || !data || data.developer_id !== developerId) return res;
     const { runAutomations } = await import("@/utils/automation");
     await runAutomations({ event: "assigned", task: data, projectId: data.project_id });
   } catch {
-    /* neither the notification nor the automation should fail the assignment */
+    /* automation delivery remains best-effort after the committed assignment */
   }
   return res;
 }

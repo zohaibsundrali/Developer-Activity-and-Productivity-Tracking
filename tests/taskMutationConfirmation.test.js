@@ -41,6 +41,26 @@ describe('task mutation confirmation', () => {
     expect(state.notified).not.toHaveBeenCalled();
     expect(state.automated).not.toHaveBeenCalled();
   });
+  it('does not duplicate database assignment notices in the browser', async () => {
+    state.updatedRows = [{ id: 'task-1' }];
+    const result = await assignTask('task-1', 'dev-1');
+    expect(result.error).toBeNull();
+    expect(state.notified).not.toHaveBeenCalled();
+    expect(state.calls.filter(call => call.table === 'notifications')).toHaveLength(0);
+    expect(state.automated).toHaveBeenCalledOnce();
+    expect(state.calls.filter(call => call.table === 'developer_tasks' && call.op === 'select')).toHaveLength(1);
+  });
+  it('does not automate a different assignee returned after a concurrent change', async () => {
+    state.updatedRows = [{ id: 'task-1' }];
+    expect((await assignTask('task-1', 'dev-2')).error).toBeNull();
+    expect(state.automated).not.toHaveBeenCalled();
+  });
+  it('leaves unassignment delivery to the database transaction', async () => {
+    state.updatedRows = [{ id: 'task-1' }];
+    expect((await assignTask('task-1', null)).error).toBeNull();
+    expect(state.calls).toHaveLength(1);
+    expect(state.notified).not.toHaveBeenCalled();
+  });
   it('retains successful status notifications and automation after confirmation', async () => {
     state.updatedRows = [{ id: 'task-1' }];
     expect((await changeTaskStatus('task-1', 'in_progress')).error).toBeNull();

@@ -216,3 +216,12 @@ python3 scripts/expand-sql-fixture.py database/tests/typed_monitoring_read_permi
 docker exec "$audit_container" createdb -U postgres notification_insert_test
 python3 scripts/expand-sql-fixture.py database/tests/notification_insert_authority.sql | \
   docker exec -i "$audit_container" psql -U postgres -d notification_insert_test -v ON_ERROR_STOP=1
+
+docker exec "$audit_container" createdb -U postgres assignment_notifications_test
+python3 scripts/expand-sql-fixture.py database/tests/task_assignment_notifications.sql | \
+  docker exec -i "$audit_container" psql -U postgres -d assignment_notifications_test -v ON_ERROR_STOP=1
+python3 scripts/test-assignment-notification-concurrency.py "$audit_container" assignment_notifications_test
+
+docker exec "$audit_container" createdb -U postgres task_notification_privacy_test
+python3 scripts/expand-sql-fixture.py database/tests/task_notification_privacy.sql | \
+  docker exec -i "$audit_container" psql -U postgres -d task_notification_privacy_test -v ON_ERROR_STOP=1

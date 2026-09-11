@@ -8,6 +8,7 @@ export function canReceiveTaskNotification(subject, task) {
   if (!subject || !task || subject.orgId !== task.organization_id) return false;
   if (subject.userType !== 'admin' && subject.userType !== 'developer') return false;
   return authCan(subject, 'task.view_all') || authCan(subject, 'task.review') ||
+    (task.task_type === 'bug' && authCan(subject, 'bug.triage')) ||
     (subject.userType === 'developer' && Boolean(task.developer_id) &&
       subject.appUserId === task.developer_id && authCan(subject, 'task.view_own'));
 }
