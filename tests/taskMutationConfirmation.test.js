@@ -61,10 +61,11 @@ describe('task mutation confirmation', () => {
     expect(state.calls).toHaveLength(1);
     expect(state.notified).not.toHaveBeenCalled();
   });
-  it('retains successful status notifications and automation after confirmation', async () => {
+  it('wakes automation after confirmation without duplicating database status notices', async () => {
     state.updatedRows = [{ id: 'task-1' }];
     expect((await changeTaskStatus('task-1', 'in_progress')).error).toBeNull();
-    expect(state.notified).toHaveBeenCalledOnce();
+    expect(state.notified).not.toHaveBeenCalled();
+    expect(state.calls.filter(call => call.table === 'notifications')).toHaveLength(0);
     expect(state.automated).toHaveBeenCalledOnce();
     expect(state.calls.find(c => c.op === 'update').filters).toContainEqual(['organization_id', 'org-1']);
   });

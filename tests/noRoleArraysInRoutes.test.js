@@ -97,8 +97,6 @@ const NOT_AUTHORIZATION = {
   "src/app/api/projects/[id]/manager/route.js":
     "ELIGIBLE_MANAGER_ROLES is who may BE a project manager, not who may assign " +
     "one — the assigning is gated on project.assign_manager above it",
-  "src/app/api/proposals/[id]/decide/route.js":
-    "checks the role of the person being ASSIGNED as manager, not the caller's",
   "src/app/api/cron/route.js":
     "TRIAL_NOTIFY_ROLES is who receives a trial-expiry notification — a mailing " +
     "list, not a gate",

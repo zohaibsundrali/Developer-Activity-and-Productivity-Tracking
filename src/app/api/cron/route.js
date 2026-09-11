@@ -1,3 +1,4 @@
+import { flushProposalDecisionEmails } from '@/utils/proposalDecisionEmails';
 import { sensitiveNotificationAudience, canReceiveBillingNotice, canReceiveSignalNotice } from "@/utils/sensitiveNotificationAudience";
 import { NextResponse } from "next/server";
 import { serviceClient } from "@/utils/serverAuth";
@@ -87,6 +88,13 @@ async function runJobs() {
     summary.errors.push(...recovered.errors.map(error => ({ job: "invitation_recovery", ...error })));
   } catch {
     summary.errors.push({ job: "invitation_recovery", message: "Invitation recovery unavailable" });
+  }
+  try {
+    const delivery = await flushProposalDecisionEmails(svc);
+    summary.proposalEmailsDelivered = delivery.delivered;
+    summary.proposalEmailsPending = delivery.pending;
+  } catch {
+    summary.errors.push({ job: 'proposal_email', message: 'Proposal delivery queue unavailable' });
   }
   const automationChecks = new Map();
   async function automationAllowed(orgId) {

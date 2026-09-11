@@ -25,6 +25,7 @@ const read = (p) =>
 const MIGRATION = read("database/059_project_proposals.sql");
 const LIST = read("src/app/api/proposals/route.js");
 const DECIDE = read("src/app/api/proposals/[id]/decide/route.js");
+const ATOMIC = read("supabase/migrations/20260911163440_production_atomic_proposal_decisions.sql");
 const NAV = read("src/components/shell/navConfig.js");
 
 describe("the migration guards the states nobody should be able to reach", () => {
@@ -94,70 +95,27 @@ describe("the list route re-applies the client scope the service key bypasses", 
   });
 });
 
-describe("accept is ordered so a failure cannot claim success", () => {
-  it("creates the project, links the client, THEN marks accepted", () => {
-    const proj = DECIDE.indexOf('.from("projects")');
-    const link = DECIDE.indexOf('.from("project_clients")');
-    const mark = DECIDE.indexOf('status: "accepted"');
-    expect(proj).toBeGreaterThan(-1);
-    expect(link).toBeGreaterThan(proj);
-    expect(mark).toBeGreaterThan(link);
+describe("acceptance is one database transaction", () => {
+  it("uses the locked service transaction with no compensating browser writes", () => {
+    expect(DECIDE).toContain("svc.rpc('decide_project_proposal'");
+    expect(DECIDE).not.toContain('.delete()');
+    expect(ATOMIC).toContain('for update');
+    expect(ATOMIC.indexOf('insert into public.projects')).toBeLessThan(ATOMIC.indexOf('insert into public.project_clients'));
+    expect(ATOMIC).toContain("p.status in ('accepted','rejected')");
+    expect(ATOMIC).toContain("'replayed',true");
   });
-
-  it("removes the project again if the client link fails", () => {
-    // A project the client cannot see is worse than no project, because
-    // everyone believes it is visible.
-    const idx = DECIDE.indexOf("if (linkErr)");
-    const near = DECIDE.slice(idx, idx + 200);
-    expect(near).toContain('.from("projects")');
-    expect(near).toContain(".delete()");
+  it("checks billing, typed manager identity and current effective capabilities", () => {
+    expect(ATOMIC).toContain('app_private.org_unlocked(p_org)');
+    expect(ATOMIC).toContain("user_type=manager_type and status='active'");
+    expect(ATOMIC).toContain("permission_key='proposal.decide'");
+    expect(DECIDE).toContain("requirePermission(auth, 'proposal.decide')");
+    for (const role of ROLES) expect(roleCan(role,'proposal.decide')).toBe(['owner','admin','manager'].includes(role));
   });
-
-  it("undoes both if the proposal will not move", () => {
-    const idx = DECIDE.indexOf("if (updErr)");
-    const near = DECIDE.slice(idx, idx + 300);
-    expect(near).toContain('.from("project_clients")');
-    expect(near).toContain('.from("projects")');
-  });
-
-  it("will not accept a proposal twice", () => {
-    expect(DECIDE).toContain('.neq("status", "accepted")');
-  });
-
-  it("checks the billing lock before creating a project", () => {
-    // Otherwise accepting is a side door around the check every other create
-    // goes through.
-    const lock = DECIDE.indexOf("requireUnlocked");
-    const proj = DECIDE.indexOf('.from("projects")');
-    expect(lock).toBeGreaterThan(-1);
-    expect(lock).toBeLessThan(proj);
-  });
-
-  it("verifies the assigned manager is really one, in this organization", () => {
-    const idx = DECIDE.indexOf("let managerQuery = svc");
-    const near = DECIDE.slice(idx, idx + 600);
-    expect(near).toContain('.from("memberships")');
-    expect(near).toContain('eq("organization_id", auth.orgId)');
-    expect(near).toMatch(/"manager"/);
-  });
-
-  it("keeps deciding to owner/admin/manager", () => {
-    // The named array moved into the catalogue as `proposal.decide`. The RLS
-    // policy assertion above still checks the database independently, which is
-    // the half that actually enforces it.
-    expect(DECIDE).toContain('requirePermission(auth, "proposal.decide")');
-    for (const role of ROLES) {
-      expect(roleCan(role, "proposal.decide"), role).toBe(
-        ["owner", "admin", "manager"].includes(role)
-      );
-    }
-  });
-
-  it("never lets a failed notification undo a recorded decision", () => {
-    // Both notify helpers swallow their own errors.
-    const helpers = DECIDE.match(/async function notify\w+[\s\S]*?\n}/g) || [];
-    expect(helpers.length).toBe(2);
-    for (const h of helpers) expect(h).toContain("catch");
+  it("records durable client delivery intent inside the decision and reports later delivery failure", () => {
+    expect(ATOMIC).toContain('insert into public.proposal_decision_emails');
+    expect(DECIDE).toContain('flushProposalDecisionEmails(svc, proposalId)');
+    expect(DECIDE).toContain('Client email is queued for retry');
+    expect(DECIDE).not.toContain('actor_id: proposal.client_id');
   });
 });
 
@@ -285,54 +243,17 @@ describe("the company's own numbers, not the client's hopes", () => {
     expect(MIGRATION).not.toMatch(/create policy|drop policy/i);
   });
 
-  it("builds the project from OUR estimate when there is one", () => {
-    // Before this, accepting created a project budgeted at whatever the
-    // customer hoped to spend, and every margin figure downstream was measured
-    // against a number nobody in the company agreed to.
-    expect(DECIDE).toMatch(/budget: proposal\.estimated_cost \?\? proposal\.budget/);
-    expect(DECIDE).toMatch(/deadline: deadlineFor\(proposal\)/);
+  it("honours zero estimates and counts the deadline from UTC acceptance", () => {
+    expect(ATOMIC).toContain('coalesce(p.estimated_cost,p.budget)');
+    expect(ATOMIC).toContain("(now() at time zone 'UTC')::date+p.estimated_timeline_days");
+    expect(ATOMIC).toContain('else p.desired_deadline end');
   });
-
-  it("uses ?? and not || so a zero estimate is honoured", () => {
-    // "We will do this one free" is a real answer and must not fall through to
-    // the client's figure.
-    expect(DECIDE).not.toMatch(/proposal\.estimated_cost \|\| proposal\.budget/);
-  });
-
-  it("counts our timeline from acceptance, not from the proposal date", () => {
-    // A date on an unaccepted proposal goes stale the moment the client takes
-    // a week to reply; a duration is still true whenever they answer.
-    const fn = DECIDE.match(/function deadlineFor\([\s\S]*?\n\}/)[0];
-    expect(fn).toContain("new Date()");
-    expect(fn).toContain("estimated_timeline_days");
-    expect(fn).toContain("proposal.desired_deadline");
-  });
-
-  it("defines every helper it calls", () => {
-    // Caught by hand once already: numberOrNull and deadlineFor were being
-    // called while their definitions had failed to land.
-    for (const fn of ["deadlineFor", "numberOrNull"]) {
-      expect(DECIDE, `${fn} is called but not defined`).toMatch(
-        new RegExp(`function ${fn}\\(`)
-      );
-    }
-  });
-
-  it("refuses an estimate with neither a cost nor hours", () => {
-    expect(DECIDE).toMatch(/that is what an estimate is/i);
-  });
-
-  it("tells nobody outside when something is merely costed", () => {
-    // Costing is internal. The client hears on a decision, not while somebody
-    // is still thinking.
-    // Anchored on code, not on a comment: read() strips comments, so a
-    // comment marker gives indexOf(-1) and the "branch" becomes the whole
-    // file. That is how this assertion passed for the wrong reason first time.
-    const start = DECIDE.indexOf('decision === "estimate"');
-    const end = DECIDE.indexOf('if (decision !== "accepted")');
-    expect(start).toBeGreaterThan(-1);
-    expect(end).toBeGreaterThan(start);
-    expect(DECIDE.slice(start, end)).not.toContain("notifyClient");
+  it("validates estimates and keeps costing internal", () => {
+    expect(DECIDE).toContain('function numberOrNull(');
+    expect(DECIDE).toContain('cost === null && hours === null');
+    expect(ATOMIC).toContain("if p_decision='estimate' then");
+    expect(ATOMIC).toContain("if p_decision in ('accepted','rejected','needs_info') then");
+    expect(DECIDE).toContain("['accepted', 'rejected', 'needs_info'].includes(decision)");
   });
 
   it("strips internal_notes from what a client receives", () => {

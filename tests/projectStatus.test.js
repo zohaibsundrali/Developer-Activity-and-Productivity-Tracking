@@ -212,12 +212,11 @@ describe("isProjectFinished / isProjectOpen", () => {
 describe("every writer uses the constant, never a literal", () => {
   const WRITERS = [
     "src/components/admin/AllProjects.jsx",
-    "src/app/api/proposals/[id]/decide/route.js",
     "src/utils/pmData.js",
     "src/app/api/projects/[id]/closure/route.js",
   ];
 
-  it("imports the vocabulary in each of the four", () => {
+  it("imports the vocabulary in each JavaScript project writer", () => {
     for (const f of WRITERS) {
       expect(code(f), `${f} does not import it`).toContain(
         'from "@/utils/projectStatus"'

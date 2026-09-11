@@ -172,10 +172,10 @@ describe("who may BE the manager", () => {
   it("accepts the same eligible roles the proposal route does", () => {
     // A manager assigned at acceptance and one assigned later must mean the
     // same thing.
-    const decide = read("src/app/api/proposals/[id]/decide/route.js");
+    const decide = read("supabase/migrations/20260911163440_production_atomic_proposal_decisions.sql");
     const route = read("src/app/api/projects/[id]/manager/route.js");
     const list = /\["owner", "admin", "manager", "team_lead"\]/;
-    expect(decide).toMatch(list);
+    expect(decide).toContain("mgr.role not in ('owner','admin','manager','team_lead')");
     expect(route).toMatch(list);
   });
 });

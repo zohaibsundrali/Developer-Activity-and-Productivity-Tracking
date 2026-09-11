@@ -1,0 +1,6 @@
+import { expect,it,vi } from 'vitest';
+import { writeMilestone } from '@/utils/milestoneRecords';
+function client(result) { const q={update:vi.fn(()=>q),insert:vi.fn(()=>q),delete:vi.fn(()=>q),eq:vi.fn(()=>q),select:()=>q,maybeSingle:async()=>result};return {from:vi.fn(()=>q),q}; }
+it.each([false,true])('does not claim success on RLS zero-row save/delete %s',async remove=>{const db=client({data:null});expect((await writeMilestone(db,'org','project',{id:'milestone'},remove)).error.message).toContain('Nothing was saved');expect(db.q.eq).toHaveBeenCalledWith('organization_id','org');expect(db.q.eq).toHaveBeenCalledWith('project_id','project');});
+it('refuses payload scope override before writing',async()=>{const db=client({});expect((await writeMilestone(db,'org','project',{title:'Release',organization_id:'other'})).error).toBeTruthy();expect(db.from).not.toHaveBeenCalled();});
+it('returns confirmed milestone and keeps valid reopening states',async()=>{const db=client({data:{id:'milestone',status:'pending'}});expect((await writeMilestone(db,'org','project',{id:'milestone',status:'pending'})).error).toBeNull();expect(db.q.update).toHaveBeenCalledWith(expect.objectContaining({status:'pending'}));});
