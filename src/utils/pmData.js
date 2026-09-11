@@ -814,25 +814,39 @@ export async function addChecklistItem(taskId, text) {
   return { item: data, error };
 }
 export async function toggleChecklistItem(id, done) {
-  const { error } = await supabase.from("task_checklists").update({ done }).eq("id", id);
-  return { error };
+  const orgId = getOrgId();
+  if (!orgId) return { error: new Error("Organization context is required") };
+  const { data, error } = await supabase.from("task_checklists").update({ done })
+    .eq("organization_id", orgId).eq("id", id).select("id");
+  if (error) return { error };
+  if (!Array.isArray(data) || data.length !== 1 || data[0]?.id !== id) {
+    return { error: new Error("Checklist item was not changed. Refresh the task and check your access.") };
+  }
+  return { error: null };
 }
 
 export async function toggleWatcher(taskId, userId, userType, role = "watcher", on = true) {
   const orgId = getOrgId();
-  if (on) {
-    const { error } = await supabase
-      .from("task_watchers")
-      .upsert({ organization_id: orgId, task_id: taskId, user_id: userId, user_type: userType, role }, { onConflict: "task_id,user_id,role" });
-    return { error };
+  if (!orgId || !taskId || !userId || !['admin', 'developer'].includes(userType) || !['watcher', 'reviewer'].includes(role)) {
+    return { error: new Error('A valid task and typed staff identity are required.') };
   }
-  const { error } = await supabase
+  if (on) {
+    const { data, error } = await supabase
+      .from("task_watchers")
+      .upsert({ organization_id: orgId, task_id: taskId, user_id: userId, user_type: userType, role }, { onConflict: "task_id,user_type,user_id,role" })
+      .select('id').maybeSingle();
+    return { error: error || (!data ? new Error('Watcher was not saved. Refresh the task and check your permissions.') : null) };
+  }
+  const { data, error } = await supabase
     .from("task_watchers")
     .delete()
+    .eq("organization_id", orgId)
     .eq("task_id", taskId)
     .eq("user_id", userId)
-    .eq("role", role);
-  return { error };
+    .eq("user_type", userType)
+    .eq("role", role)
+    .select('id').maybeSingle();
+  return { error: error || (!data ? new Error('Watcher was not removed. Refresh the task and check your permissions.') : null) };
 }
 
 export async function addDependency(taskId, dependsOnTaskId, type = "blocks") {
@@ -1413,55 +1427,18 @@ export async function setProjectTemplate(projectId, isTemplate) {
 // Clone a project (and optionally its tasks) into a fresh project. Tasks are
 // copied with status reset to 'pending' and their PM fields preserved.
 export async function cloneProject(sourceProjectId, newName, { copyTasks = true } = {}) {
-  const orgId = getOrgId();
-  const { data: src, error: srcErr } = await supabase
-    .from("projects")
-    .select("*")
-    .eq("id", sourceProjectId)
-    .single();
-  if (srcErr || !src) return { error: srcErr || new Error("Source project not found") };
-
-  const today = new Date().toISOString().slice(0, 10);
-  const { projectCloneFields } = await import('@/utils/projectCloneFields');
-  const carry = projectCloneFields(src);
-  const insertRow = {
-    ...carry,
-    organization_id: orgId,
-    name: newName || `${src.name} (copy)`,
-    status: PROJECT_STATUS.pending,
-    progress: 0,
-    is_template: false,
-    archived: false,
-    created_at: new Date().toISOString(),
-  };
-  const { data: proj, error: projErr } = await supabase.from("projects").insert(insertRow).select().single();
-  if (projErr || !proj) return { error: projErr || new Error("Clone failed") };
-
-  if (copyTasks) {
-    const { data: srcTasks } = await supabase.from("developer_tasks").select("*").eq("project_id", sourceProjectId);
-    const rows = (srcTasks || []).map((t) => {
-      const { id: _i, created_at: _c, updated_at: _u, submitted_at, reviewed_at, reviewed_by,
-        actual_completion_date, admin_comments, rejection_reason, is_on_time, productivity_points,
-        ...keep } = t;
-      return {
-        ...keep,
-        organization_id: orgId,
-        project_id: proj.id,
-        status: "pending",
-        // A clone copies the SHAPE of the work, not who was told about it.
-        // Carrying client_visible across would put visible tasks into a project
-        // whose client links have not been set up yet — invisible today, and
-        // exposed the moment anyone attaches a client to it.
-        client_visible: false,
-        start_date: t.start_date || today,
-        end_date: t.end_date || today,
-        created_at: new Date().toISOString(),
-      };
-    });
-    if (rows.length) await supabase.from("developer_tasks").insert(rows);
-  }
-  await logActivity({ projectId: proj.id, entityType: "project", entityId: proj.id, action: "created", meta: { clonedFrom: sourceProjectId, name: insertRow.name } });
-  return { project: proj, error: null };
+  const { data, error } = await supabase.rpc('clone_project', {
+    p_source: sourceProjectId, p_name: newName || null, p_copy_tasks: copyTasks,
+  });
+  if (error) return { error };
+  if (!data?.project?.id) return { error: new Error('Could not confirm project cloning. Refresh before retrying.') };
+  // The transaction has committed. A best-effort feed failure must not make a
+  // successful clone look unsuccessful and cause the user to create it twice.
+  try {
+    await logActivity({ projectId: data.project.id, entityType: 'project', entityId: data.project.id,
+      action: 'created', meta: { clonedFrom: sourceProjectId, name: data.project.name } });
+  } catch { /* The cloned project remains the authoritative result. */ }
+  return { project: data.project, error: null };
 }
 
 // ---- Project health (derived, no I/O) -------------------------------------

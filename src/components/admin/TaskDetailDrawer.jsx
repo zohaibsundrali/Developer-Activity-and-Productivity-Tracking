@@ -38,6 +38,8 @@ import {
 } from "@/utils/pmData";
 import { getOrgContext, isMembershipActive } from "@/utils/orgContext";
 import { supabase } from "@/utils/supabaseClient";
+import { authFetch } from "@/utils/authFetch";
+import { canRemoveTaskReviewer } from "@/utils/taskReviewerRemoval";
 import { taskUiPermissions } from "@/utils/taskUiPermissions";
 import { allowed } from "@/utils/permissions";
 import { showConfirm, showError, showSuccess } from "@/utils/alerts";
@@ -188,6 +190,7 @@ export default function TaskDetailDrawer({
   const [depTaskId, setDepTaskId] = useState("");
   const [depType, setDepType] = useState("blocks");
   const [reviewerId, setReviewerId] = useState("");
+  const [removingReviewer, setRemovingReviewer] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [busyAttachmentId, setBusyAttachmentId] = useState(null);
 
@@ -283,16 +286,17 @@ export default function TaskDetailDrawer({
   }, [members]);
 
   const nameForUser = useCallback(
-    (userId) => {
+    (userId, userType) => {
       if (userId == null) return "Unknown";
-      const mem = memberById.get(String(userId));
+      const matches = (members || []).filter(m => String(m.userId) === String(userId) && (!userType || m.userType === userType));
+      const mem = matches.length === 1 ? matches[0] : null;
       if (mem?.name) return mem.name;
-      if (ctx?.userId != null && String(ctx?.userId) === String(userId)) {
+      if (ctx?.userId != null && String(ctx?.userId) === String(userId) && (!userType || ctx?.userType === userType)) {
         return ctx.organizationName ? `You` : "You";
       }
       return "User";
     },
-    [memberById, ctx]
+    [members, ctx]
   );
 
   // developer_tasks.developer_id is a foreign key onto developers(id), and a
@@ -313,13 +317,29 @@ export default function TaskDetailDrawer({
     [members]
   );
 
-  const reviewerMembers = useMemo(
-    () =>
-      (members || []).filter(
-        (m) => m && String(m.role || "").toLowerCase() === "reviewer"
-      ),
-    [members]
-  );
+  const canAssignReviewer = actionAccess.manage || allowed('task.review');
+  const reviewerScope = `${ctx?.organizationId}:${ctx?.userType}:${ctx?.userId}:${taskId}`;
+  const [reviewerState, setReviewerState] = useState(null);
+  const [reviewerRetry, setReviewerRetry] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    setReviewerId("");
+    setReviewerState(null);
+    if (!canAssignReviewer || !taskId) return () => controller.abort();
+    (async () => {
+      try {
+        const response = await authFetch(`/api/tasks/${taskId}/reviewers`, { signal: controller.signal });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || 'Could not load reviewers.');
+        if (!controller.signal.aborted) setReviewerState({ scope: reviewerScope, members: body.reviewers || [] });
+      } catch (error) {
+        if (!controller.signal.aborted) setReviewerState({ scope: reviewerScope, error: error.message });
+      }
+    })();
+    return () => controller.abort();
+  }, [taskId, reviewerScope, canAssignReviewer, reviewerRetry, task?.developer_id]);
+  const currentReviewers = reviewerState?.scope === reviewerScope ? reviewerState : null;
+  const reviewerMembers = currentReviewers?.members || [];
 
   const subtasks = useMemo(
     () => (allTasks || []).filter((t) => t && t.parent_task_id === taskId),
@@ -501,6 +521,7 @@ export default function TaskDetailDrawer({
       (w) =>
         w &&
         String(w.user_id) === String(ctx?.userId) &&
+        w.user_type === ctx?.userType &&
         (w.role || "watcher") === "watcher"
     );
   }, [detail.watchers, ctx]);
@@ -529,8 +550,8 @@ export default function TaskDetailDrawer({
   };
 
   const handleAddReviewer = async () => {
-    if (!reviewerId || !taskId) return;
-    const mem = memberById.get(String(reviewerId));
+    if (!canAssignReviewer || !reviewerId || !taskId) return;
+    const mem = reviewerMembers.find(m => `${m.userType}:${m.userId}` === reviewerId);
     if (!mem) return;
     try {
       const { error } = await toggleWatcher(
@@ -548,6 +569,27 @@ export default function TaskDetailDrawer({
       await refresh();
     } catch (err) {
       showError("Could not add reviewer", err?.message || String(err));
+    }
+  };
+
+  const handleRemoveReviewer = async (watcher) => {
+    if (!canRemoveTaskReviewer({ task, watcher, context: getOrgContext(), allowed })) return;
+    const confirmed = await showConfirm('Remove reviewer?',
+      `${nameForUser(watcher.user_id, watcher.user_type)} will be removed from this task’s reviewer list.`,
+      { confirmButtonText: 'Remove' });
+    if (!confirmed || !canRemoveTaskReviewer({ task, watcher, context: getOrgContext(), allowed })) return;
+    setRemovingReviewer(`${watcher.user_type}:${watcher.user_id}`);
+    try {
+      const { error } = await toggleWatcher(taskId, watcher.user_id, watcher.user_type, 'reviewer', false);
+      if (error) {
+        showError('Could not remove reviewer', error.message || String(error));
+        return;
+      }
+      await refresh();
+    } catch (error) {
+      showError('Could not remove reviewer', error?.message || String(error));
+    } finally {
+      setRemovingReviewer(null);
     }
   };
 
@@ -1293,9 +1335,16 @@ export default function TaskDetailDrawer({
         <Block title="Watchers & reviewers" icon={Eye}>
           <div className="flex flex-wrap gap-1.5">
             {(detail.watchers || []).map((w) => (
-              <Badge key={`${w.user_id}-${w.role || "watcher"}`} variant="default">
-                {nameForUser(w.user_id)}
+              <Badge key={`${w.user_type}-${w.user_id}-${w.role || "watcher"}`} variant="default">
+                {nameForUser(w.user_id, w.user_type)}
                 <span className="text-primary/70">· {pretty(w.role || "watcher")}</span>
+                {canRemoveTaskReviewer({ task, watcher: w, context: ctx, allowed }) ? (
+                  <button type="button" className="ml-1 rounded p-0.5 hover:bg-muted disabled:opacity-50"
+                    aria-label={`Remove reviewer ${nameForUser(w.user_id, w.user_type)}`}
+                    disabled={removingReviewer !== null} onClick={() => handleRemoveReviewer(w)}>
+                    {removingReviewer === `${w.user_type}:${w.user_id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <XCircle className="h-3 w-3" />}
+                  </button>
+                ) : null}
               </Badge>
             ))}
             {(detail.watchers || []).length === 0 ? (
@@ -1314,7 +1363,10 @@ export default function TaskDetailDrawer({
             </Button>
           </div>
 
-          {reviewerMembers.length > 0 ? (
+          {canAssignReviewer && !currentReviewers ? <p className="mt-3 text-xs text-muted-foreground">Loading eligible reviewers…</p> : null}
+          {canAssignReviewer && currentReviewers?.error ? <div className="mt-3 text-sm" role="alert">{currentReviewers.error} <Button onClick={() => setReviewerRetry(n => n + 1)}>Retry</Button></div> : null}
+          {canAssignReviewer && currentReviewers?.members?.length === 0 ? <p className="mt-3 text-xs text-muted-foreground">No eligible project reviewers are available.</p> : null}
+          {canAssignReviewer && reviewerMembers.length > 0 ? (
             <div className="mt-3 flex items-center gap-2">
               <select
                 className={`${SELECT_CLASS} w-full`}
@@ -1324,7 +1376,7 @@ export default function TaskDetailDrawer({
               >
                 <option value="">Add reviewer…</option>
                 {reviewerMembers.map((m) => (
-                  <option key={String(m.userId)} value={m.userId}>
+                  <option key={`${m.userType}:${m.userId}`} value={`${m.userType}:${m.userId}`}>
                     {m.name}
                   </option>
                 ))}
