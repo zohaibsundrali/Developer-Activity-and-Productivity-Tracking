@@ -67,27 +67,32 @@ export async function GET(request) {
     if (denied) return denied;
 
     const { searchParams } = new URL(request.url);
-    const week = isoMonday(searchParams.get("week"));
-    const svc = serviceClient();
-
-    let q = svc
-      .from("capacity_week_v")
-      .select("*")
-      .eq("organization_id", auth.orgId)
-      .order("week_start", { ascending: false })
-      .limit(2000);
-    if (week) q = q.eq("week_start", week);
-
-    const { data, error } = await q;
-    if (error) {
-      return NextResponse.json({ success: false, error: "Could not load capacity" }, { status: 503 });
+    const suppliedWeek = searchParams.get("week");
+    let week;
+    if (suppliedWeek === null) {
+      const today = new Date();
+      today.setUTCDate(today.getUTCDate() - ((today.getUTCDay() + 6) % 7));
+      week = today.toISOString().slice(0, 10);
+    } else {
+      week = isoMonday(suppliedWeek);
+      if (!week) return NextResponse.json({ success: false, error: "Week must be a valid ISO Monday (YYYY-MM-DD)" }, { status: 400 });
     }
-    return NextResponse.json({ success: true, rows: data || [], week: week || null });
-  } catch (e) {
-    return NextResponse.json(
-      { success: false, error: "Could not load capacity" },
-      { status: 500 }
-    );
+    const svc = serviceClient();
+    const rows = [];
+    // Page the selected week explicitly, including zero-activity staff. Do not
+    // silently truncate the organization at the Data API's response row cap.
+    for (let offset = 0; ; offset += 500) {
+      const { data, error } = await svc.rpc("capacity_for_week", { p_org: auth.orgId, p_week: week })
+        .order("user_type").order("user_id").range(offset, offset + 499);
+      if (error || !Array.isArray(data)) {
+        return NextResponse.json({ success: false, error: "Could not load capacity" }, { status: 503 });
+      }
+      rows.push(...data);
+      if (data.length < 500) break;
+    }
+    return NextResponse.json({ success: true, rows, week });
+  } catch {
+    return NextResponse.json({ success: false, error: "Could not load capacity" }, { status: 503 });
   }
 }
 

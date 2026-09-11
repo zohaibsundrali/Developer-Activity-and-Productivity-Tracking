@@ -281,3 +281,15 @@ Migration `20260911121040_production_typed_capacity_identity.sql` fixes the same
 This brings pending production migrations to **35**. The existing view still omits entirely idle people and some later weeks of extended leave without time entries; completing forward capacity planning remains open. Broader notification-event authorization, durable delivery and external integration/deployment checks remain unresolved. GitHub publishing still requires repository write access.
 
 Final frozen-worktree verification: **128 web test files / 3,447 tests passed**, production build passed with existing lint warnings, and the complete isolated SQL suite passed. Three independent cross-reviews found no new defect within this change's graph, API/UI and view-replacement scope. The role-array inventory now records the capacity route's profile-type boundary separately from its unchanged effective action permissions. These are local results; production data and live journeys remain unverified.
+
+## Selected-week capacity planning
+
+Migration `20260911122437_production_selected_week_capacity.sql` adds a service-only selected-week calculation. It includes active typed staff with no time entries and approved leave overlapping any part of the requested week, while preserving historical time/leave participants. Queries stay within the verified organization and requested week rather than generating an unbounded calendar. Existing contracted-hour NULL semantics, typed allocation and Developer-only time/backlog attribution remain intact.
+
+Capacity GET now rejects supplied invalid/non-Monday dates, defaults an omitted date to the current UTC Monday, and pages typed results without silently truncating staff. The UI permits future weeks. Its request helper cancels superseded requests, rejects late responses and keeps loading/error/data scoped to the selected organization and week.
+
+Actual SQL testing exposed an inherited calculation defect: a LEFT JOIN without matching leave still produced seven days because PostgreSQL LEAST/GREATEST ignore NULL operands. The selected-week calculation and existing capacity view now explicitly count a missing leave row as zero.
+
+Pending production migrations now total **36**. Fractional leave and work-calendar interpretation still use the old calendar-span calculation and need further work; the schema supports fractional requested days. Contracted hours/allocation have API writes but no complete setting controls in the inspected UI. These limitations, broader notification/automation work and external deployment/integration verification prevent full production-readiness certification.
+
+Final verification: **130 web test files / 3,463 tests passed**, production build passed with existing lint warnings, and the complete isolated SQL suite passed with the final missing-leave correction and both view/RPC regressions. Deferred-response tests cover stale successes/errors, retry and unmount cancellation. Independent API and UI cross-reviews found no additional material issue within this change. No migrations were applied to production and no GitHub push occurred.

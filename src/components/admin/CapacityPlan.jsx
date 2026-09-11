@@ -11,6 +11,8 @@ import {
   Section,
   Skeleton,
 } from "@/components/ui";
+import { createCapacityPlanRequest } from "@/utils/capacityPlanRequest";
+import { getOrgId } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
 
 /**
@@ -36,7 +38,7 @@ import { authFetch } from "@/utils/authFetch";
 
 /** The ISO Monday of whatever week contains `d`. */
 function isoMonday(d = new Date()) {
-  const x = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const day = x.getUTCDay() || 7; // Sunday -> 7
   x.setUTCDate(x.getUTCDate() - (day - 1));
   return x.toISOString().slice(0, 10);
@@ -50,9 +52,13 @@ const num = (v, suffix = "") =>
 
 export default function CapacityPlan({ people = [] }) {
   const [week, setWeek] = useState(() => isoMonday());
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const scope = `${getOrgId()}:${week}`;
+  const [result, setResult] = useState(null);
+  const request = useMemo(() => createCapacityPlanRequest(authFetch, setResult), []);
+  const current = result?.scope === scope ? result : null;
+  const rows = useMemo(() => current?.rows || [], [current]);
+  const loading = current?.loading ?? true;
+  const error = current?.error || '';
 
   const nameOf = useCallback(
     (id, userType) => {
@@ -62,24 +68,12 @@ export default function CapacityPlan({ people = [] }) {
     [people]
   );
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const res = await authFetch(`/api/capacity?week=${encodeURIComponent(week)}`);
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json?.success) throw new Error(json?.error || "Could not load the plan.");
-      setRows(json.rows || []);
-    } catch (e) {
-      setError(e?.message || "Could not load the plan.");
-    } finally {
-      setLoading(false);
-    }
-  }, [week]);
+  const load = useCallback(() => request.load(week, scope), [request, week, scope]);
 
   useEffect(() => {
     load();
-  }, [load]);
+    return () => request.cancel();
+  }, [load, request]);
 
   const summary = useMemo(() => {
     let known = 0;
@@ -110,8 +104,7 @@ export default function CapacityPlan({ people = [] }) {
             variant="outline"
             size="sm"
             onClick={() => setWeek(shiftWeek(week, 1))}
-            disabled={week >= thisWeek}
-            title={week >= thisWeek ? "That week has not happened yet" : "Next week"}
+            title="Next week"
           >
             <ChevronRight className="h-4 w-4" aria-hidden="true" />
             <span className="sr-only">Next week</span>
@@ -134,8 +127,8 @@ export default function CapacityPlan({ people = [] }) {
       ) : rows.length === 0 ? (
         <EmptyState
           icon={CalendarRange}
-          title="Nothing recorded for that week"
-          description="A person appears here once they have logged time or have approved leave in the week."
+          title="No capacity entries for that week"
+          description="There are no eligible staff or capacity records for the selected week."
         />
       ) : (
         <>
