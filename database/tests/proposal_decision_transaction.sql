@@ -23,6 +23,20 @@ create function app_private.org_unlocked(p_org uuid) returns boolean language sq
 \ir ../059_project_proposals.sql
 \ir ../062_proposal_estimates.sql
 \ir ../../supabase/migrations/20260911163440_production_atomic_proposal_decisions.sql
+-- Real roster and project-notice triggers; unrelated event tables are schema-only.
+alter table projects add column assigned_developer_id uuid,add column assigned_to uuid;
+alter table notifications add column task_id uuid,add column metadata jsonb;
+create schema private;
+create table developer_tasks(id uuid primary key,organization_id uuid,project_id uuid,developer_id uuid,task_type text,task_title text,status text);
+create table milestones(id uuid primary key,organization_id uuid,project_id uuid,title text,status text);
+create table project_members(organization_id uuid,project_id uuid references projects on delete cascade,user_id uuid,user_type text,project_role text,updated_at timestamptz,
+ constraint project_members_unique unique(project_id,user_id));
+create function project_unique_identity_type(p_org uuid,p_identifier text) returns text language sql stable as $$
+ select case when count(distinct user_type)=1 then min(user_type) end from memberships where organization_id=p_org and user_id::text=p_identifier;
+$$;
+\ir ../../supabase/migrations/20260911123702_production_typed_project_manager_roster.sql
+\ir ../../supabase/migrations/20260911170307_production_atomic_work_transition_notices.sql
+
 grant usage on schema public to authenticated,service_role;
 grant all on all tables in schema public to service_role;
 create function proposal_failure() returns trigger language plpgsql as $$ begin
@@ -99,6 +113,20 @@ begin
  perform proposal_denied(format('select decide_project_proposal(%L,%L,%L,''admin'',''rejected'',''no'')',org,proposal,actor),'PROPOSAL_CONFLICT');
  if (select count(*) from projects)<>1 or (select count(*) from project_clients)<>1 or (select count(*) from notifications)<>1 or (select count(*) from proposal_decision_emails)<>1 then raise exception 'Replay duplicated state'; end if;
  if exists(select 1 from proposal_decision_emails e where to_jsonb(e)::text like '%PRIVATE%') then raise exception 'Client email leaked notes'; end if;
+ -- Manager roster does not invent developer assignment. Acceptance and replay
+ -- therefore create exactly one manager notice with real triggers installed.
+ if exists(select 1 from projects where assigned_developer_id is not null) then raise exception 'Manager roster invented developer assignment'; end if;
+ if (select count(*) from project_members where user_id=manager and user_type='developer' and project_role='manager')<>1 then raise exception 'Typed manager roster missing'; end if;
+ if (select count(*) from notifications where developer_id=manager and title='A project has been assigned to you')<>1 then raise exception 'Manager notice lost or duplicated'; end if;
+ -- Same person separately becomes assignee: one additional event, no repeat.
+ update projects set assigned_developer_id=manager where id=(result->'project'->>'id')::uuid;
+ update projects set assigned_developer_id=manager where id=(result->'project'->>'id')::uuid;
+ perform decide_project_proposal(org,proposal,actor,'admin','accepted');
+ if (select count(*) from notifications)<>2
+  or (select count(*) from notifications where developer_id=manager and title='Project assigned')<>1
+  or (select count(*) from notifications where developer_id=manager and title='A project has been assigned to you')<>1
+ then raise exception 'Manager/assignee events duplicated across acceptance replay'; end if;
+
  select * into mail from claim_proposal_decision_emails(proposal);
  if mail.id is null or mail.attempts<>1 then raise exception 'Email not claimed'; end if;
  if exists(select 1 from claim_proposal_decision_emails(proposal)) then raise exception 'Active lease duplicated'; end if;
