@@ -15,7 +15,9 @@ done
 for sql_file in \
   database/tests/notification_recipient_fixture.sql \
   supabase/migrations/20260911042612_audit_notification_recipient_isolation.sql \
+  supabase/migrations/20260911081955_production_notification_update_guard.sql \
   database/tests/notification_recipient.sql \
+  database/tests/notification_update.sql \
   database/tests/membership_authority_fixture.sql \
   supabase/migrations/20260911044517_audit_membership_authority.sql \
   database/tests/membership_authority.sql; do
