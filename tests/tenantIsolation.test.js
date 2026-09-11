@@ -156,6 +156,8 @@ describe("every route that uses the service role", () => {
     // Atomic task-plan RPC receives only the verified organization and developer identity.
     // Reviewer candidates prove caller task RLS access before the typed service lookup.
     // Durable automation claims only the verified typed actor’s jobs; task actions use caller JWT/RLS.
-    expect(usingService.length).toBe(74);
+    // Organization deletion derives tenant/typed owner from auth; receipt GET is
+    // read-only and requires a hashed random capability. RPCs revalidate scope.
+    expect(usingService.length).toBe(75);
   });
 });

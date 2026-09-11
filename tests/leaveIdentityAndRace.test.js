@@ -1,0 +1,12 @@
+import { beforeEach,expect,it,vi } from 'vitest';
+const state=vi.hoisted(()=>({auth:{orgId:'org',appUserId:'same',userType:'developer'},calls:[],existing:null,updated:null,can:true}));
+vi.mock('@/utils/serverAuth',()=>({getAuthedOrg:async()=>state.auth,serviceClient:()=>({from(table){const call={table,filters:[]};state.calls.push(call);const q={select:()=>q,eq:(...v)=>{call.filters.push(v);return q;},order:()=>q,limit:()=>q,update:patch=>{call.patch=patch;return q;},maybeSingle:async()=>({data:call.patch?state.updated:state.existing}),then:resolve=>resolve({data:[]})};return q;}})}));
+vi.mock('@/utils/serverPermissions',()=>({authCan:()=>state.can,requirePermission:()=>null}));
+vi.mock('@/utils/entitlements',()=>({requireUnlocked:async()=>null}));
+import { GET,POST,PATCH } from '@/app/api/leave/route';
+const request=(method,body)=>new Request('https://app.test/api/leave?scope=me',{method,...(body?{body:JSON.stringify(body),headers:{'content-type':'application/json'}}:{})});
+beforeEach(()=>{state.calls=[];state.auth={orgId:'org',appUserId:'same',userType:'developer'};state.existing={user_id:'other',user_type:'developer',status:'pending'};state.updated=null;state.can=true;});
+it('scopes the own inbox by profile type even with a UUID collision',async()=>{await GET(request('GET'));expect(state.calls[0].filters).toContainEqual(['user_type','developer']);});
+it('returns conflict when another decision won the pending-state update',async()=>{const result=await PATCH(request('PATCH',{requestId:'11111111-1111-1111-1111-111111111111',decision:'approved'}));expect(result.status).toBe(409);expect(state.calls.at(-1).filters).toContainEqual(['organization_id','org']);expect(state.calls.at(-1).filters).toContainEqual(['status','pending']);});
+it('does not mistake the other typed profile for self-approval',async()=>{state.existing={user_id:'same',user_type:'admin',status:'pending'};state.updated={id:'saved'};expect((await PATCH(request('PATCH',{requestId:'11111111-1111-1111-1111-111111111111',decision:'approved'}))).status).toBe(200);});
+it('rejects clients and rolled-over calendar dates before writing',async()=>{state.auth.userType='client';expect((await POST(request('POST',{}))).status).toBe(403);state.auth.userType='developer';expect((await POST(request('POST',{leaveTypeId:'11111111-1111-1111-1111-111111111111',startDate:'2026-02-30',endDate:'2026-03-02'}))).status).toBe(400);expect(state.calls).toHaveLength(0);});

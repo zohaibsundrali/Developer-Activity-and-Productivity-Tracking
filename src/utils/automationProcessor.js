@@ -10,7 +10,7 @@ const failure = (message, code = '22023') => Object.assign(new Error(message), {
 // Dependency injection keeps regression tests focused on RLS client selection,
 // durable checkpoints, lease ownership and external-delivery uncertainty.
 export async function processActorAutomations({ auth, svc, caller, retryFailed = false, maxJobs = 8,
-  sendEmail = sendTemplatedEmail, getEmailMode = emailMode }) {
+  sendEmail = sendTemplatedEmail, getEmailMode = emailMode, executeStep }) {
   const result = { ran: 0, errors: [], pending: 0 };
   async function checkpoint(job, patch) {
     const { data, error } = await svc.from('automation_jobs').update({ ...patch, updated_at: new Date().toISOString() })
@@ -45,12 +45,14 @@ export async function processActorAutomations({ auth, svc, caller, retryFailed =
         if (!action || typeof action !== 'object') throw failure('Invalid automation action.');
         let task;
         if (TASK_ACTIONS.has(action.type)) {
-          const applied = await caller.rpc('apply_actor_automation_action', { p_job: job.id, p_lease: job.lease });
+          const applied = executeStep ? await executeStep(job, 'apply')
+            : await caller.rpc('apply_actor_automation_action', { p_job: job.id, p_lease: job.lease });
           if (applied.error) throw applied.error;
           if (!applied.data?.id) throw failure('Task was not changed; check current access.', '42501');
           task = applied.data;
         } else if (action.type === 'notify' || action.type === 'email') {
-          const read = await caller.from('developer_tasks').select('*').eq('id', job.task_id).eq('organization_id', auth.orgId).maybeSingle();
+          const read = executeStep ? await executeStep(job, 'read')
+            : await caller.from('developer_tasks').select('*').eq('id', job.task_id).eq('organization_id', auth.orgId).maybeSingle();
           if (read.error) throw read.error;
           if (!read.data) throw failure('Automation task is no longer accessible.', '42501');
           task = read.data;
@@ -73,7 +75,7 @@ export async function processActorAutomations({ auth, svc, caller, retryFailed =
           if (typeof title !== 'string' || title.length > 500 || typeof message !== 'string' || message.length > 20000) throw failure('Invalid automation message.');
           if (action.type === 'email' && !authCan(auth, 'automation.manage')) throw failure('Email actions require automation.manage.', '42501');
           {
-            const notice = await caller.from('notifications').insert({ organization_id: auth.orgId,
+            const notice = executeStep ? await executeStep(job, 'notice') : await caller.from('notifications').insert({ organization_id: auth.orgId,
               ...(member.user_type === 'admin' ? { admin_id: member.user_id, admin_recipient_type: 'admin' } : { developer_id: member.user_id }),
               type: 'automation', title, message, project_id: task.project_id, task_id: task.id,
               dedupe_key: `automation:${job.id}:${index}`, read: false });

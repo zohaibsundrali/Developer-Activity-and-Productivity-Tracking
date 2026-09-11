@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({ queries: {}, writes: [], stripe: {}, auth: null }));
 vi.mock("@/utils/serverAuth", () => ({
   getAuthedOrg: async () => state.auth,
-  serviceClient: () => ({ from(table) {
+  serviceClient: () => ({ rpc: async () => ({data: state.deleting?.length ? state.deleting.shift() : false}), from(table) {
     const q = {
       select: () => q, eq: () => q,
       maybeSingle: async () => state.queries[table] || { data: null },
@@ -24,7 +24,7 @@ const request = () => new Request("https://app.test/api/billing/checkout", {
 });
 beforeEach(() => {
   state.auth = { orgId: "org-a", email: "owner@example.test" };
-  state.writes = []; state.saveError = null;
+  state.writes = []; state.saveError = null; state.deleting = [];
   state.queries = {
     billing_plans: { data: { code: "professional", name: "Professional", is_active: true, stripe_price_id: "price_pro", amount_cents: 4900 } },
     organization_subscriptions: { data: { stripe_customer_id: "cus_a", stripe_subscription_id: "sub_a", status: "active" } },
@@ -112,5 +112,26 @@ describe("Checkout retries and webhook delay", () => {
   it("uses the same creation key for retries", async () => {
     await POST(request()); await POST(request());
     expect(state.stripe.checkout.sessions.create.mock.calls.map(call => call[1].idempotencyKey)).toEqual(["organization-checkout-org-a-first", "organization-checkout-org-a-first"]);
+  });
+});
+
+describe('organization deletion billing races', () => {
+  it('refuses billing before contacting a provider when deletion started', async () => {
+    state.deleting = [true]; expect((await POST(request())).status).toBe(409);
+    expect(state.stripe.customers.create).not.toHaveBeenCalled(); expect(state.stripe.subscriptions.update).not.toHaveBeenCalled();
+  });
+  it('expires a newly created checkout when deletion wins the post-provider race', async () => {
+    state.queries.organization_subscriptions.data.stripe_subscription_id = null;
+    state.stripe.checkout.sessions.create.mockImplementation(async () => { state.deleting=[true]; return {id:'new_session',url:'https://checkout.test'}; });
+    expect((await POST(request())).status).toBe(409);
+    expect(state.stripe.checkout.sessions.expire).toHaveBeenCalledWith('new_session');
+  });
+  it('cancels only the verified tenant subscription after a raced plan update', async () => {
+    state.stripe.subscriptions.retrieve.mockResolvedValue({id:'sub_a',customer:'cus_a',metadata:{organization_id:'org-a'},status:'active',items:{data:[{id:'item',price:{id:'old'}}]}});
+    state.stripe.subscriptions.update.mockImplementation(async()=>{state.deleting=[true];return {};});
+    state.stripe.subscriptions.cancel=vi.fn(async()=>({status:'canceled'}));
+    expect((await POST(request())).status).toBe(409);
+    expect(state.stripe.subscriptions.cancel).toHaveBeenCalledWith('sub_a',{invoice_now:false,prorate:false});
+    expect(state.writes).toHaveLength(0);
   });
 });

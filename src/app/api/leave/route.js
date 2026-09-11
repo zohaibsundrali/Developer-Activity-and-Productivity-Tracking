@@ -3,6 +3,8 @@ import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { authCan, requirePermission } from "@/utils/serverPermissions";
 import { requireUnlocked } from "@/utils/entitlements";
 
+import { leaveDayAmount } from "@/utils/leaveDayContract";
+
 export const dynamic = "force-dynamic";
 
 /**
@@ -28,7 +30,11 @@ const MAX_REASON = 2000;
 /** A single request longer than this is a leave of absence, not a leave day. */
 const MAX_SPAN_DAYS = 365;
 
-const isDate = (v) => typeof v === "string" && DATE_RE.test(v);
+const isDate = (v) => {
+  if (typeof v !== "string" || !DATE_RE.test(v)) return false;
+  const parsed = new Date(`${v}T00:00:00Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === v;
+};
 
 /** Whole days, inclusive of both ends. Half days arrive as `days` from the UI. */
 function spanDays(start, end) {
@@ -41,6 +47,7 @@ function spanDays(start, end) {
 export async function GET(request) {
   try {
     const auth = await getAuthedOrg(request);
+    if (auth && !["admin", "developer"].includes(auth.userType)) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     if (!auth) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
@@ -62,7 +69,7 @@ export async function GET(request) {
         .eq("active", true)
         .order("name");
       if (error) {
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+        return NextResponse.json({ success: false, error: error.message }, { status: error.code === "22023" ? 400 : error.code === "42501" ? 403 : 500 });
       }
       return NextResponse.json({ success: true, types: data || [] });
     }
@@ -82,7 +89,7 @@ export async function GET(request) {
 
     const scope = searchParams.get("scope");
     if (!canReadAnyone || scope === "me") {
-      query = query.eq("user_id", auth.appUserId);
+      query = query.eq("user_id", auth.appUserId).eq("user_type", auth.userType);
     }
 
     const status = searchParams.get("status");
@@ -92,7 +99,7 @@ export async function GET(request) {
 
     const { data, error } = await query;
     if (error) {
-      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+      return NextResponse.json({ success: false, error: error.message }, { status: error.code === "22023" ? 400 : error.code === "42501" ? 403 : 500 });
     }
     return NextResponse.json({ success: true, requests: data || [] });
   } catch (e) {
@@ -106,6 +113,7 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const auth = await getAuthedOrg(request);
+    if (auth && !["admin", "developer"].includes(auth.userType)) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     if (!auth) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
@@ -151,14 +159,10 @@ export async function POST(request) {
       );
     }
 
-    // `days` is what the balance is spent from, so it is bounded by the span
-    // rather than trusted. A request for 1 day across a 1-day span may be 0.5
-    // (a half day); it may not be 40.
-    const requested = Number(body?.days);
-    const days =
-      Number.isFinite(requested) && requested > 0 && requested <= span
-        ? Math.round(requested * 2) / 2
-        : span;
+    const days = leaveDayAmount(span, body?.days);
+    if (days === null) {
+      return NextResponse.json({ success: false, error: "Choose 0.5 or 1 day for a single date. Multi-date leave must equal the full calendar-day span." }, { status: 400 });
+    }
 
     const svc = serviceClient();
 
@@ -206,7 +210,7 @@ export async function POST(request) {
             ? "You already have a pending or approved request covering those dates"
             : error.message,
         },
-        { status: overlapping ? 409 : 500 }
+        { status: overlapping ? 409 : error.code === "22023" ? 400 : error.code === "42501" ? 403 : 500 }
       );
     }
 
@@ -222,6 +226,7 @@ export async function POST(request) {
 export async function PATCH(request) {
   try {
     const auth = await getAuthedOrg(request);
+    if (auth && !["admin", "developer"].includes(auth.userType)) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     if (!auth) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
@@ -248,7 +253,7 @@ export async function PATCH(request) {
       return NextResponse.json({ success: false, error: "Not found" }, { status: 404 });
     }
 
-    const isMine = String(existing.user_id) === String(auth.appUserId);
+    const isMine = String(existing.user_id) === String(auth.appUserId) && existing.user_type === auth.userType;
 
     if (decision === "cancelled") {
       // Withdrawing your own request is not a decision, it is a retraction, and
@@ -300,12 +305,15 @@ export async function PATCH(request) {
         updated_at: new Date().toISOString(),
       })
       .eq("id", requestId)
+      .eq("organization_id", auth.orgId)
+      .eq("status", "pending")
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
-      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+      return NextResponse.json({ success: false, error: error.message }, { status: error.code === "22023" ? 400 : error.code === "42501" ? 403 : 500 });
     }
+    if (!data) return NextResponse.json({ success: false, error: "That request was already decided. Reload to see its current status." }, { status: 409 });
     return NextResponse.json({ success: true, request: data });
   } catch (e) {
     return NextResponse.json(

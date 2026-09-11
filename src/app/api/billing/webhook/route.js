@@ -67,6 +67,22 @@ export async function POST(request) {
   // is the only writer, and it writes as the service role.
   const svc = serviceClient();
 
+  // Valid signature is established above. Match immutable deletion billing
+  // lineage before recording tenant payloads or applying subscription changes.
+  try {
+    const object = event.data?.object || {};
+    const deletion = await svc.rpc('handle_deletion_billing_event', {
+      p_org: UUID_RE.test(String(object.metadata?.organization_id || object.client_reference_id || ''))
+        ? String(object.metadata?.organization_id || object.client_reference_id) : null,
+      p_customer: idOf(object.customer),
+      p_subscription: idOf(object.subscription) || (event.type.startsWith('customer.subscription.') ? object.id : null),
+      p_reconcile: event.type === 'checkout.session.completed' || event.type === 'invoice.paid'
+        || (event.type.startsWith('customer.subscription.') && !TERMINAL_STATUSES.has(object.status)),
+    });
+    if (deletion.error) return NextResponse.json({ error: 'Deletion state unavailable' }, { status: 503 });
+    if (deletion.data === true) return NextResponse.json({ received: true, organizationDeleting: true });
+  } catch { return NextResponse.json({ error: 'Deletion state unavailable' }, { status: 503 }); }
+
   // ── Idempotency ───────────────────────────────────────
   // The insert happens before any work. billing_events.stripe_event_id is
   // UNIQUE, so a redelivery loses the race and is recognised here rather than

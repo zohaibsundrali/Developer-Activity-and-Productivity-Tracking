@@ -1,0 +1,12 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const state=vi.hoisted(()=>({event:null,rpc:vi.fn(),writes:vi.fn(),signatureError:false}));
+vi.mock('@/utils/serverAuth',()=>({serviceClient:()=>({rpc:state.rpc,from:state.writes})}));
+vi.mock('@/utils/stripeServer',()=>({verifyWebhook:()=>{if(state.signatureError)throw Error();return state.event;},stripeClient:()=>null}));
+vi.mock('@/utils/systemEvents',()=>({recordEvent:async()=>{}}));
+import{POST}from '../src/app/api/billing/webhook/route';
+const request=()=>new Request('http://localhost/api/billing/webhook',{method:'POST',body:'signed'});
+beforeEach(()=>{state.signatureError=false;state.rpc.mockReset().mockResolvedValue({data:true});state.writes.mockReset();state.event={id:'event',type:'customer.subscription.updated',data:{object:{id:'sub',customer:'cus',status:'active',metadata:{organization_id:'10000000-0000-4000-8000-000000000001'}}}};});
+it('acknowledges matching deletion lineage and requeues cancellation without tenant writes',async()=>{const res=await POST(request());expect(res.status).toBe(200);expect((await res.json()).organizationDeleting).toBe(true);expect(state.rpc).toHaveBeenCalledWith('handle_deletion_billing_event',{p_org:'10000000-0000-4000-8000-000000000001',p_customer:'cus',p_subscription:'sub',p_reconcile:true});expect(state.writes).not.toHaveBeenCalled();});
+it('does not requeue terminal cancellation notifications',async()=>{state.event.data.object.status='canceled';expect((await POST(request())).status).toBe(200);expect(state.rpc.mock.calls[0][1].p_reconcile).toBe(false);});
+it('requires a verified signature before checking deletion lineage',async()=>{state.signatureError=true;expect((await POST(request())).status).toBe(400);expect(state.rpc).not.toHaveBeenCalled();});
+it('fails closed when deletion state is unavailable',async()=>{state.rpc.mockResolvedValue({error:{message:'secret'}});expect((await POST(request())).status).toBe(503);expect(state.writes).not.toHaveBeenCalled();});

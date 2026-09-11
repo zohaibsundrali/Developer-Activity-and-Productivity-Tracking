@@ -72,3 +72,19 @@ describe('actor-scoped server automation processor', () => {
     expect(patches.at(-1).status).toBe('cancelled');
   });
 });
+
+it('uses only the fixed step adapter for unattended tasks and deliveries', async () => {
+  job.actions = [{ type: 'set_priority', priority: 'high' }, { type: 'notify' }];
+  const executeStep = vi.fn().mockResolvedValue({ data: { id: 'task', developer_id: 'recipient', organization_id: 'org' } });
+  const result = await processActorAutomations({ auth, svc, executeStep });
+  expect(result.ran).toBe(1);
+  expect(executeStep.mock.calls.map(call => call[1])).toEqual(['apply', 'read', 'notice']);
+  expect(caller.rpc).not.toHaveBeenCalled(); expect(caller.from).not.toHaveBeenCalled();
+});
+it('retains delivery uncertainty quarantine for the unattended adapter', async () => {
+  job.actions = [{ type: 'email' }];
+  const executeStep = vi.fn().mockResolvedValue({ data: { id: 'task', developer_id: 'recipient', organization_id: 'org' } });
+  const result = await processActorAutomations({ auth, svc, executeStep, getEmailMode: () => 'resend', sendEmail: async () => { throw new Error('provider timeout'); } });
+  expect(result.ran).toBe(0);
+  expect(patches.at(-1)).toMatchObject({ status: 'delivery_unknown', external_started: true, next_attempt_at: null });
+});

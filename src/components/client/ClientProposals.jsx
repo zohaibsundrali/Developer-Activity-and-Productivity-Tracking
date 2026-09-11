@@ -1,5 +1,7 @@
 "use client";
 
+import { proposalProjectHistory } from "@/utils/proposalProjectHistory";
+
 import { useState, useEffect, useCallback } from "react";
 import { Send, Lightbulb, Clock, CheckCircle2, XCircle, HelpCircle } from "lucide-react";
 import { authFetch } from "@/utils/authFetch";
@@ -227,6 +229,9 @@ export default function ClientProposals() {
                       {/* The reply, when there is one. This is the whole point
                           of the status: a decision without its reason just
                           makes someone pick up the phone. */}
+                      {p.status === "accepted" && p.project_deleted_at && (
+                        <p className="mt-3 rounded-lg border border-border bg-muted/40 p-3 text-sm text-foreground">{proposalProjectHistory(p)}</p>
+                      )}
                       {p.decision_reason ? (
                         <p className="mt-3 rounded-lg border border-border bg-muted/40 p-3 text-sm text-foreground">
                           {p.decision_reason}

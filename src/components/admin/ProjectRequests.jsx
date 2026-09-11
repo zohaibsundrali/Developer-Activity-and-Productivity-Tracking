@@ -1,5 +1,7 @@
 "use client";
 
+import { proposalProjectHistory } from "@/utils/proposalProjectHistory";
+
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { allowed } from "@/utils/permissions";
 import { defaultRolesFor } from "@/utils/permissionCatalogue";
@@ -328,8 +330,7 @@ export default function ProjectRequests() {
 
                       {p.status === "accepted" ? (
                         <p className="text-sm text-muted-foreground">
-                          Accepted{p.decided_at ? ` on ${when(p.decided_at)}` : ""}. The project has
-                          been created.
+                          {p.project_deleted_at ? proposalProjectHistory(p) : <>Accepted{p.decided_at ? ` on ${when(p.decided_at)}` : ""}. The project has been created.</>}
                         </p>
                       ) : !canDecide ? (
                         <p className="text-sm text-muted-foreground">

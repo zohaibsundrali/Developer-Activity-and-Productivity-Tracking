@@ -26,7 +26,7 @@ export function getBearerToken(request) {
 
 // Verify the caller's JWT and return their organization context, or null if
 // the request is unauthenticated / the token is invalid / no org claim.
-export async function getAuthedOrg(request) {
+export async function getAuthedOrg(request, { allowDeletion = false } = {}) {
   const token = getBearerToken(request);
   if (!token) return null;
 
@@ -91,7 +91,7 @@ export async function getAuthedOrg(request) {
   let membership;
   try {
     const result = await admin.from("memberships")
-      .select("status, role")
+      .select("status, role, deletion_blocked")
       .eq("organization_id", orgId)
       .eq("user_id", appUserId)
       .eq("user_type", userType)
@@ -110,7 +110,7 @@ export async function getAuthedOrg(request) {
     });
     return null;
   }
-  if (membership.status !== "active" || !isRole(membership.role)) {
+  if ((membership.deletion_blocked && !allowDeletion) || membership.status !== "active" || !isRole(membership.role)) {
     await recordEvent({
       orgId, type: "auth.membership_blocked", severity: "warning", source: "auth",
       message: "A member without an active, valid membership was denied API access.",
