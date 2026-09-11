@@ -48,3 +48,9 @@ Plans remain **Free, Professional, Business, Enterprise**. No Basic plan was int
 - Dependency vulnerability scanning was not completed: automatic approval review rejected sending dependency metadata to the npm registry. Do not interpret a successful build as a clean vulnerability scan.
 
 References used for the implementation: [PostgreSQL locking](https://www.postgresql.org/docs/current/explicit-locking.html), [Supabase Storage schema guidance](https://supabase.com/docs/guides/storage/schema/design), [Stripe idempotency](https://docs.stripe.com/api/idempotent_requests), [Checkout session expiration](https://docs.stripe.com/api/checkout/sessions/expire).
+
+## Browser and repository handoff
+
+The selected post-change browser run exercised 24 checks: **21 passed, 2 failed, 1 skipped**. All twelve roles passed the API allow/deny matrix. Anonymous API/middleware checks, permission override loading/reload, notification fixture state, team-lead/QA console navigation and designer/devops staff navigation passed. Admin and Finance navigation reached Billing, where the connected database could not provide the new storage-usage RPC. The API correctly returned 503; the billing heading was preserved in the error state and retested. Billing functionality remains blocked until migration and integration verification; the tests were not weakened to accept the missing backend.
+
+Web implementation is committed on `fix/production-readiness-guards`; the separate desktop implementation is committed on `fix/device-session-enrollment` (`4a17ffc`). Prior audit PR #98 is merged. Pushing the new web branch failed with GitHub's “Invalid username or token”; no new remote PR was created. Reconnect repository write access before publishing these commits for review. Neither branch should be merged/deployed before the migration and desktop compatibility gates above are satisfied.
