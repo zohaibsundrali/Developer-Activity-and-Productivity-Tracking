@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { getAuthedOrg, orgScopedClient } from "@/utils/serverAuth";
 import { authCan } from "@/utils/serverPermissions";
 export const dynamic = "force-dynamic";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const EMAIL = /^[^\s@(),"\\]+@[^\s@(),"\\]+\.[^\s@(),"\\]+$/;
+const identityValue = value => !value || ['undefined', 'null'].includes(value) ? null : value;
 
 export async function GET(request) {
   try {
@@ -11,6 +14,8 @@ export async function GET(request) {
     if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    if (!['admin', 'developer'].includes(auth.userType)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (auth.overridesUnavailable) return NextResponse.json({ error: 'Permissions unavailable. Please retry.' }, { status: 503 });
     const supabase = orgScopedClient(auth.token);
 
     const { searchParams } = new URL(request.url);
@@ -20,19 +25,23 @@ export async function GET(request) {
     const start = searchParams.get("start");
     const end = searchParams.get("end");
 
-    // Anyone without the monitoring key reads only their own keystroke data —
-    // the identity filters are forced to the JWT identity regardless of query
-    // params.
-    //
-    // Behaviour is UNCHANGED by this rewrite and that is the point: userType
-    // "admin" is exactly owner+admin, and `monitoring.view` is ADMINS. The
-    // check now says what it means, so widening it later is an edit to the
-    // catalogue instead of a search for every route that spells the rule out
-    // in terms of which table a profile row lives in.
     if (!authCan(auth, "monitoring.view")) {
+      if (auth.userType !== 'developer' || !authCan(auth, 'monitoring.view_own')) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
       developerId = auth.appUserId;
       userId = null;
       email = auth.email;
+    }
+    developerId = identityValue(developerId);
+    userId = identityValue(userId);
+    email = identityValue(email);
+    if (!developerId && !userId && !email && auth.userType === 'developer') {
+      developerId = auth.appUserId;
+      email = auth.email || null;
+    }
+    if ((developerId && !UUID.test(developerId)) || (userId && !UUID.test(userId)) || (email && !EMAIL.test(email))) {
+      return NextResponse.json({ error: 'Invalid monitoring identity' }, { status: 400 });
     }
 
     if (!developerId && !email && !userId) {
@@ -71,17 +80,18 @@ export async function GET(request) {
       "words_per_minute", "activity_score", "per_minute_summary", "tracked_at"
     ].join(",");
 
-    // Build OR filters
+    // UUIDs are validated; quoted email values cannot introduce OR syntax.
     const filterParts = [];
-    if (developerId && developerId !== "undefined" && developerId !== "null") filterParts.push(`developer_id.eq.${developerId}`);
-    if (userId && userId !== "undefined" && userId !== "null") filterParts.push(`developer_id.eq.${userId}`);
-    if (email && email !== "undefined" && email !== "null") filterParts.push(`user_email.eq.${email}`);
+    if (developerId) filterParts.push(`developer_id.eq.${developerId}`);
+    if (userId) filterParts.push(`developer_id.eq.${userId}`);
+    if (email) filterParts.push(`user_email.eq.${JSON.stringify(email)}`);
     const orFilter = filterParts.join(",");
 
     // Query strictly within the requested date range
     const query = supabase
       .from("keyboard_stats")
       .select(fields)
+      .eq("organization_id", auth.orgId)
       .or(orFilter)
       .gte("tracked_at", startDate.toISOString())
       .lte("tracked_at", endDate.toISOString())
@@ -91,7 +101,7 @@ export async function GET(request) {
 
     if (error) {
       console.error("[keyboard-stats] Query error:", error);
-      return NextResponse.json({ data: [], error: error.message }, { status: 500 });
+      return NextResponse.json({ data: [], error: "Could not load keyboard activity" }, { status: 500 });
     }
 
     const count = data?.length || 0;
@@ -105,6 +115,6 @@ export async function GET(request) {
 
   } catch (err) {
     console.error("[keyboard-stats] Error:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: "Could not load keyboard activity" }, { status: 500 });
   }
 }

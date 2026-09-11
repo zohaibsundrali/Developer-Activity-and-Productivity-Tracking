@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
+import { allowed } from "@/utils/permissions";
 import { getOrgId } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
 import { showPre } from "@/utils/alerts";
@@ -34,6 +35,7 @@ import { sectionTitle } from "@/components/shell/navConfig";
 import {
   Button,
   EmptyState,
+  ErrorState,
   Modal,
   PageHeader,
   Skeleton,
@@ -232,6 +234,25 @@ export default function DeveloperActivity() {
   const [todayTotalSeconds, setTodayTotalSeconds] = useState(0);
   const [loginRecords, setLoginRecords] = useState([]);
 
+  const canMonitor = allowed('monitoring.view');
+  const monitoringOrg = getOrgId();
+  const rosterGeneration = useRef(0);
+  const [activityError, setActivityError] = useState('');
+  const [developerError, setDeveloperError] = useState('');
+  const activityScope = `${monitoringOrg}:${selectedDeveloper}:${selectedDate}:${timeRange}:${canMonitor}`;
+  const liveScope = useRef(activityScope); liveScope.current = activityScope;
+  const activityGeneration = useRef(0);
+  const mouseGeneration = useRef(0);
+  const clearActivity = useCallback(() => {
+    setSessions([]); setMouseData([]); setKeyboardData([]); setAppUsageData([]);
+    setScreenshots([]); setSelectedScreenshot(null); setLoginRecords([]);
+    setTodayTotalSeconds(0); setActiveSession(null); setMouseTotalCount(0);
+  }, []);
+  useEffect(() => {
+    clearActivity(); setActivityError('');
+    return () => { activityGeneration.current += 1; mouseGeneration.current += 1; };
+  }, [activityScope, clearActivity]);
+
   // Real-time state
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -256,44 +277,23 @@ export default function DeveloperActivity() {
 
   // ─── Fetch Developers ───
   const fetchAdminDevelopers = useCallback(async () => {
-    if (!currentAdmin?.id) return;
-    setFetchingDevelopers(true);
+    setFetchingDevelopers(true); setDeveloperError('');
+    const orgId = monitoringOrg;
+    const ticket = ++rosterGeneration.current;
+    if (!canMonitor || !orgId) { setDevelopers([]); setSelectedDeveloper(''); setFetchingDevelopers(false); return; }
     try {
-      const orgId = getOrgId();
-      let devs = [];
-      const cols = ["added_by_admin", "added_by", "admin_id", "created_by"];
-      for (const col of cols) {
-        let q1 = supabase.from("developers").select("*").eq(col, currentAdmin.id);
-        if (orgId) q1 = q1.eq("organization_id", orgId);
-        const { data } = await q1;
-        if (data?.length) { devs = data; break; }
-        if (currentAdmin.email) {
-          let q2 = supabase.from("developers").select("*").eq(col, currentAdmin.email);
-          if (orgId) q2 = q2.eq("organization_id", orgId);
-          const { data: d2 } = await q2;
-          if (d2?.length) { devs = d2; break; }
-        }
-      }
-      if (!devs.length && currentAdmin.id) {
-        let q3 = supabase.from("developers").select("*")
-          .or(`added_by_admin.eq.${currentAdmin.id},added_by.eq.${currentAdmin.id},admin_id.eq.${currentAdmin.id}`);
-        if (orgId) q3 = q3.eq("organization_id", orgId);
-        const { data } = await q3;
-        if (data) devs = data;
-      }
-      setDevelopers(devs);
-      if (selectedDeveloper && devs.length && !devs.find(d => d.id === selectedDeveloper)) setSelectedDeveloper("");
-    } catch (err) {
-      // Silently handle error
-    } finally {
-      setFetchingDevelopers(false);
-    }
-  }, [currentAdmin, selectedDeveloper]);
+      const { data, error } = await supabase.from('developers').select('*').eq('organization_id', orgId).order('name');
+      if (error) throw error;
+      if (ticket !== rosterGeneration.current || !allowed('monitoring.view') || getOrgId() !== orgId) return;
+      setDevelopers(data || []);
+      setSelectedDeveloper(selected => (data || []).some(dev => dev.id === selected) ? selected : '');
+    } catch {
+      if (ticket !== rosterGeneration.current || getOrgId() !== orgId) return;
+      setDevelopers([]); setSelectedDeveloper(''); setDeveloperError('Could not load developers. Check your monitoring access and retry.');
+    } finally { if (ticket === rosterGeneration.current) setFetchingDevelopers(false); }
+  }, [canMonitor, monitoringOrg]);
 
-  useEffect(() => {
-    if (currentAdmin?.id) fetchAdminDevelopers();
-    else { setDevelopers([]); setSelectedDeveloper(""); }
-  }, [currentAdmin, fetchAdminDevelopers]);
+  useEffect(() => { fetchAdminDevelopers(); return () => { rosterGeneration.current += 1; }; }, [fetchAdminDevelopers]);
 
   // ─── Date Filter ───
   const getDateFilter = useCallback(() => {
@@ -323,7 +323,11 @@ export default function DeveloperActivity() {
   const fetchDeveloperActivity = useCallback(async (silent = false) => {
     const dev
       = developers.find(d => d.id === selectedDeveloper);
-    if (!dev) return;
+    if (!dev || !allowed('monitoring.view')) return;
+    const requestedScope = liveScope.current;
+    const ticket = ++activityGeneration.current;
+    const active = () => liveScope.current === requestedScope && ticket === activityGeneration.current && allowed('monitoring.view');
+    setActivityError('');
     if (!silent) setLoading(true);
 
     const { start, end } = getDateFilter();
@@ -348,18 +352,18 @@ export default function DeveloperActivity() {
           .lt("start_time", end)
           .order("start_time", { ascending: false })
           .limit(SESSION_LIMIT),
-        authFetch(`/api/keyboard-stats?developerId=${encodeURIComponent(devId || "")}&userId=${encodeURIComponent(dev.user_id || "")}&email=${encodeURIComponent(devEmail || "")}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`).then(r => r.json()),
+        authFetch(`/api/keyboard-stats?developerId=${encodeURIComponent(devId || "")}&userId=${encodeURIComponent(dev.user_id || "")}&email=${encodeURIComponent(devEmail || "")}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`).then(async r => { const body = await r.json(); if (!r.ok) throw new Error(body?.error || 'Could not load keyboard activity.'); return body; }),
         supabase.from("app_usage").select("id, session_id, user_email, app_name, app_name_raw, window_title, start_time, end_time, duration_seconds, duration_minutes, tracked_at, created_at, is_new_app, user_login").eq("user_email", devEmail).gte("tracked_at", start).lt("tracked_at", end).order("tracked_at", { ascending: false }).limit(APP_USAGE_LIMIT),
         // Screenshots schema has varied; select '*' and normalize client-side.
         supabase.from("screenshots").select("*")
-          .or(`developer_id.eq.${devId},developer_email.eq.${devEmail}`)
+          .eq('developer_id', devId)
           .gte("timestamp", start)
           .lt("timestamp", end)
           .order("timestamp", { ascending: false })
           .limit(SCREENSHOT_LIMIT),
         // Fallback for rows missing `timestamp`: use created_at but keep the same date range.
         supabase.from("screenshots").select("*")
-          .or(`developer_id.eq.${devId},developer_email.eq.${devEmail}`)
+          .eq('developer_id', devId)
           .gte("created_at", start)
           .lt("created_at", end)
           .order("created_at", { ascending: false })
@@ -421,7 +425,12 @@ export default function DeveloperActivity() {
         return { data: [], error: lastError };
       };
 
+      for (const result of [sessionsRes, appRes, screenshotRes, screenshotCreatedAtRes, todayTotalRes]) {
+        if (result?.error) throw result.error;
+      }
       const loginRes = await fetchLoginsSafe();
+      if (loginRes?.error) throw loginRes.error;
+      if (!active()) return;
       let finalLogins = Array.isArray(loginRes?.data) ? loginRes.data : [];
       // Ensure scoped to the selected developer and selected date/time-range window.
       const startMs = new Date(start).getTime();
@@ -466,11 +475,12 @@ export default function DeveloperActivity() {
         (sum, row) => sum + (Number(row.total_duration) || 0),
         0
       );
+      if (!active()) return;
       setTodayTotalSeconds(todayTotal);
 
       // Fallback to created_at for sessions if start_time is missing or not in range
       if (!finalSessions.length && sessionFilters) {
-        const { data: sByCreatedAt } = await supabase
+        const { data: sByCreatedAt, error: createdError } = await supabase
           .from("productivity_sessions")
           .select("*")
           .or(sessionFilters)
@@ -478,6 +488,7 @@ export default function DeveloperActivity() {
           .lt("created_at", end)
           .order("created_at", { ascending: false })
           .limit(SESSION_LIMIT);
+        if (createdError) throw createdError;
         if (sByCreatedAt?.length) finalSessions = sByCreatedAt;
       }
 
@@ -494,18 +505,19 @@ export default function DeveloperActivity() {
             .limit(SESSION_LIMIT),
           supabase.from("app_usage").select("id, session_id, user_email, app_name, app_name_raw, window_title, start_time, end_time, duration_seconds, duration_minutes, tracked_at, created_at, is_new_app, user_login").eq("user_email", devEmail).gte("tracked_at", start).lt("tracked_at", end).order("tracked_at", { ascending: false }).limit(APP_USAGE_LIMIT),
           supabase.from("screenshots").select("*")
-            .or(`developer_id.eq.${devId},developer_email.eq.${devEmail}`)
+            .eq('developer_id', devId)
             .gte("timestamp", start)
             .lt("timestamp", end)
             .order("timestamp", { ascending: false })
             .limit(SCREENSHOT_LIMIT),
           supabase.from("screenshots").select("*")
-            .or(`developer_id.eq.${devId},developer_email.eq.${devEmail}`)
+            .eq('developer_id', devId)
             .gte("created_at", start)
             .lt("created_at", end)
             .order("created_at", { ascending: false })
             .limit(SCREENSHOT_LIMIT),
         ]);
+        for (const result of [s2,a2,ss2,ss2CreatedAt]) if (result.error) throw result.error;
         finalSessions = s2.data || [];
         finalApp = a2.data || [];
         screenshotRows = ss2.data || [];
@@ -539,9 +551,10 @@ export default function DeveloperActivity() {
         })
         .sort((a, b) => (b._display_ms || 0) - (a._display_ms || 0));
 
+      if (!active()) return;
       // Detect active session
-      const active = finalSessions.find(s => s.status === "active") || null;
-      setActiveSession(active);
+      const activeSessionRow = finalSessions.find(s => s.status === "active") || null;
+      setActiveSession(activeSessionRow);
 
       setSessions(finalSessions);
       setKeyboardData(finalKeyboard);
@@ -550,16 +563,19 @@ export default function DeveloperActivity() {
       setLoginRecords(finalLogins);
       setLastUpdated(new Date());
     } catch (err) {
-      // Silently handle fetch errors
+      if (active()) { clearActivity(); setActivityError('Could not load monitoring data. Check your access and retry.'); }
     } finally {
-      if (!silent) setLoading(false);
+      if (active() && !silent) setLoading(false);
     }
-  }, [selectedDeveloper, developers, getDateFilter, selectedDate, loginRowTimeMs]);
+  }, [selectedDeveloper, developers, getDateFilter, loginRowTimeMs, clearActivity, parseDbTimeMs]);
 
   // ─── Mouse Activity (server-side pagination) ───
   const fetchMousePage = useCallback(async ({ page = 1, silent = false } = {}) => {
     const dev = developers.find(d => d.id === selectedDeveloper);
-    if (!dev) return;
+    if (!dev || !allowed('monitoring.view')) return;
+    const requestedScope = liveScope.current;
+    const ticket = ++mouseGeneration.current;
+    const active = () => requestedScope === liveScope.current && ticket === mouseGeneration.current && allowed('monitoring.view');
 
     const { start, end } = getDateFilter();
     const from = (page - 1) * MOUSE_PAGE_SIZE;
@@ -581,6 +597,7 @@ export default function DeveloperActivity() {
         .order("timestamp", { ascending: false })
         .range(from, to);
 
+      if (res?.error) throw res.error;
       let rows = Array.isArray(res?.data) ? res.data : [];
       let total = typeof res?.count === "number" ? res.count : rows.length;
 
@@ -589,16 +606,18 @@ export default function DeveloperActivity() {
       // ran on every empty result and 400'd every time, silently. The
       // developer_id filter above already tries both id spellings.
 
+      if (!active()) return;
       setMouseData(rows);
       setMouseTotalCount(total);
       setMousePage(page);
     } catch (e) {
-      // Silently handle mouse paging errors
+      if (!active()) return;
+      setActivityError("Could not load mouse activity. Check your access and retry.");
       setMouseData([]);
       setMouseTotalCount(0);
       setMousePage(1);
     } finally {
-      if (!silent) setMousePageLoading(false);
+      if (active() && !silent) setMousePageLoading(false);
     }
   }, [developers, selectedDeveloper, getDateFilter]);
 
@@ -794,8 +813,10 @@ export default function DeveloperActivity() {
 
     // Sign (if private) then prepend. Shared by both realtime subscriptions.
     const ingest = async (incoming) => {
-      if (!shouldInclude(incoming)) return;
+      if (!allowed('monitoring.view') || incoming.developer_id !== dev.id || !shouldInclude(incoming)) return;
+      const requestedScope = liveScope.current;
       const [signed] = await resolveScreenshotUrls([incoming]);
+      if (!allowed('monitoring.view') || liveScope.current !== requestedScope) return;
       const row = normalizeRow(signed || incoming);
       if (!row.public_url) return;
       setScreenshots(prev => {
@@ -815,12 +836,6 @@ export default function DeveloperActivity() {
         schema: "public",
         table: "screenshots",
         filter: `developer_id=eq.${dev.id}`,
-      }, (payload) => { ingest(payload.new); })
-      .on("postgres_changes", {
-        event: "INSERT",
-        schema: "public",
-        table: "screenshots",
-        filter: `developer_email=eq.${dev.email}`,
       }, (payload) => { ingest(payload.new); })
       .subscribe();
     screenshotChannelRef.current = ssChannel;
@@ -1095,6 +1110,7 @@ export default function DeveloperActivity() {
   };
 
   // ─── Render ───
+  if (!canMonitor) return <ErrorState title="Monitoring access is not allowed" description="Your current permissions do not include developer monitoring." />;
   return (
     /* The screen is the page, not a card: it used to be wrapped in one so its
        heading sat inside a panel at 24px padding. The shared PageHeader owns
@@ -1111,6 +1127,9 @@ export default function DeveloperActivity() {
         }
       />
 
+      {!canMonitor ? <ErrorState title="Monitoring access is not allowed" description="Your current permissions do not include developer monitoring." /> : null}
+      {developerError ? <ErrorState title="Could not load developers" description={developerError} onRetry={fetchAdminDevelopers} /> : null}
+      {activityError ? <ErrorState title="Could not load activity" description={activityError} onRetry={() => fetchDeveloperActivity()} /> : null}
       {/* Filters */}
       <div className="mb-6 bg-card rounded-xl p-5 border border-border shadow-card">
 

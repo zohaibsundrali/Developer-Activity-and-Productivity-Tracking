@@ -69,9 +69,7 @@ const isAsked = (p) =>
 
 const COVERED_BY_SCREEN = {
   "timesheet.log_own": "My Timesheet — logging hours is what the screen is for",
-  "team.view_own": "My Activity — the panel listing who else is on your projects",
   "profile.manage_own": "Account, which predates the *_own family entirely",
-  "monitoring.view_own": "My Activity — the recorded-activity panel",
 };
 
 const ENFORCED_BY_RLS = {

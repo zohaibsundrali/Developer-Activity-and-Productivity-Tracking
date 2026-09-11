@@ -130,7 +130,7 @@ function legacyPublicUrl(row) {
  * Resolve one screenshot row to a URL that an <img> can render.
  *
  * A signed URL is always preferred. The legacy public URL is returned only when
- * the row is not a `monitoring` object, or when signing one genuinely fails.
+ * the row is not a `monitoring` object. Private signing failures return null.
  */
 export async function resolveScreenshotUrl(row, expiresIn = DEFAULT_EXPIRY_SECONDS) {
   if (!isPrivateScreenshot(row)) return legacyPublicUrl(row);
@@ -139,10 +139,10 @@ export async function resolveScreenshotUrl(row, expiresIn = DEFAULT_EXPIRY_SECON
     const { data, error } = await supabase.storage
       .from(SCREENSHOT_BUCKET)
       .createSignedUrl(row.storage_path, expiresIn);
-    if (error || !data?.signedUrl) return legacyPublicUrl(row);
+    if (error || !data?.signedUrl) return null;
     return data.signedUrl;
   } catch {
-    return legacyPublicUrl(row);
+    return null;
   }
 }
 
@@ -151,10 +151,8 @@ export async function resolveScreenshotUrl(row, expiresIn = DEFAULT_EXPIRY_SECON
  * rows untouched. Returns rows with `public_url` set to something renderable,
  * so existing consumers keep working unchanged.
  *
- * Note that a migrated row has its `public_url` nulled by the migration script,
- * so if signing fails for such a row this returns null rather than a public
- * URL. That is deliberate: after migration there is no public URL to fall back
- * to, and inventing one would defeat the exercise.
+ * Private rows return null when signing fails, including rows that retain a
+ * stale legacy URL. A denied Storage request must never enable public fallback.
  */
 export async function resolveScreenshotUrls(rows, expiresIn = DEFAULT_EXPIRY_SECONDS) {
   const list = Array.isArray(rows) ? rows : [];
@@ -171,17 +169,17 @@ export async function resolveScreenshotUrls(rows, expiresIn = DEFAULT_EXPIRY_SEC
         .createSignedUrls(paths, expiresIn);
       if (!error && Array.isArray(data)) {
         for (const entry of data) {
-          if (entry?.path && entry?.signedUrl) signedByPath.set(entry.path, entry.signedUrl);
+          if (!entry?.error && entry?.path && entry?.signedUrl) signedByPath.set(entry.path, entry.signedUrl);
         }
       }
     } catch {
-      // Fall through: rows keep their legacy URL (or render as unavailable).
+      // Private rows remain unavailable when authorization or signing fails.
     }
   }
 
   return list.map((r) => ({
     ...r,
-    public_url: signedByPath.get(r?.storage_path) || legacyPublicUrl(r),
+    public_url: isPrivateScreenshot(r) ? (signedByPath.get(r.storage_path) || null) : legacyPublicUrl(r),
   }));
 }
 

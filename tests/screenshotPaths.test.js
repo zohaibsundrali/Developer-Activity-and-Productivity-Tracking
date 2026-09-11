@@ -246,18 +246,26 @@ describe('read path prefers a signed URL over public_url', () => {
     expect(out[2].public_url).toBe(PUBLIC_URL);
   });
 
-  it('falls back to the legacy URL when signing a monitoring row genuinely fails', async () => {
+  it('does not expose a stale public URL when private signing is denied', async () => {
     const row = { storage_path: `${ORG}/${DEV}/shot.png`, public_url: PUBLIC_URL };
     createSignedUrl.mockResolvedValue({ data: null, error: { message: 'boom' } });
 
-    expect(await resolveScreenshotUrl(row)).toBe(PUBLIC_URL);
+    expect(await resolveScreenshotUrl(row)).toBeNull();
   });
 
   it('tolerates a throwing storage client', async () => {
     const row = { storage_path: `${ORG}/${DEV}/shot.png`, public_url: PUBLIC_URL };
     createSignedUrl.mockRejectedValue(new Error('network'));
 
-    expect(await resolveScreenshotUrl(row)).toBe(PUBLIC_URL);
+    expect(await resolveScreenshotUrl(row)).toBeNull();
+  });
+
+  it('clears stale public URLs for denied and omitted batch entries', async () => {
+    const rows = ['a', 'b'].map(name => ({ storage_path: `${ORG}/${DEV}/${name}.png`, public_url: PUBLIC_URL }));
+    createSignedUrls.mockResolvedValue({ data: [{ path: rows[0].storage_path, signedUrl: PUBLIC_URL, error: 'denied' }], error: null });
+    expect((await resolveScreenshotUrls(rows)).map(row => row.public_url)).toEqual([null, null]);
+    createSignedUrls.mockRejectedValue(new Error('network'));
+    expect((await resolveScreenshotUrls(rows)).map(row => row.public_url)).toEqual([null, null]);
   });
 
   it('handles empty and non-array input', async () => {

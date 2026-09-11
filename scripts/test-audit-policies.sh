@@ -208,3 +208,7 @@ docker exec "$audit_container" createdb -U postgres typed_manager_roster_test
 python3 scripts/expand-sql-fixture.py database/tests/typed_project_manager_roster.sql | \
   docker exec -i "$audit_container" psql -U postgres -d typed_manager_roster_test -v ON_ERROR_STOP=1
 python3 scripts/test-manager-roster-concurrency.py "$audit_container" typed_manager_roster_test
+
+docker exec "$audit_container" createdb -U postgres typed_monitoring_test
+python3 scripts/expand-sql-fixture.py database/tests/typed_monitoring_read_permissions.sql | \
+  docker exec -i "$audit_container" psql -U postgres -d typed_monitoring_test -v ON_ERROR_STOP=1

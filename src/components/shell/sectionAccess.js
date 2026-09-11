@@ -217,6 +217,7 @@ export const ADMIN_SECTION_ROLES = Object.freeze(
 );
 
 export function canAccessAdminSection(section, role) {
+  if (section === 'my-activity') return ['productivity.view_own', 'monitoring.view_own', 'team.view_own'].some(key => roleCan(role, key));
   // `undefined` — a section nobody wrote a rule for — stays open, exactly as
   // before. That is deliberate and it is NOT the fail-open default the old
   // `can()` had: every id here is a tab in a dashboard the caller has already
