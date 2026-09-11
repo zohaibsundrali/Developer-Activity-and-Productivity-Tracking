@@ -5,6 +5,7 @@ import { supabase } from "@/utils/supabaseClient";
 import { createNotificationInboxEvents } from "@/utils/notificationInboxEvents";
 import { notificationRecipientKey } from "@/utils/notificationIdentity";
 import { createNotificationRequestGuard } from "@/utils/notificationRequestGuard";
+import { fetchNotificationRecovery, rollbackNotificationRead, notificationReconnect } from "@/utils/notificationRecovery";
 import { getOrgContext } from "@/utils/orgContext";
 import { setVisibleInterval } from "@/hooks/useVisibleInterval";
 import {
@@ -138,6 +139,8 @@ export default function useNotifications({
   }, [identityVersion, orgId, userType, userId]);
   const [rows, setRows] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const unreadCountRef = useRef(unreadCount);
+  unreadCountRef.current = unreadCount;
   const [category, setCategory] = useState(null);
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [page, setPage] = useState(0);
@@ -161,7 +164,11 @@ export default function useNotifications({
   // Switching filters fires a second fetch while the first is still in flight;
   // whichever returns last would otherwise win regardless of what was asked.
   const requestRef = useRef(0);
+  const pendingRequestRef = useRef(null);
+  const pageRef = useRef(page);
+  pageRef.current = page;
   const countRequestRef = useRef(0);
+  const countRevisionRef = useRef(0);
 
   // A dismissal has to put the row back where it was if the write fails, so it
   // needs the row and its position BEFORE removing it. Reading them out of a
@@ -182,7 +189,7 @@ export default function useNotifications({
     if (!isCurrentIdentity() || ticket !== countRequestRef.current) return;
     // A failed count keeps the last known number rather than flashing zero,
     // which reads as "all caught up" and is the one lie a badge must not tell.
-    if (!countError) setUnreadCount(count);
+    if (!countError) { countRevisionRef.current += 1; setUnreadCount(count); }
   }, [hasIdentity, userId, isCurrentIdentity, email, audience]);
 
   // Fires once immediately, then at most once per window for as long as events
@@ -221,15 +228,18 @@ export default function useNotifications({
   }, []);
 
   const loadPage = useCallback(
-    async (targetPage, { append = false } = {}) => {
+    async (targetPage, { append = false, reconcile = false } = {}) => {
       if (!hasIdentity || !isCurrentIdentity()) return;
 
+      if (reconcile && pendingRequestRef.current !== null) return;
+      const retainedPage = pageRef.current;
       const ticket = requestRef.current + 1;
       requestRef.current = ticket;
+      pendingRequestRef.current = ticket;
 
       if (append) {
         setLoadingMore(true);
-      } else {
+      } else if (!reconcile) {
         setLoading(true);
         // A first page supersedes any page-append still in flight; clearing the
         // flag here is what stops that append's spinner from being stranded.
@@ -240,21 +250,25 @@ export default function useNotifications({
         rows: fetched,
         hasMore: more,
         error: fetchError,
-      } = await fetchNotifications({
+        page: recoveredPage,
+      } = await Promise.resolve().then(() => {
+        const options = {
         userId,
         email,
         audience,
         category,
         unreadOnly,
-        page: targetPage,
-        pageSize,
-      });
+        page: targetPage, pageSize,
+        };
+        return reconcile ? fetchNotificationRecovery(fetchNotifications, options, retainedPage) : fetchNotifications(options);
+      }).catch(error => ({ rows: [], hasMore: false, error }));
 
       // Superseded by a newer request: drop the result, and leave the loading
       // flags to the request that now owns them — clearing them here would
       // blank the spinner and flash an empty list while that one is still out.
       if (ticket !== requestRef.current || !isCurrentIdentity()) return;
 
+      pendingRequestRef.current = null;
       if (append) setLoadingMore(false);
       else setLoading(false);
 
@@ -266,10 +280,15 @@ export default function useNotifications({
       setError(null);
       setRows((prev) => (append ? mergeRows(prev, fetched) : fetched));
       setHasMore(more);
-      setPage(targetPage);
+      setPage(reconcile ? recoveredPage : targetPage);
     },
     [hasIdentity, userId, isCurrentIdentity, email, audience, category, unreadOnly, pageSize]
   );
+
+  const reconcile = useCallback(() => {
+    loadPage(0, { reconcile: true });
+    refreshCount();
+  }, [loadPage, refreshCount]);
 
   const refresh = useCallback(() => {
     loadPage(0, { append: false });
@@ -285,6 +304,7 @@ export default function useNotifications({
   // Rendered values are also masked below until this reset has run.
   useEffect(() => {
     requestRef.current += 1;
+    pendingRequestRef.current = null;
     countRequestRef.current += 1;
     if (countTimerRef.current) clearTimeout(countTimerRef.current);
     countTimerRef.current = null;
@@ -315,8 +335,11 @@ export default function useNotifications({
 
   useEffect(() => {
     if (!hasIdentity) return undefined;
-    return setVisibleInterval(refreshCount, UNREAD_COUNT_POLL_MS);
-  }, [hasIdentity, refreshCount]);
+    return setVisibleInterval(reconcile, UNREAD_COUNT_POLL_MS);
+  }, [hasIdentity, reconcile]);
+
+  const reconcileRef = useRef(reconcile);
+  reconcileRef.current = reconcile;
 
   useEffect(() => {
     if (!hasIdentity) return undefined;
@@ -340,15 +363,17 @@ export default function useNotifications({
 
     // RLS filters delivery; the client also matches the server-derived typed
     // recipient keys. Navigation audience never determines recipient identity.
+    let channelClosed = false;
     const channel = supabase
       .channel(channelName)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" }, handleChange)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notifications" }, handleChange)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "notification_recipients", filter: `user_id=eq.${userId}` }, handleChange)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notification_recipients", filter: `user_id=eq.${userId}` }, handleChange)
-      .subscribe();
+      .subscribe(status => notificationReconnect(status, { isCurrent: () => !channelClosed && isCurrentIdentity(), reconcile: () => reconcileRef.current() }));
 
     return () => {
+      channelClosed = true;
       events.close();
       supabase.removeChannel(channel);
     };
@@ -364,7 +389,7 @@ export default function useNotifications({
         prev.map((row) => (row.id === id ? { ...row, read: true, read_at: new Date().toISOString() } : row))
       );
       const previous = rowsRef.current.find(row => row.id === id);
-      if (previous && !previous.read) setUnreadCount((prev) => Math.max(0, prev - 1));
+      if (previous && !previous.read) { countRevisionRef.current += 1; setUnreadCount((prev) => Math.max(0, prev - 1)); }
 
       const { error: markError } = await markRead(id);
       if (!isCurrentIdentity()) return;
@@ -394,7 +419,7 @@ export default function useNotifications({
       const removed = index === -1 ? null : rowsRef.current[index];
 
       setRows((prev) => prev.filter((row) => row.id !== id));
-      if (removed && !removed.read) setUnreadCount((prev) => Math.max(0, prev - 1));
+      if (removed && !removed.read) { countRevisionRef.current += 1; setUnreadCount((prev) => Math.max(0, prev - 1)); }
 
       const { error: dismissError } = await dismissNotification(id);
       if (!isCurrentIdentity()) return;
@@ -425,15 +450,23 @@ export default function useNotifications({
     // it and no indication it had happened.
     const scope = categoryRef.current;
 
-    setRows((prev) => prev.map((row) => (row.read ? row : { ...row, read: true, read_at: new Date().toISOString() })));
+    const snapshot = rowsRef.current.slice();
+    const previousUnreadCount = unreadCountRef.current;
+    const optimisticReadAt = new Date().toISOString();
+    setRows((prev) => prev.map((row) => (row.read || (scope && row.category !== scope) ? row : { ...row, read: true, read_at: optimisticReadAt })));
     // Zero is only true when the whole inbox was the target. Under a filter the
     // badge still counts the other categories, so it is left to the server
     // rather than guessed at.
+    const optimisticCountVersion = ++countRevisionRef.current;
     if (!scope) setUnreadCount(0);
 
-    const { error: markError } = await markAllRead({ userId, email, audience, category: scope });
+    const { error: markError } = await Promise.resolve().then(() => markAllRead({ userId, email, audience, category: scope })).catch(error => ({ error }));
     if (!isCurrentIdentity()) return;
-    if (markError) setError(markError);
+    if (markError) {
+      setError(markError);
+      setRows(previous => rollbackNotificationRead(previous, snapshot, optimisticReadAt));
+      if (!scope && countRevisionRef.current === optimisticCountVersion) { countRevisionRef.current += 1; setUnreadCount(previousUnreadCount); }
+    }
 
     // Under "unread only" the list should now be empty; anywhere else the rows
     // stay put and just lose their emphasis.
@@ -473,6 +506,7 @@ export default function useNotifications({
     markEveryRead,
     dismissOne,
     refresh,
+    reconcile,
   };
 }
 

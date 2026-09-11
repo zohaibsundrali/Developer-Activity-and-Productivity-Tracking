@@ -74,6 +74,7 @@ export default function NotificationCenter({ audience = "admin", userId = null, 
     markEveryRead,
     dismissOne,
     refresh,
+    reconcile,
   } = useNotifications({ userId, email, audience });
 
   // Close on an outside click, and on Escape — the panel traps nothing, so the
@@ -141,7 +142,7 @@ export default function NotificationCenter({ audience = "admin", userId = null, 
     <div className="relative" ref={containerRef}>
       {/* Bell */}
       <button
-        onClick={() => setIsOpen((prev) => !prev)}
+        onClick={() => { if (!isOpen) reconcile(); setIsOpen(!isOpen); }}
         // 44px square on touch, 40px from sm up. `p-2` around a 20px bell gave
         // a 38px target on a control that is on every single screen.
         className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none sm:h-10 sm:w-10"

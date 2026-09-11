@@ -212,3 +212,7 @@ python3 scripts/test-manager-roster-concurrency.py "$audit_container" typed_mana
 docker exec "$audit_container" createdb -U postgres typed_monitoring_test
 python3 scripts/expand-sql-fixture.py database/tests/typed_monitoring_read_permissions.sql | \
   docker exec -i "$audit_container" psql -U postgres -d typed_monitoring_test -v ON_ERROR_STOP=1
+
+docker exec "$audit_container" createdb -U postgres notification_insert_test
+python3 scripts/expand-sql-fixture.py database/tests/notification_insert_authority.sql | \
+  docker exec -i "$audit_container" psql -U postgres -d notification_insert_test -v ON_ERROR_STOP=1

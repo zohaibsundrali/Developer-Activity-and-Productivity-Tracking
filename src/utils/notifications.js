@@ -74,10 +74,8 @@ export function notificationHref(n, { audience = "admin" } = {}) {
   const developerProject = (projectId) => `/developer/project-details?id=${projectId}`;
 
   if (n.task_id) {
-    // The admin board is one screen for the whole org, so `section=board` is
-    // the destination on its own and the link lands correctly without `task`.
-    // Nothing reads `task` yet — the board's drawer is driven by local state —
-    // so it identifies the subject rather than opening it.
+    // The board resolves the task through the caller's RLS client, selects its
+    // project and opens the drawer; unavailable targets show a retryable error.
     //
     // The developer surface has no task route at all: a task is reached
     // through its project, so a task notification is only linkable when the

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, RefreshCw, BellOff } from "lucide-react";
 import {
   CATEGORY_KEYS,
@@ -9,6 +9,9 @@ import {
   setNotificationPreference,
 } from "@/utils/notifications";
 import { Badge, Button, Skeleton } from "@/components/ui";
+import { getOrgContext } from "@/utils/orgContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { createPreferenceRequests } from "@/utils/notificationPreferenceRequests";
 import { cn } from "@/lib/utils";
 import { categoryIcon, toneClass } from "./notificationVisuals";
 
@@ -27,7 +30,17 @@ import { categoryIcon, toneClass } from "./notificationVisuals";
  * The identity these rows are written under is never on screen and never a
  * prop — see `setNotificationPreference`, which reads it from the session.
  */
+const preferenceIdentity = () => {
+  const ctx = getOrgContext();
+  return JSON.stringify([ctx?.organizationId, ctx?.userType, ctx?.userId]);
+};
+
 export default function NotificationPreferences() {
+  useAuth(); // Remount local choices when the authenticated profile changes.
+  return <PreferencePanel key={preferenceIdentity()} />;
+}
+
+function PreferencePanel() {
   const [preferences, setPreferences] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -35,41 +48,49 @@ export default function NotificationPreferences() {
   const [pending, setPending] = useState({});
   const [saveError, setSaveError] = useState(null);
 
+  const requests = useRef(null);
+  if (!requests.current) requests.current = createPreferenceRequests(preferenceIdentity);
+
   const load = useCallback(async () => {
     setLoading(true);
-    const { preferences: loaded, error: loadError } = await fetchNotificationPreferences();
-    setPreferences(loaded);
-    setError(loadError || null);
-    setLoading(false);
+    await requests.current.load(fetchNotificationPreferences, ({ preferences: loaded, error: loadError }) => {
+      setPreferences(loaded || null);
+      setError(loadError || null);
+      setLoading(false);
+    });
   }, []);
 
   useEffect(() => {
+    const current = requests.current;
+    current.activate();
     load();
+    return () => current.dispose();
   }, [load]);
 
   const toggle = useCallback(
     async (category, nextEnabled) => {
+      if (!requests.current.canSave(category)) return;
       setSaveError(null);
       setPending((prev) => ({ ...prev, [category]: true }));
       // Optimistic: a switch that waits on a round trip before moving reads as
       // broken, and gets pressed again.
       setPreferences((prev) => ({ ...prev, [category]: nextEnabled }));
 
-      const { error: writeError } = await setNotificationPreference(category, nextEnabled);
+      await requests.current.save(category, () => setNotificationPreference(category, nextEnabled), ({ error: writeError }) => {
+        setPending((prev) => {
+          const next = { ...prev };
+          delete next[category];
+          return next;
+        });
 
-      setPending((prev) => {
-        const next = { ...prev };
-        delete next[category];
-        return next;
+        if (writeError) {
+          // Back to where it was. A switch left showing the state the user asked
+          // for, over a row that was never written, is a promise of silence that
+          // the database has not agreed to keep.
+          setPreferences((prev) => ({ ...prev, [category]: !nextEnabled }));
+          setSaveError(writeError);
+        }
       });
-
-      if (writeError) {
-        // Back to where it was. A switch left showing the state the user asked
-        // for, over a row that was never written, is a promise of silence that
-        // the database has not agreed to keep.
-        setPreferences((prev) => ({ ...prev, [category]: !nextEnabled }));
-        setSaveError(writeError);
-      }
     },
     []
   );
@@ -108,7 +129,7 @@ export default function NotificationPreferences() {
         )}
       </div>
 
-      {loading && !preferences ? (
+      {loading && !preferences && !error ? (
         // One placeholder per real switch row — the panel keeps its height, so
         // the column next to it does not reflow when the read lands.
         <ul className="divide-y divide-border" aria-busy="true">
@@ -137,7 +158,7 @@ export default function NotificationPreferences() {
                   {error.message || "Showing defaults."} Your saved choices are still in effect.
                 </p>
               </div>
-              <Button variant="outline" size="xs" onClick={load} className="shrink-0">
+              <Button variant="outline" size="xs" onClick={load} disabled={Object.keys(pending).length > 0} className="shrink-0">
                 <RefreshCw aria-hidden="true" />
                 <span>Retry</span>
               </Button>
@@ -175,7 +196,7 @@ export default function NotificationPreferences() {
                     role="switch"
                     aria-checked={enabled}
                     aria-label={`${item.label} notifications`}
-                    disabled={busy}
+                    disabled={busy || loading || Boolean(error)}
                     onClick={() => toggle(item.key, !enabled)}
                     className={cn(
                       "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-150",
