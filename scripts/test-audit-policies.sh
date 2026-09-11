@@ -71,3 +71,9 @@ for sql_file in \
   database/tests/task_plan_transaction.sql; do
   docker exec -i "$audit_container" psql -U postgres -d quota_test -v ON_ERROR_STOP=1 < "$sql_file"
 done
+for sql_file in \
+  database/tests/review_transaction_fixture.sql \
+  supabase/migrations/20260911085808_production_review_transaction.sql \
+  database/tests/review_transaction.sql; do
+  docker exec -i "$audit_container" psql -U postgres -d quota_test -v ON_ERROR_STOP=1 < "$sql_file"
+done

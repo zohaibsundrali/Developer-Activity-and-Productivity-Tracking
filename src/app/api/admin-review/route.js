@@ -78,7 +78,6 @@ export async function POST(request) {
       );
     }
 
-    const reviewedAt = new Date().toISOString();
 
     // Get task details (simple select to avoid relationship issues)
     const { data: task, error: taskError } = await supabase
@@ -199,138 +198,22 @@ export async function POST(request) {
       );
     }
 
-    // Calculate if task was completed on time
-    const endDate = new Date(task.end_date);
-    endDate.setHours(23, 59, 59, 999); // End of day
-    const submittedAt = new Date(submission.submitted_at);
-    const isOnTime = submittedAt <= endDate;
-
-    // Determine new status and productivity points
-    let newStatus, productivityPoints;
-    
-    if (action === 'approve') {
-      newStatus = 'completed';
-      productivityPoints = isOnTime ? 1 : -1; // +1 for on-time, -1 for late
-    } else {
-      newStatus = 'rejected';
-      productivityPoints = 0;
-    }
-
-    // Update task
-    const { error: updateTaskError } = await supabase
-      .from('developer_tasks')
-      .update({
-        status: newStatus,
-        is_on_time: action === 'approve' ? isOnTime : null,
-        productivity_points: productivityPoints,
-        actual_completion_date: action === 'approve' ? reviewedAt.split('T')[0] : null,
-        reviewed_by: auth.appUserId,
-        reviewed_at: reviewedAt,
-        admin_comments: comments,
-        rejection_reason: action === 'reject' ? rejectionReason : null,
-        updated_at: reviewedAt
-      })
-      .eq('id', taskId)
-      .eq('organization_id', auth.orgId);
-
-    if (updateTaskError) {
-      console.error('Task update error:', updateTaskError);
-      return NextResponse.json(
-        { error: 'Failed to update task: ' + updateTaskError.message },
-        { status: 500 }
-      );
-    }
-
-    // Update submission
-    const { error: updateSubError } = await supabase
-      .from('task_submissions')
-      .update({
-        is_reviewed: true,
-        reviewed_by: auth.appUserId,
-        reviewed_at: reviewedAt,
-        review_status: action === 'approve' ? 'approved' : 'rejected',
-        review_comments: action === 'approve' ? comments : rejectionReason
-      })
-      .eq('id', submissionId)
-      .eq('organization_id', auth.orgId);
-
-    if (updateSubError) {
-      console.error('Submission update error:', updateSubError);
-    }
-
-    // Create admin review record
-    const { error: adminReviewError } = await supabase
-      .from('admin_reviews')
-      .insert({
-        admin_id: auth.appUserId,
-        admin_email: auth.email,
-        admin_name: adminName || auth.email,
-        task_id: taskId,
-        submission_id: submissionId,
-        project_id: task.project_id,
-        developer_id: task.developer_id,
-        review_action: action === 'approve' ? 'approved' : 'rejected',
-        review_comments: comments,
-        rejection_reason: rejectionReason,
-        task_title: task.task_title,
-        // developer_name / project_name are optional; can be enriched later
-        developer_name: null,
-        project_name: null,
-        submission_file_url: submission.file_url,
-        deadline: task.end_date,
-        submission_date: submission.submitted_at,
-        reviewed_at: reviewedAt
-      });
-
-    if (adminReviewError) {
-      console.error('Admin review insert error:', adminReviewError);
-    }
-
-    // Create activity log
-    await supabase
-      .from('activity_logs')
-      .insert({
-        developer_id: task.developer_id,
-        project_id: task.project_id,
-        task_id: taskId,
-        action_type: action === 'approve' ? 'task_approved' : 'task_rejected',
-        action_description: `Task "${task.task_title}" ${action === 'approve' ? 'approved' : 'rejected'} by admin`,
-        old_value: task.status,
-        new_value: newStatus
-      });
-
-    // Update productivity metrics
-    await updateProductivityMetrics(task.developer_id, task.project_id, auth.orgId);
-
-    // Create notification for developer
-    const notificationMessage = action === 'approve'
-      ? `Your task "${task.task_title}" has been approved! ${isOnTime ? '(Completed on time - +1 point)' : '(Completed late - -1 point)'}`
-      : `Your task "${task.task_title}" was rejected. Reason: ${rejectionReason}`;
-
-    await supabase
-      .from('notifications')
-      .insert({
-        developer_id: task.developer_id,
-        admin_id: auth.appUserId,
-        type: action === 'approve' ? 'task_approved' : 'task_rejected',
-        title: action === 'approve' ? 'Task Approved' : 'Task Rejected',
-        message: notificationMessage,
-        project_id: task.project_id,
-        task_id: taskId,
-        submission_id: submissionId,
-        read: false
-      });
-
-    return NextResponse.json({
-      success: true,
-      message: `Task ${action === 'approve' ? 'approved' : 'rejected'} successfully`,
-      task: {
-        id: taskId,
-        status: newStatus,
-        is_on_time: isOnTime,
-        productivity_points: productivityPoints
-      }
+    // The database repeats authorization/state checks under locks and commits
+    // the verdict, history, notification and rollups together.
+    const { data: result, error: reviewError } = await serviceClient().rpc('commit_task_review', {
+      p_org: auth.orgId, p_reviewer: auth.appUserId, p_profile_type: auth.userType,
+      p_email: auth.email, p_task: taskId, p_submission: submissionId,
+      p_action: action, p_comments: comments || null, p_reason: rejectionReason || null,
     });
+    if (reviewError) {
+      const message = reviewError.message || '';
+      const status = reviewError.code === '42501' ? 403 : reviewError.code === 'P0002' ? 404 :
+        reviewError.code === '22023' ? 400 : message.startsWith('REVIEW_CONFLICT:') ? 409 :
+        message.startsWith('BILLING_LOCKED:') ? 402 : 503;
+      return NextResponse.json({ error: status === 503 ? 'Could not confirm the review. Reload to check its saved state.' :
+        message.split(':').slice(1).join(':').trim() || 'Review request refused' }, { status });
+    }
+    return NextResponse.json(result);
 
   } catch (error) {
     console.error('Admin review error:', error);
@@ -338,86 +221,6 @@ export async function POST(request) {
       { error: 'Internal server error: ' + error.message },
       { status: 500 }
     );
-  }
-}
-
-// Helper function to update productivity metrics
-async function updateProductivityMetrics(developerId, projectId, organizationId) {
-  try {
-    // Get all tasks for this developer and project
-    const { data: tasks, error } = await supabase
-      .from('developer_tasks')
-      .select('status, is_on_time, productivity_points')
-      .eq('developer_id', developerId)
-      .eq('project_id', projectId)
-      .eq('organization_id', organizationId);
-
-    if (error || !tasks) return;
-
-    const totalTasks = tasks.length;
-    const completedOnTime = tasks.filter(t => t.status === 'completed' && t.is_on_time === true).length;
-    const completedLate = tasks.filter(t => t.status === 'completed' && t.is_on_time === false).length;
-    const pendingTasks = tasks.filter(t => ['pending', 'in_progress', 'awaiting_approval'].includes(t.status)).length;
-    const rejectedTasks = tasks.filter(t => t.status === 'rejected').length;
-    const completedTasks = completedOnTime + completedLate;
-
-    // Calculate productivity percentage
-    // Formula: (completedOnTime / totalTasks) * 100 - (completedLate / totalTasks) * 100
-    // Or simply: Each task = 100/totalTasks weight
-    // On time = +weight, Late = -weight (from 100% baseline)
-    let productivityPercentage = 0;
-    if (totalTasks > 0) {
-      const taskWeight = 100 / totalTasks;
-      productivityPercentage = (completedOnTime * taskWeight) - (completedLate * taskWeight) + 
-                               (pendingTasks * taskWeight * 0.5); // Pending tasks count as half
-      // Ensure it's between 0 and 100
-      productivityPercentage = Math.max(0, Math.min(100, productivityPercentage));
-    }
-
-    const productivityPoints = completedOnTime - completedLate;
-
-    // Upsert productivity metrics
-    const { error: upsertError } = await supabase
-      .from('productivity_metrics')
-      .upsert({
-        developer_id: developerId,
-        project_id: projectId,
-        // Without this the rollup row carries no organization, so it is
-        // invisible to every org-scoped read and to RLS. The stamp_org trigger
-        // cannot fill it either, because it only fires on INSERT and this is an
-        // upsert that usually resolves to an UPDATE.
-        organization_id: organizationId,
-        total_tasks: totalTasks,
-        completed_on_time: completedOnTime,
-        completed_late: completedLate,
-        pending_tasks: pendingTasks,
-        rejected_tasks: rejectedTasks,
-        productivity_percentage: productivityPercentage.toFixed(2),
-        productivity_points: productivityPoints,
-        updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'developer_id,project_id'
-      });
-
-    if (upsertError) {
-      console.error('Productivity metrics update error:', upsertError);
-    }
-
-    // Update project's total productivity
-    await supabase
-      .from('projects')
-      .update({
-        total_productivity_score: productivityPercentage.toFixed(2),
-        total_tasks_count: totalTasks,
-        completed_tasks_count: completedTasks,
-        progress: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', projectId)
-      .eq('organization_id', organizationId);
-
-  } catch (error) {
-    console.error('Update productivity metrics error:', error);
   }
 }
 

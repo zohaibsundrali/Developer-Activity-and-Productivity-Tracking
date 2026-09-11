@@ -143,3 +143,13 @@ The legacy submit-only API remains available for compatibility. This does not ma
 Web validation: **104 test files / 3,232 tests passed**, production build passed with existing lint warnings. API tests exercise verified identity, profile-type collision prevention, permission/billing refusal, malformed requests and database error mapping. SQL tests cover quota rollback, work/reference preservation, repeat submission, assignment, service-only execution, invalid dates and permission denial. These are isolated tests, not a completed live browser journey against the pending RPC.
 
 Final task-plan SQL verification: the complete isolated PostgreSQL regression suite passed with the new transaction and linked-record checks installed.
+
+## Atomic task review and project totals
+
+The review endpoint previously committed task status first and then logged errors from failed submission/history/metrics writes while returning success. It now calls the service-only `commit_task_review` transaction in migration `20260911085808_production_review_transaction.sql`. The database repeats typed membership/override, project ownership, assignment separation, submission/task relationship, subscription and review-state checks under locks. Task verdict, submission verdict, review history, activity, metrics, project totals and notification are committed together. A late failure rolls everything back; repeated review is refused without another score or notification. Transport failures ask the caller to reload rather than asserting a known commit outcome.
+
+Project totals now include all project tasks instead of being overwritten by only the most recently reviewed developer's totals. Developer metrics remain scoped to that developer. Deadline scoring uses the full UTC deadline day, consistent with production date handling; on-time approval earns +1, late approval -1, rejection 0. Review identity comes from verified authentication; caller-supplied display identity is not used for the authoritative history.
+
+Verification: **104 web test files / 3,234 tests passed**. The complete isolated SQL suite passed, including injected failure at notification insertion, rollback of earlier writes, service-only access, self-review refusal, explicit permission denial, replay prevention, late/on-time scoring, rejection and project totals across multiple developers. Live end-to-end review verification still requires deploying the pending RPC. Fourteen migrations now await staging verification; broader task-table role/field access and the remaining modules are not certified complete.
+
+Final review build verification: production build passed with existing lint warnings. Apply the review transaction migration before deploying this endpoint change.

@@ -154,6 +154,10 @@ function builder(table, op, payload) {
 }
 
 const db = {
+  async rpc(name, payload) {
+    state.queries.push({ table: name, op: 'rpc', payload, filters: [] });
+    return state.rpcError ? { error: state.rpcError } : { data: { success: true }, error: null };
+  },
   from(table) {
     return {
       select: (...a) => builder(table, 'select', a[0]),
@@ -243,6 +247,7 @@ async function call(handler, request) {
 let realFetch;
 
 beforeEach(() => {
+  state.rpcError = null;
   state.auth = null;
   state.tables = {};
   state.queries = [];
@@ -866,10 +871,23 @@ async function review(auth, { taskDeveloper, submissionDeveloper } = {}) {
 }
 
 describe('/api/admin-review refuses to let anyone approve their own work', () => {
+  it('does not report success or perform separate writes when the transaction fails', async () => {
+    state.rpcError = { code: 'XX000', message: 'private database failure' };
+    const { status, body } = await review(staff('manager', { appUserId: ME }));
+    expect(status).toBe(503);
+    expect(body.error).not.toContain('private database failure');
+    expect(queries('developer_tasks', 'update')).toHaveLength(0);
+    expect(queries('admin_reviews', 'insert')).toHaveLength(0);
+  });
+  it('passes only the verified reviewer identity into the transaction', async () => {
+    await review(staff('manager', { appUserId: ME }));
+    expect(queries('commit_task_review', 'rpc')[0].payload).toMatchObject({ p_org: ORG, p_reviewer: ME, p_profile_type: 'admin' });
+  });
   it.each(REVIEWERS)('a %s may review a colleague\'s submission', async (role) => {
     const { status } = await review(staff(role, { appUserId: ME }), { taskDeveloper: COLLEAGUE });
     expect(status).toBe(200);
-    expect(queries('developer_tasks', 'update')).toHaveLength(1);
+    expect(queries('commit_task_review', 'rpc')).toHaveLength(1);
+    expect(queries('developer_tasks', 'update')).toHaveLength(0);
   });
 
   it.each(REVIEWERS)('a %s may NOT review a task assigned to themselves', async (role) => {
