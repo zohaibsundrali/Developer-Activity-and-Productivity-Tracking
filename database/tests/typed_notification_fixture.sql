@@ -6,7 +6,7 @@ do $$ begin
 end $$;
 alter role service_role bypassrls;
 create schema auth;
-create schema private;
+-- Production migration must bootstrap its own private schema.
 create function auth.jwt() returns jsonb language sql stable as $$ select current_setting('request.jwt.claims',true)::jsonb $$;
 create function public.auth_org() returns uuid language sql stable as $$ select (auth.jwt()->'app_metadata'->>'organization_id')::uuid $$;
 create function public.auth_app_user_id() returns uuid language sql stable as $$ select (auth.jwt()->'app_metadata'->>'app_user_id')::uuid $$;

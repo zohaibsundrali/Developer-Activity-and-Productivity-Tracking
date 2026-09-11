@@ -1,4 +1,7 @@
 begin;
+create schema if not exists private;
+revoke all on schema private from public, anon, authenticated;
+
 -- Membership authority is evaluated for the actual old/new typed assignee,
 -- never IDs supplied as notification metadata.
 create or replace function private.assignment_notice_recipient(p_org uuid,p_user uuid,p_kind text)

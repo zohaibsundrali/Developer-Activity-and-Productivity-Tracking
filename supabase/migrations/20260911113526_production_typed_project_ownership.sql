@@ -9,9 +9,26 @@ returns text language sql stable security definer set search_path=pg_catalog,pub
 $$;
 revoke all on function public.project_unique_identity_type(uuid,text) from public,anon,authenticated;
 grant execute on function public.project_unique_identity_type(uuid,text) to service_role;
+-- Only the historical metadata backfill bypasses the delivery billing trigger.
+-- The table lock prevents concurrent writes; DDL and backfill roll back together.
+-- No runtime role, JWT claim, or session setting gains a billing bypass.
+lock table public.projects in access exclusive mode;
+do $backfill$
+declare previous_state "char";
+begin
+ select tgenabled into previous_state from pg_trigger
+ where tgrelid='public.projects'::regclass and tgname='delivery_write_lock' and not tgisinternal;
+ if previous_state is not null then
+  alter table public.projects disable trigger delivery_write_lock;
+ end if;
 update public.projects set created_by_type=public.project_unique_identity_type(organization_id,created_by::text),
  added_by_type=public.project_unique_identity_type(organization_id,added_by::text),
  manager_type=public.project_unique_identity_type(organization_id,manager_id::text);
+ if previous_state in ('O','A','R') then
+  execute 'alter table public.projects enable ' || case previous_state
+   when 'A' then 'always ' when 'R' then 'replica ' else '' end || 'trigger delivery_write_lock';
+ end if;
+end $backfill$;
 
 create or replace function public.project_actor_is_owner(p_org uuid,p_project uuid,p_user uuid,p_type text,p_allow_legacy boolean default false)
 returns boolean language sql stable security definer set search_path=pg_catalog,public as $$

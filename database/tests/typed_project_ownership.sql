@@ -21,7 +21,24 @@ insert into memberships(organization_id,user_id,user_type,role,status,email) val
 insert into projects(id,organization_id,created_by,added_by,manager_id) values
  ('74000000-0000-0000-0000-000000000101','74000000-0000-0000-0000-000000000001','74000000-0000-0000-0000-000000000011',null,'74000000-0000-0000-0000-000000000011'),
  ('74000000-0000-0000-0000-000000000102','74000000-0000-0000-0000-000000000001','74000000-0000-0000-0000-000000000012',null,'74000000-0000-0000-0000-000000000012');
+create table organizations(id uuid primary key);
+insert into organizations select distinct organization_id from projects;
+-- Reproduce deployed locked subscriptions with the actual billing trigger.
+create or replace function app_private.org_unlocked(uuid) returns boolean language sql stable as $$ select false $$;
+\ir ../../supabase/migrations/20260911083056_production_delivery_write_lock.sql
 \ir ../../supabase/migrations/20260911113526_production_typed_project_ownership.sql
+do $$ begin
+ if (select tgenabled from pg_trigger where tgrelid='public.projects'::regclass and tgname='delivery_write_lock')<>'O' then
+  raise exception 'Backfill did not restore billing enforcement'; end if;
+ begin
+  update public.projects set name='Must remain locked' where id='74000000-0000-0000-0000-000000000102';
+  raise exception 'Billing lock bypassed after migration' using errcode='XX000';
+ exception when sqlstate 'P0001' then
+  if sqlerrm not like 'BILLING_LOCKED:%' then raise; end if;
+ end;
+end $$;
+create or replace function app_private.org_unlocked(uuid) returns boolean language sql stable as $$ select true $$;
+
 do $$ declare org uuid:='74000000-0000-0000-0000-000000000001'; collision uuid:='74000000-0000-0000-0000-000000000011';
  manager uuid:='74000000-0000-0000-0000-000000000012'; project uuid:='74000000-0000-0000-0000-000000000101';
  task uuid; submission uuid; result jsonb; cloned uuid; begin
