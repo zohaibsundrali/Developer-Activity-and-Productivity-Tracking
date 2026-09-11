@@ -9,6 +9,9 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
+// Production always enforces the shared-secret gate. The historical staged
+// rollout described below now applies only outside production.
+
 /**
  * Desktop tracker screenshot ingest.
  *
@@ -109,6 +112,8 @@ function ingestSecret() {
 }
 
 function enforcementEnabled() {
+  // Production ingest must never accept anonymous writes, even with no secret.
+  if (process.env.NODE_ENV === "production") return true;
   const flag = String(process.env.DESKTOP_INGEST_ENFORCE || '').trim().toLowerCase();
   return flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on';
 }

@@ -1,3 +1,4 @@
+import { validateInvitationScope } from "@/utils/invitationScope";
 import { NextResponse } from 'next/server';
 import { ROLES, ROLE_RANK as SHARED_ROLE_RANK, rankOf } from "@/utils/roles";
 import crypto from 'crypto';
@@ -101,6 +102,9 @@ export async function POST(request) {
     // Org is taken from the verified JWT — never from the request body.
     const organizationId = auth.orgId;
     const supabase = serviceClient();
+
+    const scopeError = await validateInvitationScope(supabase, organizationId, { teamId, departmentId, projectId });
+    if (scopeError) return NextResponse.json({ success: false, ...scopeError }, { status: scopeError.status });
 
     // A client invitation hands out a client-portal login, so it is gated by
     // the plan feature rather than by a seat meter — no seat count counts a

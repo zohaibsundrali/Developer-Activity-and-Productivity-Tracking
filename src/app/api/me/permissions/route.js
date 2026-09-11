@@ -34,6 +34,10 @@ export async function GET(request) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
+    if (auth.overridesUnavailable) {
+      return NextResponse.json({ success: false, error: "Permissions are temporarily unavailable.", overridesUnavailable: true }, { status: 503 });
+    }
+
     // `auth` carries the role AND the overrides `getAuthedOrg` loaded, which is
     // exactly the subject shape resolvePermission wants. Passing `auth` rather
     // than `{ role: auth.role }` is the whole fix.

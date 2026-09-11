@@ -20,6 +20,7 @@ async function loadOwnedThread(svc, auth, threadId) {
 // GET /api/client/support/[threadId]
 // Full thread with its messages, oldest first.
 export async function GET(request, { params }) {
+  params = await params;
   try {
     const auth = await getAuthedClient(request);
     if (!auth) {
@@ -62,6 +63,7 @@ export async function GET(request, { params }) {
 // POST /api/client/support/[threadId]
 // Post a reply from the client and bump the thread's last_message_at.
 export async function POST(request, { params }) {
+  params = await params;
   try {
     const auth = await getAuthedClient(request);
     if (!auth) {

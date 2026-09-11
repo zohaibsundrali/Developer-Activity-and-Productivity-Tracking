@@ -306,6 +306,7 @@ function makeDb(invite) {
       const chain = {
         select: () => chain,
         eq: () => chain,
+        gt: () => chain,
         insert(rows) {
           rec.inserts.push({ table, row: rows[0] });
           return chain;
@@ -358,7 +359,7 @@ async function accept(role) {
     role,
     status: "pending",
     organization_id: "org-1",
-    expires_at: null,
+    expires_at: new Date(Date.now() + 86400000).toISOString(),
     project_id: null,
     team_id: null,
     department_id: null,
@@ -422,7 +423,7 @@ describe("H-3 · one role, one user_type", () => {
   it("refuses an admin invitation whose organization cannot be read, instead of inventing a company", async () => {
     db = makeDb({
       id: "inv-1", token: "tok", email: "admin@example.com", role: "admin", status: "pending",
-      organization_id: "org-1", expires_at: null, project_id: null, team_id: null, department_id: null,
+      organization_id: "org-1", expires_at: new Date(Date.now() + 86400000).toISOString(), project_id: null, team_id: null, department_id: null,
     });
     const realFrom = db.from.bind(db);
     db.from = (table) => {

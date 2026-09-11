@@ -685,7 +685,7 @@ describe('getAuthedOrg — drift is recorded where it is detected', () => {
   // distinct auth user id because the recorder de-duplicates per account.
   const authDb = (user, memberships = []) => makeDb({ authUsers: [user], memberships });
 
-  it('records the missing-membership signature, and does NOT change what it returns', async () => {
+  it('records and rejects the missing-membership signature', async () => {
     const user = authUser({
       id: 'drift-1',
       app_metadata: { organization_id: ORG, app_user_id: 'ghost', user_type: 'developer', role: 'developer' },
@@ -703,9 +703,7 @@ describe('getAuthedOrg — drift is recorded where it is detected', () => {
         context: expect.objectContaining({ reason: 'membership_not_found', userId: 'ghost' }),
       })
     );
-    // Behaviour is unchanged: an absent membership row is still treated as
-    // active, so legacy accounts keep working. Detection only.
-    expect(auth).toMatchObject({ orgId: ORG, appUserId: 'ghost' });
+    expect(auth).toBeNull();
   });
 
   it('records a verified token that carries no organization claim, and returns null', async () => {
@@ -731,6 +729,37 @@ describe('getAuthedOrg — drift is recorded where it is detected', () => {
     expect(auth).toMatchObject({ orgId: ORG });
     const types = recordEvent.mock.calls.map((c) => c[0].type);
     expect(types).not.toContain('auth.claims_drift_detected');
+  });
+
+  it.each(['invited', 'pending', 'suspended', 'terminated', null, 'unexpected'])('rejects membership status %s', async (status) => {
+    const user = authUser();
+    hoisted.client = authDb(user, [membership({ status })]).svc;
+    expect(await realServerAuth.getAuthedOrg(req('tok:auth-1'))).toBeNull();
+  });
+
+  it('uses the current membership role after a demotion', async () => {
+    const user = authUser({ app_metadata: { organization_id: ORG, app_user_id: 'app-1', user_type: 'developer', role: 'owner' } });
+    hoisted.client = authDb(user, [membership({ role: 'employee' })]).svc;
+    expect(await realServerAuth.getAuthedOrg(req('tok:auth-1'))).toMatchObject({ role: 'employee' });
+  });
+
+  it('preserves a claim-first demotion when updating the membership failed', async () => {
+    hoisted.client = authDb(authUser(), [membership({ role: 'owner' })]).svc;
+    expect(await realServerAuth.getAuthedOrg(req('tok:auth-1'))).toMatchObject({ role: 'developer' });
+  });
+
+  it('rejects incomplete identity claims', async () => {
+    hoisted.client = authDb(authUser({ app_metadata: { organization_id: ORG, role: 'owner' } })).svc;
+    expect(await realServerAuth.getAuthedOrg(req('tok:auth-1'))).toBeNull();
+  });
+
+  it('rejects membership lookup errors', async () => {
+    const db = authDb(authUser());
+    hoisted.client = { ...db.svc, from: () => {
+      const q = { select: () => q, eq: () => q, maybeSingle: async () => ({ data: null, error: { code: '57014' } }) };
+      return q;
+    } };
+    expect(await realServerAuth.getAuthedOrg(req('tok:auth-1'))).toBeNull();
   });
 
   it('does not repeat itself for the same account inside the window', async () => {

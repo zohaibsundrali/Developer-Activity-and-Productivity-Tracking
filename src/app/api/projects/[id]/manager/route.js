@@ -43,6 +43,7 @@ export const dynamic = "force-dynamic";
 const ELIGIBLE_MANAGER_ROLES = ["owner", "admin", "manager", "team_lead"];
 
 export async function POST(request, { params }) {
+  params = await params;
   try {
     const auth = await getAuthedOrg(request);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

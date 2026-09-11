@@ -1,4 +1,6 @@
 "use client";
+
+import PermissionBoundary from "@/components/auth/PermissionBoundary";
 import { useEffect, useState, useRef, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
@@ -129,7 +131,7 @@ const withAuth = (WrappedComponent) => {
       return <DashboardSkeleton />;
     }
 
-    return <WrappedComponent {...props} />;
+    return <PermissionBoundary><WrappedComponent {...props} /></PermissionBoundary>;
   };
 };
 

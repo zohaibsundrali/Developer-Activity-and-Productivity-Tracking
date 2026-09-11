@@ -20,6 +20,7 @@ const MAX_LIMIT = 50;
 // results are merged and re-sorted, and the page is cut from the merge — an
 // offset would skip events whenever a new one lands mid-scroll.
 export async function GET(request, { params }) {
+  params = await params;
   try {
     const auth = await getAuthedClient(request);
     if (!auth) {

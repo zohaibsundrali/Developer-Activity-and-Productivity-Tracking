@@ -22,6 +22,7 @@ const COMMENT_FIELDS = "id, body, author_name, author_type, created_at";
 // route's half of that — the database enforces the other half, so a bug here
 // cannot publish an internal note.
 export async function GET(request, { params }) {
+  params = await params;
   try {
     const auth = await getAuthedClient(request);
     if (!auth) {
@@ -96,6 +97,7 @@ export async function GET(request, { params }) {
 // session, so a client cannot post as staff, post as another client, or post an
 // internal note by asking for one — whatever the body claims.
 export async function POST(request, { params }) {
+  params = await params;
   try {
     const auth = await getAuthedClient(request);
     if (!auth) {

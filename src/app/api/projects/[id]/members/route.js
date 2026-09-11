@@ -95,6 +95,7 @@ async function listMembers(svc, projectId, orgId) {
 }
 
 export async function GET(request, { params }) {
+  params = await params;
   try {
     let auth = await getAuthedOrg(request);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -132,6 +133,7 @@ export async function GET(request, { params }) {
 }
 
 export async function POST(request, { params }) {
+  params = await params;
   try {
     let auth = await getAuthedOrg(request);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -243,6 +245,7 @@ export async function POST(request, { params }) {
 }
 
 export async function DELETE(request, { params }) {
+  params = await params;
   try {
     let auth = await getAuthedOrg(request);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

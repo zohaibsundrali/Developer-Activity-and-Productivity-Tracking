@@ -11,6 +11,7 @@ const ONE_HOUR = 60 * 60;
 // Resolve a task-submission the client is allowed to see and return a
 // short-lived signed URL for its private file.
 export async function GET(request, { params }) {
+  params = await params;
   try {
     const auth = await getAuthedClient(request);
     if (!auth) {

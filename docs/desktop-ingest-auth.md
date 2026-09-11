@@ -1,5 +1,13 @@
 # Desktop agent ingest authentication
 
+**September 2026 security update:** production always enforces the shared-secret
+gate, regardless of `DESKTOP_INGEST_ENFORCE`. With no secret, ingest returns 401.
+The observe/open stages below are available only outside production. Existing
+Python code in `developer-tracker` writes directly through its authenticated
+Supabase session; it does not call these HTTP ingest routes. External HTTP
+consumers must send the secret before deploying this update.
+
+
 Contract and rollout plan for authenticating the desktop tracker against the
 two ingest endpoints:
 

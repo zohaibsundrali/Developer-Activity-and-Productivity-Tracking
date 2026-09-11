@@ -1,3 +1,4 @@
+import { validateInvitationScope } from "@/utils/invitationScope";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { checkSeatLimitForRole, checkFeatureAccess } from "@/utils/entitlements";
@@ -39,10 +40,27 @@ function acceptanceIp(request) {
 }
 
 export async function POST(request) {
+  // Compensate only rows created by this request if any required step fails.
+  let created = null;
+  async function rollback() {
+    if (!created) return;
+    const { orgId, id, userType, table, authId } = created;
+    if (authId) {
+      const { error } = await admin.auth.admin.deleteUser(authId);
+      if (error) console.error("[invite-accept] Auth rollback failed", authId, error.code);
+    }
+    const results = [];
+    results.push(await admin.from("memberships").delete().eq("organization_id", orgId).eq("user_id", id).eq("user_type", userType));
+    if (userType === "client") results.push(await admin.from("project_clients").delete().eq("organization_id", orgId).eq("client_id", id));
+    results.push(await admin.from("terms_acceptances").delete().eq("organization_id", orgId).eq("user_id", id));
+    results.push(await admin.from(table).delete().eq("id", id).eq("organization_id", orgId));
+    if (results.some(r => r.error)) console.error("[invite-accept] Database rollback incomplete", id);
+    created = null;
+  }
   try {
     const { token, fullName, password, termsAccepted } = await request.json();
-    if (!token || !password) {
-      return NextResponse.json({ error: "token and password are required" }, { status: 400 });
+    if (typeof token !== "string" || !token || typeof password !== "string" || password.length < 6 || (fullName != null && typeof fullName !== "string")) {
+      return NextResponse.json({ error: "A valid token and password of at least 6 characters are required" }, { status: 400 });
     }
 
     // THE GATE, the invitation half. Someone invited into an existing
@@ -59,18 +77,25 @@ export async function POST(request) {
     }
 
     // 1) validate the invitation
-    const { data: invite } = await admin
+    const { data: invite, error: inviteError } = await admin
       .from("invitations")
       .select("*")
       .eq("token", token)
       .maybeSingle();
 
+    if (inviteError) return NextResponse.json({ error: "Invitation lookup unavailable." }, { status: 503 });
     if (!invite) return NextResponse.json({ error: "Invitation not found." }, { status: 404 });
     if (invite.status === "accepted") return NextResponse.json({ error: "This invitation was already used." }, { status: 409 });
     if (invite.status === "revoked") return NextResponse.json({ error: "This invitation was revoked." }, { status: 410 });
-    if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
+    if (invite.status !== "pending") return NextResponse.json({ error: "This invitation is not pending." }, { status: 410 });
+    if (!invite.expires_at || !Number.isFinite(Date.parse(invite.expires_at)) || new Date(invite.expires_at) <= new Date()) {
       return NextResponse.json({ error: "This invitation has expired." }, { status: 410 });
     }
+
+    const scopeError = await validateInvitationScope(admin, invite.organization_id, {
+      teamId: invite.team_id, departmentId: invite.department_id, projectId: invite.project_id,
+    });
+    if (scopeError) return NextResponse.json(scopeError, { status: scopeError.status });
 
     // 1b) the seat is consumed HERE, so this is where the plan has to be
     // checked. The create-invitation check cannot hold a seat: a 3-seat
@@ -198,14 +223,6 @@ export async function POST(request) {
       }
       newUser = data;
 
-      // Link the client to the invited project (if any).
-      if (invite.project_id) {
-        await admin.from("project_clients").insert([{
-          organization_id: invite.organization_id,
-          project_id: invite.project_id,
-          client_id: newUser.id,
-        }]);
-      }
     } else {
       // Every remaining role — manager, hr, finance, team_lead, qa, developer,
       // designer, devops, employee. Their real role is preserved on the
@@ -224,12 +241,22 @@ export async function POST(request) {
       newUser = data;
     }
 
+    created = { orgId: invite.organization_id, id: newUser.id, userType, table: profileTable, authId: null };
+    if (userType === "client" && invite.project_id) {
+      const { error } = await admin.from("project_clients").insert([{
+        organization_id: invite.organization_id, project_id: invite.project_id, client_id: newUser.id,
+      }]);
+      if (error) throw new Error("Client project link failed");
+    }
+
     // 3) membership
-    await admin.from("memberships").insert([{
+    const { error: membershipError } = await admin.from("memberships").insert([{
       organization_id: invite.organization_id, user_id: newUser.id, user_type: userType,
       email, role: invite.role, team_id: invite.team_id || null,
       department_id: invite.department_id || null, status: "active",
     }]);
+
+    if (membershipError) throw new Error("Membership creation failed");
 
     // 3b) record the acceptance — see database/039_terms_acceptance.sql.
     // entry_point 'invitation' distinguishes this from the person who created
@@ -264,19 +291,7 @@ export async function POST(request) {
       app_metadata: { organization_id: invite.organization_id, role: invite.role, user_type: userType, app_user_id: newUser.id },
     });
     if (authErr || !au?.user?.id) {
-      // Roll back everything THIS request wrote so the invite stays usable: the
-      // membership (which consumed a seat), the client→project link, the terms
-      // acceptance, and the freshly-inserted profile row. The invitation is
-      // deliberately NOT marked accepted, so a corrected retry still works.
-      await admin.from("memberships").delete()
-        .eq("organization_id", invite.organization_id).eq("user_id", newUser.id);
-      if (userType === "client" && invite.project_id) {
-        await admin.from("project_clients").delete()
-          .eq("organization_id", invite.organization_id).eq("client_id", newUser.id);
-      }
-      await admin.from("terms_acceptances").delete()
-        .eq("organization_id", invite.organization_id).eq("user_id", newUser.id);
-      await admin.from(profileTable).delete().eq("id", newUser.id);
+      await rollback();
 
       const dup = authErr?.status === 422 || /already|exist|registered/i.test(authErr?.message || "");
       return NextResponse.json(
@@ -288,13 +303,21 @@ export async function POST(request) {
         { status: dup ? 409 : 400 }
       );
     }
-    await admin.from(profileTable).update({ auth_user_id: au.user.id }).eq("id", newUser.id);
+    created.authId = au.user.id;
+    const { data: linked, error: linkError } = await admin.from(profileTable)
+      .update({ auth_user_id: au.user.id }).eq("id", newUser.id).select("id").single();
+    if (linkError || !linked) throw new Error("Auth profile link failed");
 
     // 5) mark accepted — only now that the Auth account actually exists.
-    await admin.from("invitations").update({ status: "accepted" }).eq("id", invite.id);
+    const { data: accepted, error: acceptError } = await admin.from("invitations")
+      .update({ status: "accepted" }).eq("id", invite.id).eq("status", "pending")
+      .gt("expires_at", new Date().toISOString()).select("id").single();
+    if (acceptError || !accepted) throw new Error("Invitation was changed or could not be accepted");
+    created = null;
 
     return NextResponse.json({ success: true, role: invite.role, userType });
   } catch (e) {
+    try { await rollback(); } catch { console.error("[invite-accept] Rollback unavailable"); }
     return NextResponse.json({ error: "Failed to accept invitation" }, { status: 500 });
   }
 }

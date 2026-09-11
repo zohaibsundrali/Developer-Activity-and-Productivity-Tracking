@@ -16,8 +16,7 @@
 import { accessState, lockMessage } from "@/utils/billingAccess";
 
 // -1 means unlimited. Keys match the `limits` jsonb seeded in migration 027;
-// a key present there but missing here is simply not enforced, which is the
-// safe direction to be wrong in.
+// all metered creation paths must use these definitions.
 export const RESOURCES = {
   employees: {
     label: "Employees",
@@ -73,8 +72,8 @@ export const RESOURCES = {
  * The mapping has to follow where the acceptance path puts the row, not what
  * the role is called. `employees` counts non-client memberships; `developers`
  * counts rows in the `developers` table. So:
- *   - owner / admin / hr  → admin_users + a non-client membership → employees
- *   - manager / team_lead / developer / employee → developers + a non-client
+ *   - owner / admin → admin_users + a non-client membership → employees
+ *   - every other staff role → developers + a non-client
  *     membership → BOTH meters, which is why a developer has to clear both
  *   - client → a `clients` row and a client-typed membership, which neither
  *     meter counts; a client seat is gated by the client_portal feature, not
@@ -85,13 +84,13 @@ export const RESOURCES = {
 const SEAT_RESOURCES_BY_ROLE = {
   owner: ["employees"],
   admin: ["employees"],
-  hr: ["employees"],
-  // Finance is an office seat, like HR — it does no delivery work and does not
-  // occupy a developer seat.
-  finance: ["employees"],
+  hr: ["employees", "developers"],
+  // HR and Finance also live in developers; the meter counts profile rows.
+  finance: ["employees", "developers"],
   manager: ["employees", "developers"],
   team_lead: ["employees", "developers"],
   developer: ["employees", "developers"],
+  devops: ["employees", "developers"],
   // Designer and QA are delivery seats and are charged like developers. The
   // fallback would have put them on `employees` only, which would have let a
   // plan sold as "3 developers" carry three developers plus any number of
@@ -186,20 +185,25 @@ export function trialDaysRemaining(subscription, now = new Date()) {
  * falls back to free rather than keeping the paid limits.
  */
 export async function resolveEntitlement(svc, orgId, now = new Date()) {
-  const { data: subscription } = await svc
+  const { data: subscription, error: subscriptionError } = await svc
     .from("organization_subscriptions")
     .select("*")
     .eq("organization_id", orgId)
     .maybeSingle();
 
+  if (subscriptionError) throw new Error("Subscription lookup unavailable");
+
   const entitled = isSubscriptionEntitled(subscription, now);
   const effectiveCode = entitled ? subscription?.plan_code || FREE_PLAN_CODE : FREE_PLAN_CODE;
 
-  const { data: plan } = await svc
+  const { data: plan, error: planError } = await svc
     .from("billing_plans")
     .select("*")
     .eq("code", effectiveCode)
     .maybeSingle();
+
+  if (planError) throw new Error("Plan lookup unavailable");
+  if (!plan && effectiveCode !== FREE_PLAN_CODE) throw new Error("Subscribed plan unavailable");
 
   // The second question, alongside "how much can they do": may they do
   // anything at all? See src/utils/billingAccess.js for why these are separate
@@ -264,11 +268,12 @@ export async function requireUnlocked(svc, orgId, now = new Date()) {
     const entitlement = await resolveEntitlement(svc, orgId, now);
     return entitlement.locked ? lockedRefusal(entitlement) : null;
   } catch {
-    // Fails OPEN, like every other uncertain path in this file. A lookup
-    // failure must never present itself to a paying customer as "your
-    // subscription has ended".
-    return null;
+    return billingUnavailable();
   }
+}
+
+function billingUnavailable() {
+  return { status: 503, error: "Billing verification is temporarily unavailable. Try again." };
 }
 
 /** True when the plan grants a named feature flag. */
@@ -286,7 +291,9 @@ export function hasFeature(entitlement, feature) {
  * the fail-closed direction: a plan earns a feature by naming it.
  */
 export async function checkFeatureAccess(svc, orgId, feature, label, now = new Date()) {
-  const entitlement = await resolveEntitlement(svc, orgId, now);
+  let entitlement;
+  try { entitlement = await resolveEntitlement(svc, orgId, now); }
+  catch { return billingUnavailable(); }
   // Checked before the feature flag: a locked workspace is shut regardless of
   // which plan's features it used to carry.
   if (entitlement.locked) return lockedRefusal(entitlement);
@@ -354,7 +361,9 @@ export async function checkResourceLimit(svc, orgId, resourceKey, now = new Date
   const resource = RESOURCES[resourceKey];
   if (!resource) return null; // unknown resource is not enforced
 
-  const entitlement = await resolveEntitlement(svc, orgId, now);
+  let entitlement;
+  try { entitlement = await resolveEntitlement(svc, orgId, now); }
+  catch { return billingUnavailable(); }
 
   // BEFORE the unlimited short-circuit, not after. An organization locked out
   // of an expired enterprise trial has `limit === -1` on every resource, so a
@@ -369,10 +378,11 @@ export async function checkResourceLimit(svc, orgId, resourceKey, now = new Date
 
   let used = 0;
   try {
-    const { count } = await resource.count(svc, orgId);
-    used = Math.max(0, (count ?? 0) - alreadyCounted);
+    const { count, error } = await resource.count(svc, orgId);
+    if (error || !Number.isInteger(count) || count < 0) return billingUnavailable();
+    used = Math.max(0, count - alreadyCounted);
   } catch {
-    return null; // never block on a counting failure
+    return billingUnavailable();
   }
 
   if (used < limit) return null;
