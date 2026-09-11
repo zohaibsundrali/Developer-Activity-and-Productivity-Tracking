@@ -662,7 +662,7 @@ function InvitationsTab({ orgId, invitations, teams, departments, reload, loadin
 
     // Prevent sending a second pending invite to the same address.
     const dup = invitations.find(
-      (inv) => inv.status === "pending" && (inv.email || "").toLowerCase() === target
+      (inv) => inv.status === "pending" && Date.parse(inv.expires_at) > Date.now() && (inv.email || "").toLowerCase() === target
     );
     if (dup) {
       showError("Already invited", `${email.trim()} already has a pending invitation.`);
@@ -684,7 +684,7 @@ function InvitationsTab({ orgId, invitations, teams, departments, reload, loadin
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) throw new Error(data.error || "Failed to create invitation");
       setEmail(""); setTeamId(""); setDepartmentId("");
-      showSuccess("Invitation sent", data.emailed ? `Invite emailed to ${email.trim()}.` : `Invite created. Share the link.`);
+      showSuccess(data.emailed ? "Invitation sent" : "Invitation created", data.emailed ? `Invite emailed to ${email.trim()}.` : `Invite created. Share the link.`);
       reload();
     } catch (err) {
       showError("Failed", err.message || "Could not send invitation.");

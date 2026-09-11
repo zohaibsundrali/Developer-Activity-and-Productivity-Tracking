@@ -1,0 +1,35 @@
+do $$ declare org uuid:='00000000-0000-0000-0000-000000000002'; actor uuid; invite uuid; total integer; begin
+  insert into invitations(organization_id,email,role) values(org,'authority-admin@example.test','admin'),(org,'authority-manager@example.test','manager'),(org,'authority-developer@example.test','developer');
+  select user_id into actor from memberships where role='hr' and organization_id=org limit 1;
+  perform set_config('request.jwt.claims',jsonb_build_object('app_metadata',jsonb_build_object('organization_id',org,'app_user_id',actor,'role','hr','user_type','developer'))::text,true);
+  set local role authenticated;
+  select count(*) into total from invitations where role in ('owner','admin','manager');
+  if total<>0 then raise exception 'HR read a higher-role invitation token'; end if;
+  select count(*) into total from invitations where email='authority-developer@example.test';
+  if total<>1 then raise exception 'HR lost grantable invitation access'; end if;
+  perform expect_rejected(format('insert into invitations(organization_id,email,role) values(%L,''forged@example.test'',''admin'')',org),'permission denied: invitation role');
+  insert into invitations(organization_id,email,role,invited_by) values(org,'  Normalized@Example.Test  ','developer',gen_random_uuid()) returning id into invite;
+  if not exists(select 1 from invitations where id=invite and email='normalized@example.test' and invited_by=actor) then raise exception 'Invitation identity normalization failed'; end if;
+  perform expect_rejected(format('update invitations set role=''admin'' where id=%L',invite),'permission denied: invitation role');
+  perform expect_rejected(format('update invitations set token=''replaced'' where id=%L',invite),'Only pending invitation revocation');
+  perform expect_rejected(format('update invitations set status=''accepted'' where id=%L',invite),'Only pending invitation revocation');
+  perform expect_rejected(format('insert into invitations(organization_id,email,role) values(%L,''NORMALIZED@example.test'',''employee'')',org),'INVITATION_EXISTS');
+  delete from invitations where id=invite;
+  get diagnostics total=row_count;
+  if total<>0 then raise exception 'Invitation recovery record could be deleted directly'; end if;
+  update invitations set status='revoked' where id=invite;
+  insert into invitations(organization_id,email,role) values(org,'normalized@example.test','developer');
+  reset role;
+  insert into user_permissions(membership_id,permission_key,allowed)
+    select id,'member.invite',false from memberships where user_id=actor and user_type='developer' and organization_id=org;
+  set local role authenticated;
+  select count(*) into total from invitations;
+  if total<>0 then raise exception 'Explicit invitation deny did not hide tokens'; end if;
+  perform expect_rejected(format('insert into invitations(organization_id,email,role) values(%L,''denied@example.test'',''employee'')',org),'permission denied: invitation role');
+  reset role;
+  perform set_config('request.jwt.claims',jsonb_build_object('app_metadata',jsonb_build_object('organization_id',org,'app_user_id','10000000-0000-0000-0000-000000000002','role','developer','user_type','developer'))::text,true);
+  set local role authenticated;
+  select count(*) into total from invitations;
+  if total<>0 then raise exception 'Ordinary staff can still harvest invitation tokens'; end if;
+  reset role;
+end; $$;
