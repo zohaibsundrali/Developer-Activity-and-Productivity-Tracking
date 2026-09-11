@@ -37,6 +37,8 @@ import {
   PRIORITIES,
 } from "@/utils/pmData";
 import { getOrgContext, isMembershipActive } from "@/utils/orgContext";
+import { supabase } from "@/utils/supabaseClient";
+import { taskUiPermissions } from "@/utils/taskUiPermissions";
 import { allowed } from "@/utils/permissions";
 import { showConfirm, showError, showSuccess } from "@/utils/alerts";
 
@@ -197,8 +199,22 @@ export default function TaskDetailDrawer({
   const commentRef = useRef(null);
   const [submittingComment, setSubmittingComment] = useState(false);
 
-  const ctx = useMemo(() => getOrgContext() || {}, []);
+  const ctx = getOrgContext();
   const taskId = task?.id;
+  const [planAccess, setPlanAccess] = useState(null);
+  useEffect(() => {
+    let active = true;
+    setPlanAccess(null);
+    if (task?.developer_id === ctx?.userId && ctx?.userType === 'developer' && task?.project_id && allowed('task.update_own')) {
+      supabase.rpc('auth_task_plan_edit', { p_project: task.project_id }).then(({ data, error }) => {
+        if (active) setPlanAccess({ taskId, editable: !error && data === true });
+      }).catch(() => { if (active) setPlanAccess({ taskId, editable: false }); });
+    }
+    return () => { active = false; };
+  }, [taskId, task?.project_id, task?.developer_id, ctx?.userId, ctx?.userType, ctx?.organizationId]);
+  const actionAccess = taskUiPermissions({ task: form?.id === taskId ? form : task, context: ctx, allowed,
+    ownPlanEditable: planAccess?.taskId === taskId && planAccess.editable });
+
 
   useEffect(() => {
     setForm(task || {});
@@ -271,7 +287,7 @@ export default function TaskDetailDrawer({
       if (userId == null) return "Unknown";
       const mem = memberById.get(String(userId));
       if (mem?.name) return mem.name;
-      if (ctx?.userId != null && String(ctx.userId) === String(userId)) {
+      if (ctx?.userId != null && String(ctx?.userId) === String(userId)) {
         return ctx.organizationName ? `You` : "You";
       }
       return "User";
@@ -326,7 +342,7 @@ export default function TaskDetailDrawer({
   // ---- field saving --------------------------------------------------
   const saveField = useCallback(
     async (field, value) => {
-      if (!taskId) return;
+      if (!taskId || !actionAccess.editField(field)) return;
       setSavingField(field);
       try {
         const { error } = await updateTask(taskId, { [field]: value });
@@ -346,7 +362,7 @@ export default function TaskDetailDrawer({
         setSavingField(null);
       }
     },
-    [taskId, onChanged]
+    [taskId, onChanged, actionAccess]
   );
 
   // Assignment is not a plain column write either: assignTask fires the
@@ -354,7 +370,7 @@ export default function TaskDetailDrawer({
   // through saveField is what left that trigger unreachable from the UI.
   const handleAssign = useCallback(
     async (developerId) => {
-      if (!taskId) return;
+      if (!taskId || !actionAccess.manage) return;
       setSavingField("developer_id");
       try {
         const { error } = await assignTask(taskId, developerId || null);
@@ -374,14 +390,14 @@ export default function TaskDetailDrawer({
         setSavingField(null);
       }
     },
-    [taskId, onChanged]
+    [taskId, onChanged, actionAccess]
   );
 
   // Status is the one field that is never a plain column write: the legal moves
   // depend on where the task sits, and Done/Rejected belong to the review flow.
   const handleStatusChange = useCallback(
     async (next) => {
-      if (!taskId || !next) return;
+      if (!taskId || !next || !actionAccess.move) return;
       setSavingField("status");
       try {
         const { error } = await changeTaskStatus(taskId, next);
@@ -401,7 +417,7 @@ export default function TaskDetailDrawer({
         setSavingField(null);
       }
     },
-    [taskId, onChanged]
+    [taskId, onChanged, actionAccess]
   );
 
   const onLocalChange = (field, value) =>
@@ -410,7 +426,7 @@ export default function TaskDetailDrawer({
   // ---- subtasks ------------------------------------------------------
   const handleAddSubtask = async () => {
     const title = subtaskTitle.trim();
-    if (!title || !task?.project_id) return;
+    if (!title || !task?.project_id || !actionAccess.manage) return;
     try {
       const { error } = await createTask(task.project_id, {
         task_title: title,
@@ -484,7 +500,7 @@ export default function TaskDetailDrawer({
     return (detail.watchers || []).some(
       (w) =>
         w &&
-        String(w.user_id) === String(ctx.userId) &&
+        String(w.user_id) === String(ctx?.userId) &&
         (w.role || "watcher") === "watcher"
     );
   }, [detail.watchers, ctx]);
@@ -497,8 +513,8 @@ export default function TaskDetailDrawer({
     try {
       const { error } = await toggleWatcher(
         taskId,
-        ctx.userId,
-        ctx.userType,
+        ctx?.userId,
+        ctx?.userType,
         "watcher",
         !isWatching
       );
@@ -696,7 +712,7 @@ export default function TaskDetailDrawer({
   // the overdue invoice" is something the client gets to read. Naming the three
   // roles through hasRole keeps that set pinned here instead of borrowing a
   // capability whose membership is free to drift for unrelated reasons.
-  const canSetClientVisibility = allowed("task.set_client_visibility");
+  const canSetClientVisibility = actionAccess.editField("client_visible");
 
   // Migration 032 adds the column NOT NULL, so a loaded task always carries a
   // real boolean once it has run. undefined/null therefore means "the column is
@@ -826,6 +842,7 @@ export default function TaskDetailDrawer({
               <Field label="Title" htmlFor={`task-title-${taskId}`}>
                 <Input
                   id={`task-title-${taskId}`}
+                  readOnly={!actionAccess.editField('task_title')}
                   key={`title-${taskId}`}
                   className="font-medium"
                   defaultValue={form?.task_title || ""}
@@ -850,7 +867,7 @@ export default function TaskDetailDrawer({
                 id={`task-status-${taskId}`}
                 className={`${SELECT_CLASS} w-full`}
                 value={currentStatus}
-                disabled={statusChoices.length < 2}
+                disabled={!actionAccess.move || statusChoices.length < 2}
                 onChange={(e) => handleStatusChange(e.target.value)}
               >
                 {statusChoices.map((s) => (
@@ -868,6 +885,7 @@ export default function TaskDetailDrawer({
             >
               <select
                 id={`task-priority-${taskId}`}
+                disabled={!actionAccess.manage}
                 className={`${SELECT_CLASS} w-full`}
                 value={currentPriority}
                 onChange={(e) => saveField("priority", e.target.value)}
@@ -884,6 +902,7 @@ export default function TaskDetailDrawer({
               <Field label="Assignee" htmlFor={`task-assignee-${taskId}`}>
                 <select
                   id={`task-assignee-${taskId}`}
+                disabled={!actionAccess.manage}
                   className={`${SELECT_CLASS} w-full`}
                   value={form?.developer_id ?? ""}
                   onChange={(e) => handleAssign(e.target.value || null)}
@@ -902,6 +921,7 @@ export default function TaskDetailDrawer({
             <Field label="Story points" htmlFor={`task-points-${taskId}`}>
               <Input
                 id={`task-points-${taskId}`}
+                disabled={!actionAccess.manage}
                 type="number"
                 className="tabular-nums"
                 value={form?.story_points ?? ""}
@@ -918,6 +938,7 @@ export default function TaskDetailDrawer({
             <Field label="Due date" htmlFor={`task-due-${taskId}`}>
               <Input
                 id={`task-due-${taskId}`}
+                disabled={!actionAccess.manage}
                 type="date"
                 value={toDateInput(form?.due_date)}
                 onChange={(e) => saveField("due_date", e.target.value || null)}
@@ -927,6 +948,7 @@ export default function TaskDetailDrawer({
             <Field label="Estimated hours" htmlFor={`task-est-${taskId}`}>
               <Input
                 id={`task-est-${taskId}`}
+                disabled={!actionAccess.manage}
                 type="number"
                 className="tabular-nums"
                 value={form?.estimated_hours ?? ""}
@@ -943,6 +965,7 @@ export default function TaskDetailDrawer({
             <Field label="Actual hours" htmlFor={`task-actual-${taskId}`}>
               <Input
                 id={`task-actual-${taskId}`}
+                disabled={!actionAccess.manage}
                 type="number"
                 className="tabular-nums"
                 value={form?.actual_hours ?? ""}
@@ -959,6 +982,7 @@ export default function TaskDetailDrawer({
             <Field label="Sprint" htmlFor={`task-sprint-${taskId}`}>
               <select
                 id={`task-sprint-${taskId}`}
+                disabled={!actionAccess.manage}
                 className={`${SELECT_CLASS} w-full`}
                 value={form?.sprint_id ?? ""}
                 onChange={(e) => saveField("sprint_id", e.target.value || null)}
@@ -975,6 +999,7 @@ export default function TaskDetailDrawer({
             <Field label="Epic" htmlFor={`task-epic-${taskId}`}>
               <select
                 id={`task-epic-${taskId}`}
+                disabled={!actionAccess.manage}
                 className={`${SELECT_CLASS} w-full`}
                 value={form?.epic_id ?? ""}
                 onChange={(e) => saveField("epic_id", e.target.value || null)}
@@ -1041,6 +1066,7 @@ export default function TaskDetailDrawer({
         <Block title="Description">
           <textarea
             className={`${TEXTAREA_CLASS} min-h-[120px] resize-y`}
+            readOnly={!actionAccess.editField('task_description')}
             value={form?.task_description ?? ""}
             aria-label="Task description"
             placeholder="Add a description…"
@@ -1049,7 +1075,7 @@ export default function TaskDetailDrawer({
           <div className="mt-2 flex justify-end">
             <Button
               size="lg"
-              disabled={savingField === "task_description"}
+              disabled={!actionAccess.editField("task_description") || savingField === "task_description"}
               onClick={() => saveField("task_description", form?.task_description ?? "")}
             >
               {savingField === "task_description" ? (
@@ -1102,7 +1128,7 @@ export default function TaskDetailDrawer({
               </li>
             ) : null}
           </ul>
-          <div className="mt-3 flex items-center gap-2">
+          {actionAccess.manage && <div className="mt-3 flex items-center gap-2">
             <Input
               placeholder="Add subtask…"
               aria-label="New subtask title"
@@ -1118,7 +1144,7 @@ export default function TaskDetailDrawer({
             <Button size="default" onClick={handleAddSubtask} disabled={!subtaskTitle.trim()}>
               <Plus aria-hidden="true" /> Add
             </Button>
-          </div>
+          </div>}
         </Block>
 
         {/* 5. Checklist ----------------------------------------------- */}

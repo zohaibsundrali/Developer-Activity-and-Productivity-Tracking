@@ -40,6 +40,7 @@ const resetState = () => {
     },
     updates: [],
     activity: [],
+    notifications: [],
   };
 };
 
@@ -87,6 +88,9 @@ function fakeClient() {
           },
         };
         return { select: () => b };
+      }
+      if (table === "notifications") {
+        return { insert: async row => (state.notifications.push(row), { error: null }) };
       }
       if (table === "pm_activity") {
         return { insert: async (row) => (state.activity.push(row), { error: null }) };
@@ -243,5 +247,25 @@ describe("the screen", () => {
   it("re-reads the project rather than patching local state", () => {
     // The row is the truth, and the closure panel reads manager_id too.
     expect(UI).toMatch(/await loadProjects\(projectId\)/);
+  });
+});
+
+
+describe("server manager notification delivery", () => {
+  beforeEach(() => { resetState(); auth = OWNER; });
+  it("addresses a developer-profile manager through the server client", async () => {
+    expect((await post({managerId:"pm"})).status).toBe(200);
+    expect(state.notifications).toEqual([expect.objectContaining({organization_id:"o1",developer_id:"pm",project_id:"p1",type:"project_manager_assigned"})]);
+    expect(state.notifications[0].admin_id).toBeUndefined();
+  });
+  it("addresses an admin-profile manager with an explicit type", async () => {
+    state.members.pm.user_type="admin"; state.members.pm.role="admin";
+    expect((await post({managerId:"pm"})).status).toBe(200);
+    expect(state.notifications[0]).toMatchObject({admin_id:"pm",admin_recipient_type:"admin"});
+    expect(state.notifications[0].developer_id).toBeUndefined();
+  });
+  it("does not duplicate the notice on unchanged assignment", async () => {
+    await post({managerId:"pm"}); await post({managerId:"pm"});
+    expect(state.notifications).toHaveLength(1);
   });
 });

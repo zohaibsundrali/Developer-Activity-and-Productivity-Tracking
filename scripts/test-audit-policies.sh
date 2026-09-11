@@ -150,3 +150,11 @@ docker exec "$audit_container" createdb -U postgres quality_transactions_test
 python3 scripts/expand-sql-fixture.py database/tests/quality_transactions.sql | \
   docker exec -i "$audit_container" psql -U postgres -d quality_transactions_test -v ON_ERROR_STOP=1
 python3 scripts/test-quality-concurrency.py "$audit_container" quality_transactions_test
+
+docker exec "$audit_container" createdb -U postgres task_visibility_test
+python3 scripts/expand-sql-fixture.py database/tests/task_visibility_permission.sql | \
+  docker exec -i "$audit_container" psql -U postgres -d task_visibility_test -v ON_ERROR_STOP=1
+
+docker exec "$audit_container" createdb -U postgres quality_authority_test
+python3 scripts/expand-sql-fixture.py database/tests/quality_authority.sql | \
+  docker exec -i "$audit_container" psql -U postgres -d quality_authority_test -v ON_ERROR_STOP=1

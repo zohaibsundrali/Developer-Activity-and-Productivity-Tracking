@@ -158,7 +158,7 @@ describe("notify queries are derived, not restated", () => {
 describe("client visibility got its own key rather than borrowing one", () => {
   it("is asked for by the drawer", () => {
     expect(read("src/components/admin/TaskDetailDrawer.jsx")).toContain(
-      'allowed("task.set_client_visibility")'
+      'actionAccess.editField("client_visible")'
     );
   });
 

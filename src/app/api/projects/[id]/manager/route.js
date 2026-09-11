@@ -92,7 +92,7 @@ export async function POST(request, { params }) {
           { status: 400 }
         );
       }
-      if (!ELIGIBLE_MANAGER_ROLES.includes(mgr.role)) {
+      if (!["admin", "developer"].includes(mgr.user_type) || !ELIGIBLE_MANAGER_ROLES.includes(mgr.role)) {
         return NextResponse.json(
           { error: `A ${String(mgr.role).replace(/_/g, " ")} cannot be a project manager.` },
           { status: 400 }
@@ -133,22 +133,16 @@ export async function POST(request, { params }) {
 
     if (manager) {
       try {
-        const { notify } = await import("@/utils/notifications");
-        await notify({
-          audience: manager.user_type === "admin" ? "admin" : "developer",
-          recipientId: manager.user_id,
-          recipientEmail: manager.user_type === "admin" ? manager.email || null : null,
-          category: "project",
-          type: "project_manager_assigned",
-          title: "You are running a project",
+        const { error: notificationError } = await svc.from("notifications").insert({
+          organization_id: auth.orgId,
+          ...(manager.user_type === "admin"
+            ? { admin_id: manager.user_id, admin_recipient_type: "admin" }
+            : { developer_id: manager.user_id }),
+          category: "project", type: "project_manager_assigned", title: "You are running a project",
           message: `You were made project manager of ${project.name || "a project"}.`,
-          projectId: project.id,
-          entityType: "project",
-          entityId: project.id,
-          // Being handed a project is news every time it happens, but the same
-          // save landing twice is not.
-          dedupeKey: `project_manager_assigned:${project.id}:${manager.user_id}`,
+          project_id: project.id, entity_type: "project", entity_id: project.id, read: false,
         });
+        if (notificationError) console.error("Project manager notification failed:", notificationError.message);
       } catch {
         /* the assignment is saved — announcing it must not fail the request */
       }

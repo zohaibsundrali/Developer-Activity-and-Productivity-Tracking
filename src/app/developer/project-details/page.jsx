@@ -177,6 +177,8 @@ function ProjectDetailsContent() {
   // Validation messages state
   const [validationError, setValidationError] = useState('');
   const [validationSuccess, setValidationSuccess] = useState('');
+  const [notificationWarning, setNotificationWarning] = useState('');
+  const [retryingNotification, setRetryingNotification] = useState(false);
   
   // Current logged-in developer state
   const [currentDeveloper, setCurrentDeveloper] = useState(null);
@@ -376,15 +378,13 @@ function ProjectDetailsContent() {
       
       // Step 2: Confirm submission
       const developerName = currentDeveloper?.name || 'You';
-      const confirmHtml = `Are you sure you want to submit these tasks?<br/><br/>` +
-        `Developer: <strong>${developerName}</strong><br/>` +
-        `Project: <strong>${project.name}</strong><br/>` +
-        `Total Tasks: <strong>${tasks.length}</strong><br/><br/>` +
+      const confirmText = `Are you sure you want to submit these tasks?\n\n` +
+        `Developer: ${developerName}\nProject: ${project.name}\nTotal Tasks: ${tasks.length}\n\n` +
         `This action cannot be undone.`;
       
       const confirmResult = await Swal.fire({
         title: "Confirm Submission",
-        html: confirmHtml,
+        text: confirmText,
         icon: "warning",
         showCancelButton: true,
         confirmButtonText: "Yes, submit tasks",
@@ -445,33 +445,7 @@ function ProjectDetailsContent() {
       // Step 5: Show success message
       setValidationSuccess('Tasks submitted successfully! Admin can now view your work.');
       
-      // Step 6: Send notification to admin (optional)
-      try {
-        if (currentDeveloper?.id && project.id) {
-          const { data: projectData } = await supabase
-            .from('projects')
-            .select('assigned_to, assigned_to_email')
-            .eq('id', project.id)
-            .single();
-          
-          if (projectData) {
-            await supabase
-              .from('notifications')
-              .insert({
-                assigned_developer_id: currentDeveloper.id,
-                developer_id: currentDeveloper.id,
-                admin_id: projectData.assigned_to,
-                admin_email: projectData.assigned_to_email,
-                message: `Tasks Submitted: ${currentDeveloper.name} submitted ${tasks.length} tasks for "${project.name}".`,
-                type: 'task_submitted',
-                read: false,
-                created_at: new Date().toISOString()
-              });
-          }
-        }
-      } catch (notifError) {
-        // Silently handle error
-      }
+      setNotificationWarning(submitResult.notificationWarning || '');
       
       // Auto-hide messages
       setTimeout(() => {
@@ -758,6 +732,23 @@ function ProjectDetailsContent() {
     } finally {
       setDownloading(false);
     }
+  };
+
+  const retryPlanNotification = async () => {
+    if (retryingNotification) return;
+    setRetryingNotification(true);
+    try {
+      const response = await authFetch('/api/task-plan/save-submit', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: project.id, notificationOnly: true }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) throw new Error(result.error || 'Could not resend the notification');
+      setNotificationWarning(result.notificationWarning || '');
+      if (!result.notificationWarning) showInfo('Notification processed', 'The review notification request was processed. Recipient preferences still apply.');
+    } catch (error) {
+      setNotificationWarning(error.message || 'Could not resend the notification');
+    } finally { setRetryingNotification(false); }
   };
 
   // Keep submission state in sync with DB (source of truth)
@@ -1759,6 +1750,15 @@ function ProjectDetailsContent() {
               </svg>
               Work submitted to Supabase successfully!
             </div>
+          </div>
+        )}
+
+        {notificationWarning && (
+          <div role="alert" className="fixed bottom-4 right-4 max-w-md bg-card text-foreground p-4 rounded-lg shadow-elevated z-50">
+            <p>{notificationWarning}</p>
+            <Button variant="outline" className="mt-2" disabled={retryingNotification} onClick={retryPlanNotification}>
+              {retryingNotification ? 'Sending…' : 'Retry notification'}
+            </Button>
           </div>
         )}
 

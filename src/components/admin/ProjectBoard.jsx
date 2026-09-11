@@ -2,13 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
-import { getOrgId } from "@/utils/orgContext";
+import { taskUiPermissions } from "@/utils/taskUiPermissions";
+import { allowed } from "@/utils/permissions";
+import { getOrgId, getOrgContext } from "@/utils/orgContext";
 import {
   loadTasks,
   createTask,
   updateTask,
   changeTaskStatus,
   normalizeStatus,
+  allowedTransitions,
   loadSprints,
   loadEpics,
   BOARD_COLUMNS,
@@ -239,7 +242,7 @@ export default function ProjectBoard() {
   /* ---- create task ---------------------------------------------------- */
   const handleCreate = useCallback(
     async (columnId, title) => {
-      if (!projectId) return;
+      if (!projectId || !taskUiPermissions({ context: getOrgContext(), allowed }).manage) return;
       try {
         const { error } = await createTask(projectId, {
           task_title: title,
@@ -259,7 +262,7 @@ export default function ProjectBoard() {
 
   /* ---- drag & drop ---------------------------------------------------- */
   const handleDragStart = useCallback((e, task) => {
-    if (!task?.id) return;
+    if (!task?.id || !taskUiPermissions({ task, context: getOrgContext(), allowed }).move || !allowedTransitions(task.status).length) return;
     e.dataTransfer.setData("text/plain", String(task.id));
     e.dataTransfer.effectAllowed = "move";
   }, []);
@@ -271,7 +274,8 @@ export default function ProjectBoard() {
       const id = e.dataTransfer.getData("text/plain");
       if (!id) return;
       const task = (tasks || []).find((t) => String(t.id) === String(id));
-      if (!task) return;
+      if (!task || !taskUiPermissions({ task, context: getOrgContext(), allowed }).move) return;
+      if (!allowedTransitions(task.status).includes(columnId)) return;
       if (normalizeStatus(task.status) === columnId) return; // no move needed
 
       const target = BOARD_COLUMNS.find((c) => c.id === columnId);
@@ -406,11 +410,12 @@ export default function ProjectBoard() {
           task={task}
           assigneeName={assigneeName(task.developer_id)}
           onOpen={setSelectedTask}
+          draggable={taskUiPermissions({ task, context: getOrgContext(), allowed }).move && allowedTransitions(task.status).length > 0}
           onDragStart={handleDragStart}
           onDragEnd={() => setDragOverCol(null)}
         />
       )),
-      footer: col.reviewOnly ? null : (
+      footer: col.reviewOnly || !taskUiPermissions({ context: getOrgContext(), allowed }).manage ? null : (
         <AddTask columnId={col.id} columnLabel={meta.label} onCreate={handleCreate} />
       ),
     };

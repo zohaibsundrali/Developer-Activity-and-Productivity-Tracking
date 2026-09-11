@@ -189,7 +189,7 @@ describe("H-1 · client_visible cannot be flipped by anyone who feels like it", 
      * way, because the browser talks to PostgREST directly.
      */
     const drawer = read("src/components/admin/TaskDetailDrawer.jsx");
-    expect(drawer).toContain('allowed("task.set_client_visibility")');
+    expect(drawer).toContain('actionAccess.editField("client_visible")');
     expect(stripJs(read("src/utils/pmData.js"))).toMatch(
       /from\("developer_tasks"\)\s*\.update\(/
     );
