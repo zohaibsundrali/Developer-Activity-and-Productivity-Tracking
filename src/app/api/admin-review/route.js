@@ -1,3 +1,4 @@
+import { projectActorCanReview, isOwnDeveloperWork } from '@/utils/projectActorIdentity';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getAuthedOrg, serviceClient, orgScopedClient } from '@/utils/serverAuth';
@@ -29,7 +30,7 @@ export async function POST(request) {
     if (!auth) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    if (auth.userType === 'client') {
+    if (!['admin', 'developer'].includes(auth.userType)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     // Billing lock — see the note in src/app/api/task-submission/route.js.
@@ -95,11 +96,11 @@ export async function POST(request) {
       );
     }
 
-    // Authorization: ensure this admin owns the project this task belongs to.
+    // Authorization: verify project ownership or assigned manager delegation.
     // The projects table uses created_by / added_by for ownership — there is no admin_id column.
     const { data: project, error: projectError } = await supabase
       .from('projects')
-      .select('id, created_by, added_by')
+      .select('id, created_by, created_by_type, added_by, added_by_type')
       .eq('id', task.project_id)
       .eq('organization_id', auth.orgId)
       .single();
@@ -112,11 +113,9 @@ export async function POST(request) {
       );
     }
 
-    const isOwner =
-      project.created_by === auth.appUserId ||
-      project.added_by === auth.appUserId;
+    const canReviewProject = await projectActorCanReview(serviceClient(), auth, project.id);
 
-    if (!isOwner) {
+    if (!canReviewProject) {
       return NextResponse.json(
         { error: 'Not authorized to review submissions for this project' },
         { status: 403 }
@@ -172,10 +171,9 @@ export async function POST(request) {
     // duties, it is a note saying we thought about it. Somebody else with
     // `task.review` reviews it — and if nobody else has the permission, that is
     // the thing to fix.
-    const reviewerId = auth.appUserId;
-    const isOwnTask = Boolean(reviewerId) && String(task.developer_id) === String(reviewerId);
+    const isOwnTask = isOwnDeveloperWork(auth, task.developer_id);
     const isOwnSubmission =
-      Boolean(reviewerId) && String(submission.developer_id) === String(reviewerId);
+      isOwnDeveloperWork(auth, submission.developer_id);
 
     if (isOwnTask || isOwnSubmission) {
       return NextResponse.json(
@@ -218,7 +216,7 @@ export async function POST(request) {
   } catch (error) {
     console.error('Admin review error:', error);
     return NextResponse.json(
-      { error: 'Internal server error: ' + error.message },
+      { error: 'Could not complete the review request. Please refresh and retry.' },
       { status: 500 }
     );
   }
@@ -231,7 +229,7 @@ export async function GET(request) {
     if (!auth) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    if (auth.userType === 'client') {
+    if (!['admin', 'developer'].includes(auth.userType)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     // Permission, not a role list. See utils/permissionCatalogue.js — the
@@ -243,6 +241,8 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') || 'pending';
     const requestedAdminId = searchParams.get('adminId');
+    const requestedType = searchParams.get('userType');
+    if (requestedType && !['admin', 'developer'].includes(requestedType)) return NextResponse.json({ error: 'Invalid userType' }, { status: 400 });
 
     // WHOSE QUEUE IS THIS? It used to be whoever the query string said.
     //
@@ -257,11 +257,18 @@ export async function GET(request) {
     // Default to the caller. Naming somebody else needs `task.view_all`, the
     // key that already means "see work that is not yours".
     const wantsSomeoneElse =
-      requestedAdminId && String(requestedAdminId) !== String(auth.appUserId);
+      (requestedAdminId && String(requestedAdminId) !== String(auth.appUserId)) ||
+      (requestedType && requestedType !== auth.userType);
     if (wantsSomeoneElse && !authCan(auth, 'task.view_all')) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-    const adminId = wantsSomeoneElse ? requestedAdminId : auth.appUserId;
+    const adminId = requestedAdminId || auth.appUserId;
+    let profileType = requestedType || (!wantsSomeoneElse ? auth.userType : null);
+    if (!profileType) {
+      const member = await serviceClient().from('memberships').select('user_type').eq('organization_id', auth.orgId).eq('user_id', adminId).in('user_type', ['admin', 'developer']).maybeSingle();
+      if (member.error || !member.data) return NextResponse.json({ error: 'Specify userType for an ambiguous or unknown reviewer identity' }, { status: 400 });
+      profileType = member.data.user_type;
+    }
 
     // AND IT IS INTERPOLATED INTO A FILTER. `.or()` takes a PostgREST filter
     // EXPRESSION, not bound parameters, so a comma or a dot in `adminId` is
@@ -282,18 +289,21 @@ export async function GET(request) {
     const { data: adminProjects, error: projectsError } = await supabase
       .from('projects')
       .select('id')
-      .or(`created_by.eq.${adminId},added_by.eq.${adminId}`)
+      .or(`created_by.eq.${adminId},added_by.eq.${adminId},manager_id.eq.${adminId}`)
       .eq('organization_id', auth.orgId);
 
     if (projectsError) {
       console.error('Admin projects lookup error:', projectsError);
       return NextResponse.json(
-        { error: 'Failed to resolve admin projects: ' + projectsError.message },
+        { error: 'Could not load review projects. Please retry.' },
         { status: 500 }
       );
     }
 
-    const projectIds = (adminProjects || []).map((p) => p.id);
+    const projectIds = [];
+    for (const project of adminProjects || []) {
+      if (await projectActorCanReview(serviceClient(), { ...auth, appUserId: adminId, userType: profileType }, project.id)) projectIds.push(project.id);
+    }
 
     // If the admin has no projects yet, return an empty list immediately.
     if (projectIds.length === 0) {
@@ -379,7 +389,7 @@ export async function GET(request) {
     if (error) {
       console.error('Task submissions fetch error:', error);
       return NextResponse.json(
-        { error: 'Failed to fetch reviews: ' + error.message },
+        { error: 'Could not load reviews. Please retry.' },
         { status: 500 }
       );
     }
@@ -405,7 +415,7 @@ export async function GET(request) {
           .from('screenshots')
           .select('*')
           .eq('organization_id', auth.orgId)
-          .or(`developer_id.eq.${submission.developer_id},developer_email.eq.${submission.developers?.email}`)
+          .eq('developer_id', submission.developer_id)
           .order('timestamp', { ascending: false })
           .limit(5);
         // Resolve the display URL. Phase 2 screenshots live in the private
@@ -443,7 +453,7 @@ export async function GET(request) {
   } catch (error) {
     console.error('Fetch reviews error:', error);
     return NextResponse.json(
-      { error: 'Internal server error: ' + error.message },
+      { error: 'Could not complete the review request. Please refresh and retry.' },
       { status: 500 }
     );
   }

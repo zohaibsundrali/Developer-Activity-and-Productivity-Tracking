@@ -6,7 +6,7 @@ vi.mock('@/utils/permissionOverrides', () => ({ loadOverrides: async (_svc, subj
 import { notifyTaskPlanReviewers } from '@/utils/taskPlanNotifications';
 const project={id:'project',name:'Private project',created_by:'owner',added_by:'owner',assigned_to:'developer',task_plan_submitted_at:'2026-09-11T10:00:00Z'};
 let rows, members, keys, failure;
-function client() { return { from(table) {
+function client() { return { rpc: async () => ({ data: true }), from(table) {
  if(table==='notifications') return { insert: row => ({select: async()=> {
   if(failure) return {error:{code:'503'}};
   if(keys.has(row.dedupe_key)) return {error:{code:'23505'}};
@@ -49,6 +49,37 @@ it('reports delivery failures so the saved plan can retry its notice',async()=>{
 });
 
 it('does not notify the plan submitter to review their own work',async()=>{
+ members[0].user_type='developer';
  const result=await notifyTaskPlanReviewers(client(),'org',{...project,assigned_developer_id:'owner'});
  expect(rows).toHaveLength(0);expect(result.warning).toContain('no unambiguous');
+});
+
+it('typed admin owners are not confused with a colliding developer submitter',async()=>{
+ members.push({...members[0],user_type:'developer'});
+ await notifyTaskPlanReviewers(client(),'org',{...project,created_by_type:'admin',added_by_type:'admin',assigned_developer_id:'owner'});
+ expect(rows).toHaveLength(1);expect(rows[0].admin_recipient_type).toBe('admin');
+});
+it('a suspended colliding profile still makes historical ownership ambiguous',async()=>{
+ members.push({...members[0],user_type:'developer',status:'suspended'});
+ await notifyTaskPlanReviewers(client(),'org',project);expect(rows).toHaveLength(0);
+});
+it('the shared ownership predicate can refuse a candidate despite review permission',async()=>{
+ const svc=client();svc.rpc=async()=>({data:false});await notifyTaskPlanReviewers(svc,'org',project);expect(rows).toHaveLength(0);
+});
+
+it('notifies a delegated manager with effective review permission',async()=>{
+ members.push({organization_id:'org',user_id:'manager',user_type:'developer',role:'manager',status:'active'});
+ await notifyTaskPlanReviewers(client(),'org',{...project,created_by:null,added_by:null,manager_id:'manager',manager_type:'developer'});
+ expect(rows).toHaveLength(1);expect(rows[0].developer_id).toBe('manager');
+});
+it('does not notify a delegated manager with an explicit review denial',async()=>{
+ members.push({organization_id:'org',user_id:'manager',user_type:'developer',role:'manager',status:'active'});
+ state.overrides.manager={'task.review':false};
+ await notifyTaskPlanReviewers(client(),'org',{...project,created_by:null,added_by:null,manager_id:'manager',manager_type:'developer'});
+ expect(rows).toHaveLength(0);
+});
+it('does not notify the assigned developer as their own delegated reviewer',async()=>{
+ members[1].role='manager';
+ await notifyTaskPlanReviewers(client(),'org',{...project,created_by:null,added_by:null,manager_id:'developer',manager_type:'developer',assigned_developer_id:'developer'});
+ expect(rows).toHaveLength(0);
 });

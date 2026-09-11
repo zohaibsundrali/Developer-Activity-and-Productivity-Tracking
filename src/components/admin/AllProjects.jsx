@@ -482,7 +482,9 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
             assigned_to: newProject.assigned_developer, // ✅ Fixed: Use developer ID, not admin ID
             assigned_to_email: assignedDeveloper.email, // ✅ Fixed: Use developer email
             created_by: currentAdmin.id,
+            created_by_type: currentAdmin.role === "admin" ? "admin" : "developer",
             added_by: currentAdmin.id, // Store who added this project
+            added_by_type: currentAdmin.role === "admin" ? "admin" : "developer",
             added_by_admin: currentAdmin.email,
             organization_id: getOrgId(),
             created_at: new Date().toISOString()

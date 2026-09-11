@@ -1082,3 +1082,31 @@ describe("closing a project is a step somebody takes once", () => {
     expect(theClosureProject().completed_at).toBeNull();
   });
 });
+
+describe('proposal acceptance composes project capabilities', () => {
+  it('does not create a project when project.create is explicitly denied', async () => {
+    db = seedProposal('submitted');
+    const { status } = await runDecide({ decision: 'accepted' }, actor({ role: 'admin', overrides: { 'project.create': false } }));
+    expect(status).toBe(403);expect(db.tables.projects).toHaveLength(0);expect(theProposal().status).toBe('submitted');
+  });
+  it('does not let proposal.decide assign a manager without the separate capability', async () => {
+    db = seedProposal('submitted');
+    const { status } = await runDecide({ decision: 'accepted', managerId: 'manager', managerType: 'developer' }, actor({ role: 'manager' }));
+    expect(status).toBe(403);expect(db.tables.projects).toHaveLength(0);expect(theProposal().status).toBe('submitted');
+  });
+  it('honors an explicit manager-assignment denial for admins too', async () => {
+    db = seedProposal('submitted');
+    const { status } = await runDecide({ decision: 'accepted', managerId: 'manager' }, actor({ role: 'admin', overrides: { 'project.assign_manager': false } }));
+    expect(status).toBe(403);expect(db.tables.projects).toHaveLength(0);
+  });
+  it('permits rejection without project creation or assignment authority', async () => {
+    db = seedProposal('submitted');
+    const { status } = await runDecide({ decision: 'rejected', reason: 'No capacity', managerId: 'ignored' }, actor({ role: 'admin', overrides: { 'project.create': false, 'project.assign_manager': false } }));
+    expect(status).toBe(200);expect(theProposal().status).toBe('rejected');expect(db.tables.projects).toHaveLength(0);
+  });
+  it.each(['client', 'unknown'])('refuses a %s profile despite spoofed staff permissions', async userType => {
+    db = seedProposal('submitted');
+    const { status } = await runDecide({ decision: 'accepted' }, actor({ role: 'owner', userType, overrides: { 'proposal.decide': true, 'project.create': true } }));
+    expect(status).toBe(403);expect(db.tables.projects).toHaveLength(0);
+  });
+});

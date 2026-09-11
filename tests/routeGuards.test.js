@@ -154,12 +154,12 @@ describe("the checks a permission cannot express are still there", () => {
      */
     const src = read("src/app/api/projects/[id]/closure/route.js");
     expect(src).toContain('authCan(auth, "project.complete")');
-    expect(src).toMatch(/String\(project\.manager_id\) === String\(auth\.appUserId\)/);
+    expect(src).toContain("return projectManagerMatches(serviceClient(), auth, project)");
     expect(src).toMatch(/if \(!project\.manager_id\) return true;/);
     // And the ownership comparison must come AFTER the owner/admin short
     // circuit, or owners would be blocked from projects they do not manage.
     const shortCircuit = src.indexOf('["owner", "admin"].includes(auth.role)');
-    const ownership = src.indexOf("String(project.manager_id)");
+    const ownership = src.indexOf("return projectManagerMatches(serviceClient(), auth, project)");
     expect(shortCircuit).toBeGreaterThan(-1);
     expect(ownership).toBeGreaterThan(shortCircuit);
   });

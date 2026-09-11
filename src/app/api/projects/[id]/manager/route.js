@@ -58,6 +58,8 @@ export async function POST(request, { params }) {
     // `null` is a real instruction here — "this project has no manager" — and
     // is distinct from the field being absent.
     const managerId = body.managerId ? String(body.managerId) : null;
+    const managerType = body.managerType || null;
+    if (managerType && !['admin', 'developer'].includes(managerType)) return NextResponse.json({ error: 'Invalid managerType' }, { status: 400 });
 
     const svc = serviceClient();
 
@@ -65,7 +67,7 @@ export async function POST(request, { params }) {
     // boundary on both reads below. It is not a hint.
     const { data: project } = await svc
       .from("projects")
-      .select("id, name, manager_id")
+      .select("id, name, manager_id, manager_type")
       .eq("id", params?.id)
       .eq("organization_id", auth.orgId)
       .maybeSingle();
@@ -78,17 +80,18 @@ export async function POST(request, { params }) {
       // Without this the field is a free-text uuid that lands in the project
       // and silently assigns it to nobody — the same check the decide route
       // makes, for the same reason.
-      const { data: mgr } = await svc
+      let managerQuery = svc
         .from("memberships")
         .select("user_id, role, status, email, user_type")
         .eq("organization_id", auth.orgId)
         .eq("user_id", managerId)
-        .eq("status", "active")
-        .maybeSingle();
+        .eq("status", "active");
+      if (managerType) managerQuery = managerQuery.eq("user_type", managerType);
+      const { data: mgr, error: managerError } = await managerQuery.maybeSingle();
 
-      if (!mgr) {
+      if (managerError || !mgr) {
         return NextResponse.json(
-          { error: "That person is not an active member of this organization." },
+          { error: "Choose an active staff member and specify managerType if the identity is ambiguous." },
           { status: 400 }
         );
       }
@@ -101,7 +104,7 @@ export async function POST(request, { params }) {
       manager = mgr;
     }
 
-    if (String(project.manager_id || "") === String(managerId || "")) {
+    if (String(project.manager_id || "") === String(managerId || "") && (project.manager_type || null) === (manager?.user_type || null)) {
       // Not an error — the caller asked for a state the project is already in.
       // Reporting it as a failure would make a double-click look broken.
       return NextResponse.json({ success: true, unchanged: true, managerId });
@@ -109,7 +112,7 @@ export async function POST(request, { params }) {
 
     const { error } = await svc
       .from("projects")
-      .update({ manager_id: managerId, updated_at: new Date().toISOString() })
+      .update({ manager_id: managerId, manager_type: manager?.user_type || null, updated_at: new Date().toISOString() })
       .eq("id", project.id)
       .eq("organization_id", auth.orgId);
 
@@ -125,7 +128,7 @@ export async function POST(request, { params }) {
         entity_id: project.id,
         action: managerId ? "project_manager_assigned" : "project_manager_cleared",
         actor_id: auth.appUserId || null,
-        meta: { previousManagerId: project.manager_id || null, managerId },
+        meta: { previousManagerId: project.manager_id || null, previousManagerType: project.manager_type || null, managerId, managerType: manager?.user_type || null },
       });
     } catch {
       /* nobody is worse off for a missing activity row */

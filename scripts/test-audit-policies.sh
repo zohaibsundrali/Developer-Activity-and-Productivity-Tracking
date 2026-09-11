@@ -176,3 +176,18 @@ python3 scripts/test-task-parent-concurrency.py "$audit_container" task_relation
 docker exec "$audit_container" createdb -U postgres project_clone_test
 python3 scripts/expand-sql-fixture.py database/tests/project_clone_transaction.sql | \
   docker exec -i "$audit_container" psql -U postgres -d project_clone_test -v ON_ERROR_STOP=1
+
+docker exec "$audit_container" createdb -U postgres existing_plan_test
+python3 scripts/expand-sql-fixture.py database/tests/existing_plan_submission.sql | \
+  docker exec -i "$audit_container" psql -U postgres -d existing_plan_test -v ON_ERROR_STOP=1
+python3 scripts/test-existing-plan-concurrency.py "$audit_container" existing_plan_test
+
+docker exec "$audit_container" createdb -U postgres typed_project_test
+python3 scripts/expand-sql-fixture.py database/tests/typed_project_ownership.sql | \
+  docker exec -i "$audit_container" psql -U postgres -d typed_project_test -v ON_ERROR_STOP=1
+
+docker exec "$audit_container" createdb -U postgres plan_review_test
+python3 scripts/expand-sql-fixture.py database/tests/task_plan_review_transaction.sql | \
+  docker exec -i "$audit_container" psql -U postgres -d plan_review_test -v ON_ERROR_STOP=1
+docker exec -i "$audit_container" psql -U postgres -d typed_project_test -v ON_ERROR_STOP=1 < scripts/sql/project-identity-preflight.sql
+python3 scripts/test-plan-review-concurrency.py "$audit_container" plan_review_test

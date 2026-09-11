@@ -70,6 +70,7 @@ function thenable(result, extra = {}) {
 
 function fakeClient() {
   return {
+    rpc: async (name, args) => ({ data: name === 'project_actor_is_manager' && state.project.manager_id === args.p_user && state.project.manager_type === args.p_type }),
     from(table) {
       if (table === "projects") {
         const builder = {
@@ -235,6 +236,7 @@ describe("who may say which word", () => {
 
   it("lets the project's own manager mark complete", async () => {
     state.project.manager_id = "u-pm";
+    state.project.manager_type = "developer";
     auth = MANAGER;
     expect((await post({ action: "complete" })).status).toBe(200);
   });
@@ -270,6 +272,7 @@ describe("who may say which word", () => {
   it("refuses a manager closing the project", async () => {
     state.project.completed_at = "2026-08-01T00:00:00Z";
     state.project.manager_id = "u-pm";
+    state.project.manager_type = "developer";
     auth = MANAGER;
     expect((await post({ action: "close" })).status).toBe(403);
   });

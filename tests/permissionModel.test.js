@@ -143,6 +143,8 @@ describe("user_type is no longer asked authorization questions", () => {
   const STORAGE_ONLY = {
     "src/app/api/task-submission/route.js":
       "matches the task assignee only to a Developer profile; task.submit or task.manage separately grants the action",
+    "src/app/api/task-plan/submit/route.js":
+      "requires the Developer profile referenced by the saved plan assignment; task.update_own separately authorizes submission",
     "src/app/api/task-plan/save-submit/route.js":
       "requires the Developer profile referenced by projects.assigned_developer_id; " +
       "task.update_own separately decides authorization, preventing cross-table UUID collisions",
@@ -215,29 +217,16 @@ describe("the routes that were self-scoping nine roles", () => {
 
   it("task-plan/submit takes the identity from the token and ignores the body", () => {
     const src = read("src/app/api/task-plan/submit/route.js");
-    expect(src).toMatch(/developerId\s*=\s*auth\.appUserId/);
+    expect(src).toMatch(/p_developer:\s*auth\.appUserId/);
     // narrowed, not widened: nothing may name somebody else here any more
-    expect(src).not.toMatch(/developerId\s*=\s*body\./);
+    expect(src).not.toMatch(/p_developer:\s*body\./);
   });
 
   it("task-plan/submit still asks for the permission before assuming identity", () => {
-    // Mutation testing caught this one: deleting the authCan line entirely left
-    // every assertion above green, because forcing developerId to the token is
-    // a separate fact from being allowed to file a plan at all.
-    //
-    // The guard looks redundant — every staff role holds task.update_own, and
-    // clients are refused higher up — so it is worth writing down what it
-    // actually carries. authCan reads the per-person overrides that travel on
-    // `auth`, so this line is the only thing that makes an explicit DENY of
-    // task.update_own against one individual apply to plan submission, and the
-    // only thing that returns 503 when those overrides could not be read. A
-    // role-derived reading of the same key would do neither.
-    // `read` has already stripped the comments the block above is written in.
     const code = read("src/app/api/task-plan/submit/route.js");
-    expect(code).toMatch(/if\s*\(!authCan\(auth,\s*['"]task\.update_own['"]\)\)/);
-    expect(code.indexOf("task.update_own")).toBeLessThan(
-      code.indexOf("developerId = auth.appUserId")
-    );
+    expect(code).toMatch(/requirePermission\(auth,\s*['"]task\.update_own['"]\)/);
+    expect(code).toMatch(/if \(denied\) return denied/);
+    expect(code.indexOf("task.update_own")).toBeLessThan(code.indexOf("p_developer: auth.appUserId"));
   });
 
   it("keyboard-stats self-scopes on the absence of monitoring.view", () => {
@@ -252,7 +241,7 @@ describe("admin-review no longer takes the caller's identity from the URL", () =
   it("defaults adminId to the token and gates naming anybody else", () => {
     expect(src).toMatch(/String\(requestedAdminId\)\s*!==\s*String\(auth\.appUserId\)/);
     expect(src).toMatch(/wantsSomeoneElse\s*&&\s*!authCan\(auth,\s*['"]task\.view_all['"]\)/);
-    expect(src).toMatch(/adminId\s*=\s*wantsSomeoneElse\s*\?\s*requestedAdminId\s*:\s*auth\.appUserId/);
+    expect(src).toMatch(/adminId\s*=\s*requestedAdminId\s*\|\|\s*auth\.appUserId/);
   });
 
   it("validates the id before interpolating it into a PostgREST filter", () => {

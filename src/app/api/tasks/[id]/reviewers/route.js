@@ -20,19 +20,19 @@ export async function GET(request, { params }) {
     if (task.error) throw task.error;
     if (!task.data) return reply({ error: 'Task not found' }, 404);
     const svc = serviceClient();
-    const project = await svc.from('projects').select('created_by, added_by')
+    const project = await svc.from('projects').select('created_by, created_by_type, added_by, added_by_type, manager_id, manager_type')
       .eq('organization_id', auth.orgId).eq('id', task.data.project_id).maybeSingle();
     if (project.error) throw project.error;
     if (!project.data) return reply({ error: 'Project not found' }, 404);
-    const creatorIds = [...new Set([project.data.created_by, project.data.added_by].filter(Boolean))];
-    if (!creatorIds.length) return reply({ reviewers: [] });
+    const candidateIds = [...new Set([project.data.created_by, project.data.added_by, project.data.manager_id].filter(Boolean))];
+    if (!candidateIds.length) return reply({ reviewers: [] });
     const memberships = await svc.from('memberships').select('user_id, user_type')
-      .eq('organization_id', auth.orgId).eq('status', 'active').in('user_id', creatorIds).in('user_type', ['admin', 'developer']);
+      .eq('organization_id', auth.orgId).eq('status', 'active').in('user_id', candidateIds).in('user_type', ['admin', 'developer']);
     if (memberships.error) throw memberships.error;
     const reviewers = [];
     for (const member of memberships.data || []) {
       // Shared with watcher INSERT authorization: typed membership, effective
-      // permission, unambiguous project ownership, and no self-review.
+      // permission, project owner/manager authority, and no self-review.
       const eligible = await svc.rpc('task_watcher_reviewer_eligible', {
         p_org: auth.orgId, p_task: id, p_user: member.user_id, p_type: member.user_type,
       });

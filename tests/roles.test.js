@@ -252,7 +252,7 @@ describe("qa can review, and that is the point of it", () => {
   it("is a reviewer in both review routes", () => {
     // Both routes ask for the permission now instead of listing roles.
     for (const route of ["src/app/api/admin-review/route.js", "src/app/api/task-plan/review/route.js"]) {
-      expect(read(route), route).toContain('requirePermission(auth, "task.review")');
+      expect(read(route), route).toMatch(/requirePermission\(auth, ['"]task\.review['"]\)/);
     }
     expect(roleCan("qa", "task.review")).toBe(true);
   });

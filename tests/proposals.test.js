@@ -134,7 +134,7 @@ describe("accept is ordered so a failure cannot claim success", () => {
   });
 
   it("verifies the assigned manager is really one, in this organization", () => {
-    const idx = DECIDE.indexOf("if (managerId)");
+    const idx = DECIDE.indexOf("let managerQuery = svc");
     const near = DECIDE.slice(idx, idx + 600);
     expect(near).toContain('.from("memberships")');
     expect(near).toContain('eq("organization_id", auth.orgId)');

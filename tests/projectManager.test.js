@@ -205,6 +205,7 @@ describe("saying yes to what is already true", () => {
   it("is not an error, and writes nothing", async () => {
     // A double-click must not look broken.
     state.project.manager_id = "pm";
+    state.project.manager_type = "developer";
     const res = await post({ managerId: "pm" });
     expect(res.status).toBe(200);
     expect((await res.json()).unchanged).toBe(true);
@@ -216,7 +217,7 @@ describe("the screen", () => {
   const UI = read("src/components/admin/ProjectOverview.jsx");
 
   it("fetches manager_id, or the dropdown could never show the current value", () => {
-    expect(UI).toMatch(/select\("id, name, status, progress, deadline, end_date, start_date, is_template, archived, manager_id"\)/);
+    expect(UI).toMatch(/select\("id, name, status, progress, deadline, end_date, start_date, is_template, archived, manager_id, manager_type"\)/);
   });
 
   it("offers only eligible, active people", () => {
@@ -267,5 +268,21 @@ describe("server manager notification delivery", () => {
   it("does not duplicate the notice on unchanged assignment", async () => {
     await post({managerId:"pm"}); await post({managerId:"pm"});
     expect(state.notifications).toHaveLength(1);
+  });
+});
+
+describe("typed manager assignment", () => {
+  beforeEach(() => { resetState(); auth = OWNER; });
+  it("persists the selected profile domain beside the manager ID", async () => {
+    expect((await post({ managerId: "pm", managerType: "developer" })).status).toBe(200);
+    expect(state.project.manager_type).toBe("developer");
+  });
+  it("does not select another domain with the same ID", async () => {
+    expect((await post({ managerId: "pm", managerType: "admin" })).status).toBe(400);
+    expect(state.updates).toHaveLength(0);
+  });
+  it("requires a valid staff domain", async () => {
+    expect((await post({ managerId: "pm", managerType: "client" })).status).toBe(400);
+    expect(state.updates).toHaveLength(0);
   });
 });

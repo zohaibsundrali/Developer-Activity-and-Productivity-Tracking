@@ -82,7 +82,6 @@ const ENFORCED_BY_RLS = {
   "employee.transfer": "the same policy; a transfer is an update to the profile row",
   "employee.activate": "EmployeeProfileEditor writes employment_status directly, under the same policy",
   "team.view": "TeamPanel reads memberships and project_members, both org-readable by RLS",
-  "project.create": "projects are inserted straight from the browser under 013's org policy",
   "billing.manage": "BillingSubscription reads through /api/billing/subscription, which asks billing.view; there is no separate 'manage' action in the UI",
 };
 
@@ -141,6 +140,6 @@ describe("what the RLS-enforced keys cost, stated once", () => {
     //
     // Every addition is a capability no route decides, so it should be a
     // decision somebody makes on purpose.
-    expect(Object.keys(ENFORCED_BY_RLS).length).toBe(9);
+    expect(Object.keys(ENFORCED_BY_RLS).length).toBe(8);
   });
 });

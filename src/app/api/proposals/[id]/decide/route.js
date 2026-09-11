@@ -53,6 +53,7 @@ export async function POST(request, { params }) {
   try {
     const auth = await getAuthedOrg(request);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!['admin', 'developer'].includes(auth.userType)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     // Permission, not a role list. See utils/permissionCatalogue.js — the
     // hand-typed array this replaces was one of fifteen, and roles added to the
     // product reached some of them and not others.
@@ -64,6 +65,9 @@ export async function POST(request, { params }) {
     const decision = String(body.decision || "");
     const reason = String(body.reason || "").trim();
     const managerId = body.managerId || null;
+    const managerType = body.managerType || null;
+    let resolvedManagerType = null;
+    if (managerType && !['admin', 'developer'].includes(managerType)) return NextResponse.json({ error: 'Invalid managerType' }, { status: 400 });
 
     if (!proposalId || !DECISIONS.includes(decision)) {
       return NextResponse.json({ error: "Unknown decision." }, { status: 400 });
@@ -171,6 +175,13 @@ export async function POST(request, { params }) {
 
     /* ---------- accept ---------- */
 
+    const createDenied = requirePermission(auth, 'project.create');
+    if (createDenied) return createDenied;
+    if (managerId) {
+      const assignmentDenied = requirePermission(auth, 'project.assign_manager');
+      if (assignmentDenied) return assignmentDenied;
+    }
+
     // Accepting creates a project, and a project is a metered resource. A
     // locked organization must not be able to take on new work through a side
     // door that skips the check every other create goes through.
@@ -181,19 +192,21 @@ export async function POST(request, { params }) {
     // Without this the field is a free-text uuid that lands in the project and
     // silently assigns work to nobody.
     if (managerId) {
-      const { data: mgr } = await svc
+      let managerQuery = svc
         .from("memberships")
-        .select("user_id, role, status")
+        .select("user_id, user_type, role, status")
         .eq("organization_id", auth.orgId)
         .eq("user_id", managerId)
-        .eq("status", "active")
-        .maybeSingle();
-      if (!mgr || !["owner", "admin", "manager", "team_lead"].includes(mgr.role)) {
+        .eq("status", "active");
+      if (managerType) managerQuery = managerQuery.eq("user_type", managerType);
+      const { data: mgr, error: managerError } = await managerQuery.maybeSingle();
+      if (managerError || !mgr || !["admin", "developer"].includes(mgr.user_type) || !["owner", "admin", "manager", "team_lead"].includes(mgr.role)) {
         return NextResponse.json(
           { error: "That person is not a project manager in your organization." },
           { status: 400 }
         );
       }
+      resolvedManagerType = mgr.user_type;
     }
 
     // 1) The project.
@@ -214,7 +227,9 @@ export async function POST(request, { params }) {
         budget: proposal.estimated_cost ?? proposal.budget,
         deadline: deadlineFor(proposal),
         created_by: auth.appUserId || null,
+        created_by_type: auth.appUserId ? auth.userType : null,
         manager_id: managerId,
+        manager_type: resolvedManagerType,
         proposal_id: proposal.id,
       })
       .select()
