@@ -76,6 +76,7 @@ function toClientComment(row, signedUrls, orgId) {
 // The project conversation, newest first, keyset-paged on `before`. Internal
 // staff-only comments are excluded here and by RLS in migration 032.
 export async function GET(request, { params }) {
+  params = await params;
   try {
     const auth = await getAuthedClient(request);
     if (!auth) {
@@ -150,6 +151,7 @@ export async function GET(request, { params }) {
 // never from the request: a client cannot post as staff or post an internal
 // comment even by asking for one.
 export async function POST(request, { params }) {
+  params = await params;
   try {
     const auth = await getAuthedClient(request);
     if (!auth) {

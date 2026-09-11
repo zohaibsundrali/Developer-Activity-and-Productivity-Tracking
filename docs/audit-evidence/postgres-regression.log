@@ -1,0 +1,93 @@
+CREATE ROLE
+CREATE SCHEMA
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+GRANT
+CREATE TABLE
+GRANT
+ALTER TABLE
+CREATE POLICY
+INSERT 0 6
+INSERT 0 1
+BEGIN
+CREATE FUNCTION
+REVOKE
+GRANT
+NOTICE:  policy "notifications_read" for relation "public.notifications" does not exist, skipping
+ALTER TABLE
+DROP POLICY
+CREATE POLICY
+DROP POLICY
+NOTICE:  policy "notifications_update" for relation "public.notifications" does not exist, skipping
+CREATE POLICY
+NOTICE:  policy "notifications_recipient_select" for relation "public.notifications" does not exist, skipping
+NOTICE:  policy "notifications_recipient_update" for relation "public.notifications" does not exist, skipping
+DROP POLICY
+CREATE POLICY
+DROP POLICY
+CREATE POLICY
+COMMIT
+SET
+                                                                                           set_config
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"email":"owner@example.com","app_metadata":{"role":"owner","user_type":"admin","app_user_id":"00000000-0000-0000-0000-000000000011","organization_id":"00000000-0000-0000-0000-000000000001"}}
+(1 row)
+
+DO
+                                                                                              set_config
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"email":"dev@example.com","app_metadata":{"role":"developer","user_type":"developer","app_user_id":"00000000-0000-0000-0000-000000000013","organization_id":"00000000-0000-0000-0000-000000000001"}}
+(1 row)
+
+DO
+                                                                                            set_config
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"email":"owner@example.com","app_metadata":{"role":"owner","user_type":"client","app_user_id":"00000000-0000-0000-0000-000000000011","organization_id":"00000000-0000-0000-0000-000000000001"}}
+(1 row)
+
+DO
+RESET
+CREATE FUNCTION
+CREATE TABLE
+ALTER TABLE
+GRANT
+CREATE POLICY
+INSERT 0 1
+CREATE FUNCTION
+BEGIN
+CREATE FUNCTION
+CREATE FUNCTION
+REVOKE
+REVOKE
+GRANT
+COMMIT
+                                                                                                                  set_config
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"sub":"00000000-0000-0000-0000-000000000099","email":"owner@example.com","app_metadata":{"role":"owner","user_type":"admin","app_user_id":"00000000-0000-0000-0000-000000000011","organization_id":"00000000-0000-0000-0000-000000000001"}}
+(1 row)
+
+SET
+DO
+RESET
+UPDATE 1
+SET
+DO
+RESET
+UPDATE 1
+SET
+DO
+RESET
+UPDATE 1
+                                                                                                     set_config
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"sub":"00000000-0000-0000-0000-000000000099","app_metadata":{"role":"employee","user_type":"admin","app_user_id":"00000000-0000-0000-0000-000000000011","organization_id":"00000000-0000-0000-0000-000000000001"}}
+(1 row)
+
+SET
+DO
+RESET
+DELETE 1
+SET
+DO
+RESET

@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { recordEvent } from "@/utils/systemEvents";
+import { isRole, rankOf } from "@/utils/roles";
 import { loadOverrides } from "@/utils/permissionOverrides";
 
 // Server-side auth helpers for API routes.
@@ -82,68 +83,43 @@ export async function getAuthedOrg(request) {
     return null;
   }
 
-  // Deactivated / offboarded members lose API access immediately, not merely
-  // at token expiry. memberships.status used to be written and never read, so
-  // suspending someone had no effect (audit finding C10). An absent membership
-  // row or status is treated as active so legacy accounts keep working.
+  // Membership is the current authority. Missing rows, query failures and
+  // pending invitations must never retain privileges from an old Auth claim.
   const appUserId = meta.app_user_id || null;
   const userType = meta.user_type || null;
-  if (appUserId && userType) {
-    const { data: membership } = await admin
-      .from("memberships")
-      .select("status")
+  if (!appUserId || !["admin", "developer", "client"].includes(userType)) return null;
+  let membership;
+  try {
+    const result = await admin.from("memberships")
+      .select("status, role")
       .eq("organization_id", orgId)
       .eq("user_id", appUserId)
       .eq("user_type", userType)
       .maybeSingle();
-    if (!membership) {
-      // CLAIM DRIFT, the second signature and the expensive one. The token
-      // names an (organization_id, app_user_id, user_type) triple that has no
-      // membership row behind it — the exact state
-      // database/052_repair_auth_claims.sql repairs by hand. Downstream this
-      // shows up as 401 "Unauthorized" on admin routes and as "new row violates
-      // row-level security policy" on writes, because auth_org() and
-      // auth_app_user_id() disagree with what the app is holding. Neither
-      // symptom points here.
-      //
-      // RECORDED, NOT REPAIRED. Repairing inside this function would make a
-      // read path write, and would silently change the caller's identity
-      // mid-request. The repair is POST /api/auth/repair-claims, which the
-      // affected user can reach precisely because it does not depend on these
-      // claims. The return value below is deliberately unchanged: an absent
-      // membership row is still treated as active, so legacy accounts keep
-      // working exactly as before.
-      await recordDriftOnce(data.user.id, {
-        orgId,
-        type: "auth.claims_drift_detected",
-        severity: "warning",
-        source: "auth",
-        message: "A verified token named a membership that does not exist.",
-        context: {
-          userId: appUserId,
-          userType,
-          role: meta.role || null,
-          reason: "membership_not_found",
-          route: "/api/auth/repair-claims",
-        },
-      });
-    }
-    if (membership && !isActiveStatus(membership.status)) {
-      // Monitoring (best effort, never throws). This one IS org-scoped: the
-      // token verified, so the org claim is trustworthy, and a suspended member
-      // still holding a live session is exactly what an owner should be able to
-      // see. Only opaque ids and the status word are stored.
-      await recordEvent({
-        orgId,
-        type: "auth.membership_blocked",
-        severity: "warning",
-        source: "auth",
-        message: "A member with a blocked membership was denied API access.",
-        context: { userId: appUserId, userType, status: membership.status, role: meta.role || null },
-      });
-      return null;
-    }
+    if (result.error) return null;
+    membership = result.data;
+  } catch {
+    return null;
   }
+  if (!membership) {
+    await recordDriftOnce(data.user.id, {
+      orgId, type: "auth.claims_drift_detected", severity: "warning", source: "auth",
+      message: "A verified token named a membership that does not exist.",
+      context: { userId: appUserId, userType, role: meta.role || null,
+        reason: "membership_not_found", route: "/api/auth/repair-claims" },
+    });
+    return null;
+  }
+  if (membership.status !== "active" || !isRole(membership.role)) {
+    await recordEvent({
+      orgId, type: "auth.membership_blocked", severity: "warning", source: "auth",
+      message: "A member without an active, valid membership was denied API access.",
+      context: { userId: appUserId, userType, status: membership.status, role: membership.role },
+    });
+    return null;
+  }
+  // A client profile cannot become staff through an inconsistent role row.
+  if ((userType === "client") !== (membership.role === "client")) return null;
 
   // PER-PERSON OVERRIDES, read once and carried on `auth`.
   //
@@ -178,7 +154,10 @@ export async function getAuthedOrg(request) {
     userId: data.user.id,
     email: data.user.email || null,
     orgId,
-    role: meta.role || null,
+    // A partially applied role change must retain the lower privilege until
+    // both the membership and Auth metadata have been updated.
+    role: !isRole(meta.role) ? null
+      : rankOf(meta.role) < rankOf(membership.role) ? meta.role : membership.role,
     userType,
     appUserId,
     overrides,
@@ -211,14 +190,6 @@ async function recordDriftOnce(key, event) {
     // Never let the memo itself break an auth path; fall through and record.
   }
   return recordEvent(event);
-}
-
-// Mirrors isMembershipActive() in src/utils/orgContext.js. Kept inline so the
-// server never imports a client module.
-const BLOCKED_MEMBERSHIP_STATUSES = ["suspended", "terminated", "inactive", "offboarded"];
-function isActiveStatus(status) {
-  if (!status) return true;
-  return !BLOCKED_MEMBERSHIP_STATUSES.includes(String(status).toLowerCase());
 }
 
 // A Supabase client bound to the caller's JWT. All reads/writes through it are

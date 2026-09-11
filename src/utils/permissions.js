@@ -115,24 +115,28 @@ export function atLeast(role) {
  * has always had, which is right for a first paint and wrong to rely on.
  */
 let PERMISSION_SET = null;
+let permissionGeneration = 0;
 
 /** Called once after sign-in. Safe to call again; safe to fail. */
 export async function loadPermissionSet(fetcher) {
+  const generation = ++permissionGeneration;
+  // Never retain another login's grants while the current lookup is pending.
+  PERMISSION_SET = new Set();
   try {
     const res = await fetcher("/api/me/permissions");
     const json = await res.json().catch(() => null);
-    if (!res.ok || !json?.success || !Array.isArray(json.permissions)) return false;
+    if (generation !== permissionGeneration || !res.ok || !json?.success || json.overridesUnavailable || !Array.isArray(json.permissions)) return false;
     PERMISSION_SET = new Set(json.permissions);
     return true;
   } catch {
-    // A failed fetch leaves the role-only fallback in place rather than
-    // stranding somebody with an empty menu. The routes and RLS still decide.
+    // Keep the empty set on failure; unreadable denies must not become grants.
     return false;
   }
 }
 
 /** Cleared on sign-out, so the next person does not inherit this one's set. */
 export function clearPermissionSet() {
+  permissionGeneration += 1;
   PERMISSION_SET = null;
 }
 

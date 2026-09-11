@@ -16,6 +16,9 @@ export const dynamic = "force-dynamic";
  *  the gate without this and the first organization whose trial ends is bricked
  *  with no route back in.
  *
+ * Production additionally requires BILLING_DEMO_ENABLED=true. Missing Stripe
+ * configuration alone must never authorize a free paid-plan grant.
+ *
  * IT TURNS ITSELF OFF
  *  The only condition under which this route does anything is
  *  `billingConfigured() === false` — no STRIPE_SECRET_KEY in the environment.
@@ -71,7 +74,7 @@ export async function POST(request) {
     const denied = requirePermission(auth, "billing.purchase");
     if (denied) return denied;
 
-    if (billingConfigured()) {
+    if (billingConfigured() || (process.env.NODE_ENV === "production" && process.env.BILLING_DEMO_ENABLED !== "true")) {
       // Stripe is live on this deployment. There is nothing to demo, and
       // pretending otherwise would be a way to get a paid plan for free.
       return NextResponse.json(

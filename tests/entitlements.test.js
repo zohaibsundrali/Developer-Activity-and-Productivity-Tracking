@@ -232,10 +232,10 @@ describe("checkResourceLimit", () => {
     expect(await checkResourceLimit(fakeService(), "org-1", "unicorns", NOW)).toBeNull();
   });
 
-  it("lets work through when counting itself fails", async () => {
-    // A database hiccup must not read as "limit reached" and halt the product.
+  it("returns a temporary failure when counting itself fails", async () => {
+    // A failed check is retryable, not a grant or an upgrade demand.
     const svc = fakeService({ failCount: true });
-    expect(await checkResourceLimit(svc, "org-1", "projects", NOW)).toBeNull();
+    expect(await checkResourceLimit(svc, "org-1", "projects", NOW)).toMatchObject({ status: 503 });
   });
 
   it("discounts a row the caller already wrote, so the last seat is sellable", async () => {
@@ -256,6 +256,30 @@ describe("checkResourceLimit", () => {
   });
 });
 
+describe("billing verification failures", () => {
+  const failing = (failedTable, failure) => {
+    const normal = fakeService();
+    return { from(table) {
+      if (table !== failedTable) return normal.from(table);
+      const q = { select: () => q, eq: () => q, neq: () => q,
+        maybeSingle: async () => failure, then: (resolve) => Promise.resolve(failure).then(resolve) };
+      return q;
+    } };
+  };
+  it.each(['organization_subscriptions', 'billing_plans'])('does not grant creation when %s errors', async (table) => {
+    const svc = failing(table, { data: null, error: { code: '57014' } });
+    expect(await checkResourceLimit(svc, 'org', 'projects', NOW)).toMatchObject({ status: 503 });
+    expect(await checkFeatureAccess(svc, 'org', 'automation', 'Automation', NOW)).toMatchObject({ status: 503 });
+  });
+  it.each([{ count: null, error: { code: '57014' } }, { count: null }, { count: -1 }])('rejects an unreadable resource count: %j', async (result) => {
+    expect(await checkResourceLimit(failing('projects', result), 'org', 'projects', NOW)).toMatchObject({ status: 503 });
+  });
+  it.each(['hr', 'finance', 'devops'])('meters %s against both tables it occupies', async (role) => {
+    expect(seatResourcesForRole(role)).toEqual(['employees', 'developers']);
+    expect(await checkSeatLimitForRole(fakeService({ counts: { developers: 3 } }), 'org', role, NOW)).toMatchObject({ status: 402, resource: 'developers' });
+  });
+});
+
 describe("seatResourcesForRole", () => {
   it("charges a developer to the developers meter, not only to employees", () => {
     // A developer row lands in `developers` AND in a non-client membership, so
@@ -267,8 +291,8 @@ describe("seatResourcesForRole", () => {
   });
 
   it("charges admin-like roles to employees only", () => {
-    // owner/admin/hr land in admin_users — nothing the developers meter counts.
-    for (const role of ["owner", "admin", "hr"]) {
+    // owner/admin land in admin_users — nothing the developers meter counts.
+    for (const role of ["owner", "admin"]) {
       expect(seatResourcesForRole(role)).toEqual(["employees"]);
     }
   });

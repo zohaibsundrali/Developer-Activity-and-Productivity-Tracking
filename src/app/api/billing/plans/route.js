@@ -40,12 +40,16 @@ export const dynamic = "force-dynamic";
 const PLAN_COLUMNS =
   "code, name, description, amount_cents, currency, billing_interval, trial_days, limits, features, sort_order";
 
+function demoEnabled() {
+  return !billingConfigured() && (process.env.NODE_ENV !== "production" || process.env.BILLING_DEMO_ENABLED === "true");
+}
+
 export async function GET() {
   try {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     if (!url || !key) {
-      return NextResponse.json({ plans: [], demo: !billingConfigured() });
+      return NextResponse.json({ plans: [], demo: demoEnabled() });
     }
 
     const svc = createClient(url, key, {
@@ -60,7 +64,7 @@ export async function GET() {
 
     if (error) {
       console.error("[billing/plans]", error.message);
-      return NextResponse.json({ plans: [], demo: !billingConfigured() });
+      return NextResponse.json({ plans: [], demo: demoEnabled() });
     }
 
     return NextResponse.json({
@@ -68,10 +72,10 @@ export async function GET() {
       // True when no Stripe key is configured, which is what makes the card
       // step a demo. The registration screen says so on the card form rather
       // than letting someone believe they have just paid.
-      demo: !billingConfigured(),
+      demo: demoEnabled(),
     });
   } catch (e) {
     console.error("[billing/plans]", e?.message || e);
-    return NextResponse.json({ plans: [], demo: true });
+    return NextResponse.json({ plans: [], demo: demoEnabled() });
   }
 }

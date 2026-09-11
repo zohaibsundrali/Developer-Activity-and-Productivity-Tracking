@@ -1,0 +1,488 @@
+[
+  {
+    "path": "/api/admin/health",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/admin/legacy-auth-audit",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/admin/members/role",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/admin/members/sync-roles",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/admin/permissions",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/admin/teams/[id]",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/admin-review",
+    "methods": [
+      "POST",
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/ai-generate-tasks",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/assets",
+    "methods": [
+      "GET",
+      "POST",
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/attendance",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/forgot-password",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/provision",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/repair-claims",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/session",
+    "methods": [
+      "POST",
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/auth/signup",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/verify-code",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/automation/notify",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/billing/access",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/billing/cancel",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/billing/checkout",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/billing/demo-activate",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/billing/plans",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/billing/portal",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/billing/subscription",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/billing/webhook",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/capacity",
+    "methods": [
+      "GET",
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/change-requests/[id]/advance",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/change-requests",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/client/account",
+    "methods": [
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/client/announcements",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/client/approvals/[id]",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/client/approvals",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/client/deliverables/[id]/url",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/client/invoices/[id]/pdf",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/client/invoices",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/client/projects/[id]/comments",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/client/projects/[id]",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/client/projects/[id]/timeline",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/client/projects",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/client/support/[threadId]",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/client/support",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/client/tasks/[id]/comments",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/client/tasks/[id]",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/contracts",
+    "methods": [
+      "GET",
+      "POST",
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/cron",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/csp-report",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/developer/change-password",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/developer/delete",
+    "methods": [
+      "DELETE",
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/developer-gantt",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/invitations/accept",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/invitations/lookup",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/invitations",
+    "methods": [
+      "POST",
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/invoicing",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/keyboard-stats",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/leave",
+    "methods": [
+      "GET",
+      "POST",
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/me/permissions",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/notify/client",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/performance",
+    "methods": [
+      "GET",
+      "POST",
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/productivity",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/projects/[id]/closure",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/projects/[id]/manager",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/projects/[id]/members",
+    "methods": [
+      "GET",
+      "POST",
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/proposals/[id]/decide",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/proposals",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/quality",
+    "methods": [
+      "GET",
+      "POST",
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/recruitment",
+    "methods": [
+      "GET",
+      "POST",
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/search",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/send-verification",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/signals",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/task-plan/review",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/task-plan/submit",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/task-submission",
+    "methods": [
+      "POST",
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/timesheets",
+    "methods": [
+      "GET",
+      "POST",
+      "PATCH"
+    ]
+  },
+  {
+    "path": "/api/track-activity",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/upload-screenshot",
+    "methods": [
+      "POST"
+    ]
+  }
+]

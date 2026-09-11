@@ -96,7 +96,7 @@ function fakeClient() {
           // with .update().eq().is().not().gte().select() as a single write
           // (migration 056). A single-level `{ eq }` throws on the second link.
           const result = {
-            data: table === "email_verifications" ? [{ id: "verification-1" }] : null,
+            data: table === "email_verifications" ? [{ id: "verification-1" }] : { id: `${table}-1` },
             error: null,
           };
           const builder = {
@@ -107,7 +107,7 @@ function fakeClient() {
             gte: () => builder,
             lt: () => builder,
             lte: () => builder,
-            select: () => thenable(result),
+            select: () => thenable(result, { single: async () => result }),
           };
           return thenable(result, builder);
         },

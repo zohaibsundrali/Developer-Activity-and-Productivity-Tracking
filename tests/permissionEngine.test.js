@@ -443,6 +443,6 @@ describe("the role lists that used to go stale", () => {
 
   it("the member picker holds no literal role list either", () => {
     expect(pickerSrc).not.toMatch(/const ROLES\s*=\s*\[/);
-    expect(pickerSrc).toContain('import { ROLES } from "@/utils/roles"');
+    expect(pickerSrc).toMatch(/import \{[^}]*\bROLES\b[^}]*\} from "@\/utils\/roles"/);
   });
 });

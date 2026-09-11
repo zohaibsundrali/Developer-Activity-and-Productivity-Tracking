@@ -223,6 +223,7 @@ async function notifyApprovalDecision(svc, { orgId, approval, clientId }) {
 // insert policy on that table, because an audit trail the audited party can
 // write is not an audit trail.
 export async function POST(request, { params }) {
+  params = await params;
   try {
     const auth = await getAuthedClient(request);
     if (!auth) {

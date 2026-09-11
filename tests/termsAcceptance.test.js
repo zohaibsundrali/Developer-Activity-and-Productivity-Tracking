@@ -39,6 +39,7 @@ function resetState(overrides = {}) {
     updates: [],
     deletes: [],
     createdUsers: [],
+    deletedUsers: [],
     invitation: {
       id: "invite-1",
       organization_id: "org-1",
@@ -108,7 +109,7 @@ function fakeClient() {
                 ? state.emailVerified
                   ? [{ id: "verification-1" }]
                   : []
-                : null,
+                : { id: `${table}-1` },
             error: state.updateErrors?.[table] || null,
           };
           const builder = {
@@ -119,13 +120,14 @@ function fakeClient() {
             gte: () => builder,
             lt: () => builder,
             lte: () => builder,
-            select: () => thenable(result),
+            select: () => thenable(result, { single: async () => result }),
           };
           return thenable(result, builder);
         },
         delete() {
           state.deletes.push({ table });
-          return { eq: async () => ({ data: null, error: null }) };
+          const q = { eq: () => q, then: (resolve) => Promise.resolve({ data: null, error: null }).then(resolve) };
+          return q;
         },
         select() {
           // `eq` returns a builder that carries `eq` again, so a two-filter
@@ -138,6 +140,7 @@ function fakeClient() {
             maybeSingle: async () => ({
               data:
                 table === "invitations" ? state.invitation
+                : table === "projects" ? { id: "project-1" }
                 : table === "billing_plans" ? state.plan
                 : table === "organizations" ? { id: "org-1", name: "Analytical Engines" }
                 : null,
@@ -151,6 +154,7 @@ function fakeClient() {
     },
     auth: {
       admin: {
+        deleteUser: async (id) => { state.deletedUsers.push(id); return { error: null }; },
         createUser: async (args) => {
           state.createdUsers.push(args);
           return { data: { user: { id: "auth-1" } }, error: null };
@@ -274,7 +278,7 @@ describe("invitation accept refuses without acceptance", () => {
   it("still refuses a missing token before anything else, unchanged", async () => {
     const res = await acceptPOST(req({ password: "x", termsAccepted: true }));
     expect(res.status).toBe(400);
-    expect((await res.json()).error).toBe("token and password are required");
+    expect((await res.json()).error).toContain("valid token and password");
   });
 });
 
@@ -702,5 +706,30 @@ describe("the plan a signup starts on", () => {
     const serialized = JSON.stringify(state.inserts);
     expect(serialized).not.toContain("4242");
     expect(serialized).not.toContain("123");
+  });
+});
+
+
+describe("invitation write failures", () => {
+  it.each(['memberships', 'project_clients'])('rolls back a failed %s insert and keeps the invitation pending', async (table) => {
+    if (table === 'project_clients') { state.invitation.role = 'client'; state.invitation.project_id = 'project-1'; }
+    state.insertErrors[table] = { code: '23503' };
+    const res = await acceptPOST(req({ ...ACCEPT_BODY, termsAccepted: true }));
+    expect(res.status).toBe(500);
+    expect(state.createdUsers).toHaveLength(0);
+    expect(state.updates.filter(u => u.table === 'invitations')).toHaveLength(0);
+    expect(state.deletes.map(d => d.table)).toContain(table === 'project_clients' ? 'clients' : 'developers');
+  });
+  it.each(['developers', 'invitations'])('removes the new Auth account after a failed %s update', async (table) => {
+    state.updateErrors[table] = { code: '57014' };
+    expect((await acceptPOST(req({ ...ACCEPT_BODY, termsAccepted: true }))).status).toBe(500);
+    expect(state.deletedUsers).toEqual(['auth-1']);
+    expect(state.deletes.map(d => d.table)).toContain('memberships');
+    expect(state.deletes.map(d => d.table)).toContain('developers');
+  });
+  it.each(['expired', 'unknown'])('rejects invitation status %s without creating an account', async (status) => {
+    state.invitation.status = status;
+    expect((await acceptPOST(req({ ...ACCEPT_BODY, termsAccepted: true }))).status).toBe(410);
+    expect(state.inserts).toHaveLength(0);
   });
 });

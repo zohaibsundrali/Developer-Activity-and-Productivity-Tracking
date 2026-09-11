@@ -59,6 +59,7 @@ async function signAttachments(svc, rows, orgId) {
 // same rule covers "no such task", "internal task" and "someone else's task",
 // because telling them apart is exactly what a probe is looking for.
 export async function GET(request, { params }) {
+  params = await params;
   try {
     const auth = await getAuthedClient(request);
     if (!auth) {

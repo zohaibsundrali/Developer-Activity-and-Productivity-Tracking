@@ -447,3 +447,15 @@ describe('DESKTOP_INGEST_ENFORCE parsing', () => {
     });
   }
 });
+
+
+describe('production ingest never permits anonymous writes', () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it.each(['track-activity', 'upload-screenshot'])('%s fails closed when no secret is configured', async (route) => {
+    vi.stubEnv('NODE_ENV', 'production');
+    process.env.DESKTOP_INGEST_ENFORCE = 'false';
+    const { POST } = await import(`@/app/api/${route}/route.js`);
+    const res = await POST(new Request(`http://localhost/api/${route}`, { method: 'POST', body: '{}' }));
+    expect(res.status).toBe(401);
+  });
+});

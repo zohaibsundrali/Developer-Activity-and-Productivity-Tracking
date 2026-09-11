@@ -83,6 +83,7 @@ const ESTIMATABLE = ["submitted", "estimating", "awaiting_admin", "awaiting_clie
 const STAFF_REJECTABLE = ["submitted", "estimating", "awaiting_admin", "awaiting_client"];
 
 export async function POST(request, { params }) {
+  params = await params;
   try {
     const auth = await getAuthedOrg(request);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

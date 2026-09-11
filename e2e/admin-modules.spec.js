@@ -61,6 +61,9 @@ async function walkEverySection(page, who) {
 }
 
 test.describe('Admin console — every section renders', () => {
+  // These tests walk the entire console, rather than one screen. Keep each
+  // assertion's normal timeout, but budget enough time for the full journey.
+  test.setTimeout(300_000);
   test('owner: every sidebar entry opens its screen without an error state', async ({ page }) => {
     skipUnless(owner);
     await login(page, owner);

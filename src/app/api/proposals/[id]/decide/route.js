@@ -49,6 +49,7 @@ const DECISIONS = ["accepted", "rejected", "needs_info", "in_review", "estimate"
 const TERMINAL = ["accepted", "rejected"];
 
 export async function POST(request, { params }) {
+  params = await params;
   try {
     const auth = await getAuthedOrg(request);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

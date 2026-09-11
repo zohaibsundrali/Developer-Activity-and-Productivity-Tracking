@@ -110,6 +110,10 @@ export const metadata = {
     follow: true,
     googleBot: { index: true, follow: true, 'max-image-preview': 'large' },
   },
+
+};
+
+export const viewport = {
   // Browser chrome picks up the surface colour of whichever theme is showing.
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#F8FAFB' },

@@ -336,7 +336,9 @@ async function applySubscription(
   const customerId = idOf(subscription.customer);
   if (customerId) row.stripe_customer_id = customerId;
 
-  if (terminal) {
+  if (terminal && status !== "unpaid") {
+    // Unpaid retains its paid plan identity so accessState keeps the workspace
+    // locked; rewriting it to free bypassed the unpaid lock entirely.
     // Entitlement limits are read from plan_code alone — the 028 trigger joins
     // billing_plans on it without consulting status — so a cancelled Business
     // organization would keep its 150-project ceiling for good. Nothing else in

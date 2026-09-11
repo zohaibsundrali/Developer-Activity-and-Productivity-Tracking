@@ -1,4 +1,6 @@
 "use client";
+
+import PermissionBoundary from "@/components/auth/PermissionBoundary";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
@@ -264,7 +266,7 @@ const withAdminAuth = (WrappedComponent) => {
       return null; // Will redirect in useEffect
     }
 
-    return <WrappedComponent {...props} onLogout={handleLogout} />;
+    return <PermissionBoundary><WrappedComponent {...props} onLogout={handleLogout} /></PermissionBoundary>;
   };
 };
 

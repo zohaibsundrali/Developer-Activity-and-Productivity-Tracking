@@ -181,11 +181,19 @@ export const EMPLOYEE_NAV = [
 export {
   ADMIN_SECTION_ROLES,
   ADMIN_AREA_ROLES,
-  canAccessAdminSection,
   canEnterAdminArea,
 } from "@/components/shell/sectionAccess";
 
-import { canAccessAdminSection } from "@/components/shell/sectionAccess";
+import { canAccessAdminSection as roleCanAccessSection, SECTION_PERMISSIONS } from "@/components/shell/sectionAccess";
+import { allowed, permissionSetLoaded } from "@/utils/permissions";
+
+// Browser navigation consults the effective set, including per-user denies.
+// Middleware imports sectionAccess directly and remains independent of this.
+export function canAccessAdminSection(section, role) {
+  const key = section === "team" ? "hierarchy.view" : SECTION_PERMISSIONS[section];
+  if (permissionSetLoaded() && key) return allowed(key);
+  return roleCanAccessSection(section, role);
+}
 
 // The admin sidebar filtered to the sections a given role may access.
 export function adminNavFor(role) {

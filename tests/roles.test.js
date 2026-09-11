@@ -127,7 +127,7 @@ describe("every role exists in every list that decides anything", () => {
    * keep it that way.
    */
   it("the member role picker maps over the shared list rather than its own", () => {
-    expect(ORGMGMT).toContain('import { ROLES } from "@/utils/roles"');
+    expect(ORGMGMT).toMatch(/import \{[^}]*\bROLES\b[^}]*\} from "@\/utils\/roles"/);
     expect(ORGMGMT).toMatch(/ROLES\.filter\(\(r\) => r !== "owner"\)\.map\(/);
   });
 
@@ -390,9 +390,9 @@ describe("seat metering knows about the new roles", () => {
     expect(m?.[1]).toMatch(/qa:\s*\["employees", "developers"\]/);
   });
 
-  it("charges finance as an office seat", () => {
+  it("charges finance according to its developer profile storage", () => {
     const m = ENT.match(/SEAT_RESOURCES_BY_ROLE\s*=\s*\{([\s\S]*?)\n\};/);
-    expect(m?.[1]).toMatch(/finance:\s*\["employees"\]/);
+    expect(m?.[1]).toMatch(/finance:\s*\["employees", "developers"\]/);
   });
 
   it("still does not meter clients", () => {

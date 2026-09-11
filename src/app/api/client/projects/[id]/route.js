@@ -18,6 +18,7 @@ export const dynamic = "force-dynamic";
 // client_visible = true (migration 032), and the team is name + role only —
 // no email, no employee_profiles, nothing from the HR module.
 export async function GET(request, { params }) {
+  params = await params;
   try {
     const auth = await getAuthedClient(request);
     if (!auth) {

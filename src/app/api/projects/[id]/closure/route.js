@@ -161,6 +161,7 @@ const CLOSURE_COLUMNS =
   "client_rating, client_feedback, closed_at, closed_by, closure_note";
 
 export async function GET(request, { params }) {
+  params = await params;
   try {
     const auth = await getAuthedOrg(request);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -206,6 +207,7 @@ export async function GET(request, { params }) {
 }
 
 export async function POST(request, { params }) {
+  params = await params;
   try {
     const auth = await getAuthedOrg(request);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

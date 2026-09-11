@@ -1,0 +1,16 @@
+UNIT
+ 95 passed (95)
+      Tests  3106 passed (3106)
+   Start at  06:51:51
+   Duration  42.62s (transform 15.41s, setup 0ms, collect 66.35s, tests 13.30s, environment 34ms, prepare 27.48s)
+
+
+BUILD
+Next.js 15.5.24 production build passed; 25 lint warnings.
+
+BROWSER FULL RUN
+89 passed; 18 skipped; 2 new-probe fixture failures; 109 total.
+
+TARGETED BROWSER RETEST
+3 passed (24.3s): notification badge/read/reload; anonymous protected handlers; middleware subrequest header.
+Combined distinct browser coverage: 91 passed, 18 skipped.

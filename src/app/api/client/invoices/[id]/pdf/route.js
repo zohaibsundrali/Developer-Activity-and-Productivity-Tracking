@@ -10,6 +10,7 @@ const ONE_HOUR = 60 * 60;
 // Returns a 1-hour signed URL for the invoice PDF (or null if none), but only
 // for an invoice addressed to this client.
 export async function GET(request, { params }) {
+  params = await params;
   try {
     const auth = await getAuthedClient(request);
     if (!auth) {
