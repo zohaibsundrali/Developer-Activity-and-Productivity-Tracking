@@ -192,6 +192,7 @@ async function notifyApprovalDecision(svc, { orgId, approval, clientId }) {
     };
     if (isAdmin) {
       row.admin_id = String(m.user_id);
+      row.admin_recipient_type = "admin";
       row.admin_email = m.email || null;
     } else {
       row.developer_id = m.user_id;

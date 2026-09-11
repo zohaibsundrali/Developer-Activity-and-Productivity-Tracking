@@ -286,7 +286,7 @@ async function runJobs() {
 
       const { data: recipients } = await svc
         .from("memberships")
-        .select("organization_id, user_id, email, role")
+        .select("organization_id, user_id, user_type, email, role")
         .in("organization_id", orgIds)
         .in("role", TRIAL_NOTIFY_ROLES)
         .eq("status", "active");
@@ -338,6 +338,7 @@ async function runJobs() {
         rows.push({
           organization_id: member.organization_id,
           admin_id: member.user_id,
+          admin_recipient_type: member.user_type,
           admin_email: member.email || null,
           type: "trial_reminder",
           category: "billing",
@@ -413,7 +414,7 @@ async function runJobs() {
 
       const { data: recipients, error: recErr } = await svc
         .from("memberships")
-        .select("user_id, email, role, reports_to")
+        .select("user_id, user_type, email, role, reports_to")
         .eq("organization_id", org.id)
         .eq("status", "active")
         .in("role", SIGNAL_NOTIFY_ROLES);
@@ -455,6 +456,7 @@ async function runJobs() {
           rows.push({
             organization_id: org.id,
             admin_id: member.user_id,
+          admin_recipient_type: member.user_type,
             admin_email: member.email || null,
             type: "signal",
             category: "signal",

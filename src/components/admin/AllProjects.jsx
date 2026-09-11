@@ -303,6 +303,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
           .from('notifications')
           .insert([
             {
+              organization_id: getOrgId(),
               assigned_developer_id: projectToDelete.assigned_developer_id,
               developer_id: projectToDelete.assigned_developer_id,
               admin_id: null,
@@ -324,9 +325,11 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
         .from('notifications')
         .insert([
           {
+            organization_id: getOrgId(),
             assigned_developer_id: null,
             developer_id: null,
             admin_id: currentAdmin.id,
+            admin_recipient_type: currentAdmin.role === "admin" ? "admin" : "developer",
             admin_email: currentAdmin.email,
             message: `🗑️ You deleted project "${projectToDelete.name}"`,
             type: 'info',
@@ -503,6 +506,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
         .from('notifications')
         .insert([
           {
+            organization_id: getOrgId(),
             assigned_developer_id: assignedDeveloper.id,
             developer_id: assignedDeveloper.id,
             admin_id: null, // Not for admin dashboard
@@ -523,9 +527,11 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
         .from('notifications')
         .insert([
           {
+            organization_id: getOrgId(),
             assigned_developer_id: null, // Not for developer dashboard
             developer_id: null,
             admin_id: currentAdmin.id,
+            admin_recipient_type: currentAdmin.role === "admin" ? "admin" : "developer",
             admin_email: currentAdmin.email,
             message: `✅ Project "${newProject.name}" successfully assigned to ${assignedDeveloper.name}`,
             type: 'info',

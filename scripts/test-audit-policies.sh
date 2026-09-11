@@ -99,3 +99,30 @@ docker exec "$audit_container" createdb -U postgres proof_objects_test
 sed '/^\\ir /r supabase/migrations/20260911095840_production_proof_object_immutability.sql' \
   database/tests/proof_object_immutability.sql | sed '/^\\ir /d' | \
   docker exec -i "$audit_container" psql -U postgres -d proof_objects_test -v ON_ERROR_STOP=1
+
+docker exec "$audit_container" createdb -U postgres typed_notification_test
+for sql_file in \
+  database/tests/typed_notification_fixture.sql \
+  supabase/migrations/20260911095635_production_typed_notification_recipients.sql \
+  database/tests/typed_notification.sql \
+  scripts/sql/notification-recipient-preflight.sql; do
+  docker exec -i "$audit_container" psql -U postgres -d typed_notification_test -v ON_ERROR_STOP=1 < "$sql_file"
+done
+
+docker exec "$audit_container" createdb -U postgres task_authority_test
+sed -e '/^\\ir task_authorization_fixture.sql/r database/tests/task_authorization_fixture.sql' \
+  -e '/^\\ir .*20260911100211/r supabase/migrations/20260911100211_production_task_authorization.sql' \
+  -e '/^\\ir .*20260911083449/r supabase/migrations/20260911083449_production_task_review_integrity.sql' \
+  database/tests/task_authorization.sql | sed '/^\\ir /d' | \
+  docker exec -i "$audit_container" psql -U postgres -d task_authority_test -v ON_ERROR_STOP=1
+
+docker exec "$audit_container" createdb -U postgres attachment_authority_test
+sed '/^\\ir /r supabase/migrations/20260911100934_production_task_attachment_integrity.sql' \
+  database/tests/task_attachment_integrity.sql | sed '/^\\ir /d' | \
+  docker exec -i "$audit_container" psql -U postgres -d attachment_authority_test -v ON_ERROR_STOP=1
+
+docker exec "$audit_container" createdb -U postgres project_authority_test
+sed -e '/^\\ir task_authorization_fixture.sql/r database/tests/task_authorization_fixture.sql' \
+  -e '/^\\ir .*20260911101008/r supabase/migrations/20260911101008_production_project_mutation_authority.sql' \
+  database/tests/project_mutation_authority.sql | sed '/^\\ir /d' | \
+  docker exec -i "$audit_container" psql -U postgres -d project_authority_test -v ON_ERROR_STOP=1

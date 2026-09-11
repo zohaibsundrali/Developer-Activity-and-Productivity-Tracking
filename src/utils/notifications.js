@@ -1,3 +1,4 @@
+import { notificationRecipientKey } from "@/utils/notificationIdentity";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
 
@@ -147,11 +148,13 @@ export function recipientClauses({ userId, email, audience = "admin" } = {}) {
   return clauses;
 }
 
-function recipientFilter(query, { userId, email, audience }) {
-  const clauses = recipientClauses({ userId, email, audience });
-  // No identity means no notifications — never fall through to "everything".
-  if (!clauses.length) return query.eq("id", "00000000-0000-0000-0000-000000000000");
-  return query.or(clauses.join(","));
+function recipientFilter(query, { userId }) {
+  const ctx = getOrgContext();
+  const key = ctx?.userId === userId ? notificationRecipientKey(ctx) : null;
+  // The database derives these keys and RLS independently enforces identity.
+  // Never fall back to email or navigation audience on an unverified session.
+  return key ? query.contains("recipient_keys", [key])
+    : query.eq("id", "00000000-0000-0000-0000-000000000000");
 }
 
 /**
@@ -305,12 +308,13 @@ export async function fetchNotificationPreferences() {
 
   const ctx = getOrgContext();
   const userId = ctx?.userId || null;
-  if (!userId) return { preferences, error: new Error("Not signed in") };
+  if (!userId || !ctx?.organizationId || !["admin", "developer"].includes(ctx?.userType)) return { preferences, error: new Error("Not signed in") };
 
   let query = supabase
     .from("notification_preferences")
     .select("category, enabled")
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .eq("user_type", ctx.userType);
 
   const orgId = ctx?.organizationId || null;
   if (orgId) query = query.eq("organization_id", orgId);
@@ -351,22 +355,19 @@ export async function setNotificationPreference(category, enabled) {
   const ctx = getOrgContext();
   const userId = ctx?.userId || null;
   const organizationId = ctx?.organizationId || null;
-  if (!userId || !organizationId) return { error: new Error("Not signed in") };
+  if (!userId || !organizationId || !["admin", "developer"].includes(ctx?.userType)) return { error: new Error("Not signed in") };
 
   const { error } = await supabase.from("notification_preferences").upsert(
     {
       organization_id: organizationId,
       user_id: userId,
-      user_type: ctx?.userType || "developer",
+      user_type: ctx.userType,
       category,
       enabled: Boolean(enabled),
       updated_at: new Date().toISOString(),
     },
-    // Exactly the columns of `uq_notification_prefs_user_category`. Naming any
-    // other set (organization_id, say) matches no unique index, and PostgREST
-    // answers that with a 42P10 rather than an insert — so the second time a
-    // user touched a switch it would fail instead of updating.
-    { onConflict: "user_id,category" }
+    // The organization and profile type are part of the preference identity.
+    { onConflict: "organization_id,user_type,user_id,category" }
   );
   return { error };
 }
@@ -406,7 +407,7 @@ export async function notify({
   const ctx = getOrgContext();
   const actorId = ctx?.userId || null;
 
-  if (recipientId && actorId && String(recipientId) === String(actorId)) {
+  if (recipientId && actorId && String(recipientId) === String(actorId) && audience === ctx?.userType) {
     return { error: null, skipped: "self" };
   }
   if (!recipientId && !recipientEmail) {
@@ -432,6 +433,7 @@ export async function notify({
 
   if (audience === "admin") {
     row.admin_id = recipientId ? String(recipientId) : null;
+    row.admin_recipient_type = "admin";
     row.admin_email = recipientEmail;
   } else {
     row.developer_id = recipientId;

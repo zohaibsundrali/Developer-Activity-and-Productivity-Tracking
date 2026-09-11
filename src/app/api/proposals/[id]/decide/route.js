@@ -346,6 +346,7 @@ async function notifyManager(svc, orgId, managerId, project, proposal) {
     await svc.from("notifications").insert({
       organization_id: orgId,
       admin_id: m.user_type === "admin" ? m.user_id : null,
+        admin_recipient_type: m.user_type === "admin" ? "admin" : null,
       developer_id: m.user_type === "developer" ? m.user_id : null,
       admin_email: m.email || null,
       type: "project_assigned",

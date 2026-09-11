@@ -1413,17 +1413,12 @@ export async function cloneProject(sourceProjectId, newName, { copyTasks = true 
   if (srcErr || !src) return { error: srcErr || new Error("Source project not found") };
 
   const today = new Date().toISOString().slice(0, 10);
-  const {
-    id, created_at, updated_at, // stripped
-    name, status, progress, total_tasks_count, completed_tasks_count, total_productivity_score,
-    task_plan_submitted, task_plan_status, task_plan_submitted_at, task_plan_reviewed_at,
-    task_plan_reviewed_by, task_plan_rejection_reason,
-    ...carry
-  } = src;
+  const { projectCloneFields } = await import('@/utils/projectCloneFields');
+  const carry = projectCloneFields(src);
   const insertRow = {
     ...carry,
     organization_id: orgId,
-    name: newName || `${name} (copy)`,
+    name: newName || `${src.name} (copy)`,
     status: PROJECT_STATUS.pending,
     progress: 0,
     is_template: false,

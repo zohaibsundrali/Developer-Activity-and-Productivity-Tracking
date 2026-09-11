@@ -185,6 +185,7 @@ export async function POST(request) {
       const rows = (staff || []).map((m) => ({
         organization_id: auth.orgId,
         admin_id: m.user_type === "admin" ? m.user_id : null,
+        admin_recipient_type: m.user_type === "admin" ? "admin" : null,
         developer_id: m.user_type === "developer" ? m.user_id : null,
         admin_email: m.email || null,
         type: "change_request_raised",

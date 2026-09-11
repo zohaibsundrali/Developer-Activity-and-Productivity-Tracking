@@ -43,7 +43,7 @@ begin
       raise exception 'Comment author must match verified identity' using errcode='42501';
     end if;
     case profile_type
-      when 'admin' then select name into profile_name from public.admin_users where id=new.author_id and organization_id=new.organization_id;
+      when 'admin' then select full_name into profile_name from public.admin_users where id=new.author_id and organization_id=new.organization_id;
       when 'developer' then select name into profile_name from public.developers where id=new.author_id and organization_id=new.organization_id;
       when 'client' then select name into profile_name from public.clients where id=new.author_id and organization_id=new.organization_id;
       else raise exception 'Comment author profile is invalid' using errcode='42501';

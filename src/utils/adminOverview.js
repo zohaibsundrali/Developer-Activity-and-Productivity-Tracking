@@ -1,3 +1,4 @@
+import { notificationRecipientKey } from "@/utils/notificationIdentity";
 import { supabase } from "@/utils/supabaseClient";
 import {
   isOpenTask,
@@ -424,11 +425,8 @@ export async function loadAdminOverview(
     .eq("read", false)
     .order("created_at", { ascending: false })
     .limit(8);
-  const or = [];
-  if (adminId) or.push(`admin_id.eq.${adminId}`);
-  if (adminEmail) or.push(`admin_email.ilike.%${adminEmail}%`);
-  if (developerId) or.push(`developer_id.eq.${developerId}`);
-  notificationsQ = or.length ? notificationsQ.or(or.join(",")) : notificationsQ.limit(0);
+  const recipientKey = notificationRecipientKey({ userId: adminId || developerId, userType: adminId ? "admin" : "developer" });
+  notificationsQ = recipientKey ? notificationsQ.contains("recipient_keys", [recipientKey]) : notificationsQ.limit(0);
 
   // A NINTH QUERY, AND ONLY FOR THE PEOPLE WHO CAN SEE THE ANSWER. Clients are
   // owner/admin/finance; firing this for an HR user would spend a request on a

@@ -56,6 +56,10 @@ vi.mock("@/utils/supabaseClient", () => {
         record.filters.push(["eq", column, value]);
         return builder;
       },
+      contains(column, value) {
+        record.filters.push(["contains", column, value]);
+        return builder;
+      },
       is(column, value) {
         record.filters.push(["is", column, value]);
         return builder;
@@ -677,7 +681,7 @@ describe("setNotificationPreference", () => {
   // touched a switch it would fail instead of updating.
   it("names the unique index that actually exists", async () => {
     await setNotificationPreference("mention", false);
-    expect(lastQuery().options).toEqual({ onConflict: "user_id,category" });
+    expect(lastQuery().options).toEqual({ onConflict: "organization_id,user_type,user_id,category" });
   });
 
   // Muting is per-person. A caller that could name the user is a way to stop
@@ -769,5 +773,26 @@ describe("the signal category", () => {
     // Signals are addressed only to owner, admin, hr and managers. A developer
     // reaching this is already a bug elsewhere; it must not become a link.
     expect(notificationHref({ category: "signal" }, { audience: "developer" })).toBeNull();
+  });
+});
+
+describe('typed notification inbox identity', () => {
+  it.each(['admin', 'developer'])('uses the same typed identity in the %s navigation shell', async audience => {
+    await fetchNotifications({ userId: ctx.userId, audience });
+    expect(lastQuery().filters).toContainEqual(['contains', 'recipient_keys', ['developer:u-1']]);
+    await getUnreadCount({ userId: ctx.userId, audience });
+    expect(lastQuery().filters).toContainEqual(['contains', 'recipient_keys', ['developer:u-1']]);
+    await markAllRead({ userId: ctx.userId, audience });
+    expect(lastQuery().filters).toContainEqual(['contains', 'recipient_keys', ['developer:u-1']]);
+  });
+  it('fails closed when a requested identity differs from the session', async () => {
+    await fetchNotifications({ userId: 'other', email: 'someone@test.dev', audience: 'admin' });
+    expect(lastQuery().filters).toContainEqual(['eq', 'id', '00000000-0000-0000-0000-000000000000']);
+    expect(lastQuery().filters.some(f => f[0] === 'or')).toBe(false);
+  });
+  it('includes profile type in preference lookups', async () => {
+    ctx.userType = 'admin';
+    await fetchNotificationPreferences();
+    expect(lastQuery().filters).toContainEqual(['eq', 'user_type', 'admin']);
   });
 });

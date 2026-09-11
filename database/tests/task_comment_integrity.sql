@@ -11,7 +11,7 @@ create function auth_role() returns text language sql stable as $$ select auth.j
 create function auth_is_client() returns boolean language sql stable as $$ select auth.jwt()->'app_metadata'->>'user_type'='client' $$;
 create function auth_plan_feature(text) returns boolean language sql stable as $$ select coalesce((auth.jwt()->>'portal')::boolean,true) $$;
 create function auth_client_project_ids() returns setof uuid language sql stable as $$ select '00000000-0000-0000-0000-000000000100'::uuid $$;
-create table admin_users(id uuid,organization_id uuid,name text);
+create table admin_users(id uuid,organization_id uuid,full_name text);
 create table developers(id uuid,organization_id uuid,name text);
 create table clients(id uuid,organization_id uuid,name text);
 create table memberships(organization_id uuid,user_id uuid,user_type text,status text);
@@ -72,6 +72,10 @@ do $$ declare comment_id uuid; bad_task uuid; changed int; begin
  perform set_config('request.jwt.claims','{"org":"00000000-0000-0000-0000-000000000001","uid":"00000000-0000-0000-0000-000000000011","role":"admin","app_metadata":{"user_type":"admin"}}',false);
  update task_comments set body='Moderated',internal=true where id=comment_id; get diagnostics changed=row_count;
  if changed<>1 then raise exception 'Staff moderation failed'; end if;
+ insert into task_comments(organization_id,task_id,author_id,author_type,body,author_name,internal)
+ values(auth_org(),'00000000-0000-0000-0000-000000000101',auth_app_user_id(),'admin','Admin comment','Forged Developer',true)
+ returning id into comment_id;
+ if (select author_name from task_comments where id=comment_id)<>'Actual Admin' then raise exception 'Admin full_name not derived'; end if;
 end $$;
 select set_config('request.jwt.claims','{"org":"00000000-0000-0000-0000-000000000001","uid":"00000000-0000-0000-0000-000000000012","role":"client","app_metadata":{"user_type":"client"}}',false);
 do $$ declare comment_id uuid; changed int; begin

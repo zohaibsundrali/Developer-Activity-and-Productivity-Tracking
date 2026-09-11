@@ -126,7 +126,7 @@ export async function POST(request) {
     // ── Insert in-app notifications ──
     const rows = allowed.map((m) => ({
       organization_id: auth.orgId,
-      ...(m.user_type === "admin" ? { admin_id: m.user_id } : { developer_id: m.user_id }),
+      ...(m.user_type === "admin" ? { admin_id: m.user_id, admin_recipient_type: "admin" } : { developer_id: m.user_id }),
       type: "automation",
       title: subject,
       message: message || `Task "${task?.task_title || "Untitled"}" was updated.`,
