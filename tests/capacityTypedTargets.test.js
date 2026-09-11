@@ -60,3 +60,20 @@ it('keys and resolves capacity people by identity type', () => {
  const source = readFileSync(new URL('../src/components/admin/CapacityPlan.jsx', import.meta.url), 'utf8');
  expect(source).toContain('x.userType === userType'); expect(source).toContain('nameOf(r.user_id, r.user_type)'); expect(source).toContain('`${r.user_type}:${r.user_id}-${r.week_start}`');
 });
+
+it.each([true, false, [], [24], {}, "", "   "])("refuses nonnumeric JSON hours %j", async weeklyHours => {
+ expect((await call({ userType: 'admin', weeklyHours })).status).toBe(400); expect(state.writes).toEqual([]);
+});
+it.each([true, false, [], [40], {}, "", "   "])("refuses nonnumeric JSON allocation %j", async allocationPct => {
+ expect((await call({ userType: 'admin', projectId, allocationPct })).status).toBe(400); expect(state.writes).toEqual([]);
+});
+it('preserves decimal hours, zero allocation and explicit clearing', async () => {
+ expect((await call({ userType: 'admin', weeklyHours: '24.5' })).status).toBe(200);
+ expect((await call({ userType: 'admin', projectId, allocationPct: 0 })).status).toBe(200);
+ expect((await call({ userType: 'admin', projectId, allocationPct: null })).status).toBe(200);
+ expect(state.writes.map(w => w.patch.weekly_hours ?? w.patch.allocation_pct)).toEqual([24.5, 0, null]);
+});
+
+it.each([24.555, 0.001])('rejects hours precision that the database would round: %s', async weeklyHours => {
+ expect((await call({ userType: 'admin', weeklyHours })).status).toBe(400); expect(state.writes).toEqual([]);
+});

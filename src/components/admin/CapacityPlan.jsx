@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { CalendarRange, ChevronLeft, ChevronRight, Gauge, TriangleAlert } from "lucide-react";
 
 import {
@@ -11,6 +11,8 @@ import {
   Section,
   Skeleton,
 } from "@/components/ui";
+import { allowed } from "@/utils/permissions";
+import { saveCapacityWeeklyHours } from "@/utils/capacityWeeklyHours";
 import { createCapacityPlanRequest } from "@/utils/capacityPlanRequest";
 import { getOrgId } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
@@ -53,6 +55,13 @@ const num = (v, suffix = "") =>
 export default function CapacityPlan({ people = [] }) {
   const [week, setWeek] = useState(() => isoMonday());
   const scope = `${getOrgId()}:${week}`;
+  const canSetHours = allowed('employment.set_hours');
+  const [hoursEditor, setHoursEditor] = useState(null);
+  const [hoursBusy, setHoursBusy] = useState(false);
+  const [hoursError, setHoursError] = useState('');
+  const liveScope = useRef(scope);
+  liveScope.current = scope;
+  useEffect(() => { liveScope.current = scope; return () => { liveScope.current = null; }; }, [scope]);
   const [result, setResult] = useState(null);
   const request = useMemo(() => createCapacityPlanRequest(authFetch, setResult), []);
   const current = result?.scope === scope ? result : null;
@@ -74,6 +83,18 @@ export default function CapacityPlan({ people = [] }) {
     load();
     return () => request.cancel();
   }, [load, request]);
+
+  const saveHours = async () => {
+    if (hoursBusy || !hoursEditor || hoursEditor.scope !== scope) return;
+    setHoursBusy(true); setHoursError('');
+    try {
+      await saveCapacityWeeklyHours({ fetcher: authFetch, allowed, userId: hoursEditor.userId,
+        userType: hoursEditor.userType, value: hoursEditor.value });
+      if (liveScope.current === scope) { setHoursEditor(null); await load(); }
+    } catch (error) {
+      if (liveScope.current === scope) setHoursError(error.message || 'Could not save contracted hours.');
+    } finally { setHoursBusy(false); }
+  };
 
   const summary = useMemo(() => {
     let known = 0;
@@ -168,10 +189,27 @@ export default function CapacityPlan({ people = [] }) {
                     <tr key={`${r.user_type}:${r.user_id}-${r.week_start}`} className="border-b border-border/60">
                       <td className="py-2 pr-4 text-foreground">{nameOf(r.user_id, r.user_type)}</td>
                       <td className="py-2 pr-4 tabular-nums">
-                        {unset ? (
-                          <span className="text-xs text-muted-foreground">not set</span>
+                        {canSetHours && hoursEditor?.scope === scope && hoursEditor.userId === r.user_id && hoursEditor.userType === r.user_type ? (
+                          <div className="space-y-2">
+                            <input type="number" step="any" min="0" max="168"
+                              aria-label={`Contracted weekly hours for ${nameOf(r.user_id, r.user_type)}`}
+                              className="h-9 w-28 rounded-md border border-input bg-background px-2 text-sm"
+                              value={hoursEditor.value} disabled={hoursBusy}
+                              onChange={event => setHoursEditor({ ...hoursEditor, value: event.target.value })} />
+                            <p className="text-xs text-muted-foreground">Leave blank to clear. Applies to contracted hours across weeks.</p>
+                            <div className="flex gap-1">
+                              <Button size="sm" disabled={hoursBusy} onClick={saveHours}>{hoursBusy ? 'Saving…' : 'Save'}</Button>
+                              <Button size="sm" variant="ghost" disabled={hoursBusy} onClick={() => { setHoursEditor(null); setHoursError(''); }}>Cancel</Button>
+                            </div>
+                            {hoursError ? <p className="text-xs text-destructive" role="alert">{hoursError}</p> : null}
+                          </div>
                         ) : (
-                          num(r.weekly_hours, "h")
+                          <>
+                            {unset ? <span className="text-xs text-muted-foreground">not set</span> : num(r.weekly_hours, "h")}
+                            {canSetHours ? <Button size="sm" variant="ghost" disabled={hoursBusy}
+                              aria-label={`Edit contracted hours for ${nameOf(r.user_id, r.user_type)}`}
+                              onClick={() => { setHoursError(''); setHoursEditor({ scope, userId: r.user_id, userType: r.user_type, value: r.weekly_hours == null ? '' : String(r.weekly_hours) }); }}>Edit</Button> : null}
+                          </>
                         )}
                       </td>
                       <td className="py-2 pr-4 tabular-nums text-muted-foreground">

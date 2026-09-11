@@ -199,3 +199,11 @@ python3 scripts/expand-sql-fixture.py database/tests/typed_capacity_identity.sql
 docker exec "$audit_container" createdb -U postgres selected_capacity_test
 python3 scripts/expand-sql-fixture.py database/tests/selected_week_capacity.sql | \
   docker exec -i "$audit_container" psql -U postgres -d selected_capacity_test -v ON_ERROR_STOP=1
+
+docker exec "$audit_container" createdb -U postgres fractional_capacity_test
+python3 scripts/expand-sql-fixture.py database/tests/fractional_single_day_capacity.sql | \
+  docker exec -i "$audit_container" psql -U postgres -d fractional_capacity_test -v ON_ERROR_STOP=1
+
+docker exec "$audit_container" createdb -U postgres typed_manager_roster_test
+python3 scripts/expand-sql-fixture.py database/tests/typed_project_manager_roster.sql | \
+  docker exec -i "$audit_container" psql -U postgres -d typed_manager_roster_test -v ON_ERROR_STOP=1

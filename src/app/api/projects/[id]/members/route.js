@@ -51,10 +51,11 @@ export const dynamic = "force-dynamic";
  * each of them would get a 404 on use. This is the same fact the route already
  * computed; sending it costs nothing and is the only way the UI can be right.
  */
-function membersPayload(rows, canManage = false) {
+function membersPayload(rows, canManage = false, canAllocate = false) {
   return {
     success: true,
     canManage,
+    canAllocate,
     members: (rows || []).map((r) => ({
       userId: r.user_id,
       userType: r.user_type,
@@ -78,7 +79,7 @@ async function resolveProject(svc, projectId, orgId) {
   if (!projectId) return null;
   const { data } = await svc
     .from("projects")
-    .select("id, organization_id")
+    .select("id, organization_id, manager_id, manager_type")
     .eq("id", projectId)
     .eq("organization_id", orgId)
     .maybeSingle();
@@ -86,13 +87,36 @@ async function resolveProject(svc, projectId, orgId) {
 }
 
 async function listMembers(svc, projectId, orgId) {
-  const { data } = await svc
+  const { data, error } = await svc
     .from("project_members")
     .select("user_id, user_type, project_role, allocation_pct, created_at")
     .eq("project_id", projectId)
     .eq("organization_id", orgId)
     .order("project_role", { ascending: true });
+  if (error) throw new Error("Could not load the project team.");
   return data || [];
+}
+
+async function resolveMemberIdentity(svc, orgId, userId, userType) {
+  if (userType !== undefined && !['admin', 'developer'].includes(userType)) return { error: 'Invalid userType', status: 400 };
+  let query = svc.from('memberships').select('user_id,user_type,status')
+    .eq('organization_id', orgId).eq('user_id', userId).in('user_type', ['admin', 'developer']);
+  if (userType) query = query.eq('user_type', userType);
+  const { data, error } = await query.limit(3);
+  if (error) return { error: 'Could not verify member identity.', status: 503 };
+  if (!data?.length) return { error: 'That person is not a staff member of this organization.', status: 400 };
+  if (data.length !== 1) return { error: 'Specify userType for this person.', status: 400 };
+  return { member: data[0] };
+}
+
+async function assignedManagerIdentity(svc, orgId, project, userId, userType) {
+  if (String(project.manager_id || '') !== userId) return { matches: false };
+  if (project.manager_type) return { matches: project.manager_type === userType };
+  // Resolve legacy manager attribution independently of the requested target
+  // type: an explicit caller type cannot disambiguate an untyped manager UUID.
+  const identity = await resolveMemberIdentity(svc, orgId, userId, undefined);
+  if (identity.error) return { error: identity.status === 503 ? identity.error : 'Reassign the project manager to resolve its identity.', status: identity.status === 503 ? 503 : 409 };
+  return { matches: identity.member.user_type === userType };
 }
 
 export async function GET(request, { params }) {
@@ -125,7 +149,7 @@ export async function GET(request, { params }) {
       mayActOnProject(auth, projectId, auth.projectRoles);
 
     return NextResponse.json(
-      membersPayload(await listMembers(svc, projectId, auth.orgId), canManage)
+      membersPayload(await listMembers(svc, projectId, auth.orgId), canManage, !requirePermission(auth, "capacity.allocate"))
     );
   } catch (err) {
     console.error("[projects/members] GET failed:", err);
@@ -189,51 +213,36 @@ export async function POST(request, { params }) {
     let allocationPct = null;
     if (body?.allocationPct !== undefined && body?.allocationPct !== null && body?.allocationPct !== "") {
       const n = Number(body.allocationPct);
-      if (!Number.isFinite(n) || n < 0 || n > 100) {
+      if (!["number", "string"].includes(typeof body.allocationPct) || String(body.allocationPct).trim() === "" || !Number.isInteger(n) || n < 0 || n > 100) {
         return NextResponse.json(
           { error: "allocationPct must be a number between 0 and 100" },
           { status: 400 }
         );
       }
-      allocationPct = Math.round(n);
+      allocationPct = n;
     }
 
-    // The person must be an active member of THIS organization. Without this
-    // the field is a free-text uuid that silently puts nobody on the project —
-    // the same check /api/projects/[id]/manager makes, for the same reason.
-    const { data: membership } = await svc
-      .from("memberships")
-      .select("user_id, user_type, status")
-      .eq("organization_id", auth.orgId)
-      .eq("user_id", userId)
-      .eq("status", "active")
-      .maybeSingle();
-
-    if (!membership) {
-      return NextResponse.json(
-        { error: "That person is not an active member of this organization." },
-        { status: 400 }
-      );
-    }
-    if (membership.user_type === "client") {
-      return NextResponse.json(
-        { error: "A client cannot be a member of the project team." },
-        { status: 400 }
-      );
-    }
+    const identity = await resolveMemberIdentity(svc, auth.orgId, userId, body.userType);
+    if (identity.error) return NextResponse.json({ error: identity.error }, { status: identity.status });
+    const membership = identity.member;
+    if (membership.status !== 'active') return NextResponse.json({ error: 'That person is not an active member of this organization.' }, { status: 400 });
+    const managerIdentity = await assignedManagerIdentity(svc, auth.orgId, project, userId, membership.user_type);
+    if (managerIdentity.error) return NextResponse.json({ error: managerIdentity.error }, { status: managerIdentity.status });
+    const assignedManager = managerIdentity.matches;
+    if (projectRole === 'manager' && !assignedManager) return NextResponse.json({ error: 'Assign the project manager through the manager workflow.' }, { status: 409 });
 
     const { data: previousMember, error: previousError } = await svc
       .from("project_members").select("project_role")
-      .eq("organization_id", auth.orgId).eq("project_id", projectId).eq("user_id", userId).maybeSingle();
+      .eq("organization_id", auth.orgId).eq("project_id", projectId).eq("user_id", userId).eq("user_type", membership.user_type).maybeSingle();
     if (previousError) return NextResponse.json({ error: "Could not verify the existing project role." }, { status: 503 });
-    if (previousMember?.project_role === "manager" && projectRole !== "manager") {
+    if ((previousMember?.project_role === "manager" || assignedManager) && projectRole !== "manager") {
       return NextResponse.json({ error: "Assign a different project manager before changing this role." }, { status: 409 });
     }
 
     const billingBlock = await requireUnlocked(svc, auth.orgId);
     if (billingBlock) return NextResponse.json(billingBlock, { status: billingBlock.status });
 
-    const { error } = await svc
+    const { data: saved, error } = await svc
       .from("project_members")
       .upsert(
         {
@@ -246,15 +255,15 @@ export async function POST(request, { params }) {
           added_by: auth.appUserId || null,
           updated_at: new Date().toISOString(),
         },
-        { onConflict: "project_id,user_id" }
-      );
+        { onConflict: "project_id,user_id,user_type" }
+      ).select("user_id,user_type,project_id").single();
 
-    if (error) {
+    if (error || saved?.user_id !== userId || saved?.user_type !== membership.user_type || saved?.project_id !== projectId) {
       console.error("[projects/members] upsert failed:", error);
       return NextResponse.json({ error: "Could not update the project team." }, { status: 500 });
     }
 
-    return NextResponse.json(membersPayload(await listMembers(svc, projectId, auth.orgId), true));
+    return NextResponse.json(membersPayload(await listMembers(svc, projectId, auth.orgId), true, !requirePermission(auth, "capacity.allocate")));
   } catch (err) {
     console.error("[projects/members] POST failed:", err);
     return NextResponse.json({ error: "Could not update the project team." }, { status: 500 });
@@ -286,19 +295,18 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ error: "userId is required" }, { status: 400 });
     }
 
-    // THE PROJECT MANAGER IS NOT REMOVED HERE. `projects.manager_id` is the
-    // authority for who runs a project and a trigger (071) keeps the matching
-    // row in step; deleting the row underneath it would put the two into
-    // exactly the disagreement that trigger exists to prevent. Reassign through
-    // /api/projects/[id]/manager instead.
-    const { data: existing } = await svc
-      .from("project_members")
-      .select("project_role")
-      .eq("project_id", projectId)
-      .eq("user_id", userId)
-      .maybeSingle();
+    const identity = await resolveMemberIdentity(svc, auth.orgId, userId, body.userType);
+    if (identity.error) return NextResponse.json({ error: identity.error }, { status: identity.status });
+    const userType = identity.member.user_type;
+    const { data: existing, error: existingError } = await svc.from("project_members")
+      .select("id,project_role").eq("organization_id", auth.orgId).eq("project_id", projectId)
+      .eq("user_id", userId).eq("user_type", userType).maybeSingle();
+    if (existingError) return NextResponse.json({ error: 'Could not verify the project member.' }, { status: 503 });
+    if (!existing) return NextResponse.json({ error: 'Project member not found.' }, { status: 404 });
 
-    if (existing?.project_role === "manager") {
+    const managerIdentity = await assignedManagerIdentity(svc, auth.orgId, project, userId, userType);
+    if (managerIdentity.error) return NextResponse.json({ error: managerIdentity.error }, { status: managerIdentity.status });
+    if (existing.project_role === "manager" || managerIdentity.matches) {
       return NextResponse.json(
         {
           error:
@@ -311,19 +319,19 @@ export async function DELETE(request, { params }) {
     const billingBlock = await requireUnlocked(svc, auth.orgId);
     if (billingBlock) return NextResponse.json(billingBlock, { status: billingBlock.status });
 
-    const { error } = await svc
+    const { data: removed, error } = await svc
       .from("project_members")
       .delete()
       .eq("project_id", projectId)
       .eq("organization_id", auth.orgId)
-      .eq("user_id", userId);
+      .eq("user_id", userId).eq("user_type", userType).eq("id", existing.id).select("id,user_id,user_type");
 
-    if (error) {
+    if (error || removed?.length !== 1 || removed[0].id !== existing.id || removed[0].user_type !== userType || removed[0].user_id !== userId) {
       console.error("[projects/members] delete failed:", error);
       return NextResponse.json({ error: "Could not update the project team." }, { status: 500 });
     }
 
-    return NextResponse.json(membersPayload(await listMembers(svc, projectId, auth.orgId), true));
+    return NextResponse.json(membersPayload(await listMembers(svc, projectId, auth.orgId), true, !requirePermission(auth, "capacity.allocate")));
   } catch (err) {
     console.error("[projects/members] DELETE failed:", err);
     return NextResponse.json({ error: "Could not update the project team." }, { status: 500 });

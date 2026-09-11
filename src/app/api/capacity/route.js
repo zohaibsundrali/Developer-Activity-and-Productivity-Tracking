@@ -28,6 +28,9 @@ export const dynamic = "force-dynamic";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+const numericInput = value =>
+  typeof value === "number" || (typeof value === "string" && value.trim() !== "");
+
 /** Must be the ISO Monday, so this agrees with timesheet_week_of() in 077. */
 function isoMonday(value) {
   if (typeof value !== "string" || !DATE_RE.test(value)) return null;
@@ -118,9 +121,9 @@ export async function PATCH(request) {
       const hours = body.weeklyHours === null ? null : Number(body.weeklyHours);
       // null is a real answer — it clears the figure back to "not set" — but a
       // nonsense number is not.
-      if (hours !== null && (!Number.isFinite(hours) || hours <= 0 || hours > 168)) {
+      if (hours !== null && (!numericInput(body.weeklyHours) || !Number.isFinite(hours) || hours <= 0 || hours > 168 || Math.abs(hours * 100 - Math.round(hours * 100)) > 1e-8)) {
         return NextResponse.json(
-          { success: false, error: "Weekly hours must be between 0 and 168, or blank" },
+          { success: false, error: "Weekly hours must be greater than 0 and at most 168, with up to two decimal places, or blank" },
           { status: 400 }
         );
       }
@@ -171,7 +174,7 @@ export async function PATCH(request) {
     }
 
     const pct = body?.allocationPct === null ? null : Number(body?.allocationPct);
-    if (pct !== null && (!Number.isInteger(pct) || pct < 0 || pct > 100)) {
+    if (pct !== null && (!numericInput(body?.allocationPct) || !Number.isInteger(pct) || pct < 0 || pct > 100)) {
       // 0..100 per PROJECT. A person may still total more than 100 across
       // several — that is the over-allocation the screen exists to show, and it
       // is not refused here.

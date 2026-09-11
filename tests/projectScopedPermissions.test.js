@@ -380,7 +380,7 @@ describe("the screen exists, and asks the server who may manage", () => {
     // The audit's structural finding was 34 catalogue keys that nothing
     // enforces. A route that nothing calls is the same failure facing the other
     // way — which is why this is a test and not a follow-up.
-    expect(page).toContain("<ProjectTeam projectId={projectId} />");
+    expect(page).toContain("<ProjectTeam key={projectId} projectId={projectId} />");
     expect(page).toContain('import ProjectTeam from "@/components/admin/ProjectTeam"');
   });
 
@@ -407,8 +407,8 @@ describe("the screen exists, and asks the server who may manage", () => {
   });
 
   it("guards every write against double submission", () => {
-    expect(ui).toMatch(/disabled=\{busy \|\| !pickedUser\}/);
-    expect(ui).toMatch(/disabled=\{busy\}/);
+    expect(ui).toMatch(/disabled=\{busy \|\| Boolean\(allocationBusy\) \|\| !pickedUser\}/);
+    expect(ui).toMatch(/disabled=\{busy \|\| Boolean\(allocationBusy\)\}/);
   });
 
   it("does not offer manager in the picker", () => {

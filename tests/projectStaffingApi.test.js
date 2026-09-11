@@ -4,10 +4,11 @@ vi.mock('@/utils/serverAuth', () => ({
   getAuthedOrg: async () => state.auth,
   serviceClient: () => ({ from(table) {
     const q = {
-      select: () => q, eq: () => q, order: () => q,
+      select: () => q, eq: () => q, order: () => q, in: () => q, limit: () => q,
       maybeSingle: async () => ({ data: table === 'projects' ? { id: 'project', organization_id: 'org' } : table === 'project_members' ? state.previous : { user_id: 'target', user_type: 'developer', status: 'active' } }),
-      upsert: async row => { state.writes.push(row); return { error: null }; },
-      then: resolve => Promise.resolve({ data: [] }).then(resolve),
+      upsert: row => { state.writes.push(row); return q; },
+      single: async () => ({ data: state.writes.at(-1), error: null }),
+      then: resolve => Promise.resolve({ data: table === 'memberships' ? [{ user_id: 'target', user_type: 'developer', status: 'active' }] : [] }).then(resolve),
     }; return q;
   } }),
 }));
