@@ -82,6 +82,9 @@ const hasRoleArray = (src) =>
  * one that stops being true fails rather than sitting as cover for the next.
  */
 const NOT_AUTHORIZATION = {
+  "src/app/api/capacity/route.js":
+    "checks staff profile types and resolves a typed target identity; caller actions " +
+    "still require capacity.view, employment.set_hours or capacity.allocate",
   "src/app/api/automation/notify/route.js":
     "filters recipient profile types to admin/developer, excluding client profiles; " +
     "caller authorization still requires automation.manage and paid automation access",

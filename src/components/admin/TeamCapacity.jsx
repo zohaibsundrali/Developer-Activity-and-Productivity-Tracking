@@ -28,6 +28,8 @@ import { sectionTitle } from "@/components/shell/navConfig";
 import { getOrgId } from "@/utils/orgContext";
 import {
   loadOrgWorkGraph,
+  graphPersonKey,
+  projectManager,
   personLoad,
   loadLevel,
   LOAD_LEVELS,
@@ -122,7 +124,7 @@ function LoadBar({ openTasks, level }) {
 function PersonCard({ person, expanded, onToggle }) {
   const { load, level, projects } = person;
   const Icon = roleIcon(person.role);
-  const panelId = `capacity-panel-${person.userId}`;
+  const panelId = `capacity-panel-${graphPersonKey(person)}`;
 
   return (
     <div className="rounded-xl border border-border bg-card shadow-card transition-shadow duration-150 motion-reduce:transition-none hover:shadow-elevated">
@@ -264,7 +266,7 @@ export default function TeamCapacity() {
           }
           // A project they manage but hold no task on still belongs on the list.
           for (const p of graph.projects) {
-            if (!p.manager_id || String(p.manager_id) !== String(person.userId)) continue;
+            if (graphPersonKey(projectManager(graph, p)) !== graphPersonKey(person)) continue;
             const key = String(p.id);
             if (!byProject.has(key)) {
               byProject.set(key, { projectId: key, openTasks: 0, overdue: 0, managing: true });
@@ -419,7 +421,7 @@ export default function TeamCapacity() {
     <div className="space-y-6">
       {header}
 
-      <CapacityPlan people={people.map((p) => ({ id: p.userId, name: p.name, email: p.email }))} />
+      <CapacityPlan people={people.map((p) => ({ id: p.userId, userType: p.userType, name: p.name, email: p.email }))} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard title="Available" value={stats.free} icon={UserCheck} tone="success" />
@@ -523,10 +525,10 @@ export default function TeamCapacity() {
         <div className="space-y-3">
           {visible.map((p) => (
             <PersonCard
-              key={p.userId}
+              key={graphPersonKey(p)}
               person={p}
-              expanded={expanded.has(p.userId)}
-              onToggle={() => toggle(p.userId)}
+              expanded={expanded.has(graphPersonKey(p))}
+              onToggle={() => toggle(graphPersonKey(p))}
             />
           ))}
         </div>

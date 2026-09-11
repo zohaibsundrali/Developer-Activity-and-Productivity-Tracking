@@ -38,6 +38,23 @@ function isoMonday(value) {
   return value;
 }
 
+// Legacy callers may omit type only when the organization's complete membership
+// history resolves the UUID uniquely. Never choose the first colliding profile.
+async function capacityTarget(svc, orgId, userId, userType) {
+  if (userType !== undefined && !['admin', 'developer'].includes(userType)) {
+    return { error: 'Invalid userType', status: 400 };
+  }
+  let query = svc.from('memberships').select('user_type')
+    .eq('organization_id', orgId).eq('user_id', userId).in('user_type', ['admin', 'developer']);
+  if (userType) query = query.eq('user_type', userType);
+  const { data, error } = await query.limit(3);
+  if (error) return { error: 'Could not verify that person', status: 503 };
+  const types = [...new Set((data || []).map(row => row.user_type))];
+  if (!types.length) return { error: 'That person is not in this organization', status: 404 };
+  if (types.length !== 1) return { error: 'Specify userType for this person', status: 400 };
+  return { userType: types[0] };
+}
+
 export async function GET(request) {
   try {
     const auth = await getAuthedOrg(request);
@@ -45,6 +62,7 @@ export async function GET(request) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
+    if (!["admin", "developer"].includes(auth.userType)) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     const denied = requirePermission(auth, "capacity.view");
     if (denied) return denied;
 
@@ -62,12 +80,12 @@ export async function GET(request) {
 
     const { data, error } = await q;
     if (error) {
-      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+      return NextResponse.json({ success: false, error: "Could not load capacity" }, { status: 503 });
     }
     return NextResponse.json({ success: true, rows: data || [], week: week || null });
   } catch (e) {
     return NextResponse.json(
-      { success: false, error: e?.message || "Could not load capacity" },
+      { success: false, error: "Could not load capacity" },
       { status: 500 }
     );
   }
@@ -80,6 +98,7 @@ export async function PATCH(request) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
+    if (!["admin", "developer"].includes(auth.userType)) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     const body = await request.json().catch(() => ({}));
     const svc = serviceClient();
 
@@ -104,16 +123,19 @@ export async function PATCH(request) {
       const blocked = await requireUnlocked(svc, auth.orgId);
       if (blocked) return NextResponse.json({ success: false, ...blocked }, { status: blocked.status });
 
+      const target = await capacityTarget(svc, auth.orgId, body.userId, body.userType);
+      if (target.error) return NextResponse.json({ success: false, error: target.error }, { status: target.status });
+
       // The profile must already exist and be in this organization. Creating
       // one here would make a half-formed employee record out of a typo.
-      const { data: profile } = await svc
+      const { data: profile, error: profileError } = await svc
         .from("employee_profiles")
-        .select("id")
+        .select("id, user_type")
         .eq("organization_id", auth.orgId)
         .eq("user_id", body.userId)
-        .order("created_at")
-        .limit(1)
+        .eq("user_type", target.userType)
         .maybeSingle();
+      if (profileError) return NextResponse.json({ success: false, error: "Could not verify the employee profile" }, { status: 503 });
       if (!profile) {
         return NextResponse.json(
           { success: false, error: "That person has no employee profile yet" },
@@ -125,10 +147,11 @@ export async function PATCH(request) {
         .from("employee_profiles")
         .update({ weekly_hours: hours, updated_at: new Date().toISOString() })
         .eq("id", profile.id)
-        .select("id, user_id, weekly_hours")
+        .eq("organization_id", auth.orgId).eq("user_id", body.userId).eq("user_type", target.userType)
+        .select("id, user_id, user_type, weekly_hours")
         .single();
-      if (error) {
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+      if (error || !data?.id) {
+        return NextResponse.json({ success: false, error: "Could not confirm the hours update" }, { status: 503 });
       }
       return NextResponse.json({ success: true, profile: data });
     }
@@ -156,16 +179,21 @@ export async function PATCH(request) {
     const blocked = await requireUnlocked(svc, auth.orgId);
     if (blocked) return NextResponse.json({ success: false, ...blocked }, { status: blocked.status });
 
+    const target = await capacityTarget(svc, auth.orgId, userId, body.userType);
+    if (target.error) return NextResponse.json({ success: false, error: target.error }, { status: target.status });
+
     // The membership row must already exist: allocation describes somebody who
     // is ON the project, and creating the membership here would put them on it
     // as a side effect of a number.
-    const { data: member } = await svc
+    const { data: member, error: memberError } = await svc
       .from("project_members")
       .select("id")
       .eq("organization_id", auth.orgId)
       .eq("project_id", projectId)
       .eq("user_id", userId)
+      .eq("user_type", target.userType)
       .maybeSingle();
+    if (memberError) return NextResponse.json({ success: false, error: "Could not verify project membership" }, { status: 503 });
     if (!member) {
       return NextResponse.json(
         { success: false, error: "That person is not on that project" },
@@ -177,15 +205,16 @@ export async function PATCH(request) {
       .from("project_members")
       .update({ allocation_pct: pct, updated_at: new Date().toISOString() })
       .eq("id", member.id)
+      .eq("organization_id", auth.orgId).eq("project_id", projectId).eq("user_id", userId).eq("user_type", target.userType)
       .select()
       .single();
-    if (error) {
-      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    if (error || !data?.id) {
+      return NextResponse.json({ success: false, error: "Could not confirm the allocation update" }, { status: 503 });
     }
     return NextResponse.json({ success: true, member: data });
   } catch (e) {
     return NextResponse.json(
-      { success: false, error: e?.message || "Could not update that" },
+      { success: false, error: "Could not update capacity" },
       { status: 500 }
     );
   }

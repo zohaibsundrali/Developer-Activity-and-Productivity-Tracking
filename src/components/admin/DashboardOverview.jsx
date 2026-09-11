@@ -36,7 +36,7 @@ import {
   projectRows,
   taskBuckets,
 } from "@/utils/adminOverview";
-import { projectTeam } from "@/utils/orgWorkGraph";
+import { projectTeam, graphPersonKey } from "@/utils/orgWorkGraph";
 import {
   BucketTile,
   Deadline,
@@ -515,7 +515,7 @@ function PeoplePanel({ rows, loading, can }) {
       ) : (
         <ul className="divide-y divide-border">
           {list.map((p) => (
-            <li key={p.userId} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+            <li key={graphPersonKey(p)} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
               <span
                 aria-hidden="true"
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-primary/5 text-xs font-semibold text-primary"
@@ -657,7 +657,7 @@ function HierarchyPanel({ view, loading, can }) {
                       <div className="mt-1.5 flex flex-wrap gap-1.5">
                         {members.slice(0, 6).map((m) => (
                           <span
-                            key={m.userId}
+                            key={graphPersonKey(m)}
                             className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-xs text-foreground"
                           >
                             <span aria-hidden="true" className="font-semibold text-primary">

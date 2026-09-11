@@ -55,8 +55,8 @@ export default function CapacityPlan({ people = [] }) {
   const [error, setError] = useState("");
 
   const nameOf = useCallback(
-    (id) => {
-      const p = people.find((x) => String(x.id) === String(id));
+    (id, userType) => {
+      const p = people.find((x) => String(x.id) === String(id) && x.userType === userType);
       return p?.name || p?.full_name || p?.email || "Someone";
     },
     [people]
@@ -172,8 +172,8 @@ export default function CapacityPlan({ people = [] }) {
                   const over = Number(r.allocation_pct) > 100;
                   const util = r.utilisation_pct;
                   return (
-                    <tr key={`${r.user_id}-${r.week_start}`} className="border-b border-border/60">
-                      <td className="py-2 pr-4 text-foreground">{nameOf(r.user_id)}</td>
+                    <tr key={`${r.user_type}:${r.user_id}-${r.week_start}`} className="border-b border-border/60">
+                      <td className="py-2 pr-4 text-foreground">{nameOf(r.user_id, r.user_type)}</td>
                       <td className="py-2 pr-4 tabular-nums">
                         {unset ? (
                           <span className="text-xs text-muted-foreground">not set</span>

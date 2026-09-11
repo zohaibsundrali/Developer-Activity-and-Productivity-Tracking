@@ -191,3 +191,7 @@ python3 scripts/expand-sql-fixture.py database/tests/task_plan_review_transactio
   docker exec -i "$audit_container" psql -U postgres -d plan_review_test -v ON_ERROR_STOP=1
 docker exec -i "$audit_container" psql -U postgres -d typed_project_test -v ON_ERROR_STOP=1 < scripts/sql/project-identity-preflight.sql
 python3 scripts/test-plan-review-concurrency.py "$audit_container" plan_review_test
+
+docker exec "$audit_container" createdb -U postgres typed_capacity_test
+python3 scripts/expand-sql-fixture.py database/tests/typed_capacity_identity.sql | \
+  docker exec -i "$audit_container" psql -U postgres -d typed_capacity_test -v ON_ERROR_STOP=1

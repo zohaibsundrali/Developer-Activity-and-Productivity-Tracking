@@ -272,7 +272,7 @@ describe("personLoad — what one person is carrying", () => {
       ],
       ["pm", []],
     ]),
-    personById: new Map(),
+    personById: new Map([["pm", { userId: "pm", name: "Manager" }]]),
     personByEmail: new Map(),
   };
 

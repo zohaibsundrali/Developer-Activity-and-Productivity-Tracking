@@ -6,6 +6,7 @@ import {
   loadLevel,
   loadOrgWorkGraph,
   personLoad,
+  projectManager,
 } from "@/utils/orgWorkGraph";
 import { isProjectOpen, normalizeProjectStatus, projectStatusMeta } from "@/utils/projectStatus";
 
@@ -173,7 +174,7 @@ export function projectRisk(project, tasks = [], today = ymd()) {
 export function projectRows(graph, today = ymd()) {
   const rows = (graph?.projects || []).map((p) => {
     const tasks = graph.tasksByProject?.get(String(p.id)) || [];
-    const manager = p.manager_id ? graph.personById?.get(String(p.manager_id)) : null;
+    const manager = projectManager(graph, p);
     const open = tasks.filter(isOpenTask).length;
     return {
       id: p.id,

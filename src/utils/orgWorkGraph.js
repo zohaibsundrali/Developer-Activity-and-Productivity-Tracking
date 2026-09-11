@@ -60,6 +60,40 @@ export function isOverdue(task, today = ymd(new Date())) {
   return Boolean(due && today && due < today);
 }
 
+/** Stable React/map identity. Untyped historical fixtures remain supported. */
+export function graphPersonKey(person) {
+  if (!person?.userId) return null;
+  return person?.userType ? `${person.userType}:${person.userId}` : String(person?.userId || '');
+}
+
+function typedPerson(graph, userId, userType) {
+  if (!userId) return null;
+  if (graph.personByIdentity) return graph.personByIdentity.get(`${userType}:${userId}`) || null;
+  const person = graph.personById?.get(String(userId));
+  return person && (!person.userType || person.userType === userType) ? person : null;
+}
+
+/** An untyped historical manager is usable only with one profile identity. */
+export function projectManager(graph, project) {
+  if (!graph || !project?.manager_id) return null;
+  if (project.manager_type) return typedPerson(graph, project.manager_id, project.manager_type);
+  const person = graph.personById?.get(String(project.manager_id));
+  return person || null;
+}
+
+function uniqueIndex(people, keyFor) {
+  const result = new Map();
+  const ambiguous = new Set();
+  for (const person of people) {
+    const key = keyFor(person);
+    if (!key || ambiguous.has(key)) continue;
+    if (result.has(key) && graphPersonKey(result.get(key)) !== graphPersonKey(person)) {
+      result.delete(key); ambiguous.add(key);
+    } else result.set(key, person);
+  }
+  return result;
+}
+
 /**
  * Load the graph for one organization.
  *
@@ -80,7 +114,7 @@ export async function loadOrgWorkGraph(orgId) {
     supabase
       .from("projects")
       .select(
-        "id, name, status, progress, priority, deadline, end_date, manager_id, " +
+        "id, name, status, progress, priority, deadline, end_date, manager_id, manager_type, " +
           "assigned_developer_id, assigned_developer_email, archived"
       )
       .eq("organization_id", orgId)
@@ -110,20 +144,21 @@ export async function loadOrgWorkGraph(orgId) {
 
   const nameById = new Map();
   for (const d of devRes.data || []) {
-    nameById.set(String(d.id), { name: d.name, email: d.email });
+    nameById.set(`developer:${d.id}`, { name: d.name, email: d.email });
   }
   for (const a of adminRes.data || []) {
-    nameById.set(String(a.id), { name: a.full_name, email: a.email });
+    nameById.set(`admin:${a.id}`, { name: a.full_name, email: a.email });
   }
 
-  const personById = new Map();
-  const personByEmail = new Map();
+  const personByIdentity = new Map();
   for (const m of memRes.data || []) {
-    if (!m.user_id) continue;
-    const profile = nameById.get(String(m.user_id)) || {};
+    if (!m.user_id || !["admin", "developer"].includes(m.user_type)) continue;
+    const profile = nameById.get(`${m.user_type}:${m.user_id}`) || {};
     const email = profile.email || m.email || "";
     const person = {
       userId: m.user_id,
+      userType: m.user_type,
+      key: `${m.user_type}:${m.user_id}`,
       // A membership whose profile row is missing still appears, named from the
       // local part of its address. Somebody silently absent from their own
       // project is worse than somebody shown by an imperfect name.
@@ -132,9 +167,12 @@ export async function loadOrgWorkGraph(orgId) {
       role: m.role || m.user_type || "developer",
       status: m.status || "active",
     };
-    personById.set(String(m.user_id), person);
-    if (email) personByEmail.set(email.toLowerCase(), person);
+    personByIdentity.set(graphPersonKey(person), person);
   }
+
+  const people = Array.from(personByIdentity.values());
+  const personById = uniqueIndex(people, person => String(person.userId));
+  const personByEmail = uniqueIndex(people, person => person.email?.toLowerCase());
 
   const projects = (projRes.data || []).filter((p) => !p.archived);
   const projectById = new Map(projects.map((p) => [String(p.id), p]));
@@ -142,6 +180,7 @@ export async function loadOrgWorkGraph(orgId) {
   const tasks = taskRes.data || [];
   const tasksByProject = new Map();
   const tasksByPerson = new Map();
+  const tasksByIdentity = new Map();
   for (const t of tasks) {
     if (t.project_id) {
       const key = String(t.project_id);
@@ -152,6 +191,7 @@ export async function loadOrgWorkGraph(orgId) {
       const key = String(t.developer_id);
       if (!tasksByPerson.has(key)) tasksByPerson.set(key, []);
       tasksByPerson.get(key).push(t);
+      tasksByIdentity.set(`developer:${key}`, tasksByPerson.get(key));
     }
   }
 
@@ -161,7 +201,9 @@ export async function loadOrgWorkGraph(orgId) {
     tasks,
     tasksByProject,
     tasksByPerson,
-    people: Array.from(personById.values()),
+    people,
+    personByIdentity,
+    tasksByIdentity,
     personById,
     personByEmail,
   };
@@ -183,7 +225,7 @@ export function projectTeam(project, graph) {
 
   const add = (person, taskCount = 0) => {
     if (!person?.userId) return;
-    const key = String(person.userId);
+    const key = graphPersonKey(person);
     const seen = members.get(key);
     if (seen) {
       seen.taskCount += taskCount;
@@ -192,25 +234,24 @@ export function projectTeam(project, graph) {
     members.set(key, { key, ...person, taskCount });
   };
 
-  const manager = project.manager_id
-    ? graph.personById.get(String(project.manager_id)) || null
-    : null;
+  const manager = projectManager(graph, project);
 
   if (project.assigned_developer_id) {
-    add(graph.personById.get(String(project.assigned_developer_id)));
+    add(typedPerson(graph, project.assigned_developer_id, "developer"));
   } else if (project.assigned_developer_email) {
-    add(graph.personByEmail.get(String(project.assigned_developer_email).toLowerCase()));
+    const person = graph.personByEmail.get(String(project.assigned_developer_email).toLowerCase());
+    if (person && (!person.userType || person.userType === 'developer')) add(person);
   }
 
   for (const t of tasks) {
     if (!t.developer_id) continue;
-    add(graph.personById.get(String(t.developer_id)), 1);
+    add(typedPerson(graph, t.developer_id, "developer"), 1);
   }
 
-  if (manager?.userId) members.delete(String(manager.userId));
+  if (manager?.userId) members.delete(graphPersonKey(manager));
 
   return {
-    manager: manager ? { key: String(manager.userId), ...manager, taskCount: 0 } : null,
+    manager: manager ? { key: graphPersonKey(manager), ...manager, taskCount: 0 } : null,
     team: Array.from(members.values()),
     tasks,
   };
@@ -225,14 +266,18 @@ export function projectTeam(project, graph) {
  * the wrong person.
  */
 export function personLoad(person, graph, today = ymd(new Date())) {
-  const tasks = graph.tasksByPerson.get(String(person.userId)) || [];
+  const tasks = person.userType && person.userType !== 'developer' ? [] :
+    (graph.tasksByIdentity ? graph.tasksByIdentity.get(`developer:${person.userId}`) : graph.tasksByPerson.get(String(person.userId))) || [];
   const open = tasks.filter(isOpenTask);
   const overdue = open.filter((t) => isOverdue(t, today));
 
   const projectIds = new Set();
   for (const t of open) if (t.project_id) projectIds.add(String(t.project_id));
   const managing = graph.projects.filter(
-    (p) => p.manager_id && String(p.manager_id) === String(person.userId)
+    (p) => {
+      const manager = projectManager(graph, p);
+      return Boolean(manager && graphPersonKey(manager) === graphPersonKey(person));
+    }
   );
   for (const p of managing) projectIds.add(String(p.id));
 
