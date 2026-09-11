@@ -282,7 +282,7 @@ function notifyTables() {
     memberships: {
       select: () => ({
         data: [
-          { user_id: COLLEAGUE, user_type: 'developer', email: 'c@example.test', role: 'developer' },
+          { user_id: COLLEAGUE, user_type: 'developer', email: 'c@example.test', role: 'developer', status: 'active' },
         ],
         error: null,
       }),
@@ -305,6 +305,52 @@ async function notify(auth) {
     })
   );
 }
+
+describe('automation notification recipient boundaries', () => {
+  beforeEach(() => { state.auth = staff('owner'); notifyTables(); });
+  async function send(body = {}) {
+    return call(await notifyPOST(), postRequest('http://localhost/api/automation/notify', {
+      userIds: [COLLEAGUE], sendEmail: true, ...body,
+    }));
+  }
+  it.each([
+    { user_type: 'client', status: 'active' },
+    { user_type: 'developer', status: 'suspended' },
+    { user_type: 'admin', status: 'inactive' },
+  ])('does not notify unauthorized recipient %j', async (member) => {
+    state.tables.memberships.select = () => ({ data: [{ user_id: COLLEAGUE, email: 'private@example.test', ...member }] });
+    expect((await send()).status).toBe(400);
+    expect(queries('notifications', 'insert')).toHaveLength(0);
+    expect(state.emails).toHaveLength(0);
+  });
+  it('does not invent context for a nonexistent task', async () => {
+    expect((await send({ taskId: 'missing' })).status).toBe(404);
+    expect(state.emails).toHaveLength(0);
+    expect(queries('notifications', 'insert')).toHaveLength(0);
+  });
+  it.each([{ sendEmail: 'false' }, { subject: {} }, { userIds: [1] }, { userIds: Array(51).fill(COLLEAGUE) }])('rejects malformed requests %j', async (body) => {
+    expect((await send(body)).status).toBe(400);
+    expect(state.emails).toHaveLength(0);
+  });
+  it('uses the admin recipient field for admin identities', async () => {
+    state.tables.memberships.select = () => ({ data: [{ user_id: COLLEAGUE, user_type: 'admin', status: 'active', email: 'a@example.test' }] });
+    expect((await send()).status).toBe(200);
+    expect(queries('notifications', 'insert')[0].payload[0]).toMatchObject({ admin_id: COLLEAGUE });
+    expect(queries('notifications', 'insert')[0].payload[0].developer_id).toBeUndefined();
+  });
+  it('scopes fallback addresses to the organization and reports lookup failures', async () => {
+    state.tables.memberships.select = () => ({ data: [{ user_id: COLLEAGUE, user_type: 'developer', status: 'active' }] });
+    state.tables.developers = { select: () => ({ error: { message: 'database unavailable' } }) };
+    const result = await send();
+    expect(result.body.emailSkipped).toMatch(/could not be resolved/);
+    expect(hasEq(queries('developers', 'select')[0], 'organization_id', ORG)).toBe(true);
+    expect(state.emails).toHaveLength(0);
+  });
+  it('counts inserted rows after preference filtering', async () => {
+    state.tables.notifications.insert = () => ({ data: [], error: null });
+    expect((await send({ sendEmail: false })).body.notified).toBe(0);
+  });
+});
 
 describe('/api/automation/notify only fans out for automation.manage', () => {
   it.each(NOTIFY_ALLOWED)('%s may send', async (role) => {

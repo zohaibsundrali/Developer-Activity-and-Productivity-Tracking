@@ -82,6 +82,9 @@ const hasRoleArray = (src) =>
  * one that stops being true fails rather than sitting as cover for the next.
  */
 const NOT_AUTHORIZATION = {
+  "src/app/api/automation/notify/route.js":
+    "filters recipient profile types to admin/developer, excluding client profiles; " +
+    "caller authorization still requires automation.manage and paid automation access",
   "src/app/api/projects/[id]/closure/route.js":
     "narrows an already-granted key rather than replacing it — `project.complete` " +
     "says the role may complete projects at all, and the owner/admin line plus the " +

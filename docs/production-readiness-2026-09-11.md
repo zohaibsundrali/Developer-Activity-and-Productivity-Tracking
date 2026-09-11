@@ -93,3 +93,13 @@ The client email endpoint used a service client without checking active membersh
 Recipient queries now require active client profiles and active client-type memberships in the same organization. Missing projects return 404, mismatched project/client recipients return 403, and failed recipient lookups return a generic 503 without sending mail. The endpoint enforces the existing `client_portal` entitlement before lookup, validates message fields and IDs, preserves BCC privacy, and reports actual provider delivery rather than attempted delivery.
 
 Validation: **102 web test files / 3,188 tests passed**, including 29 new API regression cases. The final production build passed with the existing lint warnings. All email operations were mocked; no real notifications were sent. This closes this endpoint's confirmed issues, not the remaining automation and direct notification-writer audit. Nine previously documented migrations remain unapplied to the connected project.
+
+## Automation recipient and delivery follow-up
+
+Automation fan-out previously selected memberships regardless of activation status or profile type, allowing internal task emails to reach clients and suspended members. Recipient selection now requires active Admin/Developer profiles, with matching SQL filters and defensive row checks. Admin profiles use the notification's admin recipient field. Fallback profile email queries are organization-scoped and keyed by profile type plus ID; lookup failures are reported without exposing database details. Duplicate addresses are emailed once.
+
+Malformed notification fields and oversized recipient lists now fail validation rather than being silently truncated/coerced. A task reference must resolve in the caller's organization before notifications are inserted; missing tasks return 404 and lookup failures return 503. The notified count now uses returned insert rows, so preferences that suppress an insert do not inflate the result. Existing automation permission and plan gates remain in place.
+
+This does not establish complete task-level notification privacy: per-recipient task permission/override checks, typed identity in the database recipient predicate, and all direct notification writers still require audit. No real emails or business records were created during these tests.
+
+Automation follow-up validation: **102 test files / 3,200 tests passed** and the production build passed with existing lint warnings. Eleven new behavior cases cover recipient status/type, malformed requests, missing tasks, recipient identity fields, fallback lookup errors, and suppressed-insert counts. The static role-array test now documents the recipient profile-type filter separately from caller authorization.
