@@ -82,6 +82,11 @@ const hasRoleArray = (src) =>
  * one that stops being true fails rather than sitting as cover for the next.
  */
 const NOT_AUTHORIZATION = {
+  "src/app/api/leave/route.js":
+    "admin/developer arrays validate storage profile identity; leave.request_own, leave.approve and leave view keys authorize actions",
+  "src/app/api/attendance/route.js":
+    "admin/developer arrays validate caller/target profile identity; attendance.log_own, attendance.manage and attendance view keys authorize actions",
+
   "src/app/api/signals/route.js":
     "restricts reporting identities to staff profile tables; effective signal.view independently authorizes the caller",
   "src/app/api/capacity/route.js":
@@ -109,6 +114,14 @@ const NOT_AUTHORIZATION = {
 };
 
 describe("no route decides authorization from a hand-typed role list", () => {
+  it.each(["leave", "attendance"])("%s profile checks remain separate from effective action permissions", (module) => {
+    const src = read(path.join(root, `src/app/api/${module}/route.js`));
+    expect(src).toContain('["admin", "developer"].includes(auth.userType)');
+    expect(src).toContain(`requirePermission(auth, "${module === "leave" ? "leave.request_own" : "attendance.log_own"}")`);
+    expect(src).toContain(`requirePermission(auth, "${module === "leave" ? "leave.approve" : "attendance.manage"}")`);
+    expect(src).not.toMatch(/\[\s*"admin",\s*"developer"\s*\]\.includes\(auth\.role\)/);
+  });
+
   it("finds the routes at all", () => {
     // A test that stops matching is a test that stops testing.
     expect(ROUTES.length).toBeGreaterThan(50);

@@ -1,3 +1,4 @@
+import { runBackgroundMaintenance } from '@/utils/backgroundMaintenance';
 import { flushProposalDecisionEmails } from '@/utils/proposalDecisionEmails';
 import { sensitiveNotificationAudience, canReceiveBillingNotice, canReceiveSignalNotice } from "@/utils/sensitiveNotificationAudience";
 import { NextResponse } from "next/server";
@@ -82,6 +83,9 @@ async function runJobs() {
   const today = ymd(new Date());
   const tomorrow = ymd(new Date(Date.now() + 86400000));
   const summary = { remindersSent: 0, recurringSpawned: 0, trialReminders: 0, signalsRaised: 0, errors: [] };
+  const maintenance = await runBackgroundMaintenance(svc);
+  summary.maintenance = maintenance;
+  summary.errors.push(...maintenance.errors);
   try {
     const recovered = await recoverInvitations(svc);
     summary.invitationAccountsCleaned = recovered.cleaned;

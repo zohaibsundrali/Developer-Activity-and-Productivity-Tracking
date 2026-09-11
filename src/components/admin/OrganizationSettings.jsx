@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import TrackingRetentionSettings from "./TrackingRetentionSettings";
+import OrganizationDeletionPanel from "./OrganizationDeletionPanel";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId } from "@/utils/orgContext";
 import { uploadOrgFile, resolveOrgFileUrl } from "@/utils/orgFiles";
@@ -265,20 +267,23 @@ export default function OrganizationSettings({ readOnly = false }) {
     />
   );
   if (loadError) return (
-    <ErrorState title="Couldn't load organization settings" description={loadError} onRetry={load} />
+    <><ErrorState title="Couldn't load organization settings" description={loadError} onRetry={load} />
+    <OrganizationDeletionPanel key={`deletion:${orgId}`} orgId={orgId} /></>
   );
   // Read succeeded, no row came back: genuinely empty, not failed. The form
   // stays off the screen either way, because saving it would write defaults
   // over whatever the row actually holds.
   if (!hydrated) return (
-    <EmptyState
+    <><EmptyState
       icon={Building2}
       title="Organization not found"
       description="This workspace no longer exists, or your account can't see it. Sign in again, or ask an owner for access."
     />
+    <OrganizationDeletionPanel key={`deletion:${orgId}`} orgId={orgId} /></>
   );
 
   return (
+    <>
     <fieldset disabled={readOnly} className="m-0 min-w-0 space-y-6 border-0 p-0">
       {readOnly && (
         <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm text-foreground sm:p-5">
@@ -427,6 +432,9 @@ export default function OrganizationSettings({ readOnly = false }) {
         </div>
       )}
     </fieldset>
+    {!readOnly && <TrackingRetentionSettings key={`retention:${orgId}`} orgId={orgId} />}
+    <OrganizationDeletionPanel key={`deletion:${orgId}`} orgId={orgId} />
+    </>
   );
 }
 

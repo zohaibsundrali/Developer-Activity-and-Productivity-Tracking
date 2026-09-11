@@ -73,7 +73,6 @@ const COVERED_BY_SCREEN = {
 };
 
 const ENFORCED_BY_RLS = {
-  "organization.manage": "OrganizationManagement writes org rows directly; org_self in 013 is the gate",
   "member.manage": "memberships_update in 018 — owner/admin/hr",
   "member.create": "CreateClientAccount inserts a membership directly; 018's insert policy is the gate",
   "employee.onboard": "employee_profiles_write in 018 — owner/admin/hr",
@@ -84,10 +83,6 @@ const ENFORCED_BY_RLS = {
 };
 
 const NO_FEATURE_YET = {
-  "organization.delete":
-    "the only delete of an organization is signup's own rollback of a failed " +
-    "signup, with the service role. There is no way for anybody to delete their " +
-    "organization from the product.",
   "project.delete": "nothing in src/ deletes a project; the screens archive and close instead",
   "project.close": "closure runs through /api/projects/[id]/closure, which asks project.complete",
 };
@@ -138,6 +133,6 @@ describe("what the RLS-enforced keys cost, stated once", () => {
     //
     // Every addition is a capability no route decides, so it should be a
     // decision somebody makes on purpose.
-    expect(Object.keys(ENFORCED_BY_RLS).length).toBe(8);
+    expect(Object.keys(ENFORCED_BY_RLS).length).toBe(7);
   });
 });

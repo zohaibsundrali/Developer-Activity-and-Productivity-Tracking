@@ -51,6 +51,7 @@ function normaliseDate(value) {
 export async function GET(request) {
   try {
     const auth = await getAuthedOrg(request);
+    if (auth && !["admin", "developer"].includes(auth.userType)) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     if (!auth) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
@@ -59,6 +60,8 @@ export async function GET(request) {
     const from = normaliseDate(searchParams.get("from"));
     const to = normaliseDate(searchParams.get("to"));
     const requestedUserId = searchParams.get("userId");
+    const requestedType = searchParams.get("userType");
+    if (requestedType && !["admin", "developer"].includes(requestedType)) return NextResponse.json({ success:false,error:"Invalid userType" }, { status:400 });
 
     // Wide key first, then the narrow one. Asking `attendance.view_own` first
     // would self-scope hr and manager, which is the exact fault the *_own
@@ -69,7 +72,7 @@ export async function GET(request) {
     }
 
     const wantsSomeoneElse =
-      requestedUserId && String(requestedUserId) !== String(auth.appUserId);
+      requestedUserId && (String(requestedUserId) !== String(auth.appUserId) || requestedType && requestedType !== auth.userType);
     if (wantsSomeoneElse && !canReadAnyone) {
       return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     }
@@ -87,8 +90,9 @@ export async function GET(request) {
         return NextResponse.json({ success: false, error: "Invalid userId" }, { status: 400 });
       }
       query = query.eq("user_id", requestedUserId);
+      if (requestedType) query = query.eq("user_type", requestedType);
     } else if (!canReadAnyone || searchParams.get("scope") === "me") {
-      query = query.eq("user_id", auth.appUserId);
+      query = query.eq("user_id", auth.appUserId).eq("user_type", auth.userType);
     }
 
     if (from) query = query.gte("work_date", from);
@@ -110,6 +114,7 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const auth = await getAuthedOrg(request);
+    if (auth && !["admin", "developer"].includes(auth.userType)) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     if (!auth) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
@@ -127,7 +132,9 @@ export async function POST(request) {
     // Writing somebody else's day is a different permission from writing your
     // own, so the two are decided separately and before anything else.
     const targetId = body?.userId;
-    const forSomeoneElse = targetId && String(targetId) !== String(auth.appUserId);
+    const explicitType = body?.userType;
+    if (explicitType && !["admin", "developer"].includes(explicitType)) return NextResponse.json({ success:false,error:"Invalid userType" }, { status:400 });
+    const forSomeoneElse = targetId && (String(targetId) !== String(auth.appUserId) || explicitType && explicitType !== auth.userType);
 
     if (forSomeoneElse) {
       const denied = requirePermission(auth, "attendance.manage");
@@ -159,12 +166,15 @@ export async function POST(request) {
       // The target must be in this organization. Without this an HR lead could
       // write a row against any uuid in the world and it would sit in their own
       // org's table looking legitimate.
-      const { data: member } = await svc
+      let memberQuery = svc
         .from("memberships")
         .select("user_id, user_type")
         .eq("organization_id", auth.orgId)
         .eq("user_id", userId)
-        .maybeSingle();
+        .in("user_type", ["admin", "developer"])
+        .eq("status", "active");
+      if (explicitType) memberQuery = memberQuery.eq("user_type", explicitType);
+      const { data: member } = await memberQuery.maybeSingle();
       if (!member) {
         return NextResponse.json(
           { success: false, error: "That person is not in this organization" },
@@ -182,6 +192,7 @@ export async function POST(request) {
       .select("*")
       .eq("organization_id", auth.orgId)
       .eq("user_id", userId)
+      .eq("user_type", targetUserType)
       .eq("work_date", workDate)
       .maybeSingle();
 

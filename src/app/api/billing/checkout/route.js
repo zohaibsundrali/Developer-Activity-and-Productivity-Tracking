@@ -4,6 +4,13 @@ import { requirePermission } from "@/utils/serverPermissions";
 import { stripeClient, billingConfigured, appOrigin } from "@/utils/stripeServer";
 
 export const dynamic = "force-dynamic";
+async function deletionStarted(svc, orgId) {
+  const result = await svc.rpc('organization_deletion_active', { p_org: orgId });
+  if (result.error || typeof result.data !== 'boolean') throw new Error('Organization deletion state unavailable');
+  return result.data;
+}
+const deletionResponse = () => NextResponse.json({ error: 'Organization deletion is in progress; billing changes are disabled.' }, { status: 409 });
+
 
 // POST /api/billing/checkout
 // Body: { planCode }
@@ -68,6 +75,7 @@ export async function POST(request) {
     // Org id comes from the verified JWT. Anything the body says about which
     // organization is being billed is ignored.
     const organizationId = auth.orgId;
+    if (await deletionStarted(svc, organizationId)) return deletionResponse();
 
     const { data: existing, error: subscriptionError } = await svc
       .from("organization_subscriptions")
@@ -89,6 +97,7 @@ export async function POST(request) {
 
       if (orgError || !org) return NextResponse.json({ error: "Organization lookup unavailable." }, { status: 503 });
 
+      if (await deletionStarted(svc, organizationId)) return deletionResponse();
       const customer = await stripe.customers.create({
         email: auth.email || undefined,
         name: org?.name || undefined,
@@ -97,6 +106,7 @@ export async function POST(request) {
         metadata: { organization_id: organizationId },
       }, { idempotencyKey: `organization-customer-${organizationId}` });
       customerId = customer.id;
+      if (await deletionStarted(svc, organizationId)) return deletionResponse();
 
       const { error: customerSaveError } = await svc
         .from("organization_subscriptions")
@@ -183,6 +193,7 @@ export async function POST(request) {
       }
 
       const alreadyOnPlan = currentItem.price?.id === plan.stripe_price_id;
+      if (await deletionStarted(svc, organizationId)) return deletionResponse();
       if (!alreadyOnPlan) {
         await stripe.subscriptions.update(liveSubscription.id, {
           items: [{ id: currentItem.id, price: plan.stripe_price_id }],
@@ -195,6 +206,14 @@ export async function POST(request) {
           payment_behavior: "error_if_incomplete",
           metadata,
         });
+      }
+
+      if (await deletionStarted(svc, organizationId)) {
+        const verifiedCustomer = typeof liveSubscription.customer === 'string' ? liveSubscription.customer : liveSubscription.customer?.id;
+        if (verifiedCustomer !== customerId || liveSubscription.metadata?.organization_id !== organizationId)
+          throw new Error('Cannot safely compensate unverified subscription identity');
+        await stripe.subscriptions.cancel(liveSubscription.id, { invoice_now: false, prorate: false });
+        return deletionResponse();
       }
 
       // The webhook records the authoritative state; this write only keeps the
@@ -242,13 +261,17 @@ export async function POST(request) {
         }
       }
       if (previousSession?.status === "open") {
-        if (previousSession.metadata?.plan_code === plan.code && previousSession.url) return NextResponse.json({ url: previousSession.url });
+        if (previousSession.metadata?.plan_code === plan.code && previousSession.url) {
+          if (await deletionStarted(svc, organizationId)) { await stripe.checkout.sessions.expire(previousSession.id); return deletionResponse(); }
+          return NextResponse.json({ url: previousSession.url });
+        }
         await stripe.checkout.sessions.expire(previousSession.id, {}, { idempotencyKey: `expire-checkout-${previousSession.id}` });
       }
     } catch {
       return NextResponse.json({ error: "Could not safely resume checkout. Please retry." }, { status: 503 });
     }
 
+    if (await deletionStarted(svc, organizationId)) return deletionResponse();
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
@@ -267,6 +290,18 @@ export async function POST(request) {
         ...(trialDays ? { trial_period_days: trialDays } : {}),
       },
     }, { idempotencyKey: `organization-checkout-${organizationId}-${previousSession?.id || "first"}` });
+
+    let deletion;
+    try { deletion = await deletionStarted(svc, organizationId); }
+    catch (error) {
+      // A lost post-provider check must not return an independently payable URL.
+      await stripe.checkout.sessions.expire(session.id);
+      throw error;
+    }
+    if (deletion) {
+      await stripe.checkout.sessions.expire(session.id);
+      return deletionResponse();
+    }
 
     // The key deliberately excludes the target plan: racing plan choices must
     // conflict at Stripe, not create two independently payable subscriptions.

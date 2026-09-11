@@ -14,6 +14,7 @@ import {
   Skeleton,
   StatusPill,
 } from "@/components/ui";
+import { leaveDayAmount } from "@/utils/leaveDayContract";
 import { authFetch } from "@/utils/authFetch";
 import { showConfirm, showError, showSuccess } from "@/utils/alerts";
 
@@ -104,7 +105,7 @@ export default function MyLeave() {
   // A half day only makes sense on a single-day request. Offering the checkbox
   // on a five-day span would let somebody book "0.5 days" of a working week.
   const canHalf = span === 1;
-  const days = span === null ? null : canHalf && form.halfDay ? 0.5 : span;
+  const days = leaveDayAmount(span, canHalf && form.halfDay ? 0.5 : span);
 
   const pendingCount = useMemo(
     () => requests.filter((r) => r.status === "pending").length,
