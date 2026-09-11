@@ -1,4 +1,5 @@
 "use client";
+import TrackerDevices from "@/components/shared/TrackerDevices";
 
 import { useMemo, useState } from "react";
 import {
@@ -315,6 +316,7 @@ export default function Account({ user }) {
           </CardContent>
         )}
       </Card>
+      <TrackerDevices />
     </div>
   );
 }

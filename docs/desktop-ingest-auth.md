@@ -1,3 +1,5 @@
+> Production rollout update — 11 September 2026: the staged device-session implementation replaces fleet-secret authorization in production. Apply `20260911062805_production_device_sessions.sql`, release the updated `developer-tracker/auth_manager.py`, and require fresh desktop login/enrollment. HTTP ingest requires the enrolled user's access JWT; direct monitoring and Storage writes are bound to that same session. Account → Tracker devices permits revocation. Existing text below describes the earlier shared-secret transition and applies only to non-production compatibility. See [rollout gates](production-readiness-2026-09-11.md).
+
 # Desktop agent ingest authentication
 
 **September 2026 security update:** production always enforces the shared-secret

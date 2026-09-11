@@ -146,8 +146,6 @@ describe("user_type is no longer asked authorization questions", () => {
       "follows userTypeForRole(role), and the rank check runs regardless",
     "src/app/api/developer/change-password/route.js":
       "picks the profile table to read the password hash from",
-    "src/app/api/invitations/accept/route.js":
-      "picks the table to insert the new profile row into",
     "src/app/api/search/route.js":
       "builds the result URL (/admin/... vs /developer/...) and filters " +
       "candidates by which directory they came from",

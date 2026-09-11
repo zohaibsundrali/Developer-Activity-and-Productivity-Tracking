@@ -161,6 +161,9 @@ describe("resolveEntitlement", () => {
 });
 
 describe("getUsage", () => {
+  it("does not display a failed usage query as zero consumption", async () => {
+    await expect(getUsage(fakeService({ failCount: true }), "org-1", PLANS.free.limits)).rejects.toThrow();
+  });
   it("reports used, limit and remaining per resource", async () => {
     const svc = fakeService({ counts: { projects: 1, memberships: 2 } });
     const usage = await getUsage(svc, "org-1", PLANS.free.limits);

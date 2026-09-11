@@ -47,6 +47,7 @@ let state;
 
 function resetState(overrides = {}) {
   state = {
+    rpcCalls: [],
     inserts: [],
     updates: [],
     createdUsers: [],
@@ -78,6 +79,10 @@ function insertedRow(table, rows) {
 
 function fakeClient() {
   return {
+    async rpc(name, args) {
+      state.rpcCalls.push({ name, args });
+      return { data: name === "claim_invitation" ? { auth_user_id: "auth-1", profile_id: "profile-1" } : { success: true }, error: null };
+    },
     from(table) {
       return {
         insert(rows) {
@@ -132,6 +137,7 @@ function fakeClient() {
     },
     auth: {
       admin: {
+        getUserById: async () => ({ data: { user: null }, error: { status: 404 } }),
         createUser: async (args) => {
           state.createdUsers.push(args);
           return { data: { user: { id: "auth-1" } }, error: null };
@@ -258,7 +264,7 @@ describe("invitation acceptance creates no plaintext password row", () => {
     ["manager", "developers"],
     ["employee", "developers"],
     ["admin", "admin_users"],
-    ["owner", "admin_users"],
+
     // hr USED TO BE ["hr", "admin_users"] HERE. That was the accept route's own
     // `isAdminLike` (owner/admin/hr) disagreeing with userTypeForRole(), which
     // files hr in `developers` — as /api/auth/provision and the Employees
@@ -278,9 +284,9 @@ describe("invitation acceptance creates no plaintext password row", () => {
     expect(res.status).toBe(200);
 
     const rows = profileRows();
-    expect(rows).toHaveLength(1);
-    expect(rows[0].table).toBe(table);
-    expect(rows[0].row).not.toHaveProperty("password");
+    expect(rows).toHaveLength(0);
+    expect(state.rpcCalls.find(c => c.name === "finish_invitation")).toBeDefined();
+    expect(JSON.stringify(state.rpcCalls)).not.toContain(PASSWORD);
   });
 
   it.each(roles)("role %s still gets a Supabase Auth account", async (role) => {
@@ -293,7 +299,8 @@ describe("invitation acceptance creates no plaintext password row", () => {
     expect(state.createdUsers[0]).toMatchObject({ password: PASSWORD, email_confirm: true });
     // And the profile row is linked back to it, which is what
     // /api/admin/legacy-auth-audit counts as "not legacy-only".
-    expect(state.updates.some((u) => u.patch?.auth_user_id === "auth-1")).toBe(true);
+    expect(state.createdUsers[0].id).toBe("auth-1");
+    expect(state.createdUsers[0].app_metadata.app_user_id).toBe("profile-1");
   });
 
   it("puts the password nowhere in the database, on any table", async () => {

@@ -234,7 +234,7 @@ describe("the invite path has its own route", () => {
     expect(accept).toMatch(/admin\.auth\.admin\.createUser/);
     expect(accept).toMatch(/termsAccepted !== true/);
     expect(accept).toMatch(/checkSeatLimitForRole/);
-    expect(accept).toMatch(/status: "accepted"/);
+    expect(accept).toContain('admin.rpc("finish_invitation"');
   });
 
   it("holds no credential logic of its own — the server decides everything", () => {

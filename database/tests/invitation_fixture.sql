@@ -1,0 +1,12 @@
+create table auth.users(id uuid primary key,email text,raw_app_meta_data jsonb);
+alter table organizations add column name text default 'Test organization';
+create table teams(id uuid primary key,organization_id uuid);
+create table departments(id uuid primary key,organization_id uuid);
+create table invitations(id uuid primary key default gen_random_uuid(),organization_id uuid,email text,role text,status text default 'pending',expires_at timestamptz default now()+interval '1 day',team_id uuid,department_id uuid,project_id uuid);
+create table admin_users(id uuid primary key,organization_id uuid,full_name text,email text,company text not null,role text,is_verified boolean,auth_user_id uuid);
+create table clients(id uuid primary key,organization_id uuid,name text,email text,status text,auth_user_id uuid);
+create table project_clients(organization_id uuid,project_id uuid,client_id uuid);
+create table terms_acceptances(organization_id uuid,user_id uuid,user_type text,email text,document text,document_version text not null,entry_point text,accepted_at timestamptz,ip inet);
+alter table developers add column name text,add column email text unique,add column status text,add column auth_user_id uuid;
+alter table memberships add column user_id uuid,add column email text,add column role text,add column team_id uuid,add column department_id uuid,add column status text;
+create function public.role_rank(p_role text) returns integer language sql immutable as $$ select case p_role when 'owner' then 100 when 'admin' then 90 when 'manager' then 70 when 'hr' then 60 when 'finance' then 55 when 'team_lead' then 50 when 'qa' then 35 when 'developer' then 30 when 'designer' then 30 when 'devops' then 30 when 'employee' then 20 when 'client' then 10 end $$;

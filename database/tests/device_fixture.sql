@@ -1,0 +1,10 @@
+create function public.auth_app_user_id() returns uuid language sql stable as $$ select (auth.jwt()->'app_metadata'->>'app_user_id')::uuid $$;
+create function public.auth_role() returns text language sql stable as $$ select auth.jwt()->'app_metadata'->>'role' $$;
+create function public.auth_override(text) returns boolean language sql stable as $$ select null::boolean $$;
+alter table screenshots add column developer_id uuid;
+alter table screenshots add column developer_email text;
+insert into developers(id,organization_id) values ('00000000-0000-0000-0000-000000000012','00000000-0000-0000-0000-000000000002');
+alter table storage.objects enable row level security;
+grant usage on schema storage to authenticated;
+grant select,insert,update on storage.objects to authenticated;
+create policy legacy_storage on storage.objects for all to authenticated using(true) with check(true);

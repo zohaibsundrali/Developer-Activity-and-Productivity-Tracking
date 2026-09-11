@@ -151,56 +151,18 @@ const LIMIT_LABELS = {
   tracking_history_days: "Tracking history",
 };
 
-/**
- * Catalogue keys that are seeded in `billing_plans` but that NOTHING in the
- * product actually enforces. Rendering them the same way as a live limit — a
- * number in a plan card, a green tick next to a feature — tells a paying
- * customer they are buying a boundary that does not exist, and tells a Free
- * customer they are missing something they in fact have.
- *
- * Verified against every call site of src/utils/entitlements.js and against
- * database/028_plan_limit_triggers.sql:
- *   storage_mb ............. no byte accounting exists anywhere
- *   screenshots ............ counted for display only; checkResourceLimit is
- *                            never called for it and /api/upload-screenshot has
- *                            no plan check
- *   tracking_history_days .. nothing prunes history; the daily worker in
- *                            /api/cron does reminders and recurring tasks only
- *   reports ................ the Reports section is gated by ROLE, not by plan
- *                            (src/components/shell/navConfig.js)
- *   api_access ............. there is no public API to grant or withhold
- *
- * `automation` and `client_portal` are NOT listed here — both are consulted by
- * checkFeatureAccess — but neither is a whole-feature gate either, so each
- * carries its own note below.
- *
- * Remove a key from here the day it gains real enforcement, not before.
- */
+// Quota, feature and history migrations enforce these catalogue limits.
+// History is an access window; it does not automatically delete older data.
 const UNENFORCED = {
-  storage_mb: "Not enforced yet — nothing measures storage, so this number is a catalogue value.",
-  screenshots: "Not enforced yet — screenshots are counted here but never blocked.",
-  tracking_history_days: "Not enforced yet — no tracking history is pruned on any plan.",
-  reports: "Reports are available on every plan today — access follows your role, not your plan.",
-  api_access: "There is no public API yet, so this grants nothing.",
+  api_access: "No customer-facing public API is included in the current plans.",
 };
-
-/**
- * Gated features whose gate is narrower than the label suggests. Shown with the
- * tick, because the gate is real — but with the scope spelled out, because the
- * label alone overstates it.
- */
-const PARTIAL_FEATURES = {
-  automation:
-    "Rules run on every plan. What a paid plan adds is the email action — the rest (assign, status, priority, label, notify) is not gated.",
-  client_portal:
-    "Checked when a client is invited or accepts. Clients who already have a login keep it if the plan lapses.",
-};
+const PARTIAL_FEATURES = {};
 
 function formatLimit(key, value) {
   if (value === UNLIMITED || value === null || value === undefined) return "Unlimited";
   const n = Number(value);
   if (Number.isNaN(n)) return String(value);
-  if (key === "storage_mb") return n >= 1000 ? `${(n / 1000).toLocaleString()} GB` : `${n.toLocaleString()} MB`;
+  if (key === "storage_mb") return n >= 1024 ? `${(n / 1024).toLocaleString()} GiB` : `${n.toLocaleString()} MiB`;
   if (key === "tracking_history_days") return `${n.toLocaleString()} days`;
   return n.toLocaleString();
 }
@@ -319,7 +281,7 @@ export default function BillingSubscription() {
   // fix a stable display order and let unknown keys fall in behind it.
   const usageRows = useMemo(() => {
     if (!usage || typeof usage !== "object") return [];
-    const preferred = ["employees", "developers", "projects", "active_tasks", "screenshots"];
+    const preferred = ["employees", "developers", "projects", "active_tasks", "screenshots", "storage_mb"];
     const keys = Object.keys(usage);
     const ordered = [
       ...preferred.filter((k) => keys.includes(k)),
@@ -456,7 +418,10 @@ export default function BillingSubscription() {
 
   // ── Error state ────────────────────────────────────────────────────────────
   if (error) {
-    return <ErrorState title="Couldn't load billing" description={error} onRetry={load} />;
+    return <div className="space-y-6">
+      <PageHeader title={sectionTitle("billing", "admin")} description="Your plan, usage against its limits, and payment settings." />
+      <ErrorState title="Couldn't load billing" description={error} onRetry={load} />
+    </div>;
   }
 
   const status = subscription?.status || "active";
@@ -862,7 +827,7 @@ export default function BillingSubscription() {
       {/* Usage */}
       <Section
         title="Usage this period"
-        description="Counts and limits are reported by the server, which is the only authority on them. Anything marked “not enforced” is counted for information — it will not block you."
+        description="Counts and limits are reported by the server. Resource increases are checked in the database; tracking history controls which older records you can access."
       >
         <div className="rounded-xl border border-border bg-card p-5 shadow-card">
           {usageRows.length === 0 ? (

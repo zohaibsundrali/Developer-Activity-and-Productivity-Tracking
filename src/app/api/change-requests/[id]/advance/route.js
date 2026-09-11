@@ -1,3 +1,4 @@
+import { checkFeatureAccess } from "@/utils/entitlements";
 import { NextResponse } from "next/server";
 import { defaultRolesFor } from "@/utils/permissionCatalogue";
 import { authCan } from "@/utils/serverPermissions";
@@ -94,6 +95,10 @@ export async function POST(request, { params }) {
     const reason = String(body.reason || "").trim();
 
     const svc = serviceClient();
+    if (auth.userType === "client") {
+      const planBlock = await checkFeatureAccess(svc, auth.orgId, "client_portal", "Client portal");
+      if (planBlock) return NextResponse.json(planBlock, { status: planBlock.status });
+    }
     const { data: cr, error: readErr } = await svc
       .from("change_requests")
       .select("*")

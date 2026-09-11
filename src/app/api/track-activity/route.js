@@ -1,3 +1,4 @@
+import { verifyDeviceRequest } from "@/utils/deviceAuth";
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
@@ -8,7 +9,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-// Production always enforces the shared-secret gate. The historical staged
+// Production requires a registered device session JWT. The historical staged
 // rollout described below now applies only outside production.
 
 /**
@@ -89,7 +90,7 @@ function ingestSecret() {
 }
 
 function enforcementEnabled() {
-  // Production ingest must never accept anonymous writes, even with no secret.
+  // Production ingest requires a registered device session.
   if (process.env.NODE_ENV === "production") return true;
   const flag = String(process.env.DESKTOP_INGEST_ENFORCE || '').trim().toLowerCase();
   return flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on';
@@ -115,6 +116,9 @@ function credentialMatches(presented, secret) {
 
 /** @returns {{allow: boolean, authenticated: boolean, stage: string, reason: string}} */
 function authorizeIngest(request) {
+  if (process.env.NODE_ENV === 'production') {
+    return { allow: false, authenticated: false, stage: 'device', reason: 'device_session_required' };
+  }
   const secret = ingestSecret();
   const enforce = enforcementEnabled();
 
@@ -181,7 +185,7 @@ async function reportUnauthenticated(decision) {
 
 // Loud on boot: an unset secret means this endpoint is writable by anyone who
 // knows a developer id, and that must not be able to stay quiet for another year.
-if (!ingestSecret()) {
+if (process.env.NODE_ENV !== 'production' && !ingestSecret()) {
   // eslint-disable-next-line no-console
   console.warn(
     enforcementEnabled()
@@ -195,7 +199,8 @@ if (!ingestSecret()) {
 
 export async function POST(request) {
   try {
-    const auth = authorizeIngest(request);
+    const auth = await verifyDeviceRequest(request) || authorizeIngest(request);
+    const db = auth.client || supabase;
     if (!auth.authenticated) await reportUnauthenticated(auth);
     if (!auth.allow) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -224,7 +229,10 @@ export async function POST(request) {
       );
     }
 
-    const { data: developer } = await supabase
+    if (auth.developerId && developerIds[0] !== auth.developerId) {
+      return NextResponse.json({ error: 'Device cannot submit another member’s activity' }, { status: 403 });
+    }
+    const { data: developer } = await db
       .from('developers')
       .select('id, organization_id')
       .eq('id', developerIds[0])

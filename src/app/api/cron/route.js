@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { serviceClient } from "@/utils/serverAuth";
 import { recordEvent } from "@/utils/systemEvents";
 import { daysUntil, reminderMessage, REMINDER_FROM_DAYS } from "@/utils/billingAccess";
+import { checkFeatureAccess } from "@/utils/entitlements";
+import { recoverInvitations } from "@/utils/invitationRecovery";
 import {
   runDetectors,
   filterForViewer,
@@ -80,6 +82,23 @@ async function runJobs() {
   const today = ymd(new Date());
   const tomorrow = ymd(new Date(Date.now() + 86400000));
   const summary = { remindersSent: 0, recurringSpawned: 0, trialReminders: 0, signalsRaised: 0, errors: [] };
+  try {
+    const recovered = await recoverInvitations(svc);
+    summary.invitationAccountsCleaned = recovered.cleaned;
+    summary.errors.push(...recovered.errors.map(error => ({ job: "invitation_recovery", ...error })));
+  } catch {
+    summary.errors.push({ job: "invitation_recovery", message: "Invitation recovery unavailable" });
+  }
+  const automationChecks = new Map();
+  async function automationAllowed(orgId) {
+    if (!orgId) return false;
+    if (!automationChecks.has(orgId)) {
+      automationChecks.set(orgId, checkFeatureAccess(svc, orgId, "automation", "Automation"));
+    }
+    const refusal = await automationChecks.get(orgId);
+    if (refusal?.status === 503) throw new Error("Automation billing verification unavailable");
+    return !refusal;
+  }
 
   /* ── 1. Due-date reminders ─────────────────────────────────────── */
   try {
@@ -91,7 +110,10 @@ async function runJobs() {
       .lte("due_date", tomorrow);
     if (error) throw error;
 
-    const candidates = (due || []).filter((t) => t.due_date || t.end_date);
+    const candidates = [];
+    for (const task of due || []) {
+      if ((task.due_date || task.end_date) && await automationAllowed(task.organization_id)) candidates.push(task);
+    }
 
     // One dedupe lookup for the whole batch instead of one per task — this was
     // two round trips per due task, which is what made the job scale with the
@@ -147,6 +169,7 @@ async function runJobs() {
     // rows can go out as batches rather than three round trips per template.
     const spawns = [];
     for (const task of recurring || []) {
+      if (!(await automationAllowed(task.organization_id))) continue;
       const rec = task.recurrence || {};
       const freq = rec.freq;
       if (!freq) continue;

@@ -1,4 +1,5 @@
 "use client";
+import PlanFeatureBoundary from "@/components/billing/PlanFeatureBoundary";
 
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/utils/supabaseClient";
@@ -251,7 +252,7 @@ function cleanAction(action) {
 }
 
 /* ========================================================================== */
-export default function AutomationRules() {
+function AutomationRulesContent() {
   const [orgId, setOrgId] = useState(null);
   const [projects, setProjects] = useState([]);
   const [projectId, setProjectId] = useState(""); // "" = org-wide scope
@@ -993,4 +994,8 @@ export default function AutomationRules() {
       </p>
     </div>
   );
+}
+
+export default function AutomationRules() {
+  return <PlanFeatureBoundary feature="automation"><AutomationRulesContent /></PlanFeatureBoundary>;
 }

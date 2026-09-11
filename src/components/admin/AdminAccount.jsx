@@ -1,4 +1,5 @@
 "use client";
+import TrackerDevices from "@/components/shared/TrackerDevices";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Info, Lock, ShieldCheck, User } from "lucide-react";
@@ -518,6 +519,7 @@ export default function AdminAccount({ user }) {
           </form>
         </Section>
       </div>
+      <TrackerDevices />
     </div>
   );
 }

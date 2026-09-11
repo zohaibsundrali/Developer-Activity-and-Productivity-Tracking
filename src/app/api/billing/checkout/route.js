@@ -41,11 +41,13 @@ export async function POST(request) {
     // The price is looked up from the catalogue by plan code. Accepting a price
     // id from the body would let a caller pay for the cheapest plan while
     // subscribing to the most expensive one.
-    const { data: plan } = await svc
+    const { data: plan, error: planError } = await svc
       .from("billing_plans")
       .select("code, name, stripe_price_id, trial_days, amount_cents, is_active")
       .eq("code", planCode)
       .maybeSingle();
+
+    if (planError) return NextResponse.json({ error: "Plan lookup unavailable. Please retry." }, { status: 503 });
 
     if (!plan || !plan.is_active) {
       return NextResponse.json({ error: "Unknown plan." }, { status: 400 });
@@ -67,21 +69,25 @@ export async function POST(request) {
     // organization is being billed is ignored.
     const organizationId = auth.orgId;
 
-    const { data: existing } = await svc
+    const { data: existing, error: subscriptionError } = await svc
       .from("organization_subscriptions")
       .select("stripe_customer_id, stripe_subscription_id, plan_code, status")
       .eq("organization_id", organizationId)
       .maybeSingle();
 
+    if (subscriptionError) return NextResponse.json({ error: "Subscription lookup unavailable. Please retry." }, { status: 503 });
+
     // Reusing the customer keeps one payment-method and invoice history per
     // organization; creating a second customer would silently split them.
     let customerId = existing?.stripe_customer_id || null;
     if (!customerId) {
-      const { data: org } = await svc
+      const { data: org, error: orgError } = await svc
         .from("organizations")
         .select("name")
         .eq("id", organizationId)
         .maybeSingle();
+
+      if (orgError || !org) return NextResponse.json({ error: "Organization lookup unavailable." }, { status: 503 });
 
       const customer = await stripe.customers.create({
         email: auth.email || undefined,
@@ -89,10 +95,10 @@ export async function POST(request) {
         // The webhook falls back to this when an event carries no metadata of
         // its own, so it must be set at creation time.
         metadata: { organization_id: organizationId },
-      });
+      }, { idempotencyKey: `organization-customer-${organizationId}` });
       customerId = customer.id;
 
-      await svc
+      const { error: customerSaveError } = await svc
         .from("organization_subscriptions")
         .upsert(
           {
@@ -102,6 +108,7 @@ export async function POST(request) {
           },
           { onConflict: "organization_id" }
         );
+      if (customerSaveError) return NextResponse.json({ error: "Could not save billing customer. Please retry." }, { status: 503 });
     }
 
     const origin = appOrigin(request);
@@ -131,10 +138,29 @@ export async function POST(request) {
         if (sub && ["active", "trialing", "past_due", "unpaid"].includes(sub.status)) {
           liveSubscription = sub;
         }
+      } catch (error) {
+        // A timeout, invalid API key or stale account reference is not evidence
+        // that no subscription exists. Never open a second checkout on failure.
+        return NextResponse.json({ error: "Could not verify your existing subscription. Please retry or contact support." }, { status: 503 });
+      }
+    }
+
+    // Webhooks may not have stored a newly completed subscription yet.
+    // Check Stripe's customer before deciding that a new purchase is safe.
+    if (!liveSubscription) {
+      try {
+        const subscriptions = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 100 });
+        if (subscriptions.has_more) return NextResponse.json({ error: "Billing history needs review. Contact support." }, { status: 409 });
+        const current = subscriptions.data.filter(sub => !["canceled", "incomplete_expired"].includes(sub.status));
+        if (current.length > 1) return NextResponse.json({ error: "Multiple subscriptions need review in the billing portal." }, { status: 409 });
+        if (current.length === 1) {
+          if (!["active", "trialing", "past_due", "unpaid"].includes(current[0].status)) {
+            return NextResponse.json({ error: "Complete or resolve your pending subscription in the billing portal first." }, { status: 409 });
+          }
+          liveSubscription = current[0];
+        }
       } catch {
-        // Missing at Stripe (deleted, or an id from another account): fall
-        // through and sell them a subscription rather than failing the click.
-        liveSubscription = null;
+        return NextResponse.json({ error: "Could not verify billing history. Please retry." }, { status: 503 });
       }
     }
 
@@ -164,13 +190,16 @@ export async function POST(request) {
           // an upgrade mid-cycle is not a second full month and a downgrade
           // does not quietly forfeit what was already paid.
           proration_behavior: "create_prorations",
+          // Preserve the existing next-invoice proration policy, but if Stripe
+          // requires a charge now, do not apply a change whose payment fails.
+          payment_behavior: "error_if_incomplete",
           metadata,
         });
       }
 
       // The webhook records the authoritative state; this write only keeps the
       // billing screen from showing the old plan until that event lands.
-      await svc
+      const { error: planSaveError } = await svc
         .from("organization_subscriptions")
         .upsert(
           {
@@ -182,6 +211,7 @@ export async function POST(request) {
           },
           { onConflict: "organization_id" }
         );
+      if (planSaveError) return NextResponse.json({ error: "Stripe accepted the change; billing synchronization is pending. Refresh shortly." }, { status: 503 });
 
       // No Stripe-hosted page is involved, so there is nothing to redirect to
       // for payment. `url` points back at the billing screen because the caller
@@ -195,6 +225,28 @@ export async function POST(request) {
         subscriptionId: liveSubscription.id,
         url: `${origin}/admin/dashboard?section=billing&plan=changed`,
       });
+    }
+
+    let previousSession = null;
+    try {
+      const sessions = await stripe.checkout.sessions.list({ customer: customerId, limit: 1 });
+      previousSession = sessions.data[0] || null;
+      if (previousSession?.status === "complete") {
+        // A completion can race the subscription-list lookup above. Resolve
+        // its subscription again rather than opening a second purchase.
+        const subscriptionId = typeof previousSession.subscription === "string" ? previousSession.subscription : previousSession.subscription?.id;
+        if (!subscriptionId) return NextResponse.json({ error: "Your completed checkout is still processing. Refresh shortly." }, { status: 409 });
+        const completed = await stripe.subscriptions.retrieve(subscriptionId);
+        if (!["canceled", "incomplete_expired"].includes(completed.status)) {
+          return NextResponse.json({ error: "Your subscription is synchronizing. Refresh before changing plans." }, { status: 409 });
+        }
+      }
+      if (previousSession?.status === "open") {
+        if (previousSession.metadata?.plan_code === plan.code && previousSession.url) return NextResponse.json({ url: previousSession.url });
+        await stripe.checkout.sessions.expire(previousSession.id, {}, { idempotencyKey: `expire-checkout-${previousSession.id}` });
+      }
+    } catch {
+      return NextResponse.json({ error: "Could not safely resume checkout. Please retry." }, { status: 503 });
     }
 
     const session = await stripe.checkout.sessions.create({
@@ -214,11 +266,17 @@ export async function POST(request) {
         metadata,
         ...(trialDays ? { trial_period_days: trialDays } : {}),
       },
-    });
+    }, { idempotencyKey: `organization-checkout-${organizationId}-${previousSession?.id || "first"}` });
 
+    // The key deliberately excludes the target plan: racing plan choices must
+    // conflict at Stripe, not create two independently payable subscriptions.
     // Only the redirect URL crosses back to the browser.
     return NextResponse.json({ url: session.url });
   } catch (err) {
+    if (err?.type === "StripeIdempotencyError" || err?.code === "idempotency_key_in_use") return NextResponse.json({ error: "Another checkout request is processing. Refresh and retry." }, { status: 409 });
+    if (err?.type === "StripeCardError" || err?.statusCode === 402) {
+      return NextResponse.json({ error: "Payment requires attention. Update your payment method in the billing portal and retry." }, { status: 402 });
+    }
     console.error("[billing/checkout] Error:", err);
     return NextResponse.json({ error: "Failed to start checkout" }, { status: 500 });
   }

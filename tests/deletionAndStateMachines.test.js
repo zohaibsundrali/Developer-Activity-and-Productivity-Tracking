@@ -252,7 +252,7 @@ vi.mock("@/utils/serverAuth", () => ({
 
 // Billing is not what any of this is about; an unlocked org keeps the proposal
 // route on the path under test.
-vi.mock("@/utils/entitlements", () => ({ requireUnlocked: async () => null }));
+vi.mock("@/utils/entitlements", () => ({ requireUnlocked: async () => null, checkFeatureAccess: async () => null }));
 
 const { getAuthedOrg } = await import("@/utils/serverAuth");
 const DEV_DELETE = await import("@/app/api/developer/delete/route.js");

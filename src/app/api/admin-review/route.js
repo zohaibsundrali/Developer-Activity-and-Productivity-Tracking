@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
+import { getAuthedOrg, serviceClient, orgScopedClient } from '@/utils/serverAuth';
 import { authCan, requirePermission } from '@/utils/serverPermissions';
 import { requireUnlocked } from '@/utils/entitlements';
 
@@ -597,7 +597,8 @@ export async function GET(request) {
         // Org-scoped: the service client bypasses RLS, and the developer_email
         // OR-match would otherwise pull a contractor's screenshots from ANOTHER
         // tenant that reuses the same email. Bind to this reviewer's org.
-        const { data: screenshotData } = await supabase
+        const screenshotClient = orgScopedClient(auth.token);
+        const { data: screenshotData } = await screenshotClient
           .from('screenshots')
           .select('*')
           .eq('organization_id', auth.orgId)
@@ -613,7 +614,7 @@ export async function GET(request) {
             if (!s.storage_path || String(s.storage_path).startsWith('screenshots/')) {
               return { ...s, public_url: legacyUrl };
             }
-            const { data: signed } = await supabase.storage
+            const { data: signed } = await screenshotClient.storage
               .from('monitoring')
               .createSignedUrl(s.storage_path, 600);
             return { ...s, public_url: signed?.signedUrl || legacyUrl };

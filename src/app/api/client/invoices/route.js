@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request) {
   try {
     const auth = await getAuthedClient(request);
+    if (auth?.planRefusal) return NextResponse.json(auth.planRefusal, { status: auth.planRefusal.status });
     if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

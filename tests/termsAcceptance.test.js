@@ -35,6 +35,8 @@ let state;
 
 function resetState(overrides = {}) {
   state = {
+    rpcCalls: [],
+    finishError: null,
     inserts: [],
     updates: [],
     deletes: [],
@@ -79,6 +81,12 @@ function insertedRow(table, rows) {
 
 function fakeClient() {
   return {
+    async rpc(name, args) {
+      state.rpcCalls.push({ name, args });
+      if (name === "claim_invitation") return { data: { auth_user_id: "auth-1", profile_id: "dev-1" }, error: null };
+      if (name === "finish_invitation") return { data: state.finishError ? null : { success: true }, error: state.finishError };
+      return { data: null, error: null };
+    },
     from(table) {
       return {
         insert(rows) {
@@ -154,6 +162,7 @@ function fakeClient() {
     },
     auth: {
       admin: {
+        getUserById: async () => ({ data: { user: null }, error: { status: 404 } }),
         deleteUser: async (id) => { state.deletedUsers.push(id); return { error: null }; },
         createUser: async (args) => {
           state.createdUsers.push(args);
@@ -278,7 +287,7 @@ describe("invitation accept refuses without acceptance", () => {
   it("still refuses a missing token before anything else, unchanged", async () => {
     const res = await acceptPOST(req({ password: "x", termsAccepted: true }));
     expect(res.status).toBe(400);
-    expect((await res.json()).error).toContain("valid token and password");
+    expect((await res.json()).error).toContain("Invitation token");
   });
 });
 
@@ -380,73 +389,23 @@ describe("signup records the acceptance", () => {
   });
 });
 
-describe("invitation accept records the acceptance", () => {
-  it("succeeds and writes exactly one terms_acceptances row", async () => {
-    const res = await acceptPOST(req({ ...ACCEPT_BODY, termsAccepted: true }));
+describe("invitation acceptance transaction contract", () => {
+  it("passes the server Terms version and validated IP to the atomic operation", async () => {
+    const res = await acceptPOST(req({ ...ACCEPT_BODY, termsAccepted: true, termsVersion: "forged" }, { "x-real-ip": "198.51.100.7" }));
     expect(res.status).toBe(200);
-    expect((await res.json()).success).toBe(true);
-    expect(acceptanceRows()).toHaveLength(1);
+    const finish = state.rpcCalls.filter(c => c.name === "finish_invitation");
+    expect(finish).toHaveLength(1);
+    expect(finish[0].args).toMatchObject({ p_id: "invite-1", p_terms_version: EXPECTED_VERSION, p_ip: "198.51.100.7" });
+    expect(state.inserts).toHaveLength(0); // Application writes belong to the tested SQL transaction.
   });
-
-  it("stores the version, the subject and the timestamp", async () => {
-    const before = Date.now();
-    await acceptPOST(req({ ...ACCEPT_BODY, termsAccepted: true }));
-    const row = acceptanceRows()[0].row;
-    expect(row.document_version).toBe(EXPECTED_VERSION);
-    expect(row.organization_id).toBe("org-1");
-    expect(row.user_id).toBe("dev-1");
-    expect(row.user_type).toBe("developer");
-    expect(row.email).toBe("invitee@example.com");
-    expect(Date.parse(row.accepted_at)).toBeGreaterThanOrEqual(before - 1000);
+  it("does not report success when the Terms transaction fails", async () => {
+    state.finishError = { message: "Terms insert failed" };
+    expect((await acceptPOST(req({ ...ACCEPT_BODY, termsAccepted: true }))).status).toBe(503);
+    expect(state.deletedUsers).toEqual([]); // A lost commit response must never destroy an accepted account.
   });
-
-  it("marks the entry point as invitation, distinguishing it from signup", async () => {
-    await acceptPOST(req({ ...ACCEPT_BODY, termsAccepted: true }));
-    expect(acceptanceRows()[0].row.entry_point).toBe("invitation");
-  });
-
-  it.each([
-    ["developer", "developer", "dev-1"],
-    ["manager", "developer", "dev-1"],
-    ["employee", "developer", "dev-1"],
-    ["owner", "admin", "admin-1"],
-    ["admin", "admin", "admin-1"],
-    // hr USED TO BE ["hr", "admin", "admin-1"] HERE, AND THAT ROW ENCODED A BUG.
-    // The accept route computed its own `isAdminLike` (owner/admin/hr) instead
-    // of calling userTypeForRole(), which has always answered "developer" for
-    // hr — so the same role got user_type "developer" when provisioned and
-    // "admin" when invited, and "admin" is the answer that opens the
-    // userType-keyed branches in /api/productivity, /api/keyboard-stats and
-    // /api/task-submission. The route now calls userTypeForRole(); this row
-    // follows it. See database/073 FINDING 3 and tests/roleIdentityAndRls.test.js.
-    ["hr", "developer", "dev-1"],
-    ["client", "client", "client-1"],
-  ])("records the correct user_type for an invited %s", async (role, userType, userId) => {
-    resetState();
-    state.invitation.role = role;
-    await acceptPOST(req({ ...ACCEPT_BODY, termsAccepted: true }));
-    const row = acceptanceRows()[0].row;
-    expect(row.user_type).toBe(userType);
-    expect(row.user_id).toBe(userId);
-    // The user_type vocabulary must stay inside the CHECK constraint in
-    // database/039_terms_acceptance.sql PART 2.
-    expect(["admin", "developer", "client"]).toContain(row.user_type);
-  });
-
-  it("captures the IP when present", async () => {
-    await acceptPOST(
-      req({ ...ACCEPT_BODY, termsAccepted: true }, { "x-real-ip": "198.51.100.7" })
-    );
-    expect(acceptanceRows()[0].row.ip).toBe("198.51.100.7");
-  });
-
-  it("does not fail the acceptance if the insert errors", async () => {
-    resetState({ insertErrors: { terms_acceptances: { message: "boom" } } });
-    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const res = await acceptPOST(req({ ...ACCEPT_BODY, termsAccepted: true }));
-    expect(res.status).toBe(200);
-    expect(spy).toHaveBeenCalled();
-    spy.mockRestore();
+  it.each(["junk", "999.2.3.4"])("rejects malformed IP %s before the inet argument", async ip => {
+    await acceptPOST(req({ ...ACCEPT_BODY, termsAccepted: true }, { "x-real-ip": ip }));
+    expect(state.rpcCalls.find(c => c.name === "finish_invitation").args.p_ip).toBeNull();
   });
 });
 
@@ -542,7 +501,7 @@ describe("nothing else about signup or accept changed", () => {
 
   it("accept still marks the invitation accepted on success", async () => {
     await acceptPOST(req({ ...ACCEPT_BODY, termsAccepted: true }));
-    expect(state.updates.some((u) => u.table === "invitations" && u.patch.status === "accepted")).toBe(true);
+    expect(state.rpcCalls.filter(c => c.name === "finish_invitation")).toHaveLength(1);
   });
 });
 
@@ -711,25 +670,15 @@ describe("the plan a signup starts on", () => {
 
 
 describe("invitation write failures", () => {
-  it.each(['memberships', 'project_clients'])('rolls back a failed %s insert and keeps the invitation pending', async (table) => {
-    if (table === 'project_clients') { state.invitation.role = 'client'; state.invitation.project_id = 'project-1'; }
-    state.insertErrors[table] = { code: '23503' };
-    const res = await acceptPOST(req({ ...ACCEPT_BODY, termsAccepted: true }));
-    expect(res.status).toBe(500);
-    expect(state.createdUsers).toHaveLength(0);
-    expect(state.updates.filter(u => u.table === 'invitations')).toHaveLength(0);
-    expect(state.deletes.map(d => d.table)).toContain(table === 'project_clients' ? 'clients' : 'developers');
+  it.each(["PLAN_LIMIT_REACHED: employees", "BILLING_LOCKED"])("returns 402 for %s without deleting a reserved Auth account", async message => {
+    state.finishError = { message };
+    expect((await acceptPOST(req({ ...ACCEPT_BODY, termsAccepted: true }))).status).toBe(402);
+    expect(state.deletedUsers).toEqual([]);
+    expect(state.rpcCalls.at(-1).name).toBe("release_invitation_claim");
   });
-  it.each(['developers', 'invitations'])('removes the new Auth account after a failed %s update', async (table) => {
-    state.updateErrors[table] = { code: '57014' };
-    expect((await acceptPOST(req({ ...ACCEPT_BODY, termsAccepted: true }))).status).toBe(500);
-    expect(state.deletedUsers).toEqual(['auth-1']);
-    expect(state.deletes.map(d => d.table)).toContain('memberships');
-    expect(state.deletes.map(d => d.table)).toContain('developers');
-  });
-  it.each(['expired', 'unknown'])('rejects invitation status %s without creating an account', async (status) => {
+  it.each(["expired", "unknown"])("rejects status %s before reserving identities", async status => {
     state.invitation.status = status;
     expect((await acceptPOST(req({ ...ACCEPT_BODY, termsAccepted: true }))).status).toBe(410);
-    expect(state.inserts).toHaveLength(0);
+    expect(state.rpcCalls).toEqual([]);
   });
 });
