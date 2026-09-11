@@ -93,7 +93,6 @@ const NO_FEATURE_YET = {
     "organization from the product.",
   "project.delete": "nothing in src/ deletes a project; the screens archive and close instead",
   "project.close": "closure runs through /api/projects/[id]/closure, which asks project.complete",
-  "task.submit": "submission goes through /api/task-submission, which asks task.update_own",
 };
 
 const RECORDED = { ...COVERED_BY_SCREEN, ...ENFORCED_BY_RLS, ...NO_FEATURE_YET };

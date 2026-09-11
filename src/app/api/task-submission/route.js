@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
-import { authCan } from '@/utils/serverPermissions';
+import { authCan, requirePermission } from '@/utils/serverPermissions';
 import { requireUnlocked } from '@/utils/entitlements';
 
 export const dynamic = 'force-dynamic';
@@ -58,41 +58,39 @@ export async function POST(request) {
     // Billing lock. This route has no plan METER to check, so neither
     // checkResourceLimit nor checkFeatureAccess ever ran here and a workspace
     // whose paid trial had ended kept accepting submitted work indefinitely.
-    // `requireUnlocked` fails open on any lookup error, so it can refuse only a
-    // genuinely locked organization.
+    // `requireUnlocked` also fails closed when billing cannot be verified.
     const billingBlocked = await requireUnlocked(serviceClient(), auth.orgId);
     if (billingBlocked) {
       return NextResponse.json(billingBlocked, { status: billingBlocked.status });
     }
 
-    const body = await request.json();
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return NextResponse.json({ error: 'Invalid submission' }, { status: 400 });
     const { 
       taskId, 
       projectId, 
-      developerId, 
-      fileUrl, 
       fileName, 
-      fileType, 
-      fileSize,
       storagePath,
       submissionNotes 
     } = body;
 
 
     // Validate required fields
-    if (!taskId || !projectId || !developerId) {
+    if (!taskId || !projectId) {
       return NextResponse.json(
-        { error: 'Missing required fields: taskId, projectId, developerId' },
+        { error: 'Missing required fields: taskId, projectId' },
         { status: 400 }
       );
     }
 
-    if (!fileUrl || !fileName) {
+    if (typeof storagePath !== 'string' || !storagePath || typeof fileName !== 'string' || !fileName.trim()) {
       return NextResponse.json(
         { error: 'Proof of work file is required' },
         { status: 400 }
       );
     }
+
+    if (submissionNotes != null && typeof submissionNotes !== 'string') return NextResponse.json({ error: 'Submission notes must be text' }, { status: 400 });
 
     // Get task details to validate deadline. Scoped to the caller's org so a
     // task id from another tenant cannot be acted on.
@@ -106,8 +104,8 @@ export async function POST(request) {
     if (taskError) {
       console.error('Task lookup error:', taskError);
       return NextResponse.json(
-        { error: 'Task not found: ' + taskError.message },
-        { status: 404 }
+        { error: taskError.code === 'PGRST116' ? 'Task not found' : 'Could not load task. Please retry.' },
+        { status: taskError.code === 'PGRST116' ? 404 : 503 }
       );
     }
 
@@ -139,7 +137,7 @@ export async function POST(request) {
     }
 
     const isAssignee =
-      Boolean(auth.appUserId) && String(assigneeId) === String(auth.appUserId);
+      auth.userType === 'developer' && Boolean(auth.appUserId) && String(assigneeId) === String(auth.appUserId);
 
     // The one way to submit work that is not yours. `task.manage` is
     // owner/admin/manager/team_lead — the people who assign the work in the
@@ -153,189 +151,30 @@ export async function POST(request) {
       );
     }
 
-    // Attribution is the assignee either way. A supervisor submitting on
-    // somebody's behalf files it AS that person because that is who did the
-    // work; what they cannot do is file it as a third party.
-    const actingDeveloperId = assigneeId;
-
-    // Check if task already has a pending submission (skip if table doesn't exist)
-    try {
-      const { data: existingSubmission } = await supabase
-        .from('task_submissions')
-        .select('id')
-        .eq('task_id', taskId)
-        .eq('review_status', 'pending')
-        .single();
-
-      if (existingSubmission) {
-        return NextResponse.json(
-          { error: 'Task already has a pending submission awaiting review' },
-          { status: 400 }
-        );
-      }
-    } catch (checkErr) {
-      // Ignore if table doesn't exist yet
+    if (isAssignee) {
+      const denied = requirePermission(auth, 'task.submit');
+      if (denied) return denied;
     }
-
-    const submittedAt = new Date().toISOString();
-    const endDate = task.end_date ? new Date(task.end_date) : new Date();
-    endDate.setHours(23, 59, 59, 999); // End of day deadline
-    const submissionDate = new Date(submittedAt);
-    
-    // Determine if submitted on time
-    const isOnTime = submissionDate <= endDate;
-
-    // Truncate base64 URL if too long to store (keep reference only)
-    let storedFileUrl = fileUrl;
-    if (fileUrl && fileUrl.length > 10000) {
-      // If base64 is too long, store a reference instead
-      storedFileUrl = `base64:${fileName}:${fileSize}bytes`;
-    }
-
-    // Try to create submission record
-    let submission = null;
-    try {
-      const { data, error: submissionError } = await supabase
-        .from('task_submissions')
-        .insert({
-          task_id: taskId,
-          project_id: projectId,
-          developer_id: actingDeveloperId,
-          file_url: storedFileUrl,
-          file_name: fileName,
-          file_type: fileType || 'application/octet-stream',
-          file_size: fileSize || 0,
-          storage_path: storagePath || '',
-          submission_notes: submissionNotes || '',
-          submitted_at: submittedAt,
-          is_reviewed: false,
-          review_status: 'pending'
-        })
-        .select()
-        .single();
-
-      if (submissionError) {
-        console.error('Submission insert error:', submissionError);
-        // Continue anyway - we'll still update the task status
-      } else {
-        submission = data;
-      }
-    } catch (insertErr) {
-      console.error('Submission insert exception:', insertErr);
-      // Continue anyway - minimum viable: just update task status
-    }
-
-    // Update task status to awaiting_approval. Rework of a rejected task starts
-    // a fresh review, so the previous verdict is cleared rather than left on the
-    // row where the reviewer would still see it. The verdict being cleared is
-    // copied into the activity log below before it is lost — clearing it is
-    // correct, clearing it with no record of what it said was not.
-    //
-    // The organization filter is redundant with the org-scoped lookup above and
-    // is here for the same reason every other write in this file has one: this
-    // is the service-role client, so RLS will not catch a mistake. It was the
-    // one write in the file without it.
-    const { error: updateError } = await supabase
-      .from('developer_tasks')
-      .update({
-        status: 'awaiting_approval',
-        submitted_at: submittedAt,
-        reviewed_by: null,
-        reviewed_at: null,
-        rejection_reason: null,
-        admin_comments: null,
-        updated_at: submittedAt
-      })
-      .eq('id', taskId)
-      .eq('organization_id', auth.orgId);
-
-    if (updateError) {
-      console.error('Task update error:', updateError);
-      return NextResponse.json(
-        { error: 'Failed to update task status: ' + updateError.message },
-        { status: 500 }
-      );
-    }
-
-    // Create activity log (don't fail if this doesn't work).
-    //
-    // This is the audit copy of the verdict the update above just cleared. It
-    // is not a substitute for the columns — an activity log is best-effort —
-    // but "rejected, by whom, for what reason" now survives the resubmission
-    // somewhere, and a submission filed by a supervisor says so instead of
-    // reading as the assignee's own.
-    try {
-      const clearedVerdict =
-        task.status === 'rejected' && task.rejection_reason
-          ? ` (previous verdict cleared: rejected — ${task.rejection_reason})`
-          : '';
-      const onBehalf = isAssignee ? '' : ' on their behalf by a supervisor';
-      await supabase
-        .from('activity_logs')
-        .insert({
-          developer_id: actingDeveloperId,
-          project_id: projectId,
-          task_id: taskId,
-          action_type: 'task_submitted',
-          action_description: `Task "${task.task_title}" submitted for review${onBehalf}${clearedVerdict}`,
-          old_value: task.status || null,
-          new_value: 'awaiting_approval'
-        });
-    } catch (logErr) {
-    }
-
-    // Get project's admin to send notification (don't fail if this doesn't work)
-    try {
-      // `created_by`, not `admin_id` — there is no admin_id column on
-      // projects, and one unknown column makes PostgREST reject the whole
-      // select. `project` came back null every time, the `if (project)`
-      // below never ran, and so the "task submitted for review" notification
-      // has never reached an admin. The old expression was
-      // `project.admin_id || project.created_by`, so created_by was always
-      // the intended value anyway.
-      const { data: project } = await supabase
-        .from('projects')
-        .select('created_by, name')
-        .eq('id', projectId)
-        .single();
-
-      if (project) {
-        // Get developer name
-        const { data: developer } = await supabase
-          .from('developers')
-          .select('name, email')
-          .eq('id', actingDeveloperId)
-          .single();
-
-        // Create notification for admin
-        await supabase
-          .from('notifications')
-          .insert({
-            admin_id: project.created_by,
-            developer_id: actingDeveloperId,
-            type: 'review_required',
-            title: 'Task Submission for Review',
-            message: `${developer?.name || 'Developer'} has submitted "${task.task_title}" for review in project "${project.name}"`,
-            project_id: projectId,
-            task_id: taskId,
-            submission_id: submission?.id || null,
-            read: false
-          });
-      }
-    } catch (notifErr) {
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: 'Task submitted successfully for review',
-      submission: submission,
-      isOnTime: isOnTime
+    if (task.project_id !== projectId) return NextResponse.json({ error: 'Project does not match task' }, { status: 400 });
+    const canonicalUrl = new URL(`/storage/v1/object/public/task-submissions/${storagePath.split('/').map(encodeURIComponent).join('/')}`,
+      process.env.NEXT_PUBLIC_SUPABASE_URL).href;
+    const { data, error } = await serviceClient().rpc('commit_task_submission', {
+      p_org: auth.orgId, p_actor: auth.appUserId, p_profile_type: auth.userType, p_task: taskId, p_project: projectId,
+      p_file_url: canonicalUrl, p_file_name: fileName.trim(), p_storage_path: storagePath, p_notes: submissionNotes || '',
     });
+    if (error) {
+      const message = error.message || '';
+      const status = error.code === '42501' ? 403 : error.code === 'P0002' ? 404 : ['22023', '22P02', '22007', '22008'].includes(error.code) ? 400 :
+        message.startsWith('SUBMISSION_CONFLICT:') ? 409 : /^(BILLING_LOCKED|PLAN_LIMIT_REACHED):/.test(message) ? 402 : 503;
+      return NextResponse.json({ error: status === 503 ? 'Could not confirm submission. Retry to check its saved state.' :
+        message.split(':').slice(1).join(':').trim() || 'Submission refused' }, { status });
+    }
+    return NextResponse.json(data);
 
   } catch (error) {
     console.error('Task submission error:', error);
     return NextResponse.json(
-      { error: 'Internal server error: ' + error.message },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
@@ -367,6 +206,9 @@ export async function GET(request) {
     // is the endpoint that lists it. They could not read a single row.
     const canReadAnyone =
       authCan(auth, 'task.view_all') || authCan(auth, 'task.review');
+    if (!canReadAnyone && (auth.userType !== 'developer' || !auth.appUserId || !authCan(auth, 'task.view_own'))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
     const developerId = canReadAnyone ? requestedDeveloperId : auth.appUserId;
 
     let query = supabase
@@ -411,8 +253,8 @@ export async function GET(request) {
 
     if (error) {
       return NextResponse.json(
-        { error: 'Failed to fetch submissions: ' + error.message },
-        { status: 500 }
+        { error: 'Could not load submissions. Please retry.' },
+        { status: 503 }
       );
     }
 
@@ -424,7 +266,7 @@ export async function GET(request) {
   } catch (error) {
     console.error('Fetch submissions error:', error);
     return NextResponse.json(
-      { error: 'Internal server error: ' + error.message },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

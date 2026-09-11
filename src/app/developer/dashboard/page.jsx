@@ -5,8 +5,8 @@ import { useEffect, useState, useRef, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 import AppShell from "@/components/shell/AppShell";
-import { staffNav, sectionTitle } from "@/components/shell/navConfig";
-import { roleCan } from "@/utils/permissionEngine";
+import { staffNav, sectionTitle, canAccessAdminSection } from "@/components/shell/navConfig";
+import { loadDashboardOwnProjects } from "@/utils/dashboardOwnProjects";
 import MyWork from "@/components/developer/MyWork";
 import MyTimesheet from "@/components/developer/MyTimesheet";
 import NotificationDropdown from "@/components/developer/NotificationDropdown";
@@ -22,7 +22,7 @@ import MyActivity from "@/components/shared/MyActivity";
 import TestCases from "@/components/shared/TestCases";
 import { projectDetailsHref } from "@/utils/queryDates";
 import { isSessionExpired, clearDeveloperSession, touchDeveloperSession } from "@/utils/sessionPolicy";
-import { Skeleton } from "@/components/ui";
+import { Skeleton, ErrorState } from "@/components/ui";
 
 /**
  * The dashboard chrome while auth or the user record resolves.
@@ -142,6 +142,8 @@ function DeveloperDashboardContent() {
   
   const [user, setUser] = useState(null);
   const [assignedProjects, setAssignedProjects] = useState([]);
+  const [projectsError, setProjectsError] = useState(null);
+  const [projectsLoading, setProjectsLoading] = useState(true);
   const [activeSection, setActiveSection] = useState("overview");
   const [isNavigating, startNavigation] = useTransition();
   const audioRef = useRef(null);
@@ -290,18 +292,18 @@ function DeveloperDashboardContent() {
 
   const fetchDeveloperData = async (developerData) => {
     try {
-      // Fetch assigned projects
-      const { data: projectsData, error: projectsError } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('assigned_developer_id', developerData.id)
-        .order('created_at', { ascending: false });
-
-      if (projectsError) throw projectsError;
-      setAssignedProjects(projectsData || []);
-
+      setProjectsLoading(true);
+      setProjectsError(null);
+      const projects = await loadDashboardOwnProjects(supabase, {
+        organizationId: developerData.organization_id,
+        userId: developerData.id,
+        userType: 'developer',
+      });
+      setAssignedProjects(projects);
     } catch (error) {
-      // Silently handle error
+      setProjectsError(error.message || 'Could not load your projects.');
+    } finally {
+      setProjectsLoading(false);
     }
   };
 
@@ -338,15 +340,10 @@ function DeveloperDashboardContent() {
       return <ProjectDetails />;
     }
 
-    // Manager-only oversight section. Guard so a developer or employee cannot
-    // reach it by editing the URL (?section=team).
-    //
-    // THE ROLE LIST HERE WAS THE LAST HAND-TYPED ONE on this dashboard. It read
-    // ["manager","team_lead","hr","admin","owner"] — which is exactly the set
-    // `hierarchy.view` grants, and exactly the set staffNav offers the Team
-    // entry to. Three copies of one answer, and nothing keeping them equal.
     const effectiveRole = user?.membership_role || "developer";
-    const isManager = roleCan(effectiveRole, "hierarchy.view");
+    if (!canAccessAdminSection(activeSection, effectiveRole)) {
+      return <ErrorState title="Access unavailable" description="You do not have permission to open this section." />;
+    }
 
     // Render based on active section
     switch (activeSection) {
@@ -355,9 +352,11 @@ function DeveloperDashboardContent() {
       case "timesheet":
         return <MyTimesheet />;
       case "projects":
-        return <MyProjects {...contentProps} />;
+        return projectsLoading ? <div role="status">Loading your projects…</div> : projectsError
+          ? <ErrorState description={projectsError} onRetry={() => fetchDeveloperData(user)} />
+          : <MyProjects {...contentProps} />;
       case "team":
-        return isManager ? <TeamPanel /> : <DashboardOverview {...contentProps} />;
+        return <TeamPanel />;
       case "my-attendance":
         return <MyAttendance />;
       case "my-leave":
@@ -366,10 +365,8 @@ function DeveloperDashboardContent() {
         return <MyReviews />;
       case "my-activity":
         return <MyActivity />;
-      // Gated by the sidebar (staffNav filters on `test_case.view`), by
-      // /api/quality on the verified token, and by RLS in 095. This case
-      // renders the screen for anybody who reaches the URL; the route answers
-      // 403 to a role that may not read tests, and the screen shows that.
+      // The effective section guard above also protects direct URLs;
+      // /api/quality and RLS independently enforce access to the data.
       case "my-tests":
         return <TestCases />;
       case "account":

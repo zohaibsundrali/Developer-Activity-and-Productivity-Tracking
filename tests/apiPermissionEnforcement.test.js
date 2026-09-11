@@ -721,7 +721,8 @@ describe('/api/task-submission: the submitter has to be the assignee', () => {
   it('the assignee may submit their own task', async () => {
     const { status } = await submit(staff('developer', { appUserId: COLLEAGUE }));
     expect(status).toBe(200);
-    expect(queries('developer_tasks', 'update')).toHaveLength(1);
+    expect(queries('commit_task_submission', 'rpc')).toHaveLength(1);
+    expect(queries('developer_tasks', 'update')).toHaveLength(0);
   });
 
   it.each(['developer', 'designer', 'qa', 'devops', 'employee', 'hr', 'finance'])(
@@ -758,28 +759,31 @@ describe('/api/task-submission: the submitter has to be the assignee', () => {
 
   it('attributes an on-behalf submission to the real assignee, never to the body', async () => {
     await submit(staff('manager', { appUserId: THIRD_PARTY }), { developerId: 'someone-else' });
-    const row = queries('task_submissions', 'insert')[0].payload;
-    expect(row.developer_id).toBe(COLLEAGUE);
-    expect(row.developer_id).not.toBe('someone-else');
-    const log = queries('activity_logs', 'insert')[0].payload;
-    expect(log.developer_id).toBe(COLLEAGUE);
+    const args = queries('commit_task_submission', 'rpc')[0].payload;
+    expect(args.p_actor).toBe(THIRD_PARTY);
+    expect(args.p_developer).toBeUndefined();
+    expect(queries('task_submissions', 'insert')).toHaveLength(0);
   });
 
-  it('keeps an audit copy of the verdict the resubmission clears', async () => {
-    await submit(staff('developer', { appUserId: COLLEAGUE }));
-    const update = queries('developer_tasks', 'update')[0].payload;
-    expect(update.rejection_reason).toBeNull();
-    expect(update.reviewed_by).toBeNull();
-    const log = queries('activity_logs', 'insert')[0].payload;
-    expect(log.old_value).toBe('rejected');
-    expect(log.action_description).toContain('Tests missing');
+  it('does not clear a verdict separately from saving proof', async () => {
+    state.rpcError = { code: 'XX000', message: 'private details' };
+    const { status } = await submit(staff('developer', { appUserId: COLLEAGUE }));
+    expect(status).toBe(503);
+    expect(queries('developer_tasks', 'update')).toHaveLength(0);
+    expect(queries('activity_logs', 'insert')).toHaveLength(0);
   });
 
-  it('scopes the status update to the organization, like every other write here', async () => {
+  it('scopes the transaction to the verified organization and task', async () => {
     await submit(staff('developer', { appUserId: COLLEAGUE }));
-    const update = queries('developer_tasks', 'update')[0];
-    expect(hasEq(update, 'id', 'task-1')).toBe(true);
-    expect(hasEq(update, 'organization_id', ORG)).toBe(true);
+    expect(queries('commit_task_submission', 'rpc')[0].payload).toMatchObject({ p_org: ORG, p_task: 'task-1', p_project: 'proj-1' });
+  });
+  it('honors an assignee task.submit denial', async () => {
+    expect((await submit(staff('developer', { appUserId: COLLEAGUE, overrides: { 'task.submit': false } }))).status).toBe(403);
+    expect(queries('commit_task_submission', 'rpc')).toHaveLength(0);
+  });
+  it('rejects a project ID that differs from the task', async () => {
+    expect((await submit(staff('developer', { appUserId: COLLEAGUE }), { task: { ...REJECTED_TASK, project_id: 'elsewhere' } })).status).toBe(400);
+    expect(queries('commit_task_submission', 'rpc')).toHaveLength(0);
   });
 
   it('refuses a task with no assignee rather than inventing one', async () => {
@@ -1018,5 +1022,34 @@ describe('/api/task-plan/review refuses to let anyone approve their own plan', (
     );
     expect(status).toBe(403);
     expect(queries('projects', 'update')).toHaveLength(0);
+  });
+});
+
+
+describe('/api/task-submission GET: typed own access and permission overrides', () => {
+  async function read(auth) {
+    state.auth = auth;
+    const { GET } = await import('@/app/api/task-submission/route');
+    return call(GET, new Request('http://localhost/api/task-submission?developerId=another-user'));
+  }
+  it('denies own submissions when own-read permission is explicitly denied', async () => {
+    expect((await read(staff('developer', { overrides: { 'task.view_own': false } }))).status).toBe(403);
+    expect(queries('task_submissions', 'select')).toHaveLength(0);
+  });
+  it('does not treat an admin profile UUID as a developer assignment', async () => {
+    expect((await read(staff('hr', { overrides: { 'task.view_own': true } }))).status).toBe(403);
+    expect(queries('task_submissions', 'select')).toHaveLength(0);
+  });
+  it('fails closed without a developer identity', async () => {
+    expect((await read(staff('developer', { appUserId: null }))).status).toBe(403);
+    expect(queries('task_submissions', 'select')).toHaveLength(0);
+  });
+  it('pins an own-work reader to the verified identity', async () => {
+    expect((await read(staff('developer'))).status).toBe(200);
+    expect(queries('task_submissions', 'select')[0].filters).toContainEqual({ method: 'eq', args: ['developer_id', ME] });
+  });
+  it('allows an explicitly granted reviewer to inspect the requested developer', async () => {
+    expect((await read(staff('hr', { overrides: { 'task.review': true } }))).status).toBe(200);
+    expect(queries('task_submissions', 'select')[0].filters).toContainEqual({ method: 'eq', args: ['developer_id', 'another-user'] });
   });
 });

@@ -189,7 +189,11 @@ describe("the admin dashboard actually renders them", () => {
     // for the two roles this change exists to serve.
     expect(src).toMatch(/assignedProjects=\{myProjects\}/);
     expect(src).not.toMatch(/assignedProjects=\{projects\}/);
-    expect(src).toMatch(/eq\('assigned_developer_id', currentUser\.id\)/);
+    expect(src).toContain('loadDashboardOwnProjects(supabase, {');
+    expect(src).toContain('organizationId: orgId');
+    expect(src).toContain('userId: currentUser.id');
+    expect(src).toContain("userType: currentUser.role === 'admin' ? 'admin' : 'developer'");
+    expect(src).toContain('setMyProjects(mine)');
   });
 
   it("keeps the person inside their own shell when opening a project", () => {

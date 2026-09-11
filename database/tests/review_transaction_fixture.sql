@@ -1,7 +1,7 @@
 alter table projects add column created_by uuid, add column added_by uuid, add column total_tasks_count int,
   add column completed_tasks_count int, add column total_productivity_score numeric, add column progress numeric,
   add column updated_at timestamptz;
-alter table task_submissions add column organization_id uuid, add column developer_id uuid,
+alter table task_submissions add column organization_id uuid, add column developer_id uuid, add column project_id uuid,
   add column review_status text default 'pending',add column is_reviewed boolean default false,
   add column reviewed_by uuid,add column reviewed_at timestamptz,add column review_comments text,
   add column submitted_at timestamptz,add column file_url text;

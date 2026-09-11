@@ -4,6 +4,9 @@ import { dateOnlyFromQuery } from "@/utils/queryDates";
 import { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabaseClient';
 import { authFetch } from '@/utils/authFetch';
+import PermissionBoundary from '@/components/auth/PermissionBoundary';
+import { can } from '@/utils/permissions';
+import { taskPlanPayload, requireTaskMutation, persistedPlanTaskId } from '@/utils/developerPlanMutations';
 import TaskCompletionModal from "@/components/developer/TaskCompletionModal";
 import { GanttChartSquare } from "lucide-react";
 // The only sanctioned source of concrete colour values — SweetAlert styles its
@@ -28,6 +31,15 @@ import { isSessionExpired, clearDeveloperSession } from '@/utils/sessionPolicy';
 import { safeHref } from '@/utils/safeUrl';
 
 export default function ProjectDetailsPage() {
+  return <PermissionBoundary><ProjectPermissionGate /></PermissionBoundary>;
+}
+
+function ProjectPermissionGate() {
+  if (!can('task.view_own')) return <ErrorState title="Access denied" description="You do not have permission to view assigned tasks." />;
+  return <ProjectDetailsContent />;
+}
+
+function ProjectDetailsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [tasks, setTasks] = useState([]);
@@ -107,7 +119,9 @@ export default function ProjectDetailsPage() {
   // - pending (waiting for approval): locked
   // - approved: locked
   // - rejected: editable (for re-submit)
-  const canEditTasks = !isSubmitted || isPlanRejected;
+  const canUpdateTasks = can('task.update_own');
+  const canSubmitProof = can('task.submit');
+  const canEditTasks = canUpdateTasks && (!isSubmitted || isPlanRejected);
 
   const addDays = (startDate, days) => {
     if (!startDate || !days) return "";
@@ -348,6 +362,7 @@ export default function ProjectDetailsPage() {
   // Save tasks to Supabase - SIMPLIFIED VERSION
   // Handle submit work with Supabase integration - SIMPLIFIED VERSION
   const handleSubmitWork = async () => {
+    if (!canEditTasks) return;
     try {
       
       // Step 1: Validate all tasks
@@ -386,10 +401,7 @@ export default function ProjectDetailsPage() {
       const submitRes = await authFetch('/api/task-plan/save-submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId: project.id, tasks: tasks.map(task => ({
-          task_title: task.title, task_description: task.description || '',
-          start_date: task.startDate, end_date: task.endDate,
-        })) }),
+        body: JSON.stringify({ projectId: project.id, tasks: tasks.map(taskPlanPayload) }),
       });
       const submitResult = await submitRes.json().catch(() => ({}));
       if (!submitRes.ok || !submitResult.success) {
@@ -499,6 +511,7 @@ export default function ProjectDetailsPage() {
 
   // Start a task: pending → in_progress
   const handleStartTask = async (taskId, taskIndex) => {
+    if (!canUpdateTasks) return;
     if (!isPlanApproved) {
       showWarning("Plan pending", "Task plan is awaiting admin approval.");
       return;
@@ -515,11 +528,10 @@ export default function ProjectDetailsPage() {
       return;
     }
     try {
-      const { error } = await supabase
+      await requireTaskMutation(supabase
         .from('developer_tasks')
         .update({ status: 'in_progress', updated_at: new Date().toISOString() })
-        .eq('id', taskId);
-      if (error) throw error;
+        .eq('id', taskId), taskId);
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'in_progress' } : t));
     } catch (err) {
       showError("Start failed", `Failed to start task: ${err.message}`);
@@ -528,6 +540,7 @@ export default function ProjectDetailsPage() {
 
   // Open the Task Completion Modal
   const handleOpenCompletionModal = (task) => {
+    if (!canSubmitProof) return;
     setCompletionTask(task);
     setShowCompletionModal(true);
   };
@@ -882,14 +895,11 @@ export default function ProjectDetailsPage() {
       title: normalizeTitle(editingTask.title)
     };
 
-    setTasks(prev => prev.map(task =>
-      task.id === updatedTask.id ? updatedTask : task
-    ));
-
-    if (updatedTask.supabaseId || (isSubmitted && updatedTask.id)) {
+    const persistedId = persistedPlanTaskId(updatedTask);
+    if (persistedId) {
       try {
-        const taskId = updatedTask.supabaseId || updatedTask.id;
-        const { error } = await supabase
+        const taskId = persistedId;
+        await requireTaskMutation(supabase
           .from("developer_tasks")
           .update({
             task_title: updatedTask.title,
@@ -898,14 +908,14 @@ export default function ProjectDetailsPage() {
             end_date: updatedTask.endDate,
             updated_at: new Date().toISOString()
           })
-          .eq("id", taskId);
-
-        if (error) throw error;
+          .eq("id", taskId), taskId);
       } catch (err) {
         showError("Update failed", `Failed to update task: ${err.message}`);
+        return;
       }
     }
 
+    setTasks(prev => prev.map(task => task.id === updatedTask.id ? updatedTask : task));
     setEditingTask(null);
   };
 
@@ -925,20 +935,20 @@ export default function ProjectDetailsPage() {
 
     if (confirmResult.isConfirmed) {
       const taskToRemove = tasks.find(task => task.id === taskId);
-      setTasks(prev => prev.filter(task => task.id !== taskId));
-
-      if (taskToRemove?.supabaseId || (isSubmitted && taskToRemove?.id)) {
+      const persistedId = persistedPlanTaskId(taskToRemove);
+      if (persistedId) {
         try {
-          const deleteId = taskToRemove?.supabaseId || taskToRemove?.id;
-          const { error } = await supabase
+          const deleteId = persistedId;
+          await requireTaskMutation(supabase
             .from("developer_tasks")
             .delete()
-            .eq("id", deleteId);
-          if (error) throw error;
+            .eq("id", deleteId), deleteId);
         } catch (err) {
           showError("Delete failed", `Failed to delete task: ${err.message}`);
+          return;
         }
       }
+      setTasks(prev => prev.filter(task => task.id !== taskId));
     }
   };
 
@@ -1589,7 +1599,7 @@ export default function ProjectDetailsPage() {
                             {canEditTasks && (
                               <span className="text-xs text-muted-foreground italic">Save task plan first to begin working</span>
                             )}
-                            {isSubmitted && isPlanApproved && task.status === 'pending' && (
+                            {canUpdateTasks && isSubmitted && isPlanApproved && task.status === 'pending' && (
                               <button
                                 onClick={() => handleStartTask(task.id, index)}
                                 disabled={!canStartTask(index) || getInProgressTaskIndex() !== -1}
@@ -1603,7 +1613,7 @@ export default function ProjectDetailsPage() {
                                 {canStartTask(index) && getInProgressTaskIndex() === -1 ? '▶ Start Task' : '🔒 Locked'}
                               </button>
                             )}
-                            {isSubmitted && isPlanApproved && task.status === 'in_progress' && (
+                            {canSubmitProof && isSubmitted && isPlanApproved && task.status === 'in_progress' && (
                               <button
                                 onClick={() => handleOpenCompletionModal(task)}
                                 className="px-3 py-2 rounded-lg text-xs font-semibold bg-success text-success-foreground hover:bg-success/90 transition-colors"
@@ -1616,7 +1626,7 @@ export default function ProjectDetailsPage() {
                                 ⏳ Awaiting Admin Review
                               </span>
                             )}
-                            {isSubmitted && isPlanApproved && task.status === 'rejected' && (
+                            {canSubmitProof && isSubmitted && isPlanApproved && task.status === 'rejected' && (
                               <button
                                 onClick={() => handleOpenCompletionModal(task)}
                                 className="px-3 py-2 rounded-lg text-xs font-semibold bg-warning text-warning-foreground hover:bg-warning/90 transition-colors"

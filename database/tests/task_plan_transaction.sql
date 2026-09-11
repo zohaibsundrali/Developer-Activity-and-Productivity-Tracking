@@ -1,6 +1,6 @@
 do $$ declare org uuid:='00000000-0000-0000-0000-000000000097';
   project uuid; contributor uuid:=gen_random_uuid(); draft uuid; started uuid; submitted uuid; commented uuid;
-  payload jsonb:='[{"task_title":"New task","start_date":"2026-09-11","end_date":"2026-09-12"}]'; result jsonb;
+  payload jsonb:='[{"task_title":"New task","start_date":"2026-09-11","end_date":"2026-09-12"}]'; result jsonb; full_plan jsonb;
 begin
   insert into organizations values(org);
   insert into organization_subscriptions(organization_id,plan_code,status) values(org,'professional','active');
@@ -30,6 +30,14 @@ begin
   if result->'project'->>'task_plan_status'<>'pending' then raise exception 'Plan not submitted atomically'; end if;
   if exists(select 1 from developer_tasks where id=draft) then raise exception 'Draft not replaced'; end if;
   if (select count(*) from developer_tasks where id in (started,submitted,commented))<>3 or not exists(select 1 from task_submissions where task_id=submitted) then raise exception 'Existing work lost'; end if;
+  update projects set task_plan_status='rejected' where id=project;
+  select jsonb_agg(jsonb_build_object('id',id,'task_title',coalesce(task_title,'Existing'),
+    'start_date',coalesce(start_date,'2026-09-11'::date),'end_date',coalesce(end_date,'2026-09-12'::date)))
+    into full_plan from developer_tasks where project_id=project;
+  perform expect_rejected(format('select save_and_submit_task_plan(%L,%L,%L,%L::jsonb)',org,project,contributor,full_plan||full_plan),'INVALID_PLAN');
+  perform save_and_submit_task_plan(org,project,contributor,full_plan);
+  if (select count(*) from developer_tasks where project_id=project)<>4 then raise exception 'Full UI plan duplicated preserved tasks'; end if;
+  if not exists(select 1 from task_comments_fixture where task_id=commented) then raise exception 'Full plan lost linked comments'; end if;
   perform save_and_submit_task_plan(org,project,contributor,payload||payload);
   if (select count(*) from developer_tasks where project_id=project)<>4 then raise exception 'Retry duplicated tasks'; end if;
   update projects set task_plan_status='approved' where id=project;

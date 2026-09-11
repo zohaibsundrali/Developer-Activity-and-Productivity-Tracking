@@ -62,7 +62,7 @@ function FileDropzone({
 
 /**
  * TaskCompletionModal Component
- * 
+ *
  * Handles the task completion workflow:
  * 1. Developer clicks "Mark as Completed"
  * 2. Developer uploads proof of work (PDF, Word, or any document)
@@ -84,6 +84,7 @@ export default function TaskCompletionModal({
   const [error, setError] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef(null);
+  const uploadedProof = useRef(null);
 
   const allowedExtensions = [
     ".pdf", ".doc", ".docx", ".xls", ".xlsx",
@@ -199,7 +200,13 @@ export default function TaskCompletionModal({
       setError("");
 
       // Upload file first
-      const fileData = await uploadFile();
+      const proofKey = `${developer.id}/${project.id}/${task.id}`;
+      let fileData = uploadedProof.current?.file === selectedFile && uploadedProof.current?.key === proofKey
+        ? uploadedProof.current.data : null;
+      if (!fileData) {
+        fileData = await uploadFile();
+        if (fileData) uploadedProof.current = { file: selectedFile, key: proofKey, data: fileData };
+      }
       if (!fileData) {
         return;
       }

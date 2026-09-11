@@ -220,9 +220,11 @@ describe("the screen is reachable and named", () => {
 });
 
 describe("the last hand-typed role list on this dashboard", () => {
-  it("asks the catalogue instead of naming five roles", () => {
+  it("uses the effective section guard instead of naming roles", () => {
     const page = read("src/app/developer/dashboard/page.jsx");
-    expect(page).toContain('roleCan(effectiveRole, "hierarchy.view")');
+    expect(page).toContain('if (!canAccessAdminSection(activeSection, effectiveRole))');
+    expect(page.indexOf('if (!canAccessAdminSection(activeSection, effectiveRole))')).toBeLessThan(page.indexOf('switch (activeSection)'));
+    expect(page).not.toContain('roleCan(effectiveRole, "hierarchy.view")');
     expect(page).not.toMatch(/\["manager", "team_lead", "hr", "admin", "owner"\]/);
   });
 

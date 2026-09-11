@@ -33,6 +33,12 @@ begin
   if p_reviewer=task_row.developer_id or p_reviewer=submission_row.developer_id then
     raise exception 'REVIEW_FORBIDDEN: cannot review your own work' using errcode='42501';
   end if;
+  -- Reassignment/project moves can happen after proof was submitted. Never
+  -- award the current assignee points for another person's or project's proof.
+  if submission_row.developer_id is distinct from task_row.developer_id
+    or submission_row.project_id is distinct from task_row.project_id then
+    raise exception 'REVIEW_CONFLICT: submission no longer matches task assignment or project';
+  end if;
   if task_row.status in ('completed','rejected') or submission_row.review_status is distinct from 'pending' or coalesce(submission_row.is_reviewed,false) then
     raise exception 'REVIEW_CONFLICT: work has already been reviewed';
   end if;
