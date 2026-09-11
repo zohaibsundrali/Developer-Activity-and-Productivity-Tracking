@@ -2,7 +2,7 @@ import { validateInvitationScope } from "@/utils/invitationScope";
 import { NextResponse } from 'next/server';
 import { ROLES, ROLE_RANK as SHARED_ROLE_RANK, rankOf } from "@/utils/roles";
 import crypto from 'crypto';
-import { sendTemplatedEmail } from '@/utils/emailService';
+import { sendTemplatedEmail, isValidEmail } from '@/utils/emailService';
 import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
 import { authCan } from '@/utils/serverPermissions';
 import { checkSeatLimitForRole, checkFeatureAccess } from '@/utils/entitlements';
@@ -30,13 +30,17 @@ const ASSIGNABLE_ROLES = ROLES.filter((r) => r !== 'owner');
 // src/utils/roles.js.
 const ROLE_RANK = SHARED_ROLE_RANK;
 
-// Derive the public origin from request headers (works behind proxies).
+// Deployment configuration is authoritative. Request headers must never choose
+// the host receiving a signup token. Development may use the actual URL.
 function getOrigin(request) {
-  const origin = request.headers.get('origin');
-  if (origin) return origin;
-  const host = request.headers.get('host');
-  const proto = request.headers.get('x-forwarded-proto') || 'https';
-  return host ? `${proto}://${host}` : '';
+  const configured = process.env.NEXT_PUBLIC_APP_URL;
+  if (!configured && process.env.NODE_ENV === 'production') return null;
+  try {
+    const url = new URL(configured || request.url);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password ||
+        (process.env.NODE_ENV === 'production' && url.protocol !== 'https:')) return null;
+    return url.origin;
+  } catch { return null; }
 }
 
 export async function POST(request) {
@@ -60,12 +64,13 @@ export async function POST(request) {
     }
 
     const body = await request.json();
-    const { email, role, teamId, departmentId, projectId } = body || {};
+    const { role, teamId, departmentId, projectId } = body || {};
+    const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
 
     // ── Validate required fields ─────────────────────────
-    if (!email || !role) {
+    if (!isValidEmail(email) || !role) {
       return NextResponse.json(
-        { success: false, error: 'email and role are required' },
+        { success: false, error: 'A valid email and role are required' },
         { status: 400 }
       );
     }
@@ -135,6 +140,9 @@ export async function POST(request) {
       return NextResponse.json({ success: false, ...seatLimit }, { status: seatLimit.status });
     }
 
+    const origin = getOrigin(request);
+    if (!origin) return NextResponse.json({ success: false, error: 'Invitation links are not configured. Contact the administrator.' }, { status: 503 });
+
     const token = crypto.randomUUID();
     const invitedBy = auth.appUserId || null;
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -158,6 +166,8 @@ export async function POST(request) {
       .single();
 
     if (insertError) {
+      if (insertError.message?.startsWith('INVITATION_EXISTS')) return NextResponse.json({ success: false, error: 'An unexpired invitation already exists for this email. Share its link or revoke it before creating another.' }, { status: 409 });
+      if (/^(BILLING_LOCKED|PLAN_FEATURE_REQUIRED)/.test(insertError.message || '')) return NextResponse.json({ success: false, error: 'The organization subscription cannot issue this invitation.' }, { status: 402 });
       return NextResponse.json(
         { success: false, error: 'Failed to create invitation', details: insertError.message },
         { status: 500 }
@@ -165,7 +175,6 @@ export async function POST(request) {
     }
 
     // ── Best-effort: send the invite email ───────────────
-    const origin = getOrigin(request);
     const inviteLink = `${origin}/invite/${token}`;
     let emailed = false;
     let emailMode = null;
@@ -229,6 +238,7 @@ export async function GET(request) {
     }
 
     const supabase = serviceClient();
+    const grantableRoles = ROLES.filter(role => rankOf(role) < rankOf(auth.role));
 
     // Org comes from the verified JWT — a caller can only list their own org's
     // invitations, never another organization's tokens.
@@ -236,6 +246,7 @@ export async function GET(request) {
       .from('invitations')
       .select('*')
       .eq('organization_id', auth.orgId)
+      .in('role', grantableRoles)
       .order('created_at', { ascending: false });
 
     if (error) {

@@ -438,7 +438,7 @@ export default function AdminProjectDetailsPage() {
           {/* Who is on this project, as opposed to who is in the organization.
               Until migration 071 the database could not tell them apart:
               assigned_to holds one developer and manager_id one manager. */}
-          <ProjectTeam projectId={projectId} />
+          <ProjectTeam key={projectId} projectId={projectId} />
 
           <Section
             title="Task plan review"

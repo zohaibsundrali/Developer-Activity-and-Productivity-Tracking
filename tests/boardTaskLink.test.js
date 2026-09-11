@@ -1,0 +1,18 @@
+import { expect, it, vi } from 'vitest';
+import { createBoardTaskLinkRequest } from '../src/utils/boardTaskLink';
+const taskId='10000000-0000-0000-0000-000000000001';
+const projectId='10000000-0000-0000-0000-000000000002';
+function clientWith(results) {
+ const calls=[];return {calls,from(table){const filters={};const q={select:()=>q,eq:(k,v)=>{filters[k]=v;return q;},maybeSingle:()=>{calls.push({table,filters});return Promise.resolve(results.shift());}};return q;}};
+}
+it('resolves exact authorized task and its actual project with tenant filters',async()=>{
+ const client=clientWith([{data:{id:taskId,project_id:projectId,task_title:'Task'}},{data:{id:projectId,name:'Correct project'}}]);const publish=vi.fn();await createBoardTaskLinkRequest(client,publish).load('org',taskId,'scope');
+ expect(client.calls).toEqual([{table:'developer_tasks',filters:{organization_id:'org',id:taskId}},{table:'projects',filters:{organization_id:'org',id:projectId}}]);
+ expect(publish).toHaveBeenLastCalledWith({scope:'scope',loading:false,task:{id:taskId,project_id:projectId,task_title:'Task'},project:{id:projectId,name:'Correct project'}});
+});
+it('rejects invalid IDs without querying',async()=>{const client=clientWith([]);const publish=vi.fn();await createBoardTaskLinkRequest(client,publish).load('org','injected','scope');expect(client.calls).toEqual([]);expect(publish.mock.calls.at(-1)[0].error).toContain('invalid');});
+it('does not fall back to privileged access for an RLS-hidden task',async()=>{const client=clientWith([{data:null}]);const publish=vi.fn();await createBoardTaskLinkRequest(client,publish).load('org',taskId,'scope');expect(client.calls).toHaveLength(1);expect(publish.mock.calls.at(-1)[0].error).toContain('no longer have access');});
+it('refuses an inaccessible parent project',async()=>{const client=clientWith([{data:{id:taskId,project_id:projectId}},{data:null}]);const publish=vi.fn();await createBoardTaskLinkRequest(client,publish).load('org',taskId,'scope');expect(publish.mock.calls.at(-1)[0].error).toContain('unavailable');expect(publish.mock.calls.at(-1)[0].task).toBeUndefined();});
+it('sanitizes errors and allows retry',async()=>{const client=clientWith([{error:{message:'secret'}},{data:{id:taskId,project_id:projectId}},{data:{id:projectId}}]);const publish=vi.fn();const request=createBoardTaskLinkRequest(client,publish);await request.load('org',taskId,'scope');expect(publish.mock.calls.at(-1)[0].error).not.toContain('secret');await request.load('org',taskId,'scope');expect(publish.mock.calls.at(-1)[0].task.id).toBe(taskId);});
+it('ignores late resolution after org/navigation cancellation',async()=>{let finish;const wait=new Promise(resolve=>{finish=resolve;});const client=clientWith([wait]);const publish=vi.fn();const request=createBoardTaskLinkRequest(client,publish);const pending=request.load('org',taskId,'old-scope');request.cancel();finish({data:{id:taskId,project_id:projectId}});await pending;expect(publish).toHaveBeenCalledTimes(1);expect(client.calls).toHaveLength(1);});
+it('new navigation wins even when the previous lookup finishes later',async()=>{let finish;const wait=new Promise(resolve=>{finish=resolve;});const client=clientWith([wait,{data:{id:taskId,project_id:projectId}},{data:{id:projectId}}]);const publish=vi.fn();const request=createBoardTaskLinkRequest(client,publish);const previous=request.load('old-org',taskId,'old');await request.load('new-org',taskId,'new');finish({data:{id:taskId,project_id:projectId}});await previous;expect(publish.mock.calls.at(-1)[0].scope).toBe('new');expect(client.calls).toHaveLength(3);});

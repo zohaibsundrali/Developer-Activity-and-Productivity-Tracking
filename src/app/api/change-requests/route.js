@@ -1,3 +1,4 @@
+import { checkFeatureAccess } from "@/utils/entitlements";
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { authCan, requirePermission } from "@/utils/serverPermissions";
@@ -20,11 +21,8 @@ export const dynamic = "force-dynamic";
  * the internal notes — where "they will not like the price" and "we
  * underquoted the original" get written — are removed in this route.
  *
- * Which means the route is load-bearing for that one field, unlike the
- * organization scoping around it. A client reading `change_requests` directly
- * through PostgREST would see pm_notes. That is worth knowing rather than
- * discovering; the honest fix is a view or a column-level grant, and both are
- * a bigger change than this feature justifies today.
+ * Direct client access to the source table is denied by the production
+ * permission migration. The API is the client projection and strips notes.
  */
 
 const MAX_TITLE = 200;
@@ -59,6 +57,10 @@ export async function GET(request) {
     }
 
     const svc = serviceClient();
+    if (auth.userType === "client") {
+      const planBlock = await checkFeatureAccess(svc, auth.orgId, "client_portal", "Client portal");
+      if (planBlock) return NextResponse.json(planBlock, { status: planBlock.status });
+    }
     const url = new URL(request.url);
     const projectId = url.searchParams.get("projectId");
 
@@ -117,6 +119,10 @@ export async function POST(request) {
     }
 
     const svc = serviceClient();
+    if (auth.userType === "client") {
+      const planBlock = await checkFeatureAccess(svc, auth.orgId, "client_portal", "Client portal");
+      if (planBlock) return NextResponse.json(planBlock, { status: planBlock.status });
+    }
     const isClient = auth.userType === "client";
 
     if (isClient) {
@@ -179,6 +185,7 @@ export async function POST(request) {
       const rows = (staff || []).map((m) => ({
         organization_id: auth.orgId,
         admin_id: m.user_type === "admin" ? m.user_id : null,
+        admin_recipient_type: m.user_type === "admin" ? "admin" : null,
         developer_id: m.user_type === "developer" ? m.user_id : null,
         admin_email: m.email || null,
         type: "change_request_raised",

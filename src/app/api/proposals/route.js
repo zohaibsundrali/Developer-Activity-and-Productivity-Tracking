@@ -1,3 +1,4 @@
+import { checkFeatureAccess } from "@/utils/entitlements";
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { requirePermission } from "@/utils/serverPermissions";
@@ -72,6 +73,10 @@ export async function GET(request) {
     }
 
     const svc = serviceClient();
+    if (auth.userType === "client") {
+      const planBlock = await checkFeatureAccess(svc, auth.orgId, "client_portal", "Client portal");
+      if (planBlock) return NextResponse.json(planBlock, { status: planBlock.status });
+    }
     const url = new URL(request.url);
     const status = url.searchParams.get("status");
 
@@ -150,6 +155,10 @@ export async function POST(request) {
     }
 
     const svc = serviceClient();
+    if (auth.userType === "client") {
+      const planBlock = await checkFeatureAccess(svc, auth.orgId, "client_portal", "Client portal");
+      if (planBlock) return NextResponse.json(planBlock, { status: planBlock.status });
+    }
 
     // One open proposal at a time per client. Without this, a double-clicked
     // submit button files the same request twice and an admin has to work out
@@ -211,6 +220,7 @@ export async function POST(request) {
       const rows = (deciders || []).map((m) => ({
         organization_id: auth.orgId,
         admin_id: m.user_type === "admin" ? m.user_id : null,
+        admin_recipient_type: m.user_type === "admin" ? "admin" : null,
         developer_id: m.user_type === "developer" ? m.user_id : null,
         admin_email: m.email || null,
         type: "proposal_submitted",

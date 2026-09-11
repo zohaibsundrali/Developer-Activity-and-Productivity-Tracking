@@ -607,11 +607,11 @@ export const SIGNAL_ROLES = [...ALL_PEOPLE_ROLES, "manager", "team_lead"];
  * registered under BOTH the membership id and the email — a signal's subject id
  * is whichever of the two the session rows carried. See `personKey`.
  */
-export function filterForViewer(signals = [], { role, visiblePeople = new Set() } = {}) {
-  if (!SIGNAL_ROLES.includes(role)) return [];
+export function filterForViewer(signals = [], { role, visiblePeople = new Set(), canView, canViewBilling } = {}) {
+  if (canView === false || (canView !== true && !SIGNAL_ROLES.includes(role))) return [];
 
   const seesAllPeople = ALL_PEOPLE_ROLES.includes(role);
-  const seesBilling = BILLING_ROLES.includes(role);
+  const seesBilling = canViewBilling ?? BILLING_ROLES.includes(role);
 
   return signals.filter((s) => {
     if (s.kind === "plan_pressure" && !seesBilling) return false;
@@ -649,4 +649,39 @@ export function runDetectors(
       a.kind.localeCompare(b.kind) ||
       String(a.subject?.label).localeCompare(String(b.subject?.label))
   );
+}
+
+/** Resolve untyped reporting addresses against complete typed membership history.
+ * Ambiguous UUID/email aliases never confer reporting visibility. The legacy
+ * reportsTo map remains safe for cron because only unique addresses enter it.
+ */
+export function signalReportingVisibility(members = [], viewer = {}) {
+  const normalize = value => String(value || '').trim().toLowerCase();
+  const key = member => `${member.user_type}:${member.user_id}`;
+  const index = new Map();
+  const aliases = member => [...new Set([normalize(member.user_id), normalize(member.email)].filter(Boolean))];
+  for (const member of members) {
+    if (!['admin', 'developer'].includes(member.user_type)) continue;
+    for (const alias of aliases(member)) {
+      if (!index.has(alias)) index.set(alias, new Map());
+      index.get(alias).set(key(member), member);
+    }
+  }
+  const unique = alias => index.get(alias)?.size === 1 ? [...index.get(alias).values()][0] : null;
+  const visiblePeople = new Set();
+  const reportsTo = {};
+  for (const member of members) {
+    // Monitoring session subjects belong to developer profiles, including HR
+    // and manager staff stored in that identity domain.
+    if (member.user_type !== 'developer' || member.status !== 'active') continue;
+    const address = normalize(member.reports_to);
+    const manager = unique(address);
+    if (!manager || manager.status !== 'active') continue;
+    for (const alias of aliases(member)) {
+      if (key(unique(alias) || {}) !== key(member)) continue;
+      reportsTo[alias] = address;
+      if (manager.user_id === viewer.appUserId && manager.user_type === viewer.userType) visiblePeople.add(alias);
+    }
+  }
+  return { visiblePeople, reportsTo };
 }

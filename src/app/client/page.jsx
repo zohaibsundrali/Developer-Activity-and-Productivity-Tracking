@@ -1,4 +1,5 @@
 "use client";
+import PlanFeatureBoundary from "@/components/billing/PlanFeatureBoundary";
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
@@ -271,4 +272,9 @@ function ClientDashboardContent() {
   );
 }
 
-export default withAuth(ClientDashboardContent);
+function ClientDashboardWithPlan() {
+  const params = useSearchParams();
+  if (params.get("section") === "account") return <ClientDashboardContent />;
+  return <PlanFeatureBoundary feature="client_portal" accountHref="/client?section=account"><ClientDashboardContent /></PlanFeatureBoundary>;
+}
+export default withAuth(ClientDashboardWithPlan);

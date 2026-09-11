@@ -319,13 +319,11 @@ export async function getUsage(svc, orgId, limits) {
   const keys = Object.keys(RESOURCES);
   const counts = await Promise.all(
     keys.map(async (key) => {
-      try {
-        const { count } = await RESOURCES[key].count(svc, orgId);
-        return [key, count ?? 0];
-      } catch {
-        // A counting failure must not read as "limit reached" and block work.
-        return [key, 0];
+      const { count, error } = await RESOURCES[key].count(svc, orgId);
+      if (error || !Number.isSafeInteger(count) || count < 0) {
+        throw new Error("Usage verification unavailable");
       }
+      return [key, count];
     })
   );
 

@@ -189,7 +189,7 @@ describe("H-1 · client_visible cannot be flipped by anyone who feels like it", 
      * way, because the browser talks to PostgREST directly.
      */
     const drawer = read("src/components/admin/TaskDetailDrawer.jsx");
-    expect(drawer).toContain('allowed("task.set_client_visibility")');
+    expect(drawer).toContain('actionAccess.editField("client_visible")');
     expect(stripJs(read("src/utils/pmData.js"))).toMatch(
       /from\("developer_tasks"\)\s*\.update\(/
     );
@@ -279,241 +279,33 @@ describe("H-2 · hr is off the monitoring surface", () => {
 /* ------------------------------------------------------------------ */
 
 let db = null;
-
-vi.mock("@/utils/entitlements", () => ({
-  checkSeatLimitForRole: vi.fn(async () => null),
-  checkFeatureAccess: vi.fn(async () => null),
-}));
-
-vi.mock("@supabase/supabase-js", () => ({
-  createClient: () => ({
-    from: (table) => db.from(table),
-    auth: { admin: { createUser: (payload) => db.createUser(payload) } },
-  }),
-}));
-
-/**
- * A minimal PostgREST-shaped recorder. Every call the route makes is written
- * down so the test can assert on WHAT WAS WRITTEN rather than on the source
- * text — which is what makes reverting the route fail this suite.
- */
-function makeDb(invite) {
-  const rec = { inserts: [], updates: [], createUser: null };
-  const rowFor = (table) => ({ id: `${table}-row-1` });
-  return {
-    rec,
-    from(table) {
-      const chain = {
-        select: () => chain,
-        eq: () => chain,
-        gt: () => chain,
-        insert(rows) {
-          rec.inserts.push({ table, row: rows[0] });
-          return chain;
-        },
-        update(patch) {
-          rec.updates.push({ table, patch });
-          return chain;
-        },
-        maybeSingle: async () => ({
-          data:
-            table === "invitations" ? invite
-            // The accept route reads the organization's name for an invited
-            // admin's admin_users.company (NOT NULL); answer it like PostgREST.
-            : table === "organizations" ? { id: "org-1", name: "Analytical Engines" }
-            : null,
-          error: null,
-        }),
-        single: async () => ({ data: rowFor(table), error: null }),
-        then: (resolve) => Promise.resolve({ data: null, error: null }).then(resolve),
-      };
-      return chain;
-    },
-    createUser(payload) {
-      rec.createUser = payload;
-      return Promise.resolve({ data: { user: { id: "auth-user-1" } } });
-    },
-  };
-}
-
+vi.mock("@/utils/entitlements", () => ({ checkSeatLimitForRole: vi.fn(async () => null), checkFeatureAccess: vi.fn(async () => null) }));
+vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({
+  from: () => { const q = { select: () => q, eq: () => q, maybeSingle: async () => ({ data: db.invite, error: null }) }; return q; },
+  rpc: async (name, args) => { db.calls.push({ name, args }); return { data: name === "claim_invitation" ? { auth_user_id: "auth-1", profile_id: "profile-1" } : { success: true } }; },
+  auth: { admin: { getUserById: async () => ({ data: { user: null }, error: { status: 404 } }), createUser: async payload => { db.created = payload; return { data: { user: { id: "auth-1" } } }; } } },
+}) }));
 const { POST } = await import("@/app/api/invitations/accept/route");
-
-function request() {
-  return {
-    json: async () => ({
-      token: "tok",
-      fullName: "Test Person",
-      password: "correct horse battery staple",
-      termsAccepted: true,
-    }),
-    headers: { get: () => null },
-  };
-}
-
-/** Accept an invitation for `role` and return everything that was written. */
 async function accept(role) {
-  db = makeDb({
-    id: "inv-1",
-    token: "tok",
-    email: `${role}@example.com`,
-    role,
-    status: "pending",
-    organization_id: "org-1",
-    expires_at: new Date(Date.now() + 86400000).toISOString(),
-    project_id: null,
-    team_id: null,
-    department_id: null,
-  });
-  const res = await POST(request());
-  const body = await res.json();
-  return { res, body, rec: db.rec };
+  db = { calls: [], created: null, invite: { id: "invite-1", email: "member@example.test", role, status: "pending", organization_id: "org-1", expires_at: new Date(Date.now() + 86400000).toISOString() } };
+  const res = await POST({ json: async () => ({ token: "token", password: "password-123", termsAccepted: true }), headers: { get: () => null } });
+  return { res, body: await res.json() };
 }
-
-const profileRowIn = (rec) =>
-  rec.inserts.find((i) => ["admin_users", "developers", "clients"].includes(i.table));
-const membershipRow = (rec) => rec.inserts.find((i) => i.table === "memberships");
-
 describe("H-3 · one role, one user_type", () => {
-  beforeEach(() => {
-    db = null;
-  });
-
-  it("an INVITED hr gets user_type 'developer', in all three places at once", async () => {
-    /**
-     * THE BUG: the route computed `isAdminLike = ... || invite.role === "hr"`
-     * and wrote "admin". Provisioning wrote "developer" for the same role.
-     * "admin" is the LOOSER answer — /api/productivity gates on
-     * `userType !== 'admin'`, /api/keyboard-stats self-scopes only for
-     * userType "developer", /api/task-submission lets a non-developer userType
-     * submit as anyone — so an invited hr escaped all three.
-     *
-     * All three writes are asserted because they are three separate chances to
-     * get it wrong, and the JWT claim is the one that actually grants access.
-     */
-    const { res, body, rec } = await accept("hr");
+  it.each(ROLES.filter(role => role !== "owner"))("binds invited %s to the canonical Auth identity", async role => {
+    const { res, body } = await accept(role);
     expect(res.status).toBe(200);
-    expect(body.userType).toBe("developer");
-
-    expect(profileRowIn(rec).table).toBe("developers");
-    expect(membershipRow(rec).row.user_type).toBe("developer");
-    expect(rec.createUser.app_metadata.user_type).toBe("developer");
-
-    // No admin_users row is created for them at all.
-    expect(rec.inserts.map((i) => i.table)).not.toContain("admin_users");
+    expect(body).toMatchObject({ role, userType: userTypeForRole(role) });
+    expect(db.created.app_metadata).toMatchObject({ role, user_type: userTypeForRole(role), app_user_id: "profile-1", organization_id: "org-1", invitation_id: "invite-1" });
+    expect(db.calls.map(c => c.name)).toEqual(["claim_invitation", "finish_invitation", "release_invitation_claim"]);
   });
-
-  it("files an INVITED admin under the organization's name, because admin_users.company is NOT NULL", async () => {
-    /**
-     * THE BUG: this insert wrote `company: null`. The column is NOT NULL (the
-     * table predates database/010; signup fills it from the founder's company
-     * name), so Postgres refused the row and every admin invitation in the
-     * product's history failed at "Accept & create account" with a raw
-     * constraint error. The invitee has no company to type — the organization
-     * they are joining is the answer, read from the organizations row rather
-     * than guessed.
-     */
-    const { res, rec } = await accept("admin");
-    expect(res.status).toBe(200);
-    const profile = profileRowIn(rec);
-    expect(profile.table).toBe("admin_users");
-    expect(profile.row.company).toBe("Analytical Engines");
-    expect(profile.row.company).not.toBeNull();
+  it.each(["owner", "superuser"])("rejects ungrantable invitation role %s", async role => {
+    expect((await accept(role)).res.status).toBe(400);
+    expect(db.created).toBeNull();
+    expect(db.calls).toEqual([]);
   });
-
-  it("refuses an admin invitation whose organization cannot be read, instead of inventing a company", async () => {
-    db = makeDb({
-      id: "inv-1", token: "tok", email: "admin@example.com", role: "admin", status: "pending",
-      organization_id: "org-1", expires_at: new Date(Date.now() + 86400000).toISOString(), project_id: null, team_id: null, department_id: null,
-    });
-    const realFrom = db.from.bind(db);
-    db.from = (table) => {
-      const chain = realFrom(table);
-      if (table === "organizations") chain.maybeSingle = async () => ({ data: null, error: null });
-      return chain;
-    };
-    const res = await POST(request());
-    expect(res.status).toBe(500);
-    // Nothing was written: no profile row, no membership, no Auth account.
-    expect(db.rec.inserts).toHaveLength(0);
-    expect(db.rec.createUser).toBeNull();
-  });
-
-  it("keeps hr's REAL role on the membership and in the claim", async () => {
-    // user_type is storage; role is authorisation. Narrowing the first must not
-    // touch the second, or hr loses the people-ops screens it is entitled to.
-    const { rec, body } = await accept("hr");
-    expect(membershipRow(rec).row.role).toBe("hr");
-    expect(rec.createUser.app_metadata.role).toBe("hr");
-    expect(body.role).toBe("hr");
-  });
-
-  it("agrees with userTypeForRole for EVERY role, which is the actual invariant", async () => {
-    /**
-     * The finding was a second copy of the mapping, so the test is parity
-     * across the whole vocabulary rather than a spot check on hr. A future
-     * role added to ROLES is covered without editing this file.
-     */
-    for (const role of ROLES) {
-      const { res, body, rec } = await accept(role);
-      const expected = userTypeForRole(role);
-      expect(res.status, role).toBe(200);
-      expect(body.userType, role).toBe(expected);
-      expect(membershipRow(rec).row.user_type, role).toBe(expected);
-      expect(rec.createUser.app_metadata.user_type, role).toBe(expected);
-      expect(profileRowIn(rec).table, role).toBe(PROFILE_TABLE[expected]);
-    }
-  });
-
-  it("still files owner and admin in admin_users, and clients in clients", async () => {
-    // The no-regression half. Narrowing hr must not have moved anybody else.
-    for (const role of ["owner", "admin"]) {
-      const { rec, body } = await accept(role);
-      expect(body.userType, role).toBe("admin");
-      expect(profileRowIn(rec).table, role).toBe("admin_users");
-    }
-    const { rec, body } = await accept("client");
-    expect(body.userType).toBe("client");
-    expect(profileRowIn(rec).table).toBe("clients");
-  });
-
-  it("files contributors in developers, exactly as before", async () => {
-    for (const role of ["developer", "designer", "devops", "qa", "employee", "manager", "team_lead", "finance"]) {
-      const { rec, body } = await accept(role);
-      expect(body.userType, role).toBe("developer");
-      expect(profileRowIn(rec).table, role).toBe("developers");
-    }
-  });
-
-  it("refuses an unrecognised role instead of defaulting it into `developers`", async () => {
-    // userTypeForRole answers "developer" for a typo. That is a fine default
-    // for a display decision and a bad one for creating an account, so the
-    // route validates first. Fail closed.
-    const { res, rec } = await accept("superuser");
-    expect(res.status).toBe(400);
-    expect(rec.inserts).toHaveLength(0);
-    expect(rec.createUser).toBeNull();
-    expect(isRole("superuser")).toBe(false);
-  });
-
-  it("reads the mapping from utils/roles rather than keeping its own copy", () => {
-    /**
-     * The source-level half, and deliberately narrow: it asserts that the
-     * SECOND COPY is gone, which no behavioural test can see. Runs on stripped
-     * JS because the new comment quotes the old `isAdminLike` line verbatim to
-     * explain what was wrong — trap (a) again, in a JS file this time.
-     */
-    const raw = read(ACCEPT);
-    const code = stripJs(raw);
-    expect(raw).toContain("isAdminLike"); // the header explains it
-    expect(code).not.toContain("isAdminLike"); // the code no longer computes it
-    expect(code).toContain('from "@/utils/roles"');
-    expect(code).toContain("userTypeForRole(invite.role)");
-    expect(code).toContain("PROFILE_TABLE[userType]");
-    // and no hand-rolled role literal survives in the executable half
-    expect(code).not.toMatch(/invite\.role === "hr"/);
-    expect(code).not.toMatch(/invite\.role === "owner"/);
-  });
-
+  // Profile/company/membership mapping and rollback are tested against actual
+  // PostgreSQL in database/tests/invitation.sql, not reimplemented in a mock.
   it("roles.js is still the single source, and hr is still staff", () => {
     // If someone "fixes" the disagreement in the other direction — by moving hr
     // to "admin" in roles.js — hr leaves STAFF_ROLES, the Employees directory

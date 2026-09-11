@@ -2,10 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
-import { getOrgId } from "@/utils/orgContext";
+import { createNotificationInboxEvents } from "@/utils/notificationInboxEvents";
+import { notificationRecipientKey } from "@/utils/notificationIdentity";
+import { createNotificationRequestGuard } from "@/utils/notificationRequestGuard";
+import { fetchNotificationRecovery, rollbackNotificationRead, notificationReconnect } from "@/utils/notificationRecovery";
+import { getOrgContext } from "@/utils/orgContext";
 import { setVisibleInterval } from "@/hooks/useVisibleInterval";
 import {
   fetchNotifications,
+  fetchInboxNotification,
   getUnreadCount,
   markRead,
   markAllRead,
@@ -53,27 +58,6 @@ const UNREAD_COUNT_POLL_MS = 60_000;
  * realtime subscription deliberately carries no server-side filter — see the
  * subscription effect below.
  */
-function isForRecipient(row, { userId, email, audience }) {
-  if (!row) return false;
-
-  if (audience === "admin") {
-    if (userId && row.admin_id && String(row.admin_id) === String(userId)) return true;
-    // Equality, case-insensitively, because that is what the list query asks
-    // for. Containment used to be the answer here and it accepted another
-    // admin's rows into this panel: `sara@acme.com` is contained in
-    // `sara@acme.com.au`, so a live insert for one landed in the other's list.
-    if (email && row.admin_email) {
-      return String(row.admin_email).toLowerCase() === String(email).toLowerCase();
-    }
-    return false;
-  }
-
-  if (!userId) return false;
-  return (
-    (row.developer_id && String(row.developer_id) === String(userId)) ||
-    (row.assigned_developer_id && String(row.assigned_developer_id) === String(userId))
-  );
-}
 
 /**
  * Append a page without letting a row that arrived live show up twice.
@@ -139,8 +123,24 @@ export default function useNotifications({
   audience = "admin",
   pageSize = DEFAULT_PAGE_SIZE,
 } = {}) {
+  const ctx = getOrgContext();
+  const userType = ctx?.userId === userId ? ctx.userType : null;
+  const orgId = ctx?.organizationId || null;
+  const hasIdentity = Boolean(orgId && notificationRecipientKey({ userId, userType }));
+  const identityKey = JSON.stringify([orgId, userType, userId]);
+  const guardRef = useRef(null);
+  if (!guardRef.current) guardRef.current = createNotificationRequestGuard();
+  const identityVersion = guardRef.current.enter(identityKey);
+  const [dataIdentity, setDataIdentity] = useState(identityKey);
+  const isCurrentIdentity = useCallback(() => {
+    const current = getOrgContext();
+    return guardRef.current.isCurrent(identityVersion)
+      && current?.organizationId === orgId && current?.userType === userType && current?.userId === userId;
+  }, [identityVersion, orgId, userType, userId]);
   const [rows, setRows] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const unreadCountRef = useRef(unreadCount);
+  unreadCountRef.current = unreadCount;
   const [category, setCategory] = useState(null);
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [page, setPage] = useState(0);
@@ -149,7 +149,7 @@ export default function useNotifications({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
 
-  const hasIdentity = Boolean(userId || email);
+
 
   // Filters are read by the realtime handler, which must not be torn down and
   // resubscribed every time a chip is pressed — a refs copy keeps the channel
@@ -164,6 +164,11 @@ export default function useNotifications({
   // Switching filters fires a second fetch while the first is still in flight;
   // whichever returns last would otherwise win regardless of what was asked.
   const requestRef = useRef(0);
+  const pendingRequestRef = useRef(null);
+  const pageRef = useRef(page);
+  pageRef.current = page;
+  const countRequestRef = useRef(0);
+  const countRevisionRef = useRef(0);
 
   // A dismissal has to put the row back where it was if the write fails, so it
   // needs the row and its position BEFORE removing it. Reading them out of a
@@ -175,15 +180,17 @@ export default function useNotifications({
   }, [rows]);
 
   const refreshCount = useCallback(async () => {
-    if (!hasIdentity) return;
+    if (!hasIdentity || !isCurrentIdentity()) return;
+    const ticket = ++countRequestRef.current;
     // Deliberately unscoped by category: this is the bell's badge, the count of
     // everything waiting. Narrowing it to the open chip would make picking a
     // filter appear to clear notifications that are still there.
     const { count, error: countError } = await getUnreadCount({ userId, email, audience });
+    if (!isCurrentIdentity() || ticket !== countRequestRef.current) return;
     // A failed count keeps the last known number rather than flashing zero,
     // which reads as "all caught up" and is the one lie a badge must not tell.
-    if (!countError) setUnreadCount(count);
-  }, [hasIdentity, userId, email, audience]);
+    if (!countError) { countRevisionRef.current += 1; setUnreadCount(count); }
+  }, [hasIdentity, userId, isCurrentIdentity, email, audience]);
 
   // Fires once immediately, then at most once per window for as long as events
   // keep arriving — a burst costs two queries instead of one per row, and the
@@ -208,23 +215,31 @@ export default function useNotifications({
     refreshCount();
   }, [refreshCount]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    guardRef.current.activate();
+    return () => {
       if (countTimerRef.current) clearTimeout(countTimerRef.current);
-    },
-    []
-  );
+      countTimerRef.current = null;
+      countAgainRef.current = false;
+      requestRef.current += 1;
+      countRequestRef.current += 1;
+      guardRef.current.deactivate();
+    };
+  }, []);
 
   const loadPage = useCallback(
-    async (targetPage, { append = false } = {}) => {
-      if (!hasIdentity) return;
+    async (targetPage, { append = false, reconcile = false } = {}) => {
+      if (!hasIdentity || !isCurrentIdentity()) return;
 
+      if (reconcile && pendingRequestRef.current !== null) return;
+      const retainedPage = pageRef.current;
       const ticket = requestRef.current + 1;
       requestRef.current = ticket;
+      pendingRequestRef.current = ticket;
 
       if (append) {
         setLoadingMore(true);
-      } else {
+      } else if (!reconcile) {
         setLoading(true);
         // A first page supersedes any page-append still in flight; clearing the
         // flag here is what stops that append's spinner from being stranded.
@@ -235,21 +250,25 @@ export default function useNotifications({
         rows: fetched,
         hasMore: more,
         error: fetchError,
-      } = await fetchNotifications({
+        page: recoveredPage,
+      } = await Promise.resolve().then(() => {
+        const options = {
         userId,
         email,
         audience,
         category,
         unreadOnly,
-        page: targetPage,
-        pageSize,
-      });
+        page: targetPage, pageSize,
+        };
+        return reconcile ? fetchNotificationRecovery(fetchNotifications, options, retainedPage) : fetchNotifications(options);
+      }).catch(error => ({ rows: [], hasMore: false, error }));
 
       // Superseded by a newer request: drop the result, and leave the loading
       // flags to the request that now owns them — clearing them here would
       // blank the spinner and flash an empty list while that one is still out.
-      if (ticket !== requestRef.current) return;
+      if (ticket !== requestRef.current || !isCurrentIdentity()) return;
 
+      pendingRequestRef.current = null;
       if (append) setLoadingMore(false);
       else setLoading(false);
 
@@ -261,10 +280,15 @@ export default function useNotifications({
       setError(null);
       setRows((prev) => (append ? mergeRows(prev, fetched) : fetched));
       setHasMore(more);
-      setPage(targetPage);
+      setPage(reconcile ? recoveredPage : targetPage);
     },
-    [hasIdentity, userId, email, audience, category, unreadOnly, pageSize]
+    [hasIdentity, userId, isCurrentIdentity, email, audience, category, unreadOnly, pageSize]
   );
+
+  const reconcile = useCallback(() => {
+    loadPage(0, { reconcile: true });
+    refreshCount();
+  }, [loadPage, refreshCount]);
 
   const refresh = useCallback(() => {
     loadPage(0, { append: false });
@@ -275,6 +299,26 @@ export default function useNotifications({
     if (loading || loadingMore || !hasMore) return;
     loadPage(page + 1, { append: true });
   }, [loading, loadingMore, hasMore, page, loadPage]);
+
+  // Clear every identity-owned value before fetching another profile's inbox.
+  // Rendered values are also masked below until this reset has run.
+  useEffect(() => {
+    requestRef.current += 1;
+    pendingRequestRef.current = null;
+    countRequestRef.current += 1;
+    if (countTimerRef.current) clearTimeout(countTimerRef.current);
+    countTimerRef.current = null;
+    countAgainRef.current = false;
+    rowsRef.current = [];
+    setRows([]);
+    setUnreadCount(0);
+    setHasMore(false);
+    setPage(0);
+    setLoading(false);
+    setLoadingMore(false);
+    setError(null);
+    setDataIdentity(identityKey);
+  }, [identityKey]);
 
   // First page, and a fresh first page whenever identity or filters change
   // (`loadPage` closes over both, so its identity is the trigger).
@@ -291,75 +335,72 @@ export default function useNotifications({
 
   useEffect(() => {
     if (!hasIdentity) return undefined;
-    return setVisibleInterval(refreshCount, UNREAD_COUNT_POLL_MS);
-  }, [hasIdentity, refreshCount]);
+    return setVisibleInterval(reconcile, UNREAD_COUNT_POLL_MS);
+  }, [hasIdentity, reconcile]);
+
+  const reconcileRef = useRef(reconcile);
+  reconcileRef.current = reconcile;
 
   useEffect(() => {
     if (!hasIdentity) return undefined;
 
-    const orgId = getOrgId();
-
-    const handleChange = (payload) => {
-      const row = payload?.new;
-      if (!row) return;
-      // Realtime bypasses the org scoping the queries apply, so re-apply it.
-      if (orgId && row.organization_id && row.organization_id !== orgId) return;
-      if (!isForRecipient(row, { userId, email, audience })) return;
-
-      setRows((prev) =>
-        upsertRow(prev, row, {
-          category: categoryRef.current,
-          unreadOnly: unreadOnlyRef.current,
-          isInsert: payload?.eventType === "INSERT",
-        })
-      );
-      // The badge is never inferred from the event — an INSERT the filter
-      // rejected still changes the true unread total.
-      refreshCountSoon();
-    };
+    const events = createNotificationInboxEvents({
+      organizationId: orgId, userId, userType,
+      isCurrent: isCurrentIdentity,
+      fetchRow: id => fetchInboxNotification(id, { userId }),
+      onRow: (data, { isInsert }) => setRows(prev => upsertRow(prev, data, {
+        category: categoryRef.current, unreadOnly: unreadOnlyRef.current, isInsert,
+      })),
+      onError: setError,
+      onCount: refreshCountSoon,
+    });
+    const handleChange = events.handle;
 
     // One topic per audience+user. Two surfaces sharing a client and a topic
     // name ("notifications-changes") got each other's bindings, and the second
     // subscriber's callbacks quietly never fired.
-    const channelName = `notifications-${audience}-${userId || email}`;
+    const channelName = `notifications-${orgId}-${userType}-${audience}-${userId}`;
 
-    // No server-side filter, on purpose. The admin list matches admin_id OR
-    // admin_email, but a postgres_changes filter takes a single column: the
-    // previous `admin_id=eq.{id}` binding meant every email-addressed
-    // notification arrived only on the next full refetch, i.e. never while the
-    // panel sat open. Developers have the same split across developer_id and
-    // assigned_developer_id. Matching in `isForRecipient` covers both columns;
-    // the cost is discarding rows addressed to other people.
+    // RLS filters delivery; the client also matches the server-derived typed
+    // recipient keys. Navigation audience never determines recipient identity.
+    let channelClosed = false;
     const channel = supabase
       .channel(channelName)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" }, handleChange)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notifications" }, handleChange)
-      .subscribe();
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notification_recipients", filter: `user_id=eq.${userId}` }, handleChange)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notification_recipients", filter: `user_id=eq.${userId}` }, handleChange)
+      .subscribe(status => notificationReconnect(status, { isCurrent: () => !channelClosed && isCurrentIdentity(), reconcile: () => reconcileRef.current() }));
 
     return () => {
+      channelClosed = true;
+      events.close();
       supabase.removeChannel(channel);
     };
-  }, [hasIdentity, userId, email, audience, refreshCountSoon]);
+  }, [hasIdentity, userId, userType, orgId, isCurrentIdentity, email, audience, refreshCountSoon]);
 
   const markOneRead = useCallback(
     async (id) => {
-      if (!id) return;
+      if (!id || !isCurrentIdentity()) return;
 
       // Optimistic: opening a notification should feel instant. The count is
       // re-read from the server either way, so the badge cannot end up guessed.
       setRows((prev) =>
         prev.map((row) => (row.id === id ? { ...row, read: true, read_at: new Date().toISOString() } : row))
       );
-      setUnreadCount((prev) => Math.max(0, prev - 1));
+      const previous = rowsRef.current.find(row => row.id === id);
+      if (previous && !previous.read) { countRevisionRef.current += 1; setUnreadCount((prev) => Math.max(0, prev - 1)); }
 
       const { error: markError } = await markRead(id);
+      if (!isCurrentIdentity()) return;
       if (markError) {
         // Put it back rather than leaving a row that looks handled and is not.
-        setRows((prev) => prev.map((row) => (row.id === id ? { ...row, read: false, read_at: null } : row)));
+        setError(markError);
+        if (previous) setRows((prev) => prev.map((row) => (row.id === id ? { ...row, read: previous.read, read_at: previous.read_at } : row)));
       }
       refreshCount();
     },
-    [refreshCount]
+    [refreshCount, isCurrentIdentity]
   );
 
   /**
@@ -372,15 +413,16 @@ export default function useNotifications({
    */
   const dismissOne = useCallback(
     async (id) => {
-      if (!id) return;
+      if (!id || !isCurrentIdentity()) return;
 
       const index = rowsRef.current.findIndex((row) => row.id === id);
       const removed = index === -1 ? null : rowsRef.current[index];
 
       setRows((prev) => prev.filter((row) => row.id !== id));
-      if (removed && !removed.read) setUnreadCount((prev) => Math.max(0, prev - 1));
+      if (removed && !removed.read) { countRevisionRef.current += 1; setUnreadCount((prev) => Math.max(0, prev - 1)); }
 
       const { error: dismissError } = await dismissNotification(id);
+      if (!isCurrentIdentity()) return;
       if (dismissError) {
         setError(dismissError);
         // Back to where it was, so the list still reflects the server. Guarded
@@ -397,30 +439,40 @@ export default function useNotifications({
       }
       refreshCount();
     },
-    [refreshCount]
+    [refreshCount, isCurrentIdentity]
   );
 
   const markEveryRead = useCallback(async () => {
+    if (!isCurrentIdentity()) return;
     // Scoped to the chip that is open: the button sits above a filtered list
     // and reads as "all of this". Sending it unscoped meant a user looking at
     // three mentions cleared every category in one press, with nothing to undo
     // it and no indication it had happened.
     const scope = categoryRef.current;
 
-    setRows((prev) => prev.map((row) => (row.read ? row : { ...row, read: true, read_at: new Date().toISOString() })));
+    const snapshot = rowsRef.current.slice();
+    const previousUnreadCount = unreadCountRef.current;
+    const optimisticReadAt = new Date().toISOString();
+    setRows((prev) => prev.map((row) => (row.read || (scope && row.category !== scope) ? row : { ...row, read: true, read_at: optimisticReadAt })));
     // Zero is only true when the whole inbox was the target. Under a filter the
     // badge still counts the other categories, so it is left to the server
     // rather than guessed at.
+    const optimisticCountVersion = ++countRevisionRef.current;
     if (!scope) setUnreadCount(0);
 
-    const { error: markError } = await markAllRead({ userId, email, audience, category: scope });
-    if (markError) setError(markError);
+    const { error: markError } = await Promise.resolve().then(() => markAllRead({ userId, email, audience, category: scope })).catch(error => ({ error }));
+    if (!isCurrentIdentity()) return;
+    if (markError) {
+      setError(markError);
+      setRows(previous => rollbackNotificationRead(previous, snapshot, optimisticReadAt));
+      if (!scope && countRevisionRef.current === optimisticCountVersion) { countRevisionRef.current += 1; setUnreadCount(previousUnreadCount); }
+    }
 
     // Under "unread only" the list should now be empty; anywhere else the rows
     // stay put and just lose their emphasis.
-    if (unreadOnlyRef.current) loadPage(0, { append: false });
+    if (markError || unreadOnlyRef.current) loadPage(0, { append: false });
     refreshCount();
-  }, [userId, email, audience, loadPage, refreshCount]);
+  }, [userId, email, audience, isCurrentIdentity, loadPage, refreshCount]);
 
   // Rows belong to the filter they were fetched under, so clearing them here
   // means the panel shows its loading state instead of the previous category's
@@ -437,22 +489,24 @@ export default function useNotifications({
     setUnreadOnly(Boolean(next));
   }, []);
 
+  const ownsData = dataIdentity === identityKey;
   return {
-    rows,
-    unreadCount,
+    rows: ownsData ? rows : [],
+    unreadCount: ownsData ? unreadCount : 0,
     category,
     setCategory: selectCategory,
     unreadOnly,
     setUnreadOnly: selectUnreadOnly,
-    loading,
-    loadingMore,
-    error,
-    hasMore,
+    loading: ownsData ? loading : hasIdentity,
+    loadingMore: ownsData && loadingMore,
+    error: ownsData ? error : null,
+    hasMore: ownsData && hasMore,
     loadMore,
     markOneRead,
     markEveryRead,
     dismissOne,
     refresh,
+    reconcile,
   };
 }
 

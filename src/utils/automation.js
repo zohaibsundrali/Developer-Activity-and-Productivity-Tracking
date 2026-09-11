@@ -3,6 +3,7 @@ import { getOrgId, getOrgContext } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
 import { isTransitionAllowed, REVIEW_ONLY_STATUSES } from "@/utils/pmData";
 import { recordEvent } from "@/utils/systemEvents";
+import { requireTaskMutation } from "@/utils/developerPlanMutations";
 
 /**
  * Workflow automation engine (ClickUp/Jira style).
@@ -120,11 +121,11 @@ async function applyAction(action, ctx, errors) {
     switch (action.type) {
       case "assign": {
         if (!action.userId) return;
-        const { error } = await supabase
+        await requireTaskMutation(supabase
           .from("developer_tasks")
           .update({ developer_id: action.userId, updated_at: new Date().toISOString() })
-          .eq("id", taskId);
-        if (error) throw error;
+          .eq("id", taskId)
+          .eq("organization_id", orgId), taskId);
         break;
       }
       case "set_status": {
@@ -138,31 +139,31 @@ async function applyAction(action, ctx, errors) {
               (REVIEW_ONLY_STATUSES.has(action.status) ? " (decided in review)" : "")
           );
         }
-        const { error } = await supabase
+        await requireTaskMutation(supabase
           .from("developer_tasks")
           .update({ status: action.status, updated_at: new Date().toISOString() })
-          .eq("id", taskId);
-        if (error) throw error;
+          .eq("id", taskId)
+          .eq("organization_id", orgId), taskId);
         break;
       }
       case "set_priority": {
         if (!action.priority) return;
-        const { error } = await supabase
+        await requireTaskMutation(supabase
           .from("developer_tasks")
           .update({ priority: action.priority, updated_at: new Date().toISOString() })
-          .eq("id", taskId);
-        if (error) throw error;
+          .eq("id", taskId)
+          .eq("organization_id", orgId), taskId);
         break;
       }
       case "add_label": {
         if (!action.label) return;
         const current = Array.isArray(task.labels) ? task.labels : [];
         if (current.includes(action.label)) return;
-        const { error } = await supabase
+        await requireTaskMutation(supabase
           .from("developer_tasks")
           .update({ labels: [...current, action.label], updated_at: new Date().toISOString() })
-          .eq("id", taskId);
-        if (error) throw error;
+          .eq("id", taskId)
+          .eq("organization_id", orgId), taskId);
         break;
       }
       case "notify": {

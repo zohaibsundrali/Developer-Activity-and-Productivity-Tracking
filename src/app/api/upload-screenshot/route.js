@@ -1,3 +1,4 @@
+import { verifyDeviceRequest } from "@/utils/deviceAuth";
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
@@ -9,7 +10,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-// Production always enforces the shared-secret gate. The historical staged
+// Production requires a registered device session JWT. The historical staged
 // rollout described below now applies only outside production.
 
 /**
@@ -112,7 +113,7 @@ function ingestSecret() {
 }
 
 function enforcementEnabled() {
-  // Production ingest must never accept anonymous writes, even with no secret.
+  // Production ingest requires a registered device session.
   if (process.env.NODE_ENV === "production") return true;
   const flag = String(process.env.DESKTOP_INGEST_ENFORCE || '').trim().toLowerCase();
   return flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on';
@@ -138,6 +139,9 @@ function credentialMatches(presented, secret) {
 
 /** @returns {{allow: boolean, authenticated: boolean, stage: string, reason: string}} */
 function authorizeIngest(request) {
+  if (process.env.NODE_ENV === 'production') {
+    return { allow: false, authenticated: false, stage: 'device', reason: 'device_session_required' };
+  }
   const secret = ingestSecret();
   const enforce = enforcementEnabled();
 
@@ -204,7 +208,7 @@ async function reportUnauthenticated(decision) {
 
 // Loud on boot: an unset secret means anyone who knows a developer id can inject
 // screenshots into a real employee's timeline, and that must not stay quiet.
-if (!ingestSecret()) {
+if (process.env.NODE_ENV !== 'production' && !ingestSecret()) {
   // eslint-disable-next-line no-console
   console.warn(
     enforcementEnabled()
@@ -218,13 +222,16 @@ if (!ingestSecret()) {
 
 export async function POST(request) {
   try {
-    const auth = authorizeIngest(request);
+    const auth = await verifyDeviceRequest(request) || authorizeIngest(request);
+    const db = auth.client || supabase;
     if (!auth.authenticated) await reportUnauthenticated(auth);
     if (!auth.allow) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { developer_id, image_data, context, timestamp } = await request.json();
+
+    if (auth.developerId && developer_id !== auth.developerId) return NextResponse.json({ error: 'Device cannot submit another member’s screenshot' }, { status: 403 });
 
     if (!developer_id || !image_data) {
       return NextResponse.json(
@@ -263,7 +270,7 @@ export async function POST(request) {
     }
 
     // Identity must be real; organization comes from the developer row.
-    const { data: developer } = await supabase
+    const { data: developer } = await db
       .from('developers')
       .select('id, organization_id')
       .eq('id', developer_id)
@@ -308,7 +315,7 @@ export async function POST(request) {
     const orgPrefix = developer.organization_id || 'unassigned';
     const fileName = `${orgPrefix}/${developer.id}/${Date.now()}-${crypto.randomUUID()}.png`;
 
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await db.storage
       .from(SCREENSHOT_BUCKET)
       .upload(fileName, buffer, {
         contentType: 'image/png',
@@ -322,7 +329,7 @@ export async function POST(request) {
     // no durable URL any more, readers sign storage_path on demand. (image_url /
     // thumbnail_url / activity_context / session_id do NOT exist in this
     // table's schema and previously made this insert fail.)
-    const { error } = await supabase
+    const { error } = await db
       .from('screenshots')
       .insert([
         {

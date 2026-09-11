@@ -1,0 +1,31 @@
+select set_config('request.jwt.claims','{"app_metadata":{"organization_id":"00000000-0000-0000-0000-000000000002","user_type":"admin"}}',false);
+do $$
+declare org uuid := '00000000-0000-0000-0000-000000000002'; total integer;
+begin
+  insert into screenshots(organization_id,timestamp) values (org,now()),(org,now()-interval '20 days');
+  set local role authenticated;
+  if not public.auth_tracking_history(org,jsonb_build_object('tracked_at',now())) then raise exception 'Keyboard tracked_at was not recognized'; end if;
+  select count(*) into total from screenshots;
+  if total<>1 then raise exception 'Free history window not enforced'; end if;
+  perform expect_rejected(format('insert into automation_rules(organization_id) values (%L)',org),'PLAN_FEATURE_REQUIRED');
+  reset role;
+  insert into organization_subscriptions(organization_id,plan_code,status) values (org,'professional','active');
+  set local role authenticated;
+  select count(*) into total from screenshots;
+  if total<>2 then raise exception 'Upgrade did not restore existing history'; end if;
+  insert into automation_rules(organization_id) values (org);
+  reset role;
+  update organization_subscriptions set status='canceled' where organization_id=org;
+  set local role authenticated;
+  select count(*) into total from automation_rules;
+  if total<>0 then raise exception 'Canceled plan can still load automation rules'; end if;
+  perform set_config('request.jwt.claims','{"app_metadata":{"organization_id":"00000000-0000-0000-0000-000000000002","user_type":"client"}}',true);
+  select count(*) into total from projects;
+  if total<>0 then raise exception 'Free client can still access portal data'; end if;
+  reset role;
+  update organization_subscriptions set status='active' where organization_id=org;
+  set local role authenticated;
+  select count(*) into total from projects;
+  if total<>2 then raise exception 'Paid client lost portal access'; end if;
+  reset role;
+end; $$;

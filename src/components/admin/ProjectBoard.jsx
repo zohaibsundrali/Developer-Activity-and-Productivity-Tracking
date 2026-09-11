@@ -1,14 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { createBoardTaskLinkRequest } from "@/utils/boardTaskLink";
 import { supabase } from "@/utils/supabaseClient";
-import { getOrgId } from "@/utils/orgContext";
+import { taskUiPermissions } from "@/utils/taskUiPermissions";
+import { allowed } from "@/utils/permissions";
+import { getOrgId, getOrgContext } from "@/utils/orgContext";
 import {
   loadTasks,
   createTask,
   updateTask,
   changeTaskStatus,
   normalizeStatus,
+  allowedTransitions,
   loadSprints,
   loadEpics,
   BOARD_COLUMNS,
@@ -100,6 +105,15 @@ function AddTask({ columnId, columnLabel, onCreate }) {
 /* -------------------------------------------------------------------------- */
 
 export default function ProjectBoard() {
+  const searchParams = useSearchParams();
+  const linkedTaskId = searchParams.get("task");
+  const currentOrgId = getOrgId();
+  const linkScope = `${currentOrgId}:${linkedTaskId || ""}`;
+  const [linkState, setLinkState] = useState(null);
+  const linkRequest = useMemo(() => createBoardTaskLinkRequest(supabase, setLinkState), []);
+  const boardGeneration = useRef(0);
+  const currentBoard = useRef(null);
+  const [boardScope, setBoardScope] = useState(null);
   const [orgId, setOrgId] = useState(null);
   const [projects, setProjects] = useState([]);
   const [projectId, setProjectId] = useState(null);
@@ -122,12 +136,16 @@ export default function ProjectBoard() {
   const [dragOverCol, setDragOverCol] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
 
+  currentBoard.current = `${currentOrgId}:${projectId}`;
+
   /* ---- initial project load ------------------------------------------- */
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoadingProjects(true);
-      const id = getOrgId();
+      const id = currentOrgId;
+      setSelectedTask(null);
+      setTasks([]);
       if (!cancelled) setOrgId(id);
 
       const runQuery = (withArchived) => {
@@ -146,6 +164,7 @@ export default function ProjectBoard() {
           ({ data, error } = await runQuery(false));
         }
         if (cancelled) return;
+        if (error) throw error;
         const rows = data || [];
         setProjects(rows);
         setProjectId(rows.length ? rows[0].id : null);
@@ -162,10 +181,30 @@ export default function ProjectBoard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [currentOrgId]);
+
+  useEffect(() => {
+    if (loadingProjects) return;
+    setSelectedTask(null);
+    if (linkedTaskId !== null) linkRequest.load(currentOrgId, linkedTaskId, linkScope);
+    else setLinkState(null);
+    return () => linkRequest.cancel();
+  }, [currentOrgId, linkedTaskId, linkScope, loadingProjects, linkRequest]);
+
+  useEffect(() => {
+    if (linkState?.scope !== linkScope || !linkState.task) return;
+    setProjects(rows => rows.some(p => p.id === linkState.project.id) ? rows : [...rows, linkState.project]);
+    setProjectId(linkState.project.id);
+    setSearch(""); setPriorityFilter("all"); setAssigneeFilter("all"); setSprintFilter("all");
+    setSelectedTask(linkState.task);
+  }, [linkState, linkScope]);
+
+  useEffect(() => () => { boardGeneration.current += 1; linkRequest.cancel(); }, [linkRequest]);
 
   /* ---- board data loader ---------------------------------------------- */
   const reload = useCallback(async () => {
+    const ticket = ++boardGeneration.current;
+    const scope = `${orgId}:${projectId}`;
     if (!projectId) {
       setTasks([]);
       setSprints([]);
@@ -181,14 +220,17 @@ export default function ProjectBoard() {
         loadEpics(projectId),
         loadEmployees(id),
       ]);
+      if (ticket !== boardGeneration.current || currentBoard.current !== scope) return;
+      if (taskRes?.error) throw taskRes.error;
+      setBoardScope(scope);
       setTasks(taskRes?.tasks || []);
       setSprints(Array.isArray(sprintRes) ? sprintRes : []);
       setEpics(Array.isArray(epicRes) ? epicRes : []);
       setEmployees(empRes?.employees || []);
     } catch (err) {
-      showError("Failed to load board", err?.message || String(err));
+      if (ticket === boardGeneration.current && currentBoard.current === scope) showError("Failed to load board", err?.message || String(err));
     } finally {
-      setLoadingBoard(false);
+      if (ticket === boardGeneration.current && currentBoard.current === scope) setLoadingBoard(false);
     }
   }, [projectId, orgId]);
 
@@ -239,7 +281,7 @@ export default function ProjectBoard() {
   /* ---- create task ---------------------------------------------------- */
   const handleCreate = useCallback(
     async (columnId, title) => {
-      if (!projectId) return;
+      if (!projectId || !taskUiPermissions({ context: getOrgContext(), allowed }).manage) return;
       try {
         const { error } = await createTask(projectId, {
           task_title: title,
@@ -259,7 +301,7 @@ export default function ProjectBoard() {
 
   /* ---- drag & drop ---------------------------------------------------- */
   const handleDragStart = useCallback((e, task) => {
-    if (!task?.id) return;
+    if (!task?.id || !taskUiPermissions({ task, context: getOrgContext(), allowed }).move || !allowedTransitions(task.status).length) return;
     e.dataTransfer.setData("text/plain", String(task.id));
     e.dataTransfer.effectAllowed = "move";
   }, []);
@@ -271,7 +313,8 @@ export default function ProjectBoard() {
       const id = e.dataTransfer.getData("text/plain");
       if (!id) return;
       const task = (tasks || []).find((t) => String(t.id) === String(id));
-      if (!task) return;
+      if (!task || !taskUiPermissions({ task, context: getOrgContext(), allowed }).move) return;
+      if (!allowedTransitions(task.status).includes(columnId)) return;
       if (normalizeStatus(task.status) === columnId) return; // no move needed
 
       const target = BOARD_COLUMNS.find((c) => c.id === columnId);
@@ -369,10 +412,19 @@ export default function ProjectBoard() {
     );
   }
 
+  const linkNotice = linkedTaskId !== null && linkState?.scope === linkScope && (
+    linkState.loading ? <p role="status" className="p-4 text-sm">Opening linked task…</p> : linkState.error ? (
+      <div role="alert" className="p-4 text-sm text-destructive">{linkState.error}
+        <Button size="sm" variant="outline" onClick={() => linkRequest.load(currentOrgId, linkedTaskId, linkScope)}>Retry task link</Button>
+      </div>
+    ) : null
+  );
+
   if (!projects.length) {
     return (
       <div>
         {header}
+        {linkNotice}
         <EmptyState
           icon={LayoutGrid}
           title="No projects yet"
@@ -406,11 +458,12 @@ export default function ProjectBoard() {
           task={task}
           assigneeName={assigneeName(task.developer_id)}
           onOpen={setSelectedTask}
+          draggable={taskUiPermissions({ task, context: getOrgContext(), allowed }).move && allowedTransitions(task.status).length > 0}
           onDragStart={handleDragStart}
           onDragEnd={() => setDragOverCol(null)}
         />
       )),
-      footer: col.reviewOnly ? null : (
+      footer: col.reviewOnly || !taskUiPermissions({ context: getOrgContext(), allowed }).manage ? null : (
         <AddTask columnId={col.id} columnLabel={meta.label} onCreate={handleCreate} />
       ),
     };
@@ -439,7 +492,7 @@ export default function ProjectBoard() {
                 <select
                   id="board-project"
                   value={projectId || ""}
-                  onChange={(e) => setProjectId(e.target.value || null)}
+                  onChange={(e) => { linkRequest.cancel(); setSelectedTask(null); setProjectId(e.target.value || null); }}
                   className={`${SELECT_CLASS} font-medium`}
                 >
                   {projects.map((p) => (
@@ -505,15 +558,16 @@ export default function ProjectBoard() {
           />
         </div>
 
+        {linkNotice}
         {/* Board */}
-        {loadingBoard && !tasks.length ? (
+        {(loadingBoard && !tasks.length) || boardScope !== `${currentOrgId}:${projectId}` ? (
           boardSkeleton
         ) : (
           <Board columns={boardColumns} ariaLabel="Project board" />
         )}
 
         {/* Detail drawer */}
-        {selectedTask && (
+        {selectedTask && (linkedTaskId === null || linkState?.scope === linkScope) && selectedTask.project_id === projectId && boardScope === `${currentOrgId}:${projectId}` && !loadingBoard && (
           <TaskDetailDrawer
             task={selectedTask}
             members={employees}

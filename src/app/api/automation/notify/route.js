@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { requirePermission } from "@/utils/serverPermissions";
+import { loadOverrides } from "@/utils/permissionOverrides";
+import { canReceiveTaskNotification } from "@/utils/taskNotificationAccess";
 import { checkFeatureAccess } from "@/utils/entitlements";
 import { sendTemplatedEmail, emailMode } from "@/utils/emailService";
 
@@ -42,12 +44,19 @@ export async function POST(request) {
     const denied = requirePermission(auth, "automation.manage");
     if (denied) return denied;
 
-    const body = await request.json().catch(() => ({}));
-    const userIds = Array.isArray(body.userIds) ? body.userIds.filter(Boolean).slice(0, 50) : [];
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Invalid notification" }, { status: 400 });
+    }
+    const userIds = Array.isArray(body.userIds) ? [...new Set(body.userIds)] : [];
     const { taskId = null, subject = "Task update", message = "", sendEmail = false } = body;
 
-    if (!userIds.length) {
-      return NextResponse.json({ error: "userIds required" }, { status: 400 });
+    if (!userIds.length || body.userIds.length > 50 ||
+        userIds.some((id) => typeof id !== "string" || !id.trim()) ||
+        (taskId !== null && (typeof taskId !== "string" || !taskId.trim())) ||
+        typeof subject !== "string" || !subject.trim() || subject.length > 500 ||
+        typeof message !== "string" || message.length > 20000 || typeof sendEmail !== "boolean") {
+      return NextResponse.json({ error: "Invalid notification fields" }, { status: 400 });
     }
 
     const svc = serviceClient();
@@ -64,13 +73,16 @@ export async function POST(request) {
     // ── Recipients must belong to the caller's organization ──
     const { data: members, error: memErr } = await svc
       .from("memberships")
-      .select("user_id, user_type, email, role")
+      .select("user_id, user_type, email, role, status")
       .eq("organization_id", auth.orgId)
+      .eq("status", "active")
+      .in("user_type", ["admin", "developer"])
       .in("user_id", userIds);
     if (memErr) {
-      return NextResponse.json({ error: memErr.message }, { status: 500 });
+      return NextResponse.json({ error: "Notification recipients unavailable" }, { status: 500 });
     }
-    const allowed = members || [];
+    let allowed = (members || []).filter((member) =>
+      member.status === "active" && ["admin", "developer"].includes(member.user_type));
     if (!allowed.length) {
       return NextResponse.json({ error: "No valid recipients in your organization" }, { status: 400 });
     }
@@ -78,13 +90,32 @@ export async function POST(request) {
     // ── Resolve task + org context for the message ──
     let task = null;
     if (taskId) {
-      const { data } = await svc
+      const { data, error } = await svc
         .from("developer_tasks")
-        .select("id, task_title, project_id, organization_id")
+        .select("id, task_title, project_id, organization_id, developer_id, task_type")
         .eq("id", taskId)
         .eq("organization_id", auth.orgId)
         .maybeSingle();
-      task = data || null;
+      if (error) return NextResponse.json({ error: "Task lookup unavailable" }, { status: 503 });
+      if (!data) return NextResponse.json({ error: "Task not found" }, { status: 404 });
+      task = data;
+      if (!canReceiveTaskNotification(auth, task)) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      try {
+        const eligible = await Promise.all(allowed.map(async (member) => {
+          const subject = { orgId: auth.orgId, appUserId: member.user_id,
+            userType: member.user_type, role: member.role };
+          subject.overrides = await loadOverrides(svc, subject);
+          return canReceiveTaskNotification(subject, task) ? member : null;
+        }));
+        allowed = eligible.filter(Boolean);
+      } catch {
+        return NextResponse.json({ error: "Recipient permissions unavailable" }, { status: 503 });
+      }
+      if (!allowed.length) {
+        return NextResponse.json({ error: "No recipients can access this task" }, { status: 403 });
+      }
     }
     const { data: org } = await svc
       .from("organizations")
@@ -95,16 +126,16 @@ export async function POST(request) {
     // ── Insert in-app notifications ──
     const rows = allowed.map((m) => ({
       organization_id: auth.orgId,
-      developer_id: m.user_id,
+      ...(m.user_type === "admin" ? { admin_id: m.user_id, admin_recipient_type: "admin" } : { developer_id: m.user_id }),
       type: "automation",
       title: subject,
       message: message || `Task "${task?.task_title || "Untitled"}" was updated.`,
       project_id: task?.project_id || null,
       task_id: task?.id || null,
     }));
-    const { error: notifErr } = await svc.from("notifications").insert(rows);
+    const { data: inserted, error: notifErr } = await svc.from("notifications").insert(rows).select("id");
     if (notifErr) {
-      return NextResponse.json({ error: notifErr.message }, { status: 500 });
+      return NextResponse.json({ error: "Could not create notifications" }, { status: 500 });
     }
 
     // ── Optional email (best-effort; never fails the request) ──
@@ -122,21 +153,23 @@ export async function POST(request) {
 
       // Resolve real addresses: membership.email, else the developers/admin_users row.
       const missing = allowed.filter((m) => !m.email);
-      const emailById = new Map(allowed.filter((m) => m.email).map((m) => [m.user_id, m.email]));
+      const emailById = new Map(allowed.filter((m) => m.email).map((m) => [`${m.user_type}:${m.user_id}`, m.email]));
       if (missing.length) {
         const devIds = missing.filter((m) => m.user_type !== "admin").map((m) => m.user_id);
         const adminIds = missing.filter((m) => m.user_type === "admin").map((m) => m.user_id);
         if (devIds.length) {
-          const { data } = await svc.from("developers").select("id, email").in("id", devIds);
-          (data || []).forEach((d) => d.email && emailById.set(d.id, d.email));
+          const { data, error } = await svc.from("developers").select("id, email").eq("organization_id", auth.orgId).in("id", devIds);
+          if (error) emailSkipped = "Some recipient email addresses could not be resolved";
+          (error ? [] : data || []).forEach((d) => d.email && emailById.set(`developer:${d.id}`, d.email));
         }
         if (adminIds.length) {
-          const { data } = await svc.from("admin_users").select("id, email").in("id", adminIds);
-          (data || []).forEach((a) => a.email && emailById.set(a.id, a.email));
+          const { data, error } = await svc.from("admin_users").select("id, email").eq("organization_id", auth.orgId).in("id", adminIds);
+          if (error) emailSkipped = "Some recipient email addresses could not be resolved";
+          (error ? [] : data || []).forEach((a) => a.email && emailById.set(`admin:${a.id}`, a.email));
         }
       }
 
-      for (const to of emailById.values()) {
+      for (const to of new Set(emailById.values())) {
         try {
           const res = await sendTemplatedEmail({
             template: "automation",
@@ -160,12 +193,12 @@ export async function POST(request) {
 
     return NextResponse.json({
       ok: true,
-      notified: rows.length,
+      notified: inserted?.length || 0,
       emailed,
       ...(mode ? { emailMode: mode } : {}),
       ...(emailSkipped ? { emailSkipped } : {}),
     });
   } catch (err) {
-    return NextResponse.json({ error: err?.message || "Unexpected error" }, { status: 500 });
+    return NextResponse.json({ error: "Notification failed" }, { status: 500 });
   }
 }

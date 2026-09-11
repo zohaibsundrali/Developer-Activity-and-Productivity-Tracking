@@ -227,13 +227,17 @@ export async function getAuthedClient(request) {
   if (!clientId) return null;
 
   const svc = serviceClient();
+  const { checkFeatureAccess } = await import("@/utils/entitlements");
+  const planRefusal = await checkFeatureAccess(svc, auth.orgId, "client_portal", "Client portal");
+  if (planRefusal) return { ...auth, clientId, projectIds: [], planRefusal };
   const { data, error } = await svc
     .from("project_clients")
     .select("project_id")
     .eq("client_id", clientId)
     .eq("organization_id", auth.orgId);
 
-  const projectIds = error ? [] : (data || []).map((r) => r.project_id).filter(Boolean);
+  if (error) return { ...auth, clientId, projectIds: [], planRefusal: { status: 503, error: "Project access verification unavailable. Please retry." } };
+  const projectIds = (data || []).map((r) => r.project_id).filter(Boolean);
   return { ...auth, clientId, projectIds };
 }
 

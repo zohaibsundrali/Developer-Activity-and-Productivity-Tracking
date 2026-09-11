@@ -46,22 +46,24 @@ const ORG_WIDE_OVERRIDE = Object.freeze(["owner", "admin"]);
  *                          read as part of an authorization decision, and a
  *                          decision that silently returns fewer rows because
  *                          RLS filtered them is a decision made on bad data.
- * @param {{orgId: string, appUserId: string}} auth
+ * @param {{orgId: string, appUserId: string, userType: string}} auth
  * @param {string|null} [projectId] one project, or null for every one
  * @returns {Promise<Record<string, string>>} `{ [projectId]: project_role }`
  */
 export async function loadProjectRoles(client, auth, projectId = null) {
   const orgId = auth?.orgId;
   const appUserId = auth?.appUserId;
+  const userType = auth?.userType;
   // No identity means no memberships. Returning {} rather than throwing keeps
   // this the same shape as "on no projects", which is the correct answer.
-  if (!client || !orgId || !appUserId) return {};
+  if (!client || !orgId || !appUserId || !["admin", "developer"].includes(userType)) return {};
 
   let query = client
     .from("project_members")
     .select("project_id, project_role")
     .eq("organization_id", orgId)
-    .eq("user_id", appUserId);
+    .eq("user_id", appUserId)
+    .eq("user_type", userType);
 
   if (projectId) query = query.eq("project_id", projectId);
 

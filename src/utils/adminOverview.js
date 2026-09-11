@@ -1,3 +1,4 @@
+import { notificationRecipientKey } from "@/utils/notificationIdentity";
 import { supabase } from "@/utils/supabaseClient";
 import {
   isOpenTask,
@@ -5,6 +6,7 @@ import {
   loadLevel,
   loadOrgWorkGraph,
   personLoad,
+  projectManager,
 } from "@/utils/orgWorkGraph";
 import { isProjectOpen, normalizeProjectStatus, projectStatusMeta } from "@/utils/projectStatus";
 
@@ -172,7 +174,7 @@ export function projectRisk(project, tasks = [], today = ymd()) {
 export function projectRows(graph, today = ymd()) {
   const rows = (graph?.projects || []).map((p) => {
     const tasks = graph.tasksByProject?.get(String(p.id)) || [];
-    const manager = p.manager_id ? graph.personById?.get(String(p.manager_id)) : null;
+    const manager = projectManager(graph, p);
     const open = tasks.filter(isOpenTask).length;
     return {
       id: p.id,
@@ -418,17 +420,15 @@ export async function loadAdminOverview(
   // reads as "you have no notifications" rather than "we looked in the wrong
   // column".
   let notificationsQ = supabase
-    .from("notifications")
+    .from("notification_inbox")
     .select("id, title, message, category, type, created_at, project_id, read")
     .eq("organization_id", orgId)
     .eq("read", false)
+    .is("dismissed_at", null)
     .order("created_at", { ascending: false })
     .limit(8);
-  const or = [];
-  if (adminId) or.push(`admin_id.eq.${adminId}`);
-  if (adminEmail) or.push(`admin_email.ilike.%${adminEmail}%`);
-  if (developerId) or.push(`developer_id.eq.${developerId}`);
-  notificationsQ = or.length ? notificationsQ.or(or.join(",")) : notificationsQ.limit(0);
+  const recipientKey = notificationRecipientKey({ userId: adminId || developerId, userType: adminId ? "admin" : "developer" });
+  notificationsQ = recipientKey ? notificationsQ.contains("recipient_keys", [recipientKey]) : notificationsQ.limit(0);
 
   // A NINTH QUERY, AND ONLY FOR THE PEOPLE WHO CAN SEE THE ANSWER. Clients are
   // owner/admin/finance; firing this for an HR user would spend a request on a

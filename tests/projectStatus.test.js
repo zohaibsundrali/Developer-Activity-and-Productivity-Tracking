@@ -237,8 +237,10 @@ describe("every writer uses the constant, never a literal", () => {
     // shares none of this. cloneProject writes both in one function, and only
     // the project row was changed.
     const pm = code("src/utils/pmData.js");
-    expect(pm).toMatch(/project_id: proj\.id,\s*\n\s*status: "pending"/);
-    expect(pm).toContain("status: PROJECT_STATUS.pending");
+    expect(pm).toContain("supabase.rpc('clone_project'");
+    const clone = code('supabase/migrations/20260911111253_production_project_clone_transaction.sql');
+    expect(clone).toContain("'status','pending','progress',0");
+    expect(clone).toContain("'parent_task_id',task_ids->>parent_id,'status','pending'");
   });
 });
 

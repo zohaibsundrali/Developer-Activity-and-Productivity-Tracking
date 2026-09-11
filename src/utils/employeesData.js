@@ -14,33 +14,29 @@ import { authFetch } from "@/utils/authFetch";
  */
 
 // Returns { employees, teams, departments } for one organization.
-export async function loadEmployees(orgId) {
+export async function loadEmployees(orgId, client = supabase) {
   if (!orgId) return { employees: [], teams: [], departments: [] };
 
-  const [
-    { data: mem },
-    { data: devs },
-    { data: admins },
-    { data: profiles },
-    { data: teams },
-    { data: depts },
-    { data: projectRows },
-  ] = await Promise.all([
-    supabase.from("memberships").select("*").eq("organization_id", orgId).neq("user_type", "client"),
-    supabase.from("developers").select("id, name, email, status, created_at").eq("organization_id", orgId),
-    supabase.from("admin_users").select("id, full_name, email, created_at").eq("organization_id", orgId),
-    supabase.from("employee_profiles").select("*").eq("organization_id", orgId),
-    supabase.from("teams").select("id, name, department_id, manager_id, team_lead_id").eq("organization_id", orgId),
-    supabase.from("departments").select("id, name").eq("organization_id", orgId),
+  const results = await Promise.all([
+    client.from("memberships").select("*").eq("organization_id", orgId).neq("user_type", "client"),
+    client.from("developers").select("id, name, email, status, created_at").eq("organization_id", orgId),
+    client.from("admin_users").select("id, full_name, email, created_at").eq("organization_id", orgId),
+    client.from("employee_profiles").select("*").eq("organization_id", orgId),
+    client.from("teams").select("id, name, department_id, manager_id, team_lead_id").eq("organization_id", orgId),
+    client.from("departments").select("id, name").eq("organization_id", orgId),
     // How many projects each person is on. Fetched as one column for the whole
     // organization and counted below, rather than a count query per employee —
     // the developer list this replaced issued N of those, so a directory of
     // forty people cost forty round trips to fill in one number.
-    supabase
+    client
       .from("projects")
       .select("assigned_developer_email")
       .eq("organization_id", orgId),
   ]);
+  if (results.some(result => result.error || !Array.isArray(result.data))) {
+    throw new Error("Employee directory is temporarily unavailable");
+  }
+  const [mem, devs, admins, profiles, teams, depts, projectRows] = results.map(result => result.data);
 
   const devById = new Map((devs || []).map((d) => [d.id, d]));
   const adminById = new Map((admins || []).map((a) => [a.id, a]));

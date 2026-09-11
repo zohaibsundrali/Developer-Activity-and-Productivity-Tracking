@@ -46,8 +46,8 @@
 export const meta = {
   title: "Terms of Service",
   productName: "Verisade",
-  lastUpdated: "2026-08-09",
-  lastUpdatedLabel: "9 August 2026",
+  lastUpdated: "2026-09-11",
+  lastUpdatedLabel: "11 September 2026",
   // No effective date is asserted: the owner sets it when the document is
   // adopted. Rendering "effective today" would be a fact nobody has decided.
   effectiveDate: "[EFFECTIVE DATE — owner to complete]",
@@ -541,7 +541,7 @@ export const sections = [
       { type: "h3", text: "8.1 The limits we actually apply" },
       {
         type: "p",
-        text: "Limits count everything in your Organization, not per user. Four things are limited, and these are the only ones the Service enforces:",
+        text: "Limits count resources across your Organization, not per user. The following people and work limits apply; storage, screenshots, and history access are also governed by your plan as explained below:",
       },
       {
         type: "table",
@@ -559,13 +559,13 @@ export const sections = [
         text: "“Open tasks” means tasks still in flight — pending, in progress, awaiting approval, or reviewed. Closing a task frees capacity, so a long-running Organization does not run out of room permanently.",
       },
 
-      { type: "h3", text: "8.2 What is not limited today" },
+      { type: "h3", text: "8.2 Storage, screenshots, and tracking history" },
       {
         type: "callout",
         tone: "note",
         items: [
-          "We do not currently apply a storage cap, a limit on how many screenshots you may accumulate, or a retention limit on how long Tracking Data is kept. Nothing in the Service deletes Tracking Data on a schedule.",
-          "That is a statement of how the Service works today, not a commitment to keep it that way for ever. If we introduce any of these, we will tell you before it applies to you, under Section 18.",
+          "The plan catalogue sets storage capacity, screenshot count, and the accessible tracking-history window. Storage and screenshot increases are refused at the database boundary when they would exceed your plan. The billing screen shows the applicable limits.",
+          "Tracking history is an access window: older tracking records and screenshot objects are hidden from authenticated access until a plan allows that history. This does not automatically delete the underlying data. Changes to existing customers’ terms and limits remain subject to Section 18.",
           "Do not read this as a promise that we will store your data indefinitely. Section 11.4 explains what you can export, and Section 14.5 explains why you should keep your own copies of anything you cannot lose.",
         ],
       },
@@ -575,9 +575,9 @@ export const sections = [
         type: "list",
         items: [
           "The action that would exceed the limit is refused, with a message naming the resource, your current count and the limit.",
-          "For projects and open tasks the refusal happens in the database itself as well as in the application, so nothing can be talked past a limit from a browser. People and developer limits are applied by the server when an invitation is created, when it is accepted, and when an account is provisioned.",
-          "Existing work is never deleted, hidden or locked because of a limit. You keep everything you already have; you simply cannot create more of that one thing until you are back under, or you upgrade.",
-          "Two features are not available on the Free plan: automation rules and the client portal. Attempting to use them on Free is refused with a message saying so.",
+          "People, developer, project, open-task, screenshot, and storage limits are checked at the database boundary. Invitation and provisioning APIs also check capacity before creating accounts. Concurrent writes cannot consume the same final slot.",
+          "Resource limits do not automatically delete existing work. Increases stop until you are below the limit or upgrade. Tracking-history access and subscription locks are separate restrictions described in these Terms.",
+          "Reports, automation rules, and the client portal are not available on the Free plan. Attempting to use them on Free is refused.",
         ],
       },
 

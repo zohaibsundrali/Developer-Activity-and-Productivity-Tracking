@@ -1,4 +1,5 @@
 "use client";
+import { resolveProjectFileUrl } from "@/utils/projectFiles";
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { showInfo, showWarning } from "@/utils/alerts";
@@ -105,11 +106,12 @@ export default function MyProjects({
     return formatDate(dateString);
   };
 
-  const handleDownloadFile = (project) => {
-    if (project.file_url) {
-      window.open(project.file_url, '_blank', 'noopener,noreferrer');
+  const handleDownloadFile = async (project) => {
+    const url = await resolveProjectFileUrl(project.file_url);
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
     } else {
-      showInfo("No file", "No file available for this project.");
+      showInfo("No file", "The file is unavailable or you no longer have access.");
     }
   };
 

@@ -1,6 +1,7 @@
+import { projectActorCanReview, isOwnDeveloperWork } from '@/utils/projectActorIdentity';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
+import { getAuthedOrg, serviceClient, orgScopedClient } from '@/utils/serverAuth';
 import { authCan, requirePermission } from '@/utils/serverPermissions';
 import { requireUnlocked } from '@/utils/entitlements';
 
@@ -29,7 +30,7 @@ export async function POST(request) {
     if (!auth) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    if (auth.userType === 'client') {
+    if (!['admin', 'developer'].includes(auth.userType)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     // Billing lock — see the note in src/app/api/task-submission/route.js.
@@ -78,7 +79,6 @@ export async function POST(request) {
       );
     }
 
-    const reviewedAt = new Date().toISOString();
 
     // Get task details (simple select to avoid relationship issues)
     const { data: task, error: taskError } = await supabase
@@ -96,11 +96,11 @@ export async function POST(request) {
       );
     }
 
-    // Authorization: ensure this admin owns the project this task belongs to.
+    // Authorization: verify project ownership or assigned manager delegation.
     // The projects table uses created_by / added_by for ownership — there is no admin_id column.
     const { data: project, error: projectError } = await supabase
       .from('projects')
-      .select('id, created_by, added_by')
+      .select('id, created_by, created_by_type, added_by, added_by_type')
       .eq('id', task.project_id)
       .eq('organization_id', auth.orgId)
       .single();
@@ -113,11 +113,9 @@ export async function POST(request) {
       );
     }
 
-    const isOwner =
-      project.created_by === auth.appUserId ||
-      project.added_by === auth.appUserId;
+    const canReviewProject = await projectActorCanReview(serviceClient(), auth, project.id);
 
-    if (!isOwner) {
+    if (!canReviewProject) {
       return NextResponse.json(
         { error: 'Not authorized to review submissions for this project' },
         { status: 403 }
@@ -173,10 +171,9 @@ export async function POST(request) {
     // duties, it is a note saying we thought about it. Somebody else with
     // `task.review` reviews it — and if nobody else has the permission, that is
     // the thing to fix.
-    const reviewerId = auth.appUserId;
-    const isOwnTask = Boolean(reviewerId) && String(task.developer_id) === String(reviewerId);
+    const isOwnTask = isOwnDeveloperWork(auth, task.developer_id);
     const isOwnSubmission =
-      Boolean(reviewerId) && String(submission.developer_id) === String(reviewerId);
+      isOwnDeveloperWork(auth, submission.developer_id);
 
     if (isOwnTask || isOwnSubmission) {
       return NextResponse.json(
@@ -199,225 +196,29 @@ export async function POST(request) {
       );
     }
 
-    // Calculate if task was completed on time
-    const endDate = new Date(task.end_date);
-    endDate.setHours(23, 59, 59, 999); // End of day
-    const submittedAt = new Date(submission.submitted_at);
-    const isOnTime = submittedAt <= endDate;
-
-    // Determine new status and productivity points
-    let newStatus, productivityPoints;
-    
-    if (action === 'approve') {
-      newStatus = 'completed';
-      productivityPoints = isOnTime ? 1 : -1; // +1 for on-time, -1 for late
-    } else {
-      newStatus = 'rejected';
-      productivityPoints = 0;
-    }
-
-    // Update task
-    const { error: updateTaskError } = await supabase
-      .from('developer_tasks')
-      .update({
-        status: newStatus,
-        is_on_time: action === 'approve' ? isOnTime : null,
-        productivity_points: productivityPoints,
-        actual_completion_date: action === 'approve' ? reviewedAt.split('T')[0] : null,
-        reviewed_by: auth.appUserId,
-        reviewed_at: reviewedAt,
-        admin_comments: comments,
-        rejection_reason: action === 'reject' ? rejectionReason : null,
-        updated_at: reviewedAt
-      })
-      .eq('id', taskId)
-      .eq('organization_id', auth.orgId);
-
-    if (updateTaskError) {
-      console.error('Task update error:', updateTaskError);
-      return NextResponse.json(
-        { error: 'Failed to update task: ' + updateTaskError.message },
-        { status: 500 }
-      );
-    }
-
-    // Update submission
-    const { error: updateSubError } = await supabase
-      .from('task_submissions')
-      .update({
-        is_reviewed: true,
-        reviewed_by: auth.appUserId,
-        reviewed_at: reviewedAt,
-        review_status: action === 'approve' ? 'approved' : 'rejected',
-        review_comments: action === 'approve' ? comments : rejectionReason
-      })
-      .eq('id', submissionId)
-      .eq('organization_id', auth.orgId);
-
-    if (updateSubError) {
-      console.error('Submission update error:', updateSubError);
-    }
-
-    // Create admin review record
-    const { error: adminReviewError } = await supabase
-      .from('admin_reviews')
-      .insert({
-        admin_id: auth.appUserId,
-        admin_email: auth.email,
-        admin_name: adminName || auth.email,
-        task_id: taskId,
-        submission_id: submissionId,
-        project_id: task.project_id,
-        developer_id: task.developer_id,
-        review_action: action === 'approve' ? 'approved' : 'rejected',
-        review_comments: comments,
-        rejection_reason: rejectionReason,
-        task_title: task.task_title,
-        // developer_name / project_name are optional; can be enriched later
-        developer_name: null,
-        project_name: null,
-        submission_file_url: submission.file_url,
-        deadline: task.end_date,
-        submission_date: submission.submitted_at,
-        reviewed_at: reviewedAt
-      });
-
-    if (adminReviewError) {
-      console.error('Admin review insert error:', adminReviewError);
-    }
-
-    // Create activity log
-    await supabase
-      .from('activity_logs')
-      .insert({
-        developer_id: task.developer_id,
-        project_id: task.project_id,
-        task_id: taskId,
-        action_type: action === 'approve' ? 'task_approved' : 'task_rejected',
-        action_description: `Task "${task.task_title}" ${action === 'approve' ? 'approved' : 'rejected'} by admin`,
-        old_value: task.status,
-        new_value: newStatus
-      });
-
-    // Update productivity metrics
-    await updateProductivityMetrics(task.developer_id, task.project_id, auth.orgId);
-
-    // Create notification for developer
-    const notificationMessage = action === 'approve'
-      ? `Your task "${task.task_title}" has been approved! ${isOnTime ? '(Completed on time - +1 point)' : '(Completed late - -1 point)'}`
-      : `Your task "${task.task_title}" was rejected. Reason: ${rejectionReason}`;
-
-    await supabase
-      .from('notifications')
-      .insert({
-        developer_id: task.developer_id,
-        admin_id: auth.appUserId,
-        type: action === 'approve' ? 'task_approved' : 'task_rejected',
-        title: action === 'approve' ? 'Task Approved' : 'Task Rejected',
-        message: notificationMessage,
-        project_id: task.project_id,
-        task_id: taskId,
-        submission_id: submissionId,
-        read: false
-      });
-
-    return NextResponse.json({
-      success: true,
-      message: `Task ${action === 'approve' ? 'approved' : 'rejected'} successfully`,
-      task: {
-        id: taskId,
-        status: newStatus,
-        is_on_time: isOnTime,
-        productivity_points: productivityPoints
-      }
+    // The database repeats authorization/state checks under locks and commits
+    // the verdict, history, notification and rollups together.
+    const { data: result, error: reviewError } = await serviceClient().rpc('commit_task_review', {
+      p_org: auth.orgId, p_reviewer: auth.appUserId, p_profile_type: auth.userType,
+      p_email: auth.email, p_task: taskId, p_submission: submissionId,
+      p_action: action, p_comments: comments || null, p_reason: rejectionReason || null,
     });
+    if (reviewError) {
+      const message = reviewError.message || '';
+      const status = reviewError.code === '42501' ? 403 : reviewError.code === 'P0002' ? 404 :
+        reviewError.code === '22023' ? 400 : message.startsWith('REVIEW_CONFLICT:') ? 409 :
+        message.startsWith('BILLING_LOCKED:') ? 402 : 503;
+      return NextResponse.json({ error: status === 503 ? 'Could not confirm the review. Reload to check its saved state.' :
+        message.split(':').slice(1).join(':').trim() || 'Review request refused' }, { status });
+    }
+    return NextResponse.json(result);
 
   } catch (error) {
     console.error('Admin review error:', error);
     return NextResponse.json(
-      { error: 'Internal server error: ' + error.message },
+      { error: 'Could not complete the review request. Please refresh and retry.' },
       { status: 500 }
     );
-  }
-}
-
-// Helper function to update productivity metrics
-async function updateProductivityMetrics(developerId, projectId, organizationId) {
-  try {
-    // Get all tasks for this developer and project
-    const { data: tasks, error } = await supabase
-      .from('developer_tasks')
-      .select('status, is_on_time, productivity_points')
-      .eq('developer_id', developerId)
-      .eq('project_id', projectId)
-      .eq('organization_id', organizationId);
-
-    if (error || !tasks) return;
-
-    const totalTasks = tasks.length;
-    const completedOnTime = tasks.filter(t => t.status === 'completed' && t.is_on_time === true).length;
-    const completedLate = tasks.filter(t => t.status === 'completed' && t.is_on_time === false).length;
-    const pendingTasks = tasks.filter(t => ['pending', 'in_progress', 'awaiting_approval'].includes(t.status)).length;
-    const rejectedTasks = tasks.filter(t => t.status === 'rejected').length;
-    const completedTasks = completedOnTime + completedLate;
-
-    // Calculate productivity percentage
-    // Formula: (completedOnTime / totalTasks) * 100 - (completedLate / totalTasks) * 100
-    // Or simply: Each task = 100/totalTasks weight
-    // On time = +weight, Late = -weight (from 100% baseline)
-    let productivityPercentage = 0;
-    if (totalTasks > 0) {
-      const taskWeight = 100 / totalTasks;
-      productivityPercentage = (completedOnTime * taskWeight) - (completedLate * taskWeight) + 
-                               (pendingTasks * taskWeight * 0.5); // Pending tasks count as half
-      // Ensure it's between 0 and 100
-      productivityPercentage = Math.max(0, Math.min(100, productivityPercentage));
-    }
-
-    const productivityPoints = completedOnTime - completedLate;
-
-    // Upsert productivity metrics
-    const { error: upsertError } = await supabase
-      .from('productivity_metrics')
-      .upsert({
-        developer_id: developerId,
-        project_id: projectId,
-        // Without this the rollup row carries no organization, so it is
-        // invisible to every org-scoped read and to RLS. The stamp_org trigger
-        // cannot fill it either, because it only fires on INSERT and this is an
-        // upsert that usually resolves to an UPDATE.
-        organization_id: organizationId,
-        total_tasks: totalTasks,
-        completed_on_time: completedOnTime,
-        completed_late: completedLate,
-        pending_tasks: pendingTasks,
-        rejected_tasks: rejectedTasks,
-        productivity_percentage: productivityPercentage.toFixed(2),
-        productivity_points: productivityPoints,
-        updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'developer_id,project_id'
-      });
-
-    if (upsertError) {
-      console.error('Productivity metrics update error:', upsertError);
-    }
-
-    // Update project's total productivity
-    await supabase
-      .from('projects')
-      .update({
-        total_productivity_score: productivityPercentage.toFixed(2),
-        total_tasks_count: totalTasks,
-        completed_tasks_count: completedTasks,
-        progress: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', projectId)
-      .eq('organization_id', organizationId);
-
-  } catch (error) {
-    console.error('Update productivity metrics error:', error);
   }
 }
 
@@ -428,7 +229,7 @@ export async function GET(request) {
     if (!auth) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    if (auth.userType === 'client') {
+    if (!['admin', 'developer'].includes(auth.userType)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     // Permission, not a role list. See utils/permissionCatalogue.js — the
@@ -440,6 +241,8 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') || 'pending';
     const requestedAdminId = searchParams.get('adminId');
+    const requestedType = searchParams.get('userType');
+    if (requestedType && !['admin', 'developer'].includes(requestedType)) return NextResponse.json({ error: 'Invalid userType' }, { status: 400 });
 
     // WHOSE QUEUE IS THIS? It used to be whoever the query string said.
     //
@@ -454,11 +257,18 @@ export async function GET(request) {
     // Default to the caller. Naming somebody else needs `task.view_all`, the
     // key that already means "see work that is not yours".
     const wantsSomeoneElse =
-      requestedAdminId && String(requestedAdminId) !== String(auth.appUserId);
+      (requestedAdminId && String(requestedAdminId) !== String(auth.appUserId)) ||
+      (requestedType && requestedType !== auth.userType);
     if (wantsSomeoneElse && !authCan(auth, 'task.view_all')) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-    const adminId = wantsSomeoneElse ? requestedAdminId : auth.appUserId;
+    const adminId = requestedAdminId || auth.appUserId;
+    let profileType = requestedType || (!wantsSomeoneElse ? auth.userType : null);
+    if (!profileType) {
+      const member = await serviceClient().from('memberships').select('user_type').eq('organization_id', auth.orgId).eq('user_id', adminId).in('user_type', ['admin', 'developer']).maybeSingle();
+      if (member.error || !member.data) return NextResponse.json({ error: 'Specify userType for an ambiguous or unknown reviewer identity' }, { status: 400 });
+      profileType = member.data.user_type;
+    }
 
     // AND IT IS INTERPOLATED INTO A FILTER. `.or()` takes a PostgREST filter
     // EXPRESSION, not bound parameters, so a comma or a dot in `adminId` is
@@ -479,18 +289,21 @@ export async function GET(request) {
     const { data: adminProjects, error: projectsError } = await supabase
       .from('projects')
       .select('id')
-      .or(`created_by.eq.${adminId},added_by.eq.${adminId}`)
+      .or(`created_by.eq.${adminId},added_by.eq.${adminId},manager_id.eq.${adminId}`)
       .eq('organization_id', auth.orgId);
 
     if (projectsError) {
       console.error('Admin projects lookup error:', projectsError);
       return NextResponse.json(
-        { error: 'Failed to resolve admin projects: ' + projectsError.message },
+        { error: 'Could not load review projects. Please retry.' },
         { status: 500 }
       );
     }
 
-    const projectIds = (adminProjects || []).map((p) => p.id);
+    const projectIds = [];
+    for (const project of adminProjects || []) {
+      if (await projectActorCanReview(serviceClient(), { ...auth, appUserId: adminId, userType: profileType }, project.id)) projectIds.push(project.id);
+    }
 
     // If the admin has no projects yet, return an empty list immediately.
     if (projectIds.length === 0) {
@@ -576,32 +389,42 @@ export async function GET(request) {
     if (error) {
       console.error('Task submissions fetch error:', error);
       return NextResponse.json(
-        { error: 'Failed to fetch reviews: ' + error.message },
+        { error: 'Could not load reviews. Please retry.' },
         { status: 500 }
       );
     }
 
     // Step 3: Enrich each submission with activity logs and screenshots.
     const enrichedData = await Promise.all((data || []).map(async (submission) => {
-      const { data: activityLogs } = await supabase
-        .from('activity_logs')
-        .select('*')
-        .eq('organization_id', auth.orgId)
-        .eq('developer_id', submission.developer_id)
-        .eq('project_id', submission.project_id)
-        .order('created_at', { ascending: false })
-        .limit(10);
+      // Review authority does not grant access to private monitoring records.
+      // Apply the reviewer's own database policies to both enrichment sources.
+      const monitoringClient = orgScopedClient(auth.token);
+      let activityLogs = [];
+      try {
+        const { data: logs, error: logsError } = await monitoringClient
+          .from('activity_logs')
+          .select('*')
+          .eq('organization_id', auth.orgId)
+          .eq('developer_id', submission.developer_id)
+          .eq('project_id', submission.project_id)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        if (!logsError && Array.isArray(logs)) activityLogs = logs;
+      } catch {
+        // Unavailable monitoring must not bypass policies or prevent a review.
+      }
 
       let screenshots = [];
       try {
         // Org-scoped: the service client bypasses RLS, and the developer_email
         // OR-match would otherwise pull a contractor's screenshots from ANOTHER
         // tenant that reuses the same email. Bind to this reviewer's org.
-        const { data: screenshotData } = await supabase
+        const screenshotClient = monitoringClient;
+        const { data: screenshotData } = await screenshotClient
           .from('screenshots')
           .select('*')
           .eq('organization_id', auth.orgId)
-          .or(`developer_id.eq.${submission.developer_id},developer_email.eq.${submission.developers?.email}`)
+          .eq('developer_id', submission.developer_id)
           .order('timestamp', { ascending: false })
           .limit(5);
         // Resolve the display URL. Phase 2 screenshots live in the private
@@ -613,7 +436,7 @@ export async function GET(request) {
             if (!s.storage_path || String(s.storage_path).startsWith('screenshots/')) {
               return { ...s, public_url: legacyUrl };
             }
-            const { data: signed } = await supabase.storage
+            const { data: signed } = await screenshotClient.storage
               .from('monitoring')
               .createSignedUrl(s.storage_path, 600);
             return { ...s, public_url: signed?.signedUrl || legacyUrl };
@@ -639,7 +462,7 @@ export async function GET(request) {
   } catch (error) {
     console.error('Fetch reviews error:', error);
     return NextResponse.json(
-      { error: 'Internal server error: ' + error.message },
+      { error: 'Could not complete the review request. Please refresh and retry.' },
       { status: 500 }
     );
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import {
   saveSprint,
   saveEpic,
@@ -14,6 +14,10 @@ import {
   TASK_TYPES,
   SPRINT_STATUS,
 } from "@/utils/pmData";
+import { allowed } from "@/utils/permissions";
+import { getOrgContext } from "@/utils/orgContext";
+import { taskUiPermissions } from "@/utils/taskUiPermissions";
+import { planningStoryPoints, sprintDateOrder, performPlanningEdit } from "@/utils/sprintPlanningEdits";
 import { showError } from "@/utils/alerts";
 import { Badge, Button, EmptyState, Input, Tabs } from "@/components/ui";
 import { SELECT_CLASS } from "@/components/admin/views/viewKit";
@@ -135,8 +139,11 @@ function TaskRow({
   busy,
   onMutate,
 }) {
+  const canEdit = taskUiPermissions({ task, context: getOrgContext(), allowed }).manage;
+  const [points, setPoints] = useState(task.story_points ?? '');
+  useEffect(() => { setPoints(task.story_points ?? ''); }, [task.id, task.story_points]);
   const assignee = useMemo(
-    () => employees.find((e) => e.userId === task.developer_id),
+    () => employees.find((e) => e.userType === "developer" && e.userId === task.developer_id),
     [employees, task.developer_id]
   );
 
@@ -152,7 +159,7 @@ function TaskRow({
           aria-label="Task type"
           className={ROW_SELECT_CLASS}
           value={task.task_type || "feature"}
-          disabled={busy}
+          disabled={busy || !canEdit}
           onChange={(e) =>
             onMutate(() => setTaskType(task.id, e.target.value))
           }
@@ -184,14 +191,19 @@ function TaskRow({
         aria-label="Story points"
         title="Story points"
         className={`${ROW_SELECT_CLASS} w-16 tabular-nums`}
-        defaultValue={task.story_points ?? ""}
-        disabled={busy}
-        onBlur={(e) => {
-          const raw = e.target.value;
-          const next = raw === "" ? "" : Number(raw);
-          const current = task.story_points ?? "";
-          if (String(next) === String(current)) return;
-          onMutate(() => setStoryPoints(task.id, next));
+        value={points}
+        onChange={event => setPoints(event.target.value)}
+        disabled={busy || !canEdit}
+        onBlur={async (e) => {
+          try {
+            const next = planningStoryPoints(e.target.value);
+            if (next === (task.story_points ?? null)) return;
+            const saved = await onMutate(() => setStoryPoints(task.id, next));
+            if (!saved) setPoints(task.story_points ?? '');
+          } catch (error) {
+            setPoints(task.story_points ?? '');
+            showError('Could not save story points', error.message);
+          }
         }}
       />
 
@@ -200,7 +212,7 @@ function TaskRow({
         aria-label="Epic"
         className={ROW_SELECT_CLASS}
         value={task.epic_id || ""}
-        disabled={busy}
+        disabled={busy || !canEdit}
         onChange={(e) =>
           onMutate(() => setTaskEpic(task.id, e.target.value || null))
         }
@@ -223,7 +235,7 @@ function TaskRow({
           aria-label="Add to sprint"
           className={ROW_SELECT_CLASS}
           value=""
-          disabled={busy || sprints.length === 0}
+          disabled={busy || !canEdit || sprints.length === 0}
           onChange={(e) => {
             if (!e.target.value) return;
             onMutate(() => assignTaskToSprint(task.id, e.target.value));
@@ -240,7 +252,7 @@ function TaskRow({
         <Button
           variant="ghost"
           size="xs"
-          disabled={busy}
+          disabled={busy || !canEdit}
           title="Remove from sprint"
           onClick={() => onMutate(() => assignTaskToSprint(task.id, null))}
         >
@@ -280,6 +292,7 @@ function EpicForm({ initial, busy, onSubmit, onCancel }) {
       onSubmit={submit}
       className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4"
     >
+      <fieldset disabled={busy} className="contents">
       <div className="flex flex-wrap gap-3">
         <Input
           className="flex-1"
@@ -333,6 +346,7 @@ function EpicForm({ initial, busy, onSubmit, onCancel }) {
           Cancel
         </Button>
       </div>
+      </fieldset>
     </form>
   );
 }
@@ -347,11 +361,14 @@ function SprintForm({ initial, sortOrder, busy, onSubmit, onCancel }) {
   const [startDate, setStartDate] = useState(initial?.start_date || "");
   const [endDate, setEndDate] = useState(initial?.end_date || "");
   const [status, setStatus] = useState(initial?.status || "planned");
+  const [dateError, setDateError] = useState("");
 
   const submit = (e) => {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
+    if (!sprintDateOrder(startDate, endDate)) { setDateError('End date must be on or after the start date.'); return; }
+    setDateError('');
     onSubmit({
       ...(initial?.id ? { id: initial.id } : {}),
       name: trimmed,
@@ -368,6 +385,7 @@ function SprintForm({ initial, sortOrder, busy, onSubmit, onCancel }) {
       onSubmit={submit}
       className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4"
     >
+      <fieldset disabled={busy} className="contents">
       <div className="flex flex-wrap gap-3">
         <Input
           className="flex-1"
@@ -409,11 +427,13 @@ function SprintForm({ initial, sortOrder, busy, onSubmit, onCancel }) {
           End date
           <Input
             type="date"
+            min={startDate || undefined}
             value={endDate || ""}
             onChange={(e) => setEndDate(e.target.value)}
           />
         </label>
       </div>
+      {dateError ? <p className="text-sm text-destructive" role="alert">{dateError}</p> : null}
       <div className="flex items-center gap-2">
         <Button type="submit" size="sm" disabled={busy || !name.trim()}>
           <CheckCircle2 aria-hidden="true" />
@@ -424,6 +444,7 @@ function SprintForm({ initial, sortOrder, busy, onSubmit, onCancel }) {
           Cancel
         </Button>
       </div>
+      </fieldset>
     </form>
   );
 }
@@ -432,7 +453,7 @@ function SprintForm({ initial, sortOrder, busy, onSubmit, onCancel }) {
 /*  Main component                                                             */
 /* -------------------------------------------------------------------------- */
 
-export default function SprintPlanning({
+function SprintPlanningContent({
   projectId,
   sprints = [],
   epics = [],
@@ -440,8 +461,11 @@ export default function SprintPlanning({
   employees = [],
   onChanged,
 }) {
+  const context = getOrgContext();
+  const canManage = ["admin", "developer"].includes(context?.userType) && Boolean(context?.organizationId) && allowed("task.manage");
   const [tab, setTab] = useState("sprints");
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
 
   // form / editor state
   const [epicFormOpen, setEpicFormOpen] = useState(false);
@@ -479,32 +503,27 @@ export default function SprintPlanning({
 
   /* ---- mutation wrapper ---- */
   const runMutation = async (fn, errTitle = "Update failed") => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      const result = await fn();
-      if (result && result.error) {
-        showError(errTitle, result.error.message);
-        return;
-      }
-      if (onChanged) await onChanged();
-    } catch (err) {
-      showError(errTitle, err?.message || String(err));
-    } finally {
-      setBusy(false);
+    if (busyRef.current) return false;
+    const context = getOrgContext();
+    if (!['admin','developer'].includes(context?.userType) || !context.organizationId || !allowed('task.manage')) {
+      showError(errTitle, 'You do not have permission to edit planning.'); return false;
     }
+    busyRef.current = true; setBusy(true);
+    try {
+      return await performPlanningEdit({ mutate: fn, reload: onChanged, onError: showError, title: errTitle });
+    } finally { busyRef.current = false; setBusy(false); }
   };
 
   /* ---- epic handlers ---- */
   const submitEpic = async (patch) => {
-    await runMutation(() => saveEpic(projectId, patch), "Could not save epic");
+    if (!(await runMutation(() => saveEpic(projectId, patch), "Could not save epic"))) return;
     setEpicFormOpen(false);
     setEditingEpic(null);
   };
 
   /* ---- sprint handlers ---- */
   const submitSprint = async (patch) => {
-    await runMutation(() => saveSprint(projectId, patch), "Could not save sprint");
+    if (!(await runMutation(() => saveSprint(projectId, patch), "Could not save sprint"))) return;
     setSprintFormOpen(false);
     setEditingSprint(null);
   };
@@ -519,11 +538,11 @@ export default function SprintPlanning({
   const addBacklogTask = async () => {
     const title = newBacklogTitle.trim();
     if (!title) return;
-    await runMutation(
+    const saved = await runMutation(
       () => createTask(projectId, { task_title: title, status: "pending", task_type: "feature" }),
       "Could not create task"
     );
-    setNewBacklogTitle("");
+    if (saved) setNewBacklogTitle("");
   };
 
   /* ------------------------------------------------------------------ */
@@ -537,7 +556,7 @@ export default function SprintPlanning({
           <Layers className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           Epics
         </h3>
-        {!epicFormOpen && (
+        {canManage && !epicFormOpen && (
           <Button
             size="sm"
             onClick={() => {
@@ -551,7 +570,7 @@ export default function SprintPlanning({
         )}
       </div>
 
-      {epicFormOpen && !editingEpic && (
+      {canManage && epicFormOpen && !editingEpic && (
         <EpicForm
           initial={null}
           busy={busy}
@@ -569,7 +588,7 @@ export default function SprintPlanning({
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {epics.map((epic) =>
-            editingEpic && editingEpic.id === epic.id ? (
+            canManage && editingEpic && editingEpic.id === epic.id ? (
               <div key={epic.id} className="sm:col-span-2 lg:col-span-3">
                 <EpicForm
                   initial={epic}
@@ -597,6 +616,7 @@ export default function SprintPlanning({
                     size="icon-xs"
                     aria-label={`Edit epic ${epic.name}`}
                     title="Edit epic"
+                    disabled={busy || !canManage}
                     onClick={() => {
                       setEpicFormOpen(false);
                       setEditingEpic(epic);
@@ -631,7 +651,7 @@ export default function SprintPlanning({
           <Rocket className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           Sprints
         </h3>
-        {!sprintFormOpen && (
+        {canManage && !sprintFormOpen && (
           <Button
             size="sm"
             onClick={() => {
@@ -645,7 +665,7 @@ export default function SprintPlanning({
         )}
       </div>
 
-      {sprintFormOpen && !editingSprint && (
+      {canManage && sprintFormOpen && !editingSprint && (
         <SprintForm
           initial={null}
           sortOrder={orderedSprints.length}
@@ -666,7 +686,7 @@ export default function SprintPlanning({
           {orderedSprints.map((sprint) => {
             const sprintTasks = tasksBySprint.get(sprint.id) || [];
             const next = NEXT_SPRINT_STATUS[sprint.status];
-            const isEditing = editingSprint && editingSprint.id === sprint.id;
+            const isEditing = canManage && editingSprint && editingSprint.id === sprint.id;
 
             if (isEditing) {
               return (
@@ -707,6 +727,7 @@ export default function SprintPlanning({
                       size="icon-xs"
                       aria-label={`Edit sprint ${sprint.name}`}
                       title="Edit sprint"
+                      disabled={busy || !canManage}
                       onClick={() => {
                         setSprintFormOpen(false);
                         setEditingSprint(sprint);
@@ -714,7 +735,7 @@ export default function SprintPlanning({
                     >
                       <Pencil aria-hidden="true" />
                     </Button>
-                    {next && (
+                    {canManage && next && (
                       <Button size="sm" disabled={busy} onClick={() => advanceSprint(sprint)}>
                         {next === "active" ? (
                           <>
@@ -786,6 +807,7 @@ export default function SprintPlanning({
           className="flex-1"
           placeholder="New backlog task title…"
           aria-label="New backlog task title"
+          disabled={busy || !canManage}
           value={newBacklogTitle}
           onChange={(e) => setNewBacklogTitle(e.target.value)}
           onKeyDown={(e) => {
@@ -795,7 +817,7 @@ export default function SprintPlanning({
             }
           }}
         />
-        <Button size="default" disabled={busy || !newBacklogTitle.trim()} onClick={addBacklogTask}>
+        <Button size="default" disabled={busy || !canManage || !newBacklogTitle.trim()} onClick={addBacklogTask}>
           <Plus aria-hidden="true" />
           Add task
         </Button>
@@ -856,4 +878,9 @@ export default function SprintPlanning({
       {tab === "backlog" && renderBacklog()}
     </div>
   );
+}
+
+// A different project owns different drafts and in-flight mutations.
+export default function SprintPlanning(props) {
+  return <SprintPlanningContent key={props.projectId || 'global'} {...props} />;
 }

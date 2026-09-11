@@ -4,7 +4,9 @@ import { dateOnlyFromQuery } from "@/utils/queryDates";
 import { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabaseClient';
 import { authFetch } from '@/utils/authFetch';
-import { taskIdsWithSubmissions } from '@/utils/replanGuard';
+import PermissionBoundary from '@/components/auth/PermissionBoundary';
+import { can } from '@/utils/permissions';
+import { taskPlanPayload, requireTaskMutation, persistedPlanTaskId } from '@/utils/developerPlanMutations';
 import TaskCompletionModal from "@/components/developer/TaskCompletionModal";
 import { GanttChartSquare } from "lucide-react";
 // The only sanctioned source of concrete colour values — SweetAlert styles its
@@ -26,9 +28,18 @@ import Swal from 'sweetalert2';
 import { isSessionExpired, clearDeveloperSession } from '@/utils/sessionPolicy';
 // Scheme check for anything this page is about to hand to fetch(), an anchor's
 // href or window.open. See the download handler for what went wrong without it.
-import { safeHref } from '@/utils/safeUrl';
+import { safeProjectFileValue, resolveProjectFileUrl } from '@/utils/projectFiles';
 
 export default function ProjectDetailsPage() {
+  return <PermissionBoundary><ProjectPermissionGate /></PermissionBoundary>;
+}
+
+function ProjectPermissionGate() {
+  if (!can('task.view_own')) return <ErrorState title="Access denied" description="You do not have permission to view assigned tasks." />;
+  return <ProjectDetailsContent />;
+}
+
+function ProjectDetailsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [tasks, setTasks] = useState([]);
@@ -61,9 +72,9 @@ export default function ProjectDetailsPage() {
       // controls, because the id is also a query parameter. A `javascript:`
       // value here reached `link.href = ...; link.click()` in the download
       // handler's catch block and executed in this page's origin, with the
-      // signed-in session. `safeHref` returns "" for every scheme that is not
-      // http(s), so the three sinks below have nothing to follow.
-      file_url: safeHref(searchParams.get('file_url')),
+      // signed-in session. `safeProjectFileValue` rejects unsafe schemes while retaining private keys, and
+      // only the resolved URL reaches navigation below.
+      file_url: safeProjectFileValue(searchParams.get('file_url')),
       file_name: decodeURIComponent(searchParams.get('file_name') || ''),
       assigned_at: searchParams.get('assigned_at'),
       assigned_date: searchParams.get('assigned_date'),
@@ -83,7 +94,7 @@ export default function ProjectDetailsPage() {
   // same DOM XSS with one more step. The 'null' literal is the string Next puts
   // in the URL for a missing value, and safeHref rejects it anyway (no scheme,
   // no leading slash); it is spelled out here because the old conditionals did.
-  const fileHref = safeHref(project.file_url);
+  const storedFile = safeProjectFileValue(project.file_url);
 
   // Get assigned date
   // Each candidate goes through dateFromQuery: a timestamp that arrived via
@@ -108,7 +119,9 @@ export default function ProjectDetailsPage() {
   // - pending (waiting for approval): locked
   // - approved: locked
   // - rejected: editable (for re-submit)
-  const canEditTasks = !isSubmitted || isPlanRejected;
+  const canUpdateTasks = can('task.update_own');
+  const canSubmitProof = can('task.submit');
+  const canEditTasks = canUpdateTasks && (!isSubmitted || isPlanRejected);
 
   const addDays = (startDate, days) => {
     if (!startDate || !days) return "";
@@ -164,6 +177,8 @@ export default function ProjectDetailsPage() {
   // Validation messages state
   const [validationError, setValidationError] = useState('');
   const [validationSuccess, setValidationSuccess] = useState('');
+  const [notificationWarning, setNotificationWarning] = useState('');
+  const [retryingNotification, setRetryingNotification] = useState(false);
   
   // Current logged-in developer state
   const [currentDeveloper, setCurrentDeveloper] = useState(null);
@@ -347,166 +362,9 @@ export default function ProjectDetailsPage() {
   };
 
   // Save tasks to Supabase - SIMPLIFIED VERSION
-  const saveTasksToSupabase = async () => {
-    try {
-      
-      // Step 1: Get developer info
-      let developerToUse = currentDeveloper;
-      
-      // If developer not in state, try localStorage
-      if (!developerToUse || !developerToUse.id) {
-        const storedUser = sessionStorage.getItem("developerUser");
-        if (storedUser) {
-          try {
-            const userData = JSON.parse(storedUser);
-            const userId = userData.user?.id || userData.id;
-            
-            if (userId) {
-              developerToUse = {
-                id: userId,
-                name: userData.user?.user_metadata?.full_name || 
-                      userData.user?.email?.split('@')[0] || 
-                      'Developer',
-                email: userData.user?.email || userData.email || 'unknown@example.com',
-                user_id: userId
-              };
-            }
-          } catch (e) {
-            // Silently handle error
-          }
-        }
-      }
-      
-      // If still no developer, try Supabase auth directly
-      if (!developerToUse || !developerToUse.id) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          developerToUse = {
-            id: user.id,
-            name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Developer',
-            email: user.email,
-            user_id: user.id
-          };
-        }
-      }
-      
-      // Final check for developer
-      if (!developerToUse || !developerToUse.id) {
-        throw new Error('Please log in to submit work.');
-      }
-      
-      // Step 2: Check project
-      if (!project || !project.id) {
-        throw new Error('Project information not available.');
-      }
-      
-      // Step 3: Prepare tasks for Supabase
-      const tasksToSave = tasks.map((task, index) => {
-        // Validate required fields
-        if (!task.title || task.title.trim() === '') {
-          throw new Error(`Task ${index + 1} title is required`);
-        }
-        if (!task.startDate || task.startDate.trim() === '') {
-          throw new Error(`Task ${index + 1} start date is required`);
-        }
-        if (!task.endDate || task.endDate.trim() === '') {
-          throw new Error(`Task ${index + 1} end date is required`);
-        }
-        
-        // Validate dates
-        const startDate = new Date(task.startDate);
-        const endDate = new Date(task.endDate);
-        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-          throw new Error(`Task ${index + 1} has invalid dates`);
-        }
-        if (endDate < startDate) {
-          throw new Error(`Task ${index + 1}: End date cannot be before start date`);
-        }
-        
-        return {
-          project_id: project.id,
-          developer_id: developerToUse.id,
-          task_title: task.title,
-          task_description: task.description || '',
-          task_order: index,
-          start_date: task.startDate,
-          end_date: task.endDate,
-          status: 'pending',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-      });
-      
-      // Step 4: Replace only the tasks that have not been started.
-      //
-      // This used to delete every task for the pair, which took approved work
-      // with it — and developer_tasks cascades, so the matching submissions,
-      // admin reviews and time logs went too. Re-saving a plan therefore erased
-      // the developer's own completed history and the productivity points it
-      // carried. Anything past To Do, or with a submission against it, is left
-      // alone; only untouched rows are swapped for the new plan.
-      const { data: existing } = await supabase
-        .from('developer_tasks')
-        .select('id, status')
-        .eq('project_id', project.id)
-        .eq('developer_id', developerToUse.id);
-
-      const untouched = (existing || []).filter((t) => (t.status || 'pending') === 'pending');
-      let replaceableIds = untouched.map((t) => t.id);
-
-      if (replaceableIds.length) {
-        // This guard must see EVERY submission standing against these tasks, not
-        // the subset the caller's own RLS view admits. It used to select
-        // task_submissions through the browser client; migration 047 narrowed
-        // that table to per-person, so for a manager or team_lead re-planning on
-        // someone else's behalf the query came back empty and the delete below
-        // removed tasks that DO have submissions — and developer_tasks cascades,
-        // so the submission went with the task. taskIdsWithSubmissions() asks the
-        // service-role route instead, which cannot be narrowed by any policy, and
-        // throws rather than returning an empty set if it cannot get an answer.
-        let hasSubmission;
-        try {
-          hasSubmission = await taskIdsWithSubmissions(project.id, replaceableIds);
-        } catch (guardError) {
-          // Fail closed: nothing is deleted and nothing is inserted, so the
-          // existing plan is left exactly as it stands.
-          throw new Error(
-            `Refusing to replace the previous plan — could not verify existing submissions: ${guardError.message}`
-          );
-        }
-        replaceableIds = replaceableIds.filter((id) => !hasSubmission.has(String(id)));
-      }
-
-      if (replaceableIds.length) {
-        const { error: deleteError } = await supabase
-          .from('developer_tasks')
-          .delete()
-          .in('id', replaceableIds);
-
-        if (deleteError) {
-          throw new Error(`Failed to replace the previous plan: ${deleteError.message}`);
-        }
-      }
-      
-      // Step 5: Insert new tasks
-      const { data, error } = await supabase
-        .from('developer_tasks')
-        .insert(tasksToSave)
-        .select();
-      
-      if (error) {
-        throw new Error(`Failed to save tasks: ${error.message}`);
-      }
-      
-      return data;
-      
-    } catch (error) {
-      throw error;
-    }
-  };
-
   // Handle submit work with Supabase integration - SIMPLIFIED VERSION
   const handleSubmitWork = async () => {
+    if (!canEditTasks) return;
     try {
       
       // Step 1: Validate all tasks
@@ -520,15 +378,13 @@ export default function ProjectDetailsPage() {
       
       // Step 2: Confirm submission
       const developerName = currentDeveloper?.name || 'You';
-      const confirmHtml = `Are you sure you want to submit these tasks?<br/><br/>` +
-        `Developer: <strong>${developerName}</strong><br/>` +
-        `Project: <strong>${project.name}</strong><br/>` +
-        `Total Tasks: <strong>${tasks.length}</strong><br/><br/>` +
+      const confirmText = `Are you sure you want to submit these tasks?\n\n` +
+        `Developer: ${developerName}\nProject: ${project.name}\nTotal Tasks: ${tasks.length}\n\n` +
         `This action cannot be undone.`;
       
       const confirmResult = await Swal.fire({
         title: "Confirm Submission",
-        html: confirmHtml,
+        text: confirmText,
         icon: "warning",
         showCancelButton: true,
         confirmButtonText: "Yes, submit tasks",
@@ -541,32 +397,18 @@ export default function ProjectDetailsPage() {
         return;
       }
       
-      // Step 3: Save to Supabase
-      const savedTasks = await saveTasksToSupabase();
-
-      // Step 3b: Mark task plan as submitted via backend (DB is source of truth)
-      const developerIdForSubmit = savedTasks?.[0]?.developer_id || currentDeveloper?.id;
-      if (!developerIdForSubmit) {
-        throw new Error('Developer ID not found. Please re-login and try again.');
-      }
-
-      // authFetch, not fetch: /api/task-plan/submit authenticates the caller with
-      // getAuthedOrg(), which reads a Bearer token. A bare fetch() sent no
-      // Authorization header, so this threw "Failed to submit task plan" for
-      // every role — AFTER saveTasksToSupabase() had already deleted and
-      // re-inserted the plan rows, leaving the DB half-applied and the user
-      // retrying on top of it. The body is unchanged.
-      const submitRes = await authFetch('/api/task-plan/submit', {
+      // Save the replacement and submit the plan in one database transaction.
+      const submitRes = await authFetch('/api/task-plan/save-submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId: project.id, developerId: developerIdForSubmit }),
+        body: JSON.stringify({ projectId: project.id, tasks: tasks.map(taskPlanPayload) }),
       });
-
       const submitResult = await submitRes.json().catch(() => ({}));
       if (!submitRes.ok || !submitResult.success) {
         throw new Error(submitResult.error || 'Failed to submit task plan.');
       }
-      
+      const savedTasks = submitResult.tasks || [];
+
       // Step 4: Update local tasks with real Supabase UUIDs so workflow buttons work
       if (savedTasks && savedTasks.length > 0) {
         const updatedTasks = savedTasks.map(t => ({
@@ -579,6 +421,7 @@ export default function ProjectDetailsPage() {
           supabaseId: t.id
         }));
         setTasks(updatedTasks);
+        localStorage.setItem(`project_tasks_${project.id}`, JSON.stringify(updatedTasks));
       }
 
       // Step 5: Update local state
@@ -598,38 +441,11 @@ export default function ProjectDetailsPage() {
       
       // Update localStorage
       localStorage.setItem(`project_submitted_${project.id}`, 'true');
-      localStorage.setItem(`project_tasks_${project.id}`, JSON.stringify(tasks));
       
       // Step 5: Show success message
       setValidationSuccess('Tasks submitted successfully! Admin can now view your work.');
       
-      // Step 6: Send notification to admin (optional)
-      try {
-        if (currentDeveloper?.id && project.id) {
-          const { data: projectData } = await supabase
-            .from('projects')
-            .select('assigned_to, assigned_to_email')
-            .eq('id', project.id)
-            .single();
-          
-          if (projectData) {
-            await supabase
-              .from('notifications')
-              .insert({
-                assigned_developer_id: currentDeveloper.id,
-                developer_id: currentDeveloper.id,
-                admin_id: projectData.assigned_to,
-                admin_email: projectData.assigned_to_email,
-                message: `Tasks Submitted: ${currentDeveloper.name} submitted ${tasks.length} tasks for "${project.name}".`,
-                type: 'task_submitted',
-                read: false,
-                created_at: new Date().toISOString()
-              });
-          }
-        }
-      } catch (notifError) {
-        // Silently handle error
-      }
+      setNotificationWarning(submitResult.notificationWarning || '');
       
       // Auto-hide messages
       setTimeout(() => {
@@ -669,6 +485,7 @@ export default function ProjectDetailsPage() {
 
   // Start a task: pending → in_progress
   const handleStartTask = async (taskId, taskIndex) => {
+    if (!canUpdateTasks) return;
     if (!isPlanApproved) {
       showWarning("Plan pending", "Task plan is awaiting admin approval.");
       return;
@@ -685,11 +502,10 @@ export default function ProjectDetailsPage() {
       return;
     }
     try {
-      const { error } = await supabase
+      await requireTaskMutation(supabase
         .from('developer_tasks')
         .update({ status: 'in_progress', updated_at: new Date().toISOString() })
-        .eq('id', taskId);
-      if (error) throw error;
+        .eq('id', taskId), taskId);
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'in_progress' } : t));
     } catch (err) {
       showError("Start failed", `Failed to start task: ${err.message}`);
@@ -698,6 +514,7 @@ export default function ProjectDetailsPage() {
 
   // Open the Task Completion Modal
   const handleOpenCompletionModal = (task) => {
+    if (!canSubmitProof) return;
     setCompletionTask(task);
     setShowCompletionModal(true);
   };
@@ -860,8 +677,9 @@ export default function ProjectDetailsPage() {
   // navigation. Note the ORDER: the check has to happen before the try block,
   // not inside it, or the catch becomes the bypass all over again.
   const handleDownloadFile = async () => {
+    const fileHref = await resolveProjectFileUrl(storedFile);
     if (!fileHref) {
-      showInfo("No file", "No file available for download.");
+      showInfo("No file", "The file is unavailable or you no longer have access.");
       return;
     }
 
@@ -908,12 +726,29 @@ export default function ProjectDetailsPage() {
           "Opening in new tab",
           "Opening file in new tab. Please use the browser's Save as option to download."
         );
-        window.open(fileHref, '_blank');
+        window.open(fileHref, '_blank', 'noopener,noreferrer');
       }
       
     } finally {
       setDownloading(false);
     }
+  };
+
+  const retryPlanNotification = async () => {
+    if (retryingNotification) return;
+    setRetryingNotification(true);
+    try {
+      const response = await authFetch('/api/task-plan/save-submit', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: project.id, notificationOnly: true }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) throw new Error(result.error || 'Could not resend the notification');
+      setNotificationWarning(result.notificationWarning || '');
+      if (!result.notificationWarning) showInfo('Notification processed', 'The review notification request was processed. Recipient preferences still apply.');
+    } catch (error) {
+      setNotificationWarning(error.message || 'Could not resend the notification');
+    } finally { setRetryingNotification(false); }
   };
 
   // Keep submission state in sync with DB (source of truth)
@@ -1052,14 +887,11 @@ export default function ProjectDetailsPage() {
       title: normalizeTitle(editingTask.title)
     };
 
-    setTasks(prev => prev.map(task =>
-      task.id === updatedTask.id ? updatedTask : task
-    ));
-
-    if (updatedTask.supabaseId || (isSubmitted && updatedTask.id)) {
+    const persistedId = persistedPlanTaskId(updatedTask);
+    if (persistedId) {
       try {
-        const taskId = updatedTask.supabaseId || updatedTask.id;
-        const { error } = await supabase
+        const taskId = persistedId;
+        await requireTaskMutation(supabase
           .from("developer_tasks")
           .update({
             task_title: updatedTask.title,
@@ -1068,14 +900,14 @@ export default function ProjectDetailsPage() {
             end_date: updatedTask.endDate,
             updated_at: new Date().toISOString()
           })
-          .eq("id", taskId);
-
-        if (error) throw error;
+          .eq("id", taskId), taskId);
       } catch (err) {
         showError("Update failed", `Failed to update task: ${err.message}`);
+        return;
       }
     }
 
+    setTasks(prev => prev.map(task => task.id === updatedTask.id ? updatedTask : task));
     setEditingTask(null);
   };
 
@@ -1095,20 +927,20 @@ export default function ProjectDetailsPage() {
 
     if (confirmResult.isConfirmed) {
       const taskToRemove = tasks.find(task => task.id === taskId);
-      setTasks(prev => prev.filter(task => task.id !== taskId));
-
-      if (taskToRemove?.supabaseId || (isSubmitted && taskToRemove?.id)) {
+      const persistedId = persistedPlanTaskId(taskToRemove);
+      if (persistedId) {
         try {
-          const deleteId = taskToRemove?.supabaseId || taskToRemove?.id;
-          const { error } = await supabase
+          const deleteId = persistedId;
+          await requireTaskMutation(supabase
             .from("developer_tasks")
             .delete()
-            .eq("id", deleteId);
-          if (error) throw error;
+            .eq("id", deleteId), deleteId);
         } catch (err) {
           showError("Delete failed", `Failed to delete task: ${err.message}`);
+          return;
         }
       }
+      setTasks(prev => prev.filter(task => task.id !== taskId));
     }
   };
 
@@ -1519,7 +1351,7 @@ export default function ProjectDetailsPage() {
                 </div>
 
                 {/* File Attachment */}
-                {fileHref && (
+                {storedFile && (
                   <div className="mb-6">
                     <h2 className="text-lg font-semibold mb-3 text-foreground">Project Files</h2>
                     <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
@@ -1759,7 +1591,7 @@ export default function ProjectDetailsPage() {
                             {canEditTasks && (
                               <span className="text-xs text-muted-foreground italic">Save task plan first to begin working</span>
                             )}
-                            {isSubmitted && isPlanApproved && task.status === 'pending' && (
+                            {canUpdateTasks && isSubmitted && isPlanApproved && task.status === 'pending' && (
                               <button
                                 onClick={() => handleStartTask(task.id, index)}
                                 disabled={!canStartTask(index) || getInProgressTaskIndex() !== -1}
@@ -1773,7 +1605,7 @@ export default function ProjectDetailsPage() {
                                 {canStartTask(index) && getInProgressTaskIndex() === -1 ? '▶ Start Task' : '🔒 Locked'}
                               </button>
                             )}
-                            {isSubmitted && isPlanApproved && task.status === 'in_progress' && (
+                            {canSubmitProof && isSubmitted && isPlanApproved && task.status === 'in_progress' && (
                               <button
                                 onClick={() => handleOpenCompletionModal(task)}
                                 className="px-3 py-2 rounded-lg text-xs font-semibold bg-success text-success-foreground hover:bg-success/90 transition-colors"
@@ -1786,7 +1618,7 @@ export default function ProjectDetailsPage() {
                                 ⏳ Awaiting Admin Review
                               </span>
                             )}
-                            {isSubmitted && isPlanApproved && task.status === 'rejected' && (
+                            {canSubmitProof && isSubmitted && isPlanApproved && task.status === 'rejected' && (
                               <button
                                 onClick={() => handleOpenCompletionModal(task)}
                                 className="px-3 py-2 rounded-lg text-xs font-semibold bg-warning text-warning-foreground hover:bg-warning/90 transition-colors"
@@ -1918,6 +1750,15 @@ export default function ProjectDetailsPage() {
               </svg>
               Work submitted to Supabase successfully!
             </div>
+          </div>
+        )}
+
+        {notificationWarning && (
+          <div role="alert" className="fixed bottom-4 right-4 max-w-md bg-card text-foreground p-4 rounded-lg shadow-elevated z-50">
+            <p>{notificationWarning}</p>
+            <Button variant="outline" className="mt-2" disabled={retryingNotification} onClick={retryPlanNotification}>
+              {retryingNotification ? 'Sending…' : 'Retry notification'}
+            </Button>
           </div>
         )}
 

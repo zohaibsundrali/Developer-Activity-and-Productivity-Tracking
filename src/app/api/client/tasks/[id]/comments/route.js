@@ -25,6 +25,7 @@ export async function GET(request, { params }) {
   params = await params;
   try {
     const auth = await getAuthedClient(request);
+    if (auth?.planRefusal) return NextResponse.json(auth.planRefusal, { status: auth.planRefusal.status });
     if (!auth) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
@@ -100,6 +101,7 @@ export async function POST(request, { params }) {
   params = await params;
   try {
     const auth = await getAuthedClient(request);
+    if (auth?.planRefusal) return NextResponse.json(auth.planRefusal, { status: auth.planRefusal.status });
     if (!auth) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }

@@ -1,3 +1,4 @@
+import { projectManagerMatches } from '@/utils/projectActorIdentity';
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { authCan } from "@/utils/serverPermissions";
@@ -60,7 +61,7 @@ const forbidden = (msg = "Your role cannot do that.") =>
  * before it existed would have no one able to complete it and the feature
  * would read as broken. When a project HAS a manager, that manager is the one.
  */
-function mayManage(auth, project) {
+async function mayManage(auth, project) {
   // THE ROLE HALF ONLY. `project.complete` says the role may complete projects
   // at all; the `manager_id` comparison below says WHICH ones. Replacing the
   // whole function with a permission check would let every manager in the
@@ -73,7 +74,7 @@ function mayManage(auth, project) {
   // answer. A guard no input can reach reads as load-bearing to whoever edits
   // it next.
   if (!project.manager_id) return true;
-  return String(project.manager_id) === String(auth.appUserId);
+  return projectManagerMatches(serviceClient(), auth, project);
 }
 
 /** Best effort — the closure is saved; failing to log it is not a failure. */
@@ -157,7 +158,7 @@ async function clientIsOn(svc, auth, projectId) {
 }
 
 const CLOSURE_COLUMNS =
-  "id, name, status, manager_id, completed_at, completed_by, client_signed_off_at, " +
+  "id, name, status, manager_id, manager_type, completed_at, completed_by, client_signed_off_at, " +
   "client_rating, client_feedback, closed_at, closed_by, closure_note";
 
 export async function GET(request, { params }) {
@@ -186,7 +187,7 @@ export async function GET(request, { params }) {
     }
 
     const gate = await readGate(svc, auth.orgId, project.id);
-    const staffMayManage = mayManage(auth, project);
+    const staffMayManage = await mayManage(auth, project);
     const isAdmin = !isClient && ["owner", "admin"].includes(auth.role);
 
     return NextResponse.json({
@@ -254,7 +255,7 @@ export async function POST(request, { params }) {
     switch (action) {
       // ── The work is done ──────────────────────────────────────────────
       case "complete": {
-        if (!mayManage(auth, project)) return forbidden();
+        if (!(await mayManage(auth, project))) return forbidden();
         if (project.completed_at) {
           return NextResponse.json(
             { error: "This project is already marked complete." },

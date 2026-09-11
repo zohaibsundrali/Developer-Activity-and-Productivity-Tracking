@@ -12,6 +12,7 @@ import {
   Section,
   Skeleton,
 } from "@/components/ui";
+import { saveProjectAllocation } from "@/utils/projectAllocation";
 import { authFetch } from "@/utils/authFetch";
 import { showError, showSuccess } from "@/utils/alerts";
 import { supabase } from "@/utils/supabaseClient";
@@ -51,10 +52,13 @@ function roleTone(role) {
 }
 
 export default function ProjectTeam({ projectId }) {
-  const [state, setState] = useState({ loading: true, error: null, members: [], canManage: false });
+  const [state, setState] = useState({ loading: true, error: null, members: [], canManage: false, canAllocate: false });
   const [staff, setStaff] = useState([]);
   const [busy, setBusy] = useState(false);
   const [pickedUser, setPickedUser] = useState("");
+  const [allocations, setAllocations] = useState({});
+  const [allocationBusy, setAllocationBusy] = useState(null);
+  const [allocationError, setAllocationError] = useState("");
   const [pickedRole, setPickedRole] = useState("developer");
 
   const load = useCallback(async () => {
@@ -67,14 +71,16 @@ export default function ProjectTeam({ projectId }) {
       // route declining to say whether the project exists, and reading
       // `body.members` off it would render an empty team as a fact.
       if (!res.ok) throw new Error(body?.error || "Could not load the project team.");
+      setAllocations(Object.fromEntries((body.members || []).map(m => [`${m.userType}:${m.userId}`, m.allocationPct ?? ""])));
       setState({
         loading: false,
         error: null,
         members: body.members || [],
         canManage: Boolean(body.canManage),
+        canAllocate: Boolean(body.canAllocate),
       });
     } catch (e) {
-      setState({ loading: false, error: e?.message || "Could not load the project team.", members: [], canManage: false });
+      setState({ loading: false, error: e?.message || "Could not load the project team.", members: [], canManage: false, canAllocate: false });
     }
   }, [projectId]);
 
@@ -103,32 +109,34 @@ export default function ProjectTeam({ projectId }) {
   }, []);
 
   const onProject = useMemo(
-    () => new Set(state.members.map((m) => String(m.userId))),
+    () => new Set(state.members.map((m) => `${m.userType}:${m.userId}`)),
     [state.members]
   );
 
   const addable = useMemo(
-    () => staff.filter((s) => s.user_type !== "client" && !onProject.has(String(s.user_id))),
+    () => staff.filter((s) => s.user_type !== "client" && !onProject.has(`${s.user_type}:${s.user_id}`)),
     [staff, onProject]
   );
 
   const nameFor = useCallback(
-    (userId) => staff.find((s) => String(s.user_id) === String(userId))?.email || "Unknown member",
+    (userId, userType) => staff.find((s) => String(s.user_id) === String(userId) && (!userType || s.user_type === userType))?.email || "Unknown member",
     [staff]
   );
 
   const add = useCallback(async () => {
     if (!pickedUser) return showError("Pick somebody first.");
+    const selected = addable.find(s => `${s.user_type}:${s.user_id}` === pickedUser);
+    if (!selected) return showError("The selected member is no longer available.");
     setBusy(true);
     try {
       const res = await authFetch(`/api/projects/${projectId}/members`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userId: pickedUser, projectRole: pickedRole }),
+        body: JSON.stringify({ userId: selected.user_id, userType: selected.user_type, projectRole: pickedRole }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || "Could not update the project team.");
-      setState((s) => ({ ...s, members: body.members || [], canManage: Boolean(body.canManage) }));
+      setState((s) => ({ ...s, members: body.members || [], canManage: Boolean(body.canManage), canAllocate: Boolean(body.canAllocate) }));
       setPickedUser("");
       showSuccess("Added to the project");
     } catch (e) {
@@ -136,20 +144,20 @@ export default function ProjectTeam({ projectId }) {
     } finally {
       setBusy(false);
     }
-  }, [projectId, pickedUser, pickedRole]);
+  }, [projectId, pickedUser, pickedRole, addable]);
 
   const remove = useCallback(
-    async (userId) => {
+    async (userId, userType) => {
       setBusy(true);
       try {
         const res = await authFetch(`/api/projects/${projectId}/members`, {
           method: "DELETE",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ userId }),
+          body: JSON.stringify({ userId, userType }),
         });
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body?.error || "Could not update the project team.");
-        setState((s) => ({ ...s, members: body.members || [], canManage: Boolean(body.canManage) }));
+        setState((s) => ({ ...s, members: body.members || [], canManage: Boolean(body.canManage), canAllocate: Boolean(body.canAllocate) }));
         showSuccess("Removed from the project");
       } catch (e) {
         showError(e?.message || "Could not update the project team.");
@@ -159,6 +167,22 @@ export default function ProjectTeam({ projectId }) {
     },
     [projectId]
   );
+
+  const saveAllocation = async (member) => {
+    if (!state.canAllocate || allocationBusy) return;
+    const key = `${member.userType}:${member.userId}`;
+    setAllocationBusy(key);
+    setAllocationError("");
+    try {
+      await saveProjectAllocation(authFetch, { projectId, userId: member.userId, userType: member.userType, value: allocations[key] });
+      await load();
+      showSuccess("Allocation saved");
+    } catch (error) {
+      setAllocationError(error?.message || "Could not save the allocation.");
+    } finally {
+      setAllocationBusy(null);
+    }
+  };
 
   if (state.loading) {
     return (
@@ -191,14 +215,27 @@ export default function ProjectTeam({ projectId }) {
       ) : (
         <ul className="divide-y divide-border/60 rounded-lg border border-border">
           {state.members.map((m) => (
-            <li key={m.userId} className="flex items-center justify-between gap-3 px-3 py-2">
+            <li key={`${m.userType}:${m.userId}`} className="flex items-center justify-between gap-3 px-3 py-2">
               <span className="min-w-0">
-                <span className="block truncate text-sm text-foreground">{nameFor(m.userId)}</span>
+                <span className="block truncate text-sm text-foreground">{nameFor(m.userId, m.userType)}</span>
                 <span className="text-xs text-muted-foreground">
                   {m.allocationPct != null ? `${m.allocationPct}% allocated` : "Allocation not set"}
                 </span>
               </span>
               <span className="flex shrink-0 items-center gap-2">
+                {state.canAllocate && (
+                  <span className="flex items-center gap-1">
+                    <input type="number" min="0" max="100" step="1" placeholder="Not set"
+                      aria-label={`Allocation percentage for ${nameFor(m.userId, m.userType)}`}
+                      value={allocations[`${m.userType}:${m.userId}`] ?? ""}
+                      disabled={busy || Boolean(allocationBusy)}
+                      onChange={event => setAllocations(values => ({ ...values, [`${m.userType}:${m.userId}`]: event.target.value }))}
+                      className="h-9 w-24 rounded-md border border-input bg-background px-2 text-sm" />
+                    <Button size="sm" variant="outline" disabled={busy || Boolean(allocationBusy)} onClick={() => saveAllocation(m)}>
+                      {allocationBusy === `${m.userType}:${m.userId}` ? "Saving…" : "Save allocation"}
+                    </Button>
+                  </span>
+                )}
                 <Badge variant={roleTone(m.projectRole)} className="capitalize">
                   {roleLabel(m.projectRole)}
                 </Badge>
@@ -206,9 +243,9 @@ export default function ProjectTeam({ projectId }) {
                   <Button
                     size="sm"
                     variant="ghost"
-                    disabled={busy}
-                    onClick={() => remove(m.userId)}
-                    aria-label={`Remove ${nameFor(m.userId)} from the project`}
+                    disabled={busy || Boolean(allocationBusy)}
+                    onClick={() => remove(m.userId, m.userType)}
+                    aria-label={`Remove ${nameFor(m.userId, m.userType)} from the project`}
                     title="Remove from the project"
                   >
                     <X className="h-4 w-4" />
@@ -227,6 +264,9 @@ export default function ProjectTeam({ projectId }) {
         </ul>
       )}
 
+      {allocationError && <p role="alert" className="mt-2 text-sm text-destructive">{allocationError}</p>}
+      {state.canAllocate && <p className="mt-2 text-xs text-muted-foreground">Enter 0–100%, or leave blank to clear the allocation.</p>}
+
       {state.canManage && (
         <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_auto] sm:items-end">
           <Field label="Person" htmlFor="pt-user">
@@ -238,7 +278,7 @@ export default function ProjectTeam({ projectId }) {
             >
               <option value="">Pick somebody…</option>
               {addable.map((s) => (
-                <option key={s.user_id} value={s.user_id}>
+                <option key={`${s.user_type}:${s.user_id}`} value={`${s.user_type}:${s.user_id}`}>
                   {s.email} — {roleLabel(s.role)}
                 </option>
               ))}
@@ -262,7 +302,7 @@ export default function ProjectTeam({ projectId }) {
               ))}
             </select>
           </Field>
-          <Button onClick={add} disabled={busy || !pickedUser}>
+          <Button onClick={add} disabled={busy || Boolean(allocationBusy) || !pickedUser}>
             <UserPlus className="mr-1 h-4 w-4" />
             Add
           </Button>

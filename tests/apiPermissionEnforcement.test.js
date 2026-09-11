@@ -154,6 +154,11 @@ function builder(table, op, payload) {
 }
 
 const db = {
+  async rpc(name, payload) {
+    state.queries.push({ table: name, op: 'rpc', payload, filters: [] });
+    if (name === 'project_actor_is_owner' || name === 'project_actor_can_review') return { data: true, error: null };
+    return state.rpcError ? { error: state.rpcError } : { data: { success: true, ...(name === 'commit_task_plan_review' ? { project: { id: payload.p_project } } : {}) }, error: null };
+  },
   from(table) {
     return {
       select: (...a) => builder(table, 'select', a[0]),
@@ -243,6 +248,7 @@ async function call(handler, request) {
 let realFetch;
 
 beforeEach(() => {
+  state.rpcError = null;
   state.auth = null;
   state.tables = {};
   state.queries = [];
@@ -282,7 +288,7 @@ function notifyTables() {
     memberships: {
       select: () => ({
         data: [
-          { user_id: COLLEAGUE, user_type: 'developer', email: 'c@example.test', role: 'developer' },
+          { user_id: COLLEAGUE, user_type: 'developer', email: 'c@example.test', role: 'developer', status: 'active' },
         ],
         error: null,
       }),
@@ -305,6 +311,79 @@ async function notify(auth) {
     })
   );
 }
+
+describe('automation notification recipient boundaries', () => {
+  beforeEach(() => { state.auth = staff('owner'); notifyTables(); });
+  async function send(body = {}) {
+    return call(await notifyPOST(), postRequest('http://localhost/api/automation/notify', {
+      userIds: [COLLEAGUE], sendEmail: true, ...body,
+    }));
+  }
+  it.each([
+    { user_type: 'client', status: 'active' },
+    { user_type: 'developer', status: 'suspended' },
+    { user_type: 'admin', status: 'inactive' },
+  ])('does not notify unauthorized recipient %j', async (member) => {
+    state.tables.memberships.select = () => ({ data: [{ user_id: COLLEAGUE, email: 'private@example.test', ...member }] });
+    expect((await send()).status).toBe(400);
+    expect(queries('notifications', 'insert')).toHaveLength(0);
+    expect(state.emails).toHaveLength(0);
+  });
+  it('does not invent context for a nonexistent task', async () => {
+    expect((await send({ taskId: 'missing' })).status).toBe(404);
+    expect(state.emails).toHaveLength(0);
+    expect(queries('notifications', 'insert')).toHaveLength(0);
+  });
+  it.each([{ sendEmail: 'false' }, { subject: {} }, { userIds: [1] }, { userIds: Array(51).fill(COLLEAGUE) }])('rejects malformed requests %j', async (body) => {
+    expect((await send(body)).status).toBe(400);
+    expect(state.emails).toHaveLength(0);
+  });
+  it('does not disclose task details to an unassigned contributor', async () => {
+    state.tables.developer_tasks = { select: () => ({ data: { id: 'task', organization_id: ORG, developer_id: 'someone-else', task_title: 'Private task' } }) };
+    expect((await send({ taskId: 'task' })).status).toBe(403);
+    expect(state.emails).toHaveLength(0);
+    expect(queries('notifications', 'insert')).toHaveLength(0);
+  });
+  it('allows the assignee and reads their own typed overrides', async () => {
+    state.tables.developer_tasks = { select: () => ({ data: { id: 'task', organization_id: ORG, developer_id: COLLEAGUE } }) };
+    expect((await send({ taskId: 'task' })).status).toBe(200);
+    const lookup = queries('user_permissions', 'select')[0];
+    expect(hasEq(lookup, 'memberships.user_id', COLLEAGUE)).toBe(true);
+    expect(hasEq(lookup, 'memberships.user_type', 'developer')).toBe(true);
+    expect(hasEq(lookup, 'memberships.organization_id', ORG)).toBe(true);
+  });
+  it('honors an assignee permission denial before fan-out', async () => {
+    state.tables.developer_tasks = { select: () => ({ data: { id: 'task', organization_id: ORG, developer_id: COLLEAGUE } }) };
+    state.tables.user_permissions = { select: () => ({ data: [{ permission_key: 'task.view_own', allowed: false }] }) };
+    expect((await send({ taskId: 'task' })).status).toBe(403);
+    expect(state.emails).toHaveLength(0);
+  });
+  it('fails closed when recipient overrides cannot be read', async () => {
+    state.tables.developer_tasks = { select: () => ({ data: { id: 'task', organization_id: ORG, developer_id: COLLEAGUE } }) };
+    state.tables.user_permissions = { select: () => ({ error: { code: '42501', message: 'private details' } }) };
+    expect((await send({ taskId: 'task' })).status).toBe(503);
+    expect(state.emails).toHaveLength(0);
+    expect(queries('notifications', 'insert')).toHaveLength(0);
+  });
+  it('uses the admin recipient field for admin identities', async () => {
+    state.tables.memberships.select = () => ({ data: [{ user_id: COLLEAGUE, user_type: 'admin', status: 'active', email: 'a@example.test' }] });
+    expect((await send()).status).toBe(200);
+    expect(queries('notifications', 'insert')[0].payload[0]).toMatchObject({ admin_id: COLLEAGUE });
+    expect(queries('notifications', 'insert')[0].payload[0].developer_id).toBeUndefined();
+  });
+  it('scopes fallback addresses to the organization and reports lookup failures', async () => {
+    state.tables.memberships.select = () => ({ data: [{ user_id: COLLEAGUE, user_type: 'developer', status: 'active' }] });
+    state.tables.developers = { select: () => ({ error: { message: 'database unavailable' } }) };
+    const result = await send();
+    expect(result.body.emailSkipped).toMatch(/could not be resolved/);
+    expect(hasEq(queries('developers', 'select')[0], 'organization_id', ORG)).toBe(true);
+    expect(state.emails).toHaveLength(0);
+  });
+  it('counts inserted rows after preference filtering', async () => {
+    state.tables.notifications.insert = () => ({ data: [], error: null });
+    expect((await send({ sendEmail: false })).body.notified).toBe(0);
+  });
+});
 
 describe('/api/automation/notify only fans out for automation.manage', () => {
   it.each(NOTIFY_ALLOWED)('%s may send', async (role) => {
@@ -643,7 +722,8 @@ describe('/api/task-submission: the submitter has to be the assignee', () => {
   it('the assignee may submit their own task', async () => {
     const { status } = await submit(staff('developer', { appUserId: COLLEAGUE }));
     expect(status).toBe(200);
-    expect(queries('developer_tasks', 'update')).toHaveLength(1);
+    expect(queries('commit_task_submission', 'rpc')).toHaveLength(1);
+    expect(queries('developer_tasks', 'update')).toHaveLength(0);
   });
 
   it.each(['developer', 'designer', 'qa', 'devops', 'employee', 'hr', 'finance'])(
@@ -680,28 +760,31 @@ describe('/api/task-submission: the submitter has to be the assignee', () => {
 
   it('attributes an on-behalf submission to the real assignee, never to the body', async () => {
     await submit(staff('manager', { appUserId: THIRD_PARTY }), { developerId: 'someone-else' });
-    const row = queries('task_submissions', 'insert')[0].payload;
-    expect(row.developer_id).toBe(COLLEAGUE);
-    expect(row.developer_id).not.toBe('someone-else');
-    const log = queries('activity_logs', 'insert')[0].payload;
-    expect(log.developer_id).toBe(COLLEAGUE);
+    const args = queries('commit_task_submission', 'rpc')[0].payload;
+    expect(args.p_actor).toBe(THIRD_PARTY);
+    expect(args.p_developer).toBeUndefined();
+    expect(queries('task_submissions', 'insert')).toHaveLength(0);
   });
 
-  it('keeps an audit copy of the verdict the resubmission clears', async () => {
-    await submit(staff('developer', { appUserId: COLLEAGUE }));
-    const update = queries('developer_tasks', 'update')[0].payload;
-    expect(update.rejection_reason).toBeNull();
-    expect(update.reviewed_by).toBeNull();
-    const log = queries('activity_logs', 'insert')[0].payload;
-    expect(log.old_value).toBe('rejected');
-    expect(log.action_description).toContain('Tests missing');
+  it('does not clear a verdict separately from saving proof', async () => {
+    state.rpcError = { code: 'XX000', message: 'private details' };
+    const { status } = await submit(staff('developer', { appUserId: COLLEAGUE }));
+    expect(status).toBe(503);
+    expect(queries('developer_tasks', 'update')).toHaveLength(0);
+    expect(queries('activity_logs', 'insert')).toHaveLength(0);
   });
 
-  it('scopes the status update to the organization, like every other write here', async () => {
+  it('scopes the transaction to the verified organization and task', async () => {
     await submit(staff('developer', { appUserId: COLLEAGUE }));
-    const update = queries('developer_tasks', 'update')[0];
-    expect(hasEq(update, 'id', 'task-1')).toBe(true);
-    expect(hasEq(update, 'organization_id', ORG)).toBe(true);
+    expect(queries('commit_task_submission', 'rpc')[0].payload).toMatchObject({ p_org: ORG, p_task: 'task-1', p_project: 'proj-1' });
+  });
+  it('honors an assignee task.submit denial', async () => {
+    expect((await submit(staff('developer', { appUserId: COLLEAGUE, overrides: { 'task.submit': false } }))).status).toBe(403);
+    expect(queries('commit_task_submission', 'rpc')).toHaveLength(0);
+  });
+  it('rejects a project ID that differs from the task', async () => {
+    expect((await submit(staff('developer', { appUserId: COLLEAGUE }), { task: { ...REJECTED_TASK, project_id: 'elsewhere' } })).status).toBe(400);
+    expect(queries('commit_task_submission', 'rpc')).toHaveLength(0);
   });
 
   it('refuses a task with no assignee rather than inventing one', async () => {
@@ -793,17 +876,30 @@ async function review(auth, { taskDeveloper, submissionDeveloper } = {}) {
 }
 
 describe('/api/admin-review refuses to let anyone approve their own work', () => {
+  it('does not report success or perform separate writes when the transaction fails', async () => {
+    state.rpcError = { code: 'XX000', message: 'private database failure' };
+    const { status, body } = await review(staff('manager', { appUserId: ME }));
+    expect(status).toBe(503);
+    expect(body.error).not.toContain('private database failure');
+    expect(queries('developer_tasks', 'update')).toHaveLength(0);
+    expect(queries('admin_reviews', 'insert')).toHaveLength(0);
+  });
+  it('passes only the verified reviewer identity into the transaction', async () => {
+    await review(staff('manager', { appUserId: ME }));
+    expect(queries('commit_task_review', 'rpc')[0].payload).toMatchObject({ p_org: ORG, p_reviewer: ME, p_profile_type: 'admin' });
+  });
   it.each(REVIEWERS)('a %s may review a colleague\'s submission', async (role) => {
     const { status } = await review(staff(role, { appUserId: ME }), { taskDeveloper: COLLEAGUE });
     expect(status).toBe(200);
-    expect(queries('developer_tasks', 'update')).toHaveLength(1);
+    expect(queries('commit_task_review', 'rpc')).toHaveLength(1);
+    expect(queries('developer_tasks', 'update')).toHaveLength(0);
   });
 
   it.each(REVIEWERS)('a %s may NOT review a task assigned to themselves', async (role) => {
     // The team_lead case is the whole finding: they hold task.review,
     // task.submit AND project.create, so one person can create the project,
     // assign themselves, submit, approve and bank the point.
-    const { status, body } = await review(staff(role, { appUserId: ME }), { taskDeveloper: ME });
+    const { status, body } = await review(staff(role, { appUserId: ME, userType: 'developer' }), { taskDeveloper: ME });
     expect(status).toBe(403);
     expect(body.error).toMatch(/your own/i);
     // No point awarded, no status moved, no review record written.
@@ -816,7 +912,7 @@ describe('/api/admin-review refuses to let anyone approve their own work', () =>
   it.each(['owner', 'admin'])(
     '%s is NOT exempt — separation of duties that stops at the top is not separation of duties',
     async (role) => {
-      const { status } = await review(staff(role, { appUserId: ME }), { taskDeveloper: ME });
+      const { status } = await review(staff(role, { appUserId: ME, userType: 'developer' }), { taskDeveloper: ME });
       expect(status).toBe(403);
       expect(queries('developer_tasks', 'update')).toHaveLength(0);
     }
@@ -824,7 +920,7 @@ describe('/api/admin-review refuses to let anyone approve their own work', () =>
 
   it('refuses when the SUBMISSION is theirs even if the task names someone else', async () => {
     // Both identities are checked, because either one alone is a way round.
-    const { status } = await review(staff('manager', { appUserId: ME }), {
+    const { status } = await review(staff('manager', { appUserId: ME, userType: 'developer' }), {
       taskDeveloper: COLLEAGUE,
       submissionDeveloper: ME,
     });
@@ -833,7 +929,7 @@ describe('/api/admin-review refuses to let anyone approve their own work', () =>
   });
 
   it('refuses a self-review of a REJECTION too, not only an approval', async () => {
-    state.auth = staff('manager', { appUserId: ME });
+    state.auth = staff('manager', { appUserId: ME, userType: 'developer' });
     reviewTables({ taskDeveloper: ME, submissionDeveloper: ME, reviewer: ME });
     const { status } = await call(
       await adminReviewPOST(),
@@ -851,7 +947,7 @@ describe('/api/admin-review refuses to let anyone approve their own work', () =>
   it.each(STAFF_ROLES.filter((r) => !REVIEWERS.includes(r)))(
     '%s still cannot reach the route at all',
     async (role) => {
-      const { status } = await review(staff(role, { appUserId: ME }), { taskDeveloper: COLLEAGUE });
+      const { status } = await review(staff(role, { appUserId: ME, userType: 'developer' }), { taskDeveloper: COLLEAGUE });
       expect(status).toBe(403);
       expect(queries('developer_tasks', 'update')).toHaveLength(0);
     }
@@ -860,72 +956,83 @@ describe('/api/admin-review refuses to let anyone approve their own work', () =>
 
 // ── /api/task-plan/review ─────────────────────────────────────────────────
 
-function planTables(assignedDeveloperId, reviewer) {
-  state.tables = {
-    projects: {
-      select: () => ({
-        data: {
-          id: 'proj-1',
-          created_by: reviewer,
-          added_by: null,
-          added_by_admin: null,
-          assigned_developer_id: assignedDeveloperId,
-          task_plan_submitted: true,
-          task_plan_status: 'pending',
-        },
-        error: null,
-      }),
-      update: () => ({ data: { id: 'proj-1', task_plan_status: 'approved' }, error: null }),
-    },
-  };
-}
-
-async function reviewPlan(auth, assignedDeveloperId) {
+async function reviewPlan(auth) {
   state.auth = auth;
-  planTables(assignedDeveloperId, auth.appUserId);
-  return call(
-    await planReviewPOST(),
-    postRequest('http://localhost/api/task-plan/review', {
-      projectId: 'proj-1',
-      adminId: auth.appUserId,
-      action: 'approve',
-    })
-  );
+  return call(await planReviewPOST(), postRequest('http://localhost/api/task-plan/review', {
+    projectId: 'proj-1', adminId: 'forged', action: 'approve',
+  }));
 }
 
-describe('/api/task-plan/review refuses to let anyone approve their own plan', () => {
-  it.each(REVIEWERS)('a %s may approve a plan somebody else submitted', async (role) => {
-    const { status } = await reviewPlan(staff(role, { appUserId: ME }), COLLEAGUE);
+describe('/api/task-plan/review delegates atomic authority to SQL', () => {
+  it.each(REVIEWERS)('a %s sends only their verified identity to the transaction', async role => {
+    const auth = staff(role, { appUserId: ME });
+    const { status } = await reviewPlan(auth);
     expect(status).toBe(200);
-    expect(queries('projects', 'update')).toHaveLength(1);
-  });
-
-  it.each(REVIEWERS)('a %s may NOT approve the plan for a project assigned to them', async (role) => {
-    const { status, body } = await reviewPlan(staff(role, { appUserId: ME }), ME);
-    expect(status).toBe(403);
-    expect(body.error).toMatch(/your own/i);
+    expect(queries('commit_task_plan_review', 'rpc')[0].payload).toMatchObject({ p_org: ORG, p_project: 'proj-1', p_reviewer: ME, p_type: auth.userType });
     expect(queries('projects', 'update')).toHaveLength(0);
   });
-
-  it.each(['owner', 'admin'])('%s is not exempt here either', async (role) => {
-    const { status } = await reviewPlan(staff(role, { appUserId: ME }), ME);
-    expect(status).toBe(403);
+  it('propagates SQL self-review refusal without any independent mutation', async () => {
+    state.rpcError = { code: '42501', message: 'PLAN_REVIEW_FORBIDDEN: You cannot review your own plan' };
+    const { status, body } = await reviewPlan(staff('owner', { userType: 'developer' }));
+    expect(status).toBe(403);expect(body.error).toMatch(/your own/);
     expect(queries('projects', 'update')).toHaveLength(0);
   });
-
-  it('refuses a self-review of a rejection too', async () => {
-    state.auth = staff('manager', { appUserId: ME });
-    planTables(ME, ME);
-    const { status } = await call(
-      await planReviewPOST(),
-      postRequest('http://localhost/api/task-plan/review', {
-        projectId: 'proj-1',
-        adminId: ME,
-        action: 'reject',
-        rejectionReason: 'not really',
-      })
-    );
-    expect(status).toBe(403);
-    expect(queries('projects', 'update')).toHaveLength(0);
+  it('does not mistake an admin profile for a developer with the same UUID', async () => {
+    const { status } = await reviewPlan(staff('admin', { appUserId: ME }));
+    expect(status).toBe(200);
+    expect(queries('commit_task_plan_review', 'rpc')[0].payload.p_type).toBe('admin');
   });
+});
+
+describe('/api/task-submission GET: typed own access and permission overrides', () => {
+  async function read(auth) {
+    state.auth = auth;
+    const { GET } = await import('@/app/api/task-submission/route');
+    return call(GET, new Request('http://localhost/api/task-submission?developerId=another-user'));
+  }
+  it('denies own submissions when own-read permission is explicitly denied', async () => {
+    expect((await read(staff('developer', { overrides: { 'task.view_own': false } }))).status).toBe(403);
+    expect(queries('task_submissions', 'select')).toHaveLength(0);
+  });
+  it('does not treat an admin profile UUID as a developer assignment', async () => {
+    expect((await read(staff('hr', { overrides: { 'task.view_own': true } }))).status).toBe(403);
+    expect(queries('task_submissions', 'select')).toHaveLength(0);
+  });
+  it('fails closed without a developer identity', async () => {
+    expect((await read(staff('developer', { appUserId: null }))).status).toBe(403);
+    expect(queries('task_submissions', 'select')).toHaveLength(0);
+  });
+  it('pins an own-work reader to the verified identity', async () => {
+    expect((await read(staff('developer'))).status).toBe(200);
+    expect(queries('task_submissions', 'select')[0].filters).toContainEqual({ method: 'eq', args: ['developer_id', ME] });
+  });
+  it('allows an explicitly granted reviewer to inspect the requested developer', async () => {
+    expect((await read(staff('hr', { overrides: { 'task.review': true } }))).status).toBe(200);
+    expect(queries('task_submissions', 'select')[0].filters).toContainEqual({ method: 'eq', args: ['developer_id', 'another-user'] });
+  });
+});
+
+it('admin review inbox considers manager delegation before fetching submissions', async () => {
+  const reviewer = '11111111-1111-1111-1111-111111111111';
+  state.auth = staff('manager', { appUserId: reviewer, userType: 'developer' });
+  state.tables = { projects: { select: q => ({ data: q.filters.some(f => f.method === 'or' && f.args[0].includes(`manager_id.eq.${reviewer}`)) ? [{ id: 'managed-project' }] : [], error: null }) } };
+  const { GET } = await import('@/app/api/admin-review/route');
+  const response = await GET(new Request('http://localhost/api/admin-review'));
+  expect(response.status).toBe(200);
+  expect(queries('project_actor_can_review', 'rpc')[0].payload).toMatchObject({ p_project: 'managed-project', p_user: reviewer, p_type: 'developer' });
+  expect(queries('task_submissions', 'select')[0].filters).toContainEqual({ method: 'in', args: ['project_id', ['managed-project']] });
+});
+
+it('refuses unknown profile types at both review endpoints', async () => {
+ state.auth=staff('owner',{userType:'unknown'});
+ const {GET,POST}=await import('@/app/api/admin-review/route');
+ expect((await GET(new Request('http://localhost/api/admin-review'))).status).toBe(403);
+ expect((await POST(postRequest('http://localhost/api/admin-review',{}))).status).toBe(403);
+});
+it('does not expose database lookup details from the review inbox', async () => {
+ state.auth=staff('manager',{appUserId:'11111111-1111-1111-1111-111111111111'});
+ state.tables={projects:{select:()=>({error:{message:'private schema details'}})}};
+ const {GET}=await import('@/app/api/admin-review/route');
+ const response=await GET(new Request('http://localhost/api/admin-review'));
+ expect(response.status).toBe(500);expect(JSON.stringify(await response.json())).not.toContain('private schema');
 });

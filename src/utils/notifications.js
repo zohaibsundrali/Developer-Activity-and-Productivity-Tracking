@@ -1,3 +1,4 @@
+import { notificationRecipientKey } from "@/utils/notificationIdentity";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
 
@@ -73,10 +74,8 @@ export function notificationHref(n, { audience = "admin" } = {}) {
   const developerProject = (projectId) => `/developer/project-details?id=${projectId}`;
 
   if (n.task_id) {
-    // The admin board is one screen for the whole org, so `section=board` is
-    // the destination on its own and the link lands correctly without `task`.
-    // Nothing reads `task` yet — the board's drawer is driven by local state —
-    // so it identifies the subject rather than opening it.
+    // The board resolves the task through the caller's RLS client, selects its
+    // project and opens the drawer; unavailable targets show a retryable error.
     //
     // The developer surface has no task route at all: a task is reached
     // through its project, so a task notification is only linkable when the
@@ -147,11 +146,13 @@ export function recipientClauses({ userId, email, audience = "admin" } = {}) {
   return clauses;
 }
 
-function recipientFilter(query, { userId, email, audience }) {
-  const clauses = recipientClauses({ userId, email, audience });
-  // No identity means no notifications — never fall through to "everything".
-  if (!clauses.length) return query.eq("id", "00000000-0000-0000-0000-000000000000");
-  return query.or(clauses.join(","));
+function recipientFilter(query, { userId }) {
+  const ctx = getOrgContext();
+  const key = ctx?.userId === userId ? notificationRecipientKey(ctx) : null;
+  // The database derives these keys and RLS independently enforces identity.
+  // Never fall back to email or navigation audience on an unverified session.
+  return key ? query.contains("recipient_keys", [key])
+    : query.eq("id", "00000000-0000-0000-0000-000000000000");
 }
 
 /**
@@ -171,7 +172,7 @@ export async function fetchNotifications({
   const from = page * pageSize;
 
   let query = supabase
-    .from("notifications")
+    .from("notification_inbox")
     .select("id, title, message, type, category, read, read_at, created_at, task_id, project_id, submission_id, entity_type, entity_id, actor_id")
     .order("created_at", { ascending: false })
     // created_at ties would otherwise let a row appear on two pages or none.
@@ -206,7 +207,7 @@ export async function fetchNotifications({
 export async function getUnreadCount({ userId, email, audience = "admin", category = null } = {}) {
   const orgId = getOrgId();
   let query = supabase
-    .from("notifications")
+    .from("notification_inbox")
     .select("id", { count: "exact", head: true })
     .eq("read", false);
 
@@ -223,15 +224,21 @@ export async function getUnreadCount({ userId, email, audience = "admin", catego
   return { count: count ?? 0, error: null };
 }
 
-/** Mark one notification read. RLS restricts this to rows you can see. */
-export async function markRead(id) {
+/** Change only this caller's recipient state; timestamps are set by the DB. */
+async function setNotificationState(id, action) {
   if (!id) return { error: new Error("Missing notification id") };
-  const { error } = await supabase
-    .from("notifications")
-    .update({ read: true, read_at: new Date().toISOString() })
-    .eq("id", id)
-    .eq("read", false);
-  return { error };
+  return supabase.rpc("set_notification_state", { p_notification: id, p_action: action });
+}
+export async function markRead(id) {
+  return setNotificationState(id, "read");
+}
+
+/** Load authoritative per-recipient state after a realtime event, including dismissal. */
+export async function fetchInboxNotification(id, { userId } = {}) {
+  if (!id) return { data: null, error: new Error("Missing notification id") };
+  let query = supabase.from("notification_inbox").select("*").eq("id", id).eq("organization_id", getOrgId());
+  query = recipientFilter(query, { userId });
+  return query.maybeSingle();
 }
 
 /**
@@ -245,23 +252,12 @@ export async function markRead(id) {
  * an unasked-for, unrecoverable bulk action fired from a one-word button.
  * Unread is already the predicate, so `unreadOnly` needs no separate clause.
  */
-export async function markAllRead({ userId, email, audience = "admin", category = null } = {}) {
-  const orgId = getOrgId();
-  let query = supabase
-    .from("notifications")
-    .update({ read: true, read_at: new Date().toISOString() })
-    .eq("read", false);
-
-  if (orgId) query = query.eq("organization_id", orgId);
-  if (category) query = query.eq("category", category);
-  // The same predicate the count uses, so the button clears exactly the set the
-  // number over it describes — and so a row the user dismissed is not silently
-  // written to by a button they pressed about a list it is not in.
-  query = query.is("dismissed_at", null);
-  query = recipientFilter(query, { userId, email, audience });
-
-  const { error } = await query;
-  return { error };
+export async function markAllRead({ userId, category = null } = {}) {
+  const ctx = getOrgContext();
+  if (!ctx?.organizationId || ctx.userId !== userId || !notificationRecipientKey(ctx)) {
+    return { error: new Error("Not signed in") };
+  }
+  return supabase.rpc("mark_notification_inbox_read", { p_category: category });
 }
 
 /**
@@ -277,13 +273,7 @@ export async function markAllRead({ userId, email, audience = "admin", category 
  * timestamp and misreport when the row actually left the list.
  */
 export async function dismissNotification(id) {
-  if (!id) return { error: new Error("Missing notification id") };
-  const { error } = await supabase
-    .from("notifications")
-    .update({ dismissed_at: new Date().toISOString() })
-    .eq("id", id)
-    .is("dismissed_at", null);
-  return { error };
+  return setNotificationState(id, "dismiss");
 }
 
 /**
@@ -305,12 +295,13 @@ export async function fetchNotificationPreferences() {
 
   const ctx = getOrgContext();
   const userId = ctx?.userId || null;
-  if (!userId) return { preferences, error: new Error("Not signed in") };
+  if (!userId || !ctx?.organizationId || !["admin", "developer"].includes(ctx?.userType)) return { preferences, error: new Error("Not signed in") };
 
   let query = supabase
     .from("notification_preferences")
     .select("category, enabled")
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .eq("user_type", ctx.userType);
 
   const orgId = ctx?.organizationId || null;
   if (orgId) query = query.eq("organization_id", orgId);
@@ -351,22 +342,19 @@ export async function setNotificationPreference(category, enabled) {
   const ctx = getOrgContext();
   const userId = ctx?.userId || null;
   const organizationId = ctx?.organizationId || null;
-  if (!userId || !organizationId) return { error: new Error("Not signed in") };
+  if (!userId || !organizationId || !["admin", "developer"].includes(ctx?.userType)) return { error: new Error("Not signed in") };
 
   const { error } = await supabase.from("notification_preferences").upsert(
     {
       organization_id: organizationId,
       user_id: userId,
-      user_type: ctx?.userType || "developer",
+      user_type: ctx.userType,
       category,
       enabled: Boolean(enabled),
       updated_at: new Date().toISOString(),
     },
-    // Exactly the columns of `uq_notification_prefs_user_category`. Naming any
-    // other set (organization_id, say) matches no unique index, and PostgREST
-    // answers that with a 42P10 rather than an insert — so the second time a
-    // user touched a switch it would fail instead of updating.
-    { onConflict: "user_id,category" }
+    // The organization and profile type are part of the preference identity.
+    { onConflict: "organization_id,user_type,user_id,category" }
   );
   return { error };
 }
@@ -406,7 +394,7 @@ export async function notify({
   const ctx = getOrgContext();
   const actorId = ctx?.userId || null;
 
-  if (recipientId && actorId && String(recipientId) === String(actorId)) {
+  if (recipientId && actorId && String(recipientId) === String(actorId) && audience === ctx?.userType) {
     return { error: null, skipped: "self" };
   }
   if (!recipientId && !recipientEmail) {
@@ -432,6 +420,7 @@ export async function notify({
 
   if (audience === "admin") {
     row.admin_id = recipientId ? String(recipientId) : null;
+    row.admin_recipient_type = "admin";
     row.admin_email = recipientEmail;
   } else {
     row.developer_id = recipientId;

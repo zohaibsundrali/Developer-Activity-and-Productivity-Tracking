@@ -1,5 +1,7 @@
 "use client";
 
+import { loadDashboardOwnProjects } from "@/utils/dashboardOwnProjects";
+import { ErrorState } from "@/components/ui";
 import PermissionBoundary from "@/components/auth/PermissionBoundary";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -280,6 +282,7 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
   // EMPTY for qa and finance, who hold no project.view_all. Filtering it would
   // have shown those two an empty My Projects and looked like they had none.
   const [myProjects, setMyProjects] = useState([]);
+  const [myProjectsError, setMyProjectsError] = useState(null);
   const router = useRouter();
   const searchParams = useSearchParams();
   const sectionParam = resolveSection(searchParams?.get("section"));
@@ -393,21 +396,20 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
       const { data: projectsData } = await projectsQuery;
       setProjects(projectsData || []);
 
-      // Own assigned projects. `currentUser.id` is the profile-row id — the
-      // same value getOrgContext() surfaces as userId and the one
-      // assigned_developer_id points at. An owner or admin signed in from
-      // `adminUser` correctly matches nothing: they are not assigned work.
-      let mineQuery = supabase
-        .from('projects')
-        .select('*')
-        .eq('assigned_developer_id', currentUser.id)
-        .order('created_at', { ascending: false });
-      if (orgId) mineQuery = mineQuery.eq('organization_id', orgId);
-      const { data: mineData } = await mineQuery;
-      setMyProjects(mineData || []);
+      setMyProjectsError(null);
+      try {
+        const mine = await loadDashboardOwnProjects(supabase, {
+          organizationId: orgId,
+          userId: currentUser.id,
+          userType: currentUser.role === 'admin' ? 'admin' : 'developer',
+        });
+        setMyProjects(mine);
+      } catch (error) {
+        setMyProjectsError(error.message || 'Could not load your projects.');
+      }
 
     } catch (error) {
-      // Silently handle error
+      setMyProjectsError('Could not load your projects. Please retry.');
     } finally {
       if (initial) setLoading(false);
     }
@@ -462,6 +464,7 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
       case "timesheet":
         return <MyTimesheet />;
       case "projects":
+        if (myProjectsError) return <ErrorState description={myProjectsError} onRetry={() => fetchDashboardData()} />;
         return (
           <MyProjects
             user={user}

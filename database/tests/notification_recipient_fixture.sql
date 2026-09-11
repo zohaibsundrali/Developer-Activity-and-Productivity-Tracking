@@ -5,7 +5,7 @@ create function auth.jwt() returns jsonb language sql stable as $$ select curren
 create function public.auth_org() returns uuid language sql stable as $$ select (auth.jwt()->'app_metadata'->>'organization_id')::uuid $$;
 create function public.auth_app_user_id() returns uuid language sql stable as $$ select (auth.jwt()->'app_metadata'->>'app_user_id')::uuid $$;
 grant usage on schema auth to authenticated;
-create table public.notifications (id int primary key, organization_id uuid, admin_id text, admin_email text, developer_id uuid, assigned_developer_id uuid, read boolean default false);
+create table public.notifications (id int primary key, organization_id uuid, admin_id text, admin_email text, developer_id uuid, assigned_developer_id uuid, read boolean default false, read_at timestamptz, title text default 'Original', metadata jsonb default '{}'::jsonb);
 grant select, update on public.notifications to authenticated;
 alter table public.notifications enable row level security;
 -- A forgotten legacy grant must not bypass the new restrictive policies.

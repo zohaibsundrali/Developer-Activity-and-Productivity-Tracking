@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { CalendarRange, ChevronLeft, ChevronRight, Gauge, TriangleAlert } from "lucide-react";
 
 import {
@@ -11,6 +11,10 @@ import {
   Section,
   Skeleton,
 } from "@/components/ui";
+import { allowed } from "@/utils/permissions";
+import { saveCapacityWeeklyHours } from "@/utils/capacityWeeklyHours";
+import { createCapacityPlanRequest } from "@/utils/capacityPlanRequest";
+import { getOrgId } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
 
 /**
@@ -36,7 +40,7 @@ import { authFetch } from "@/utils/authFetch";
 
 /** The ISO Monday of whatever week contains `d`. */
 function isoMonday(d = new Date()) {
-  const x = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const day = x.getUTCDay() || 7; // Sunday -> 7
   x.setUTCDate(x.getUTCDate() - (day - 1));
   return x.toISOString().slice(0, 10);
@@ -50,36 +54,47 @@ const num = (v, suffix = "") =>
 
 export default function CapacityPlan({ people = [] }) {
   const [week, setWeek] = useState(() => isoMonday());
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const scope = `${getOrgId()}:${week}`;
+  const canSetHours = allowed('employment.set_hours');
+  const [hoursEditor, setHoursEditor] = useState(null);
+  const [hoursBusy, setHoursBusy] = useState(false);
+  const [hoursError, setHoursError] = useState('');
+  const liveScope = useRef(scope);
+  liveScope.current = scope;
+  useEffect(() => { liveScope.current = scope; return () => { liveScope.current = null; }; }, [scope]);
+  const [result, setResult] = useState(null);
+  const request = useMemo(() => createCapacityPlanRequest(authFetch, setResult), []);
+  const current = result?.scope === scope ? result : null;
+  const rows = useMemo(() => current?.rows || [], [current]);
+  const loading = current?.loading ?? true;
+  const error = current?.error || '';
 
   const nameOf = useCallback(
-    (id) => {
-      const p = people.find((x) => String(x.id) === String(id));
+    (id, userType) => {
+      const p = people.find((x) => String(x.id) === String(id) && x.userType === userType);
       return p?.name || p?.full_name || p?.email || "Someone";
     },
     [people]
   );
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const res = await authFetch(`/api/capacity?week=${encodeURIComponent(week)}`);
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json?.success) throw new Error(json?.error || "Could not load the plan.");
-      setRows(json.rows || []);
-    } catch (e) {
-      setError(e?.message || "Could not load the plan.");
-    } finally {
-      setLoading(false);
-    }
-  }, [week]);
+  const load = useCallback(() => request.load(week, scope), [request, week, scope]);
 
   useEffect(() => {
     load();
-  }, [load]);
+    return () => request.cancel();
+  }, [load, request]);
+
+  const saveHours = async () => {
+    if (hoursBusy || !hoursEditor || hoursEditor.scope !== scope) return;
+    setHoursBusy(true); setHoursError('');
+    try {
+      await saveCapacityWeeklyHours({ fetcher: authFetch, allowed, userId: hoursEditor.userId,
+        userType: hoursEditor.userType, value: hoursEditor.value });
+      if (liveScope.current === scope) { setHoursEditor(null); await load(); }
+    } catch (error) {
+      if (liveScope.current === scope) setHoursError(error.message || 'Could not save contracted hours.');
+    } finally { setHoursBusy(false); }
+  };
 
   const summary = useMemo(() => {
     let known = 0;
@@ -110,8 +125,7 @@ export default function CapacityPlan({ people = [] }) {
             variant="outline"
             size="sm"
             onClick={() => setWeek(shiftWeek(week, 1))}
-            disabled={week >= thisWeek}
-            title={week >= thisWeek ? "That week has not happened yet" : "Next week"}
+            title="Next week"
           >
             <ChevronRight className="h-4 w-4" aria-hidden="true" />
             <span className="sr-only">Next week</span>
@@ -134,8 +148,8 @@ export default function CapacityPlan({ people = [] }) {
       ) : rows.length === 0 ? (
         <EmptyState
           icon={CalendarRange}
-          title="Nothing recorded for that week"
-          description="A person appears here once they have logged time or have approved leave in the week."
+          title="No capacity entries for that week"
+          description="There are no eligible staff or capacity records for the selected week."
         />
       ) : (
         <>
@@ -172,13 +186,30 @@ export default function CapacityPlan({ people = [] }) {
                   const over = Number(r.allocation_pct) > 100;
                   const util = r.utilisation_pct;
                   return (
-                    <tr key={`${r.user_id}-${r.week_start}`} className="border-b border-border/60">
-                      <td className="py-2 pr-4 text-foreground">{nameOf(r.user_id)}</td>
+                    <tr key={`${r.user_type}:${r.user_id}-${r.week_start}`} className="border-b border-border/60">
+                      <td className="py-2 pr-4 text-foreground">{nameOf(r.user_id, r.user_type)}</td>
                       <td className="py-2 pr-4 tabular-nums">
-                        {unset ? (
-                          <span className="text-xs text-muted-foreground">not set</span>
+                        {canSetHours && hoursEditor?.scope === scope && hoursEditor.userId === r.user_id && hoursEditor.userType === r.user_type ? (
+                          <div className="space-y-2">
+                            <input type="number" step="any" min="0" max="168"
+                              aria-label={`Contracted weekly hours for ${nameOf(r.user_id, r.user_type)}`}
+                              className="h-9 w-28 rounded-md border border-input bg-background px-2 text-sm"
+                              value={hoursEditor.value} disabled={hoursBusy}
+                              onChange={event => setHoursEditor({ ...hoursEditor, value: event.target.value })} />
+                            <p className="text-xs text-muted-foreground">Leave blank to clear. Applies to contracted hours across weeks.</p>
+                            <div className="flex gap-1">
+                              <Button size="sm" disabled={hoursBusy} onClick={saveHours}>{hoursBusy ? 'Saving…' : 'Save'}</Button>
+                              <Button size="sm" variant="ghost" disabled={hoursBusy} onClick={() => { setHoursEditor(null); setHoursError(''); }}>Cancel</Button>
+                            </div>
+                            {hoursError ? <p className="text-xs text-destructive" role="alert">{hoursError}</p> : null}
+                          </div>
                         ) : (
-                          num(r.weekly_hours, "h")
+                          <>
+                            {unset ? <span className="text-xs text-muted-foreground">not set</span> : num(r.weekly_hours, "h")}
+                            {canSetHours ? <Button size="sm" variant="ghost" disabled={hoursBusy}
+                              aria-label={`Edit contracted hours for ${nameOf(r.user_id, r.user_type)}`}
+                              onClick={() => { setHoursError(''); setHoursEditor({ scope, userId: r.user_id, userType: r.user_type, value: r.weekly_hours == null ? '' : String(r.weekly_hours) }); }}>Edit</Button> : null}
+                          </>
                         )}
                       </td>
                       <td className="py-2 pr-4 tabular-nums text-muted-foreground">

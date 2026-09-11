@@ -69,9 +69,7 @@ const isAsked = (p) =>
 
 const COVERED_BY_SCREEN = {
   "timesheet.log_own": "My Timesheet — logging hours is what the screen is for",
-  "team.view_own": "My Activity — the panel listing who else is on your projects",
   "profile.manage_own": "Account, which predates the *_own family entirely",
-  "monitoring.view_own": "My Activity — the recorded-activity panel",
 };
 
 const ENFORCED_BY_RLS = {
@@ -82,7 +80,6 @@ const ENFORCED_BY_RLS = {
   "employee.transfer": "the same policy; a transfer is an update to the profile row",
   "employee.activate": "EmployeeProfileEditor writes employment_status directly, under the same policy",
   "team.view": "TeamPanel reads memberships and project_members, both org-readable by RLS",
-  "project.create": "projects are inserted straight from the browser under 013's org policy",
   "billing.manage": "BillingSubscription reads through /api/billing/subscription, which asks billing.view; there is no separate 'manage' action in the UI",
 };
 
@@ -93,7 +90,6 @@ const NO_FEATURE_YET = {
     "organization from the product.",
   "project.delete": "nothing in src/ deletes a project; the screens archive and close instead",
   "project.close": "closure runs through /api/projects/[id]/closure, which asks project.complete",
-  "task.submit": "submission goes through /api/task-submission, which asks task.update_own",
 };
 
 const RECORDED = { ...COVERED_BY_SCREEN, ...ENFORCED_BY_RLS, ...NO_FEATURE_YET };
@@ -142,6 +138,6 @@ describe("what the RLS-enforced keys cost, stated once", () => {
     //
     // Every addition is a capability no route decides, so it should be a
     // decision somebody makes on purpose.
-    expect(Object.keys(ENFORCED_BY_RLS).length).toBe(9);
+    expect(Object.keys(ENFORCED_BY_RLS).length).toBe(8);
   });
 });

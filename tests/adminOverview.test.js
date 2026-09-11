@@ -92,7 +92,8 @@ describe("nothing here is scoped to the signed-in person", () => {
   it("keeps notifications personal, because the bell is", () => {
     // The ONE thing that is legitimately per-person. An Overview showing
     // everybody's notifications would be a second inbox nobody owns.
-    expect(LOADER).toMatch(/admin_id\.eq\.\$\{adminId\}/);
+    expect(LOADER).toContain('notificationRecipientKey({ userId: adminId || developerId, userType: adminId ? "admin" : "developer" })');
+    expect(LOADER).toContain('notificationsQ.contains("recipient_keys", [recipientKey])');
     expect(LOADER).toMatch(/\.eq\("read", false\)/);
   });
 

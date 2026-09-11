@@ -1,4 +1,5 @@
 "use client";
+import PlanFeatureBoundary from "@/components/billing/PlanFeatureBoundary";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
@@ -195,7 +196,7 @@ function TablePager({ page, pageCount, total, shown, onPage }) {
 
 /* ------------------------------------------------------------------ */
 
-export default function ReportsDashboard() {
+function ReportsDashboardContent() {
   // Lazy init — never call new Date() at module scope.
   const [range, setRange] = useState(() => defaultRange());
   const [bundle, setBundle] = useState(null);
@@ -1091,4 +1092,8 @@ export default function ReportsDashboard() {
       </div>
     </div>
   );
+}
+
+export default function ReportsDashboard() {
+  return <PlanFeatureBoundary feature="reports"><ReportsDashboardContent /></PlanFeatureBoundary>;
 }

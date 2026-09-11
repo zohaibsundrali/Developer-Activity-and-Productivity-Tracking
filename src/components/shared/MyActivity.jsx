@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Activity, BarChart3, Keyboard, Users } from "lucide-react";
 
 import {
@@ -13,8 +13,10 @@ import {
 } from "@/components/ui";
 import StatCard from "@/components/shell/StatCard";
 import { authFetch } from "@/utils/authFetch";
+import { allowed } from "@/utils/permissions";
+import { myActivityPanels, loadMyTypedTeam } from "@/utils/monitoringUiAccess";
 import { supabase } from "@/utils/supabaseClient";
-import { getOrgContext, getOrgId } from "@/utils/orgContext";
+import { getOrgContext } from "@/utils/orgContext";
 
 /**
  * My Activity — the last three `*_own` keys that had a permission and no screen.
@@ -48,6 +50,12 @@ import { getOrgContext, getOrgId } from "@/utils/orgContext";
 const pct = (v) => (v === null || v === undefined ? "—" : `${Math.round(Number(v))}%`);
 
 export default function MyActivity() {
+  const panels = myActivityPanels(allowed);
+  const context = getOrgContext();
+  const scope = `${context?.organizationId}:${context?.userType}:${context?.userId}:${panels.productivity}:${panels.activity}:${panels.team}`;
+  const liveScope = useRef(scope); liveScope.current = scope;
+  const generation = useRef(0);
+  const [loadedScope, setLoadedScope] = useState(null);
   const [productivity, setProductivity] = useState(null);
   const [activity, setActivity] = useState(null);
   const [team, setTeam] = useState(null);
@@ -58,7 +66,9 @@ export default function MyActivity() {
   const load = useCallback(async () => {
     setLoading(true);
     const missing = [];
-    const me = getOrgContext()?.userId || null;
+    const ticket = ++generation.current;
+    const active = () => ticket === generation.current && liveScope.current === scope;
+    setProductivity(null); setActivity(null); setTeam(null); setFailed([]);
 
     // keyboard-stats is a ranged query — it answers 400 without a start/end, so
     // "no window" left the Recorded activity panel dead for every role. Ask for
@@ -71,94 +81,59 @@ export default function MyActivity() {
     // whose other two thirds are fine — and saying WHICH third is missing is
     // the difference between a bug report and a shrug.
     const [prodRes, actRes] = await Promise.allSettled([
-      authFetch("/api/productivity?type=developer"),
-      authFetch(`/api/keyboard-stats?${activityWindow}`),
+      panels.productivity ? authFetch("/api/productivity?type=developer") : Promise.resolve(null),
+      panels.activity ? authFetch(`/api/keyboard-stats?${activityWindow}`) : Promise.resolve(null),
     ]);
 
-    try {
+    if (!active()) return;
+    if (panels.productivity) try {
       if (prodRes.status !== "fulfilled") throw new Error("unreachable");
       const json = await prodRes.value.json().catch(() => ({}));
       if (!prodRes.value.ok || !json?.success) throw new Error(json?.error || "failed");
+      if (!active()) return;
       setProductivity(json);
     } catch {
+      if (!active()) return;
       setProductivity(null);
       missing.push("your delivery metrics");
     }
 
-    try {
+    if (panels.activity) try {
       if (actRes.status !== "fulfilled") throw new Error("unreachable");
       const json = await actRes.value.json().catch(() => ({}));
       if (!actRes.value.ok) throw new Error(json?.error || "failed");
+      if (!active()) return;
       setActivity(json);
     } catch {
+      if (!active()) return;
       setActivity(null);
       missing.push("your recorded activity");
     }
 
-    try {
-      if (!me) throw new Error("no identity");
-      const orgId = getOrgId();
-      // 1. the projects I am on
-      const { data: mine, error: mineErr } = await supabase
-        .from("project_members")
-        .select("project_id")
-        .eq("organization_id", orgId)
-        .eq("user_id", me);
-      if (mineErr) throw mineErr;
-      const ids = [...new Set((mine || []).map((r) => r.project_id))];
-      if (ids.length === 0) {
-        setTeam([]);
-      } else {
-        // 2. everybody on those projects, me included — a team list that
-        //    silently omits the reader is disorienting.
-        const { data: mates, error: matesErr } = await supabase
-          .from("project_members")
-          .select("project_id, user_id, project_role, projects(name)")
-          .eq("organization_id", orgId)
-          .in("project_id", ids);
-        if (matesErr) throw matesErr;
-
-        // 3. and their names. `project_members.user_id` is a loose uuid by
-        //    design (071: a person lives in admin_users OR developers, and one
-        //    column cannot reference two tables), so there is no join to make —
-        //    `memberships` is the one table that holds every kind of person,
-        //    and TeamPanel already reads it from the browser the same way.
-        //
-        //    A team list of role badges with no names is not a team list.
-        const userIds = [...new Set((mates || []).map((m) => m.user_id))];
-        const { data: people } = await supabase
-          .from("memberships")
-          .select("user_id, email")
-          .eq("organization_id", orgId)
-          .in("user_id", userIds);
-        const emailOf = new Map((people || []).map((p) => [String(p.user_id), p.email]));
-
-        setTeam(
-          (mates || []).map((m) => ({
-            ...m,
-            email: emailOf.get(String(m.user_id)) || null,
-            isMe: String(m.user_id) === String(me),
-          }))
-        );
-      }
+    if (panels.team) try {
+      const result = await loadMyTypedTeam(supabase, getOrgContext());
+      if (!active()) return;
+      setTeam(result);
     } catch {
-      setTeam(null);
-      missing.push("your team");
+      if (!active()) return;
+      setTeam(null); missing.push('your team');
     }
-
+    if (!active()) return;
+    setLoadedScope(scope);
     setFailed(missing);
     setLoading(false);
-  }, []);
+  }, [scope, panels.productivity, panels.activity, panels.team]);
 
   useEffect(() => {
     load();
+    return () => { generation.current += 1; };
   }, [load]);
 
   const byProject = useMemo(() => {
     const map = new Map();
     for (const row of team || []) {
       const name = row.projects?.name || "Project";
-      if (!map.has(row.project_id)) map.set(row.project_id, { name, members: [] });
+      if (!map.has(row.project_id)) map.set(row.project_id, { id: row.project_id, name, members: [] });
       map.get(row.project_id).members.push(row);
     }
     return [...map.values()];
@@ -169,7 +144,7 @@ export default function MyActivity() {
     return rows.reduce((sum, r) => sum + (Number(r.keystrokes ?? r.key_count ?? 0) || 0), 0);
   }, [activity]);
 
-  if (loading) {
+  if (loading || loadedScope !== scope) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-8 w-48" />
@@ -181,11 +156,11 @@ export default function MyActivity() {
 
   // Only when EVERY panel failed. Two out of three working is a screen worth
   // showing, with a line saying what is not on it.
-  if (failed.length === 3) {
+  if (failed.length > 0 && failed.length === Object.values(panels).filter(Boolean).length) {
     return (
       <ErrorState
         title="Nothing could be loaded"
-        description="None of your activity panels answered. This is usually a connection problem rather than a permission one."
+        description="Your permitted activity panels could not be loaded. Retry or check your access."
         onRetry={load}
       />
     );
@@ -204,7 +179,7 @@ export default function MyActivity() {
         </div>
       )}
 
-      {productivity && (
+      {panels.productivity && productivity && (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
@@ -255,11 +230,11 @@ export default function MyActivity() {
         </>
       )}
 
-      <Section
+      {panels.activity && <Section
         title="Recorded activity"
         description="What the desktop tracker has recorded against your account."
       >
-        {!activity || (activity.data || []).length === 0 ? (
+        {failed.includes("your recorded activity") ? <ErrorState description="Could not load your recorded activity." onRetry={load} /> : !activity || (activity.data || []).length === 0 ? (
           <EmptyState
             icon={Keyboard}
             title="Nothing recorded"
@@ -280,13 +255,13 @@ export default function MyActivity() {
             />
           </div>
         )}
-      </Section>
+      </Section>}
 
-      <Section
+      {panels.team && <Section
         title="Who I am working with"
         description="Everybody on the projects you are a member of."
       >
-        {!team || byProject.length === 0 ? (
+        {failed.includes("your team") ? <ErrorState description="Could not load your team." onRetry={load} /> : !team || byProject.length === 0 ? (
           <EmptyState
             icon={Users}
             title="No project team yet"
@@ -295,12 +270,12 @@ export default function MyActivity() {
         ) : (
           <div className="space-y-4">
             {byProject.map((p) => (
-              <div key={p.name} className="rounded-lg border border-border p-3">
+              <div key={p.id} className="rounded-lg border border-border p-3">
                 <p className="text-sm font-medium text-foreground">{p.name}</p>
                 <ul className="mt-2 space-y-1">
                   {p.members.map((m) => (
                     <li
-                      key={`${p.name}-${m.user_id}`}
+                      key={`${p.name}-${m.user_type}-${m.user_id}`}
                       className="flex items-center justify-between gap-3 text-sm"
                     >
                       <span className="min-w-0 truncate text-foreground">
@@ -320,7 +295,7 @@ export default function MyActivity() {
             ))}
           </div>
         )}
-      </Section>
+      </Section>}
     </div>
   );
 }

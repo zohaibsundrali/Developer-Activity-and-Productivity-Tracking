@@ -1,3 +1,4 @@
+import { getOrgContext } from "@/utils/orgContext";
 import { supabase } from "@/utils/supabaseClient";
 import { authFetch } from "@/utils/authFetch";
 import { validatePersonName } from "@/utils/nameValidation";
@@ -251,8 +252,16 @@ export async function createStaffMember({ orgId, actor, name, email, password, r
   // Best effort from here down: the account works, and failing to announce it
   // must not be reported as the add having failed.
   try {
+    const context = getOrgContext();
+    if (!context?.userId || context.organizationId !== orgId || !['admin', 'developer'].includes(context.userType)) {
+      return { error: null, code: null, developer: created };
+    }
     await supabase.from("notifications").insert([
       {
+        organization_id: orgId,
+        ...(context.userType === 'admin'
+          ? { admin_id: context.userId, admin_recipient_type: 'admin' }
+          : { developer_id: context.userId }),
         message: `New ${String(role).replace(/_/g, " ")} "${cleanName}" added successfully`,
         type: "success",
         created_at: new Date().toISOString(),

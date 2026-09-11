@@ -190,6 +190,7 @@ import { allowed, permissionSetLoaded } from "@/utils/permissions";
 // Browser navigation consults the effective set, including per-user denies.
 // Middleware imports sectionAccess directly and remains independent of this.
 export function canAccessAdminSection(section, role) {
+  if (section === 'my-activity' && permissionSetLoaded()) return ['productivity.view_own', 'monitoring.view_own', 'team.view_own'].some(key => allowed(key));
   const key = section === "team" ? "hierarchy.view" : SECTION_PERMISSIONS[section];
   if (permissionSetLoaded() && key) return allowed(key);
   return roleCanAccessSection(section, role);

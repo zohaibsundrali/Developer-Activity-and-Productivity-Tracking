@@ -1,18 +1,15 @@
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
+import { savePlanningRecord } from "@/utils/planningRecords";
 import { PROJECT_STATUS } from "@/utils/projectStatus";
+import { requireTaskMutation } from "@/utils/developerPlanMutations";
 import { notify, windowedDedupeKey } from "@/utils/notifications";
 
 // How close together two identical status changes have to be to count as one
 // event rather than two. Covers the mechanical repeats — an automation replay,
 // two drags racing the same read of the row — and nothing a person does.
 const STATUS_REPLAY_WINDOW_MS = 2 * 60 * 1000;
-
-// The same idea for assignment. A task legitimately changes hands more than
-// once a day — cover for someone off sick, then hand it back — so a per-day key
-// would announce the first move and silence the one that actually matters.
-const ASSIGN_REPLAY_WINDOW_MS = 2 * 60 * 1000;
 
 /**
  * Data access for the Enterprise Project Management module.
@@ -203,10 +200,18 @@ export async function createTask(projectId, patch) {
 // ({ projectId, action, meta }) an entry is written to the pm_activity feed.
 // Callers that omit logCtx behave exactly as before (no logging).
 export async function updateTask(taskId, patch, logCtx = null) {
-  const { error } = await supabase
-    .from("developer_tasks")
-    .update({ ...patch, updated_at: new Date().toISOString() })
-    .eq("id", taskId);
+  let error = null;
+  try {
+    const orgId = getOrgId();
+    if (!orgId) throw new Error("Your organization could not be verified. Please sign in again.");
+    await requireTaskMutation(supabase
+      .from("developer_tasks")
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq("id", taskId)
+      .eq("organization_id", orgId), taskId);
+  } catch (failure) {
+    error = failure;
+  }
   if (!error && logCtx) {
     try {
       await logActivity({
@@ -375,127 +380,26 @@ export async function moveTask(taskId, { status, position }, logCtx = null) {
   return changeTaskStatus(taskId, status, { position, logCtx });
 }
 
-// Assign a task, tell the new assignee, and fire "assigned" automations.
-//
-// Assignment was the one workflow event that produced no notification: the
-// person picked up work only by noticing it on a board. It is also why the
-// "assigned" automation trigger never fired - the drawer wrote the column
-// directly and never came through here.
-/**
- * A hand-over is two pieces of news and neither of them is "you have been
- * assigned a task".
- *
- * The new owner needs to know the work is already underway and whose desk it
- * came off; the previous owner needs to know it is no longer theirs, and that
- * one has no other way of reaching them — a task simply vanishes from their
- * board with nothing to say it was deliberate.
- *
- * Both names come from one directory read rather than one per recipient.
- */
-async function notifyReassignment(task, previousId, nextId) {
-  const { data: people } = await supabase
-    .from("developers")
-    .select("id, name, email")
-    .in("id", [previousId, nextId]);
-
-  const nameById = new Map(
-    (people || []).map((p) => [String(p.id), p.name || (p.email ? p.email.split("@")[0] : "")])
-  );
-  const previousName = nameById.get(String(previousId)) || "a colleague";
-  const nextName = nameById.get(String(nextId)) || "a colleague";
-  const title = task.task_title || "A task";
-
-  // The other person's name is in the message as well as the metadata: a card
-  // that renders the structured form is an improvement, not a prerequisite, and
-  // the notification has to make sense on its own either way.
-  const metadata = {
-    taskTitle: task.task_title || null,
-    previousAssigneeId: previousId,
-    previousAssigneeName: previousName,
-    newAssigneeId: nextId,
-    newAssigneeName: nextName,
-  };
-  // One key per transition, so the two recipients' rows never collide and a
-  // hand-back later in the day is still its own event.
-  const kind = `reassigned:${previousId}>${nextId}`;
-  const common = {
-    audience: "developer",
-    category: "assignment",
-    taskId: task.id,
-    projectId: task.project_id || null,
-    metadata,
-  };
-
-  await Promise.all([
-    notify({
-      ...common,
-      recipientId: nextId,
-      type: "task_reassigned",
-      title: "Task reassigned to you",
-      message: `"${title}" moved to you from ${previousName}.`,
-      dedupeKey: windowedDedupeKey(kind, task.id, nextId, ASSIGN_REPLAY_WINDOW_MS),
-    }),
-    notify({
-      ...common,
-      recipientId: previousId,
-      type: "task_reassigned_away",
-      title: "Task reassigned",
-      message: `"${title}" moved from you to ${nextName}.`,
-      dedupeKey: windowedDedupeKey(kind, task.id, previousId, ASSIGN_REPLAY_WINDOW_MS),
-    }),
-  ]);
-}
-
+// Assignment notifications are generated from the database's actual OLD/NEW
+// rows in the same transaction, including initial assignment and removal.
 export async function assignTask(taskId, developerId, logCtx = null) {
-  // Who held the task before the write. The update overwrites developer_id, so
-  // "moved from X to Y" cannot be reconstructed afterwards — and a read that
-  // fails costs the hand-over notice, never the assignment itself.
-  let previousId = null;
-  try {
-    const { data: before } = await supabase
-      .from("developer_tasks")
-      .select("developer_id")
-      .eq("id", taskId)
-      .single();
-    previousId = before?.developer_id || null;
-  } catch {
-    /* the assignment does not depend on knowing who held it */
-  }
-
   const res = await updateTask(taskId, { developer_id: developerId || null }, logCtx);
   if (res.error || !developerId) return res;
 
   try {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("developer_tasks")
       .select("id, status, priority, task_type, developer_id, project_id, labels, task_title, organization_id")
+      .eq("organization_id", getOrgId())
       .eq("id", taskId)
       .single();
-    if (!data) return res;
-
-    // Re-saving the same assignee is not a hand-over, so it keeps the plain
-    // "assigned to you" notice. A genuine hand-over gets the pair instead of
-    // that one — telling the new owner both that they were assigned it and that
-    // it moved to them is the same fact twice.
-    if (previousId && String(previousId) !== String(developerId)) {
-      await notifyReassignment(data, previousId, developerId);
-    } else {
-      await supabase.from("notifications").insert({
-        organization_id: data.organization_id || getOrgId(),
-        developer_id: developerId,
-        task_id: taskId,
-        project_id: data.project_id || null,
-        type: "task_assigned",
-        title: "Task assigned to you",
-        message: `You have been assigned "${data.task_title || "a task"}".`,
-        read: false,
-      });
-    }
-
+    // A concurrent assignment may already have superseded this one. Its
+    // database notice is durable; don't run an automation for another target.
+    if (error || !data || data.developer_id !== developerId) return res;
     const { runAutomations } = await import("@/utils/automation");
     await runAutomations({ event: "assigned", task: data, projectId: data.project_id });
   } catch {
-    /* neither the notification nor the automation should fail the assignment */
+    /* automation delivery remains best-effort after the committed assignment */
   }
   return res;
 }
@@ -505,41 +409,23 @@ export async function loadSprints(projectId) {
   const orgId = getOrgId();
   let q = supabase.from("sprints").select("*").eq("organization_id", orgId).order("sort_order");
   if (projectId) q = q.eq("project_id", projectId);
-  const { data } = await q;
+  const { data, error } = await q;
+  if (error) throw error;
   return data || [];
 }
 export async function loadEpics(projectId) {
   const orgId = getOrgId();
   let q = supabase.from("epics").select("*").eq("organization_id", orgId);
   if (projectId) q = q.eq("project_id", projectId);
-  const { data } = await q;
+  const { data, error } = await q;
+  if (error) throw error;
   return data || [];
 }
 export async function saveSprint(projectId, patch) {
-  const orgId = getOrgId();
-  if (patch.id) {
-    const { error } = await supabase.from("sprints").update(patch).eq("id", patch.id);
-    return { error };
-  }
-  const { data, error } = await supabase
-    .from("sprints")
-    .insert({ organization_id: orgId, project_id: projectId, ...patch })
-    .select()
-    .single();
-  return { sprint: data, error };
+  return savePlanningRecord(supabase, getOrgId(), "sprints", projectId, patch);
 }
 export async function saveEpic(projectId, patch) {
-  const orgId = getOrgId();
-  if (patch.id) {
-    const { error } = await supabase.from("epics").update(patch).eq("id", patch.id);
-    return { error };
-  }
-  const { data, error } = await supabase
-    .from("epics")
-    .insert({ organization_id: orgId, project_id: projectId, ...patch })
-    .select()
-    .single();
-  return { epic: data, error };
+  return savePlanningRecord(supabase, getOrgId(), "epics", projectId, patch);
 }
 
 // ---- Task detail sub-resources --------------------------------------
@@ -805,25 +691,39 @@ export async function addChecklistItem(taskId, text) {
   return { item: data, error };
 }
 export async function toggleChecklistItem(id, done) {
-  const { error } = await supabase.from("task_checklists").update({ done }).eq("id", id);
-  return { error };
+  const orgId = getOrgId();
+  if (!orgId) return { error: new Error("Organization context is required") };
+  const { data, error } = await supabase.from("task_checklists").update({ done })
+    .eq("organization_id", orgId).eq("id", id).select("id");
+  if (error) return { error };
+  if (!Array.isArray(data) || data.length !== 1 || data[0]?.id !== id) {
+    return { error: new Error("Checklist item was not changed. Refresh the task and check your access.") };
+  }
+  return { error: null };
 }
 
 export async function toggleWatcher(taskId, userId, userType, role = "watcher", on = true) {
   const orgId = getOrgId();
-  if (on) {
-    const { error } = await supabase
-      .from("task_watchers")
-      .upsert({ organization_id: orgId, task_id: taskId, user_id: userId, user_type: userType, role }, { onConflict: "task_id,user_id,role" });
-    return { error };
+  if (!orgId || !taskId || !userId || !['admin', 'developer'].includes(userType) || !['watcher', 'reviewer'].includes(role)) {
+    return { error: new Error('A valid task and typed staff identity are required.') };
   }
-  const { error } = await supabase
+  if (on) {
+    const { data, error } = await supabase
+      .from("task_watchers")
+      .upsert({ organization_id: orgId, task_id: taskId, user_id: userId, user_type: userType, role }, { onConflict: "task_id,user_type,user_id,role" })
+      .select('id').maybeSingle();
+    return { error: error || (!data ? new Error('Watcher was not saved. Refresh the task and check your permissions.') : null) };
+  }
+  const { data, error } = await supabase
     .from("task_watchers")
     .delete()
+    .eq("organization_id", orgId)
     .eq("task_id", taskId)
     .eq("user_id", userId)
-    .eq("role", role);
-  return { error };
+    .eq("user_type", userType)
+    .eq("role", role)
+    .select('id').maybeSingle();
+  return { error: error || (!data ? new Error('Watcher was not removed. Refresh the task and check your permissions.') : null) };
 }
 
 export async function addDependency(taskId, dependsOnTaskId, type = "blocks") {
@@ -910,7 +810,7 @@ async function notifySprintStatus(sprintId, status) {
 
 // Move a sprint through planned → active → completed.
 export async function setSprintStatus(sprintId, status) {
-  const { error } = await supabase.from("sprints").update({ status }).eq("id", sprintId);
+  const { error } = await savePlanningRecord(supabase, getOrgId(), "sprints", undefined, { id: sprintId, status });
   if (!error && (status === "active" || status === "completed")) {
     try {
       await notifySprintStatus(sprintId, status);
@@ -923,12 +823,13 @@ export async function setSprintStatus(sprintId, status) {
 
 // Load everything an agile view needs for one project in one shot.
 export async function loadAgile(projectId) {
-  const [sprints, epics, { tasks }] = await Promise.all([
+  const [sprints, epics, taskResult] = await Promise.all([
     loadSprints(projectId),
     loadEpics(projectId),
     loadTasks(projectId),
   ]);
-  return { sprints, epics, tasks };
+  if (taskResult.error) throw taskResult.error;
+  return { sprints, epics, tasks: taskResult.tasks };
 }
 
 // ---- Burndown ------------------------------------------------------------
@@ -1404,60 +1305,18 @@ export async function setProjectTemplate(projectId, isTemplate) {
 // Clone a project (and optionally its tasks) into a fresh project. Tasks are
 // copied with status reset to 'pending' and their PM fields preserved.
 export async function cloneProject(sourceProjectId, newName, { copyTasks = true } = {}) {
-  const orgId = getOrgId();
-  const { data: src, error: srcErr } = await supabase
-    .from("projects")
-    .select("*")
-    .eq("id", sourceProjectId)
-    .single();
-  if (srcErr || !src) return { error: srcErr || new Error("Source project not found") };
-
-  const today = new Date().toISOString().slice(0, 10);
-  const {
-    id, created_at, updated_at, // stripped
-    name, status, progress, total_tasks_count, completed_tasks_count, total_productivity_score,
-    task_plan_submitted, task_plan_status, task_plan_submitted_at, task_plan_reviewed_at,
-    task_plan_reviewed_by, task_plan_rejection_reason,
-    ...carry
-  } = src;
-  const insertRow = {
-    ...carry,
-    organization_id: orgId,
-    name: newName || `${name} (copy)`,
-    status: PROJECT_STATUS.pending,
-    progress: 0,
-    is_template: false,
-    archived: false,
-    created_at: new Date().toISOString(),
-  };
-  const { data: proj, error: projErr } = await supabase.from("projects").insert(insertRow).select().single();
-  if (projErr || !proj) return { error: projErr || new Error("Clone failed") };
-
-  if (copyTasks) {
-    const { data: srcTasks } = await supabase.from("developer_tasks").select("*").eq("project_id", sourceProjectId);
-    const rows = (srcTasks || []).map((t) => {
-      const { id: _i, created_at: _c, updated_at: _u, submitted_at, reviewed_at, reviewed_by,
-        actual_completion_date, admin_comments, rejection_reason, is_on_time, productivity_points,
-        ...keep } = t;
-      return {
-        ...keep,
-        organization_id: orgId,
-        project_id: proj.id,
-        status: "pending",
-        // A clone copies the SHAPE of the work, not who was told about it.
-        // Carrying client_visible across would put visible tasks into a project
-        // whose client links have not been set up yet — invisible today, and
-        // exposed the moment anyone attaches a client to it.
-        client_visible: false,
-        start_date: t.start_date || today,
-        end_date: t.end_date || today,
-        created_at: new Date().toISOString(),
-      };
-    });
-    if (rows.length) await supabase.from("developer_tasks").insert(rows);
-  }
-  await logActivity({ projectId: proj.id, entityType: "project", entityId: proj.id, action: "created", meta: { clonedFrom: sourceProjectId, name: insertRow.name } });
-  return { project: proj, error: null };
+  const { data, error } = await supabase.rpc('clone_project', {
+    p_source: sourceProjectId, p_name: newName || null, p_copy_tasks: copyTasks,
+  });
+  if (error) return { error };
+  if (!data?.project?.id) return { error: new Error('Could not confirm project cloning. Refresh before retrying.') };
+  // The transaction has committed. A best-effort feed failure must not make a
+  // successful clone look unsuccessful and cause the user to create it twice.
+  try {
+    await logActivity({ projectId: data.project.id, entityType: 'project', entityId: data.project.id,
+      action: 'created', meta: { clonedFrom: sourceProjectId, name: data.project.name } });
+  } catch { /* The cloned project remains the authoritative result. */ }
+  return { project: data.project, error: null };
 }
 
 // ---- Project health (derived, no I/O) -------------------------------------

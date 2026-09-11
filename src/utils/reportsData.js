@@ -1,5 +1,6 @@
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId } from "@/utils/orgContext";
+import { authFetch } from "@/utils/authFetch";
 import { loadEmployees } from "@/utils/employeesData";
 import { normalizeStatus, sumSeconds } from "@/utils/pmData";
 
@@ -66,7 +67,7 @@ async function fetchPaged(buildQuery, maxRows) {
   for (let offset = 0; offset < maxRows; offset += PAGE_SIZE) {
     const size = Math.min(PAGE_SIZE, maxRows - offset);
     const { data, error } = await buildQuery().range(offset, offset + size - 1);
-    if (error || !data) return { rows, truncated: false, error: error || null };
+    if (error || !Array.isArray(data)) throw new Error("Report data lookup failed");
     rows.push(...data);
     if (data.length < size) return { rows, truncated: false, error: null };
   }
@@ -99,8 +100,15 @@ export function defaultRange() {
  * the row ceilings above, past which the headline status totals come from the
  * database rather than from the rows we managed to fetch).
  */
-export async function loadReportData(range) {
-  const orgId = getOrgId();
+export async function loadReportData(range = defaultRange()) {
+  const query = new URLSearchParams({ from: range.from, to: range.to });
+  const response = await authFetch(`/api/reports?${query}`);
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.detail || body.error || "Reports unavailable");
+  return body;
+}
+
+export async function loadReportDataForClient(range, client = supabase, orgId = getOrgId()) {
   if (!orgId) return emptyBundle();
 
   const { from, to } = range || defaultRange();
@@ -114,7 +122,7 @@ export async function loadReportData(range) {
   const [projRes, taskRes, logRes, empRes, statusCounts] = await Promise.all([
     fetchPaged(
       () =>
-        supabase
+        client
           .from("projects")
           .select("id, name, status, progress, deadline, start_date, end_date, archived, created_at")
           .eq("organization_id", orgId)
@@ -124,7 +132,7 @@ export async function loadReportData(range) {
     ),
     fetchPaged(
       () =>
-        supabase
+        client
           .from("developer_tasks")
           .select(
             "id, project_id, developer_id, task_title, status, priority, task_type, story_points, due_date, start_date, end_date, actual_completion_date, is_on_time, productivity_points, reviewed_at, created_at, updated_at"
@@ -135,7 +143,7 @@ export async function loadReportData(range) {
     ),
     fetchPaged(
       () =>
-        supabase
+        client
           .from("task_time_logs")
           .select("id, task_id, project_id, developer_id, started_at, ended_at, seconds, source")
           .eq("organization_id", orgId)
@@ -145,8 +153,8 @@ export async function loadReportData(range) {
           .order("id", { ascending: true }),
       MAX_TIME_LOG_ROWS
     ),
-    loadEmployees(orgId),
-    loadStatusCounts(orgId),
+    loadEmployees(orgId, client),
+    loadStatusCounts(orgId, client),
   ]);
 
   const projects = projRes.rows;
@@ -154,7 +162,7 @@ export async function loadReportData(range) {
   const timeLogs = logRes.rows;
   const employees = empRes?.employees || [];
 
-  const sessionRes = await loadDesktopSessions(employees, fromIso, toIso);
+  const sessionRes = await loadDesktopSessions(employees, fromIso, toIso, client);
 
   return {
     projects,
@@ -195,9 +203,9 @@ function emptyBundle() {
  * Returns null if the counts are unavailable, so callers can fall back to
  * bucketing the rows they already hold.
  */
-async function loadStatusCounts(orgId) {
+async function loadStatusCounts(orgId, client) {
   const base = () =>
-    supabase.from("developer_tasks").select("id", { count: "exact", head: true }).eq("organization_id", orgId);
+    client.from("developer_tasks").select("id", { count: "exact", head: true }).eq("organization_id", orgId);
   // These counts are an optimization, never a hard dependency — a failure here
   // must not take the whole report down with it.
   const countOf = async (query) => {
@@ -232,16 +240,16 @@ async function loadStatusCounts(orgId) {
  * organization_id, so we match on user_id AND user_email and merge. There is no
  * developer_id column on this table - the desktop writer identifies a session by
  * user_id / user_email only.
- * Degrades to [] if the table is unavailable — reports still render.
+ * Lookup failures reject the report rather than displaying misleading zero hours.
  */
-async function loadDesktopSessions(employees, fromIso, toIso) {
+async function loadDesktopSessions(employees, fromIso, toIso, client) {
   const ids = (employees || []).map((e) => e.userId).filter(Boolean);
   const emails = (employees || []).map((e) => e.email).filter(Boolean);
   if (!ids.length && !emails.length) return { rows: [], truncated: false };
 
   const cols = "session_id, user_id, user_email, start_time, end_time, status, total_duration, productivity_score, created_at";
   const base = () => {
-    let q = supabase.from("productivity_sessions").select(cols);
+    let q = client.from("productivity_sessions").select(cols);
     if (fromIso) q = q.gte("start_time", fromIso);
     if (toIso) q = q.lte("start_time", toIso);
     return q.order("start_time", { ascending: false });
@@ -261,15 +269,11 @@ async function loadDesktopSessions(employees, fromIso, toIso) {
 
   let rows = [];
   let truncated = false;
-  try {
-    const results = await Promise.all(queries.map((run) => run()));
-    results.forEach((r) => {
-      rows = rows.concat(r.rows);
-      truncated = truncated || r.truncated;
-    });
-  } catch {
-    return { rows: [], truncated: false };
-  }
+  const results = await Promise.all(queries.map((run) => run()));
+  results.forEach((r) => {
+    rows = rows.concat(r.rows);
+    truncated = truncated || r.truncated;
+  });
 
   // Dedupe: a session can match on both id and email.
   const seen = new Set();

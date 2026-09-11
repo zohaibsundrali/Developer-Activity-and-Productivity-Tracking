@@ -152,6 +152,9 @@ describe("every route that uses the service role", () => {
     // re-read scoped to the org before its milestones, amendments or status are
     // touched, so an id from another tenant answers 404; and an amendment is
     // written from the row that was read back, never from the body.
-    expect(usingService.length).toBe(69);
+    // Reports and feature access verify billing using the service role; report rows use the caller JWT.
+    // Atomic task-plan RPC receives only the verified organization and developer identity.
+    // Reviewer candidates prove caller task RLS access before the typed service lookup.
+    expect(usingService.length).toBe(73);
   });
 });

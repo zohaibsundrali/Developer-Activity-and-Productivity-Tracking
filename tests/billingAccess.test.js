@@ -292,6 +292,6 @@ describe("write routes with no plan meter still refuse a locked workspace", () =
   ])("%s calls requireUnlocked", (file) => {
     const source = read(file);
     expect(source).toMatch(/import \{ requireUnlocked \} from '@\/utils\/entitlements'/);
-    expect(source).toMatch(/requireUnlocked\(serviceClient\(\), auth\.orgId\)/);
+    expect(source).toMatch(/requireUnlocked\((?:serviceClient\(\)|svc), auth\.orgId\)/);
   });
 });

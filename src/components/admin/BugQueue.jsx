@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Bug, Plus, ArrowRight, Monitor, ListOrdered } from "lucide-react";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
+import { taskUiPermissions } from "@/utils/taskUiPermissions";
+import { allowed } from "@/utils/permissions";
 import { createTask, changeTaskStatus, allowedTransitions } from "@/utils/pmData";
 import { BUG_STAGES, bugStage, SEVERITIES, severityMeta, sortBugs, bugCounts } from "@/utils/bugs";
 import { showError, showSuccess } from "@/utils/alerts";
@@ -80,6 +82,7 @@ export default function BugQueue() {
   const [form, setForm] = useState(EMPTY);
 
   const me = getOrgContext();
+  const canReport = taskUiPermissions({ context: me, allowed }).createBug;
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const load = useCallback(async () => {
@@ -91,7 +94,7 @@ export default function BugQueue() {
         supabase
           .from("developer_tasks")
           .select(
-            "id, task_title, task_description, status, severity, steps_to_reproduce, environment, project_id, developer_id, created_at"
+            "id, organization_id, task_type, task_title, task_description, status, severity, steps_to_reproduce, environment, project_id, developer_id, created_at"
           )
           .eq("organization_id", orgId)
           .eq("task_type", "bug")
@@ -134,7 +137,7 @@ export default function BugQueue() {
 
   const report = async (e) => {
     e.preventDefault();
-    if (busy) return;
+    if (busy || !taskUiPermissions({ context: getOrgContext(), allowed }).createBug) return;
     if (!form.projectId || !form.title.trim()) {
       showError("Almost there", "Pick a project and give the bug a title.");
       return;
@@ -167,7 +170,7 @@ export default function BugQueue() {
 
   const move = async (bug) => {
     const next = NEXT_MOVE[bug.status];
-    if (!next || busy) return;
+    if (!next || busy || !taskUiPermissions({ task: bug, context: getOrgContext(), allowed }).move) return;
     // Ask the shared rule rather than trusting the table above it: if the
     // pipeline ever changes, this refuses instead of writing something the
     // transition guard would reject anyway.
@@ -193,13 +196,13 @@ export default function BugQueue() {
         title={sectionTitle("bugs")}
         description="Reported defects, worst first. Closing happens in Task Reviews, where the retest is recorded."
         actions={
-          <Button variant="outline" onClick={() => setReporting((v) => !v)}>
+          canReport ? <Button variant="outline" onClick={() => setReporting((v) => !v)}>
             {reporting ? "Cancel" : <><Plus aria-hidden="true" className="h-4 w-4" /><span className="ml-1.5">Report a bug</span></>}
-          </Button>
+          </Button> : null
         }
       />
 
-      {reporting ? (
+      {reporting && canReport ? (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Report a bug</CardTitle>
@@ -387,7 +390,7 @@ export default function BugQueue() {
                     ) : null}
 
                     <div className="flex flex-wrap items-center gap-2 pt-1">
-                      {next ? (
+                      {next && taskUiPermissions({ task: bug, context: me, allowed }).move ? (
                         <Button onClick={() => move(bug)} disabled={busy}>
                           <ArrowRight aria-hidden="true" className="h-4 w-4" />
                           <span className="ml-1.5">{next.label}</span>

@@ -5,7 +5,7 @@ import { supabase } from '@/utils/supabaseClient'; // Correct path
 import { showInfo } from "@/utils/alerts";
 // Scheme check for the one query parameter this screen FOLLOWS rather than
 // renders. See handleDownloadFile.
-import { safeHref } from "@/utils/safeUrl";
+import { safeProjectFileValue, resolveProjectFileUrl } from "@/utils/projectFiles";
 import {
   ArrowLeft,
   CalendarClock,
@@ -97,11 +97,11 @@ export default function ProjectDetails() {
     // the row lookup fails, both of which the person who crafted the link
     // controls, and `file_url` is the only field here that gets handed to the
     // browser as a URL. `javascript:` in it meant `window.open` executing
-    // script in this page's origin with the signed-in session. safeHref keeps
+    // script in this page's origin with the signed-in session. The shared file resolver keeps
     // http(s) and site-relative paths and returns "" for everything else,
     // including the control-character `java\nscript:` spelling that walks
     // straight past a prefix check.
-    file_url: safeHref(searchParams.get('file_url')),
+    file_url: safeProjectFileValue(searchParams.get('file_url')),
     file_name: searchParams.get('file_name'),
     assigned_developer_name: searchParams.get('assigned_developer_name'),
     assigned_developer_email: searchParams.get('assigned_developer_email')
@@ -158,7 +158,7 @@ export default function ProjectDetails() {
   // other branch is `setProjectData(data)` off a `select('*')`, so a stored
   // `javascript:` in projects.file_url would be the same bug one hop later.
   // Nothing below may read `project.file_url` directly.
-  const fileHref = safeHref(project.file_url);
+  const storedFile = safeProjectFileValue(project.file_url);
 
   // Format date function. "Invalid date" is a developer's error message, not a
   // date — an unusable value now reads the same as an absent one.
@@ -219,12 +219,13 @@ export default function ProjectDetails() {
   // `javascript:` URL opened that way runs in this document's origin, so a link
   // sent to a signed-in developer executed as them. `fileHref` is "" for any
   // scheme that is not http(s), and "" is not opened.
-  const handleDownloadFile = () => {
+  const handleDownloadFile = async () => {
+    const fileHref = await resolveProjectFileUrl(storedFile);
     if (!fileHref) {
-      showInfo("No file", "No file available for download.");
+      showInfo("No file", "The file is unavailable or you no longer have access.");
       return;
     }
-    window.open(fileHref, '_blank');
+    window.open(fileHref, '_blank', 'noopener,noreferrer');
   };
 
   // ✅ FIXED: Back navigation to developer dashboard
@@ -484,7 +485,7 @@ export default function ProjectDetails() {
         </Section>
 
         <Section title="Files &amp; resources">
-          {fileHref ? (
+          {storedFile ? (
             <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 shadow-card sm:flex-row sm:items-center sm:justify-between sm:p-5">
               <div className="flex min-w-0 items-center gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">

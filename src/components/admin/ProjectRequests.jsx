@@ -96,6 +96,8 @@ export default function ProjectRequests() {
   const [est, setEst] = useState({ cost: "", hours: "", days: "", notes: "" });
 
   const canDecide = allowed("proposal.decide");
+  const canCreateProject = allowed("project.create");
+  const canAssignManager = allowed("project.assign_manager");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -113,7 +115,7 @@ export default function ProjectRequests() {
         supabase.from("clients").select("id, name, company, email").eq("organization_id", orgId),
         supabase
           .from("memberships")
-          .select("user_id, email, role, status")
+          .select("user_id, user_type, email, role, status")
           .eq("organization_id", orgId)
           .eq("status", "active")
           // Not a gate — this asks who to NOTIFY, and the answer is whoever
@@ -146,6 +148,10 @@ export default function ProjectRequests() {
 
   const decide = async (decision) => {
     if (!open || busy) return;
+    if (decision === 'accepted' && (!canCreateProject || (managerId && !canAssignManager))) {
+      showError('Not allowed', 'Accepting requires project creation permission; assigning a manager also requires manager assignment permission.');
+      return;
+    }
     if ((decision === "rejected" || decision === "needs_info") && !reason.trim()) {
       showError("A reason is required", "The client will read this — say what is missing or why.");
       return;
@@ -158,7 +164,8 @@ export default function ProjectRequests() {
         body: JSON.stringify({
           decision,
           reason: reason.trim(),
-          managerId: decision === "accepted" ? managerId || null : null,
+          managerId: decision === "accepted" ? managers.find(m => `${m.user_type}:${m.user_id}` === managerId)?.user_id || null : null,
+          managerType: decision === "accepted" ? managers.find(m => `${m.user_type}:${m.user_id}` === managerId)?.user_type || null : null,
           ...(decision === "estimate"
             ? {
                 estimatedCost: est.cost,
@@ -400,7 +407,7 @@ export default function ProjectRequests() {
                             </Button>
                           </div>
 
-                          <Field
+                          {canAssignManager ? <Field
                             label="Assign a project manager"
                             htmlFor={`mgr-${p.id}`}
                             hint="Only used when you accept. They will be told the project is theirs."
@@ -413,12 +420,12 @@ export default function ProjectRequests() {
                             >
                               <option value="">Decide later</option>
                               {managers.map((m) => (
-                                <option key={m.user_id} value={m.user_id}>
+                                <option key={`${m.user_type}:${m.user_id}`} value={`${m.user_type}:${m.user_id}`}>
                                   {m.email} — {m.role}
                                 </option>
                               ))}
                             </select>
-                          </Field>
+                          </Field> : null}
 
                           <Field
                             label="Note to the client"
@@ -437,7 +444,7 @@ export default function ProjectRequests() {
                           </Field>
 
                           <div className="flex flex-wrap gap-2">
-                            <Button onClick={() => decide("accepted")} disabled={busy}>
+                            <Button onClick={() => decide("accepted")} disabled={busy || !canCreateProject}>
                               <Check aria-hidden="true" className="h-4 w-4" />
                               <span className="ml-1.5">
                                 {p.estimated_cost != null || p.estimated_timeline_days != null

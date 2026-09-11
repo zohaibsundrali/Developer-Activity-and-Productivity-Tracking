@@ -185,7 +185,7 @@ export default function ProjectOverview() {
     const runQuery = (withArchived) => {
       let q = supabase
         .from("projects")
-        .select("id, name, status, progress, deadline, end_date, start_date, is_template, archived, manager_id")
+        .select("id, name, status, progress, deadline, end_date, start_date, is_template, archived, manager_id, manager_type")
         .eq("organization_id", id);
       if (withArchived) q = q.eq("archived", false);
       return q.order("created_at", { ascending: false });
@@ -287,7 +287,7 @@ export default function ProjectOverview() {
       (employees || [])
         .filter(
           (e) =>
-            e.status === "active" && MANAGEABLE_BY_ROLES.includes(e.role)
+            ["admin", "developer"].includes(e.userType) && e.status === "active" && MANAGEABLE_BY_ROLES.includes(e.role)
         )
         .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""))),
     [employees]
@@ -298,14 +298,18 @@ export default function ProjectOverview() {
   const canAssignManager = allowed("project.assign_manager");
 
   const saveManager = useCallback(
-    async (managerId) => {
+    async (managerKey) => {
+      const selected = managerOptions.find(m => `${m.userType}:${m.userId}` === managerKey);
+      if (managerKey && !selected) { showError("Not changed", "Choose an available typed manager."); return; }
+      const managerId = selected?.userId || null;
+      const managerType = selected?.userType || null;
       if (!projectId) return;
       setSavingManager(true);
       try {
         const res = await authFetch(`/api/projects/${projectId}/manager`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ managerId }),
+          body: JSON.stringify({ managerId, managerType }),
         });
         const data = await res.json().catch(() => ({}));
         // authFetch RESOLVES on a 4xx rather than throwing, so the response has
@@ -323,7 +327,7 @@ export default function ProjectOverview() {
         setSavingManager(false);
       }
     },
-    [projectId, loadProjects]
+    [projectId, loadProjects, managerOptions]
   );
 
   const actorNameById = useMemo(() => {
@@ -622,15 +626,16 @@ export default function ProjectOverview() {
                     <select
                       id="project-manager"
                       className={`${CONTROL_CLASS} w-full`}
-                      value={project?.manager_id || ""}
+                      value={project?.manager_id && project?.manager_type ? `${project.manager_type}:${project.manager_id}` : project?.manager_id ? "legacy-manager" : ""}
                       onChange={(e) => saveManager(e.target.value || null)}
                       disabled={!canAssignManager || savingManager}
                     >
                       <option value="">
                         {canAssignManager ? "— No manager —" : "No manager"}
                       </option>
+                      {project?.manager_id && !project?.manager_type ? <option value="legacy-manager" disabled>Manager identity needs verification</option> : null}
                       {managerOptions.map((m) => (
-                        <option key={m.userId} value={m.userId}>
+                        <option key={`${m.userType}:${m.userId}`} value={`${m.userType}:${m.userId}`}>
                           {m.name} · {labelize(m.role)}
                         </option>
                       ))}

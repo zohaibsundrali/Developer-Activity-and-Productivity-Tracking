@@ -1,7 +1,8 @@
+import { canReceiveSignalNotice } from "@/utils/sensitiveNotificationAudience";
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { resolveEntitlement, getUsage } from "@/utils/entitlements";
-import { runDetectors, filterForViewer, DEFAULTS } from "@/utils/signals";
+import { runDetectors, signalReportingVisibility, DEFAULTS } from "@/utils/signals";
 import { authCan } from "@/utils/serverPermissions";
 
 export const dynamic = "force-dynamic";
@@ -48,7 +49,7 @@ export async function GET(request) {
     // team_lead, which is exactly what `signal.view` grants — the two were the
     // same set written down twice, which is how they stop being the same set.
     // `authCan` also honours a per-person override; a role array cannot.
-    if (!authCan(auth, "signal.view")) {
+    if (!["admin", "developer"].includes(auth.userType) || !authCan(auth, "signal.view")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -59,10 +60,8 @@ export async function GET(request) {
     const bundle = await collect(svc, auth, now, since);
     // One shared, pure implementation of the visibility rule — the nightly job
     // in /api/cron applies the same function to the same signals.
-    const signals = filterForViewer(runDetectors(bundle, now), {
-      role: auth.role,
-      visiblePeople: bundle.visiblePeople,
-    });
+    const signals = runDetectors(bundle, now).filter(signal =>
+      canReceiveSignalNotice(auth, signal, bundle.reportsTo));
 
     return NextResponse.json({
       generatedAt: now.toISOString(),
@@ -129,12 +128,7 @@ export async function collect(svc, auth, now, since) {
       // and asking for it makes PostgREST reject the whole select, which would
       // have shown up only as an empty panel with `degraded: true`.
       svc.from("projects").select("id, name").eq("organization_id", orgId).limit(2000),
-      svc
-        .from("memberships")
-        .select("user_id, email, role, reports_to, status")
-        .eq("organization_id", orgId)
-        .eq("status", "active")
-        .limit(5000),
+      loadReportingHistory(svc, orgId),
     ]);
 
   // Names for the messages. `developers` is the profile table sessions point at.
@@ -172,26 +166,7 @@ export async function collect(svc, auth, now, since) {
   // fully populated reporting tree, and the cron never delivered one to a
   // manager at all. Registering both spellings is what makes the rule work
   // whichever identifier the session rows happen to carry.
-  const visiblePeople = new Set();
-  const reportsTo = {};
-  const me = new Set(
-    [auth.appUserId, auth.userId, auth.email]
-      .filter(Boolean)
-      .map((v) => String(v).trim().toLowerCase())
-  );
-
-  for (const m of membersRes.data || []) {
-    const aliases = [m.user_id, m.email]
-      .filter(Boolean)
-      .map((v) => String(v).trim().toLowerCase());
-
-    if (m.reports_to) {
-      for (const alias of aliases) reportsTo[alias] = String(m.reports_to).trim().toLowerCase();
-    }
-    if (m.reports_to && me.has(String(m.reports_to).trim().toLowerCase())) {
-      for (const alias of aliases) visiblePeople.add(alias);
-    }
-  }
+  const { visiblePeople, reportsTo } = signalReportingVisibility(membersRes.data || [], auth);
 
   // Plan usage, from the existing entitlement engine rather than a second count.
   let usage = {};
@@ -213,4 +188,18 @@ export async function collect(svc, auth, now, since) {
     visiblePeople,
     reportsTo,
   };
+}
+
+// Include inactive history so a suspended colliding profile cannot silently
+// turn an ambiguous manager UUID into a newly authorized reporting address.
+async function loadReportingHistory(svc, orgId) {
+  const rows = [];
+  for (let offset = 0; ; offset += 500) {
+    const { data, error } = await svc.from('memberships')
+      .select('user_id,user_type,email,role,reports_to,status').eq('organization_id', orgId)
+      .in('user_type', ['admin', 'developer']).order('user_type').order('user_id').range(offset, offset + 499);
+    if (error || !Array.isArray(data)) throw new Error('Could not verify reporting identities');
+    rows.push(...data);
+    if (data.length < 500) return { data: rows };
+  }
 }

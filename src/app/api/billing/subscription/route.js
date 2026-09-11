@@ -40,12 +40,26 @@ export async function GET(request) {
 
     const entitlement = await resolveEntitlement(svc, auth.orgId);
     const usage = await getUsage(svc, auth.orgId, entitlement.limits);
+    const { data: storageBytes, error: storageError } = await svc.rpc("organization_storage_usage", { p_org: auth.orgId });
+    if (storageError || storageBytes === null || !Number.isSafeInteger(Number(storageBytes)) || Number(storageBytes) < 0) {
+      throw new Error("Storage accounting unavailable");
+    }
+    const storageUsed = Number(storageBytes) / 1048576;
+    const storageLimit = entitlement.limits.storage_mb;
+    if (!Number.isSafeInteger(storageLimit) || storageLimit < -1) throw new Error("Storage limit unavailable");
+    usage.storage_mb = {
+      label: "Storage (MiB)", used: storageUsed, usedBytes: Number(storageBytes),
+      limit: storageLimit === -1 ? null : storageLimit, unlimited: storageLimit === -1,
+      remaining: storageLimit === -1 ? null : Math.max(0, storageLimit - storageUsed),
+      exceeded: storageLimit !== -1 && storageUsed >= storageLimit,
+    };
 
-    const { data: planRows } = await svc
+    const { data: planRows, error: plansError } = await svc
       .from("billing_plans")
       .select(PLAN_COLUMNS)
       .eq("is_active", true)
       .order("sort_order", { ascending: true });
+    if (plansError) throw new Error("Plan catalogue unavailable");
 
     // A plan without a price id in Stripe cannot be checked out yet; the UI
     // needs to know that without being told what the id is.
@@ -54,7 +68,7 @@ export async function GET(request) {
       checkoutReady: Boolean(stripe_price_id),
     }));
 
-    const { data: invoices } = await svc
+    const { data: invoices, error: invoicesError } = await svc
       .from("billing_invoices")
       .select(
         "stripe_invoice_id, status, amount_due_cents, amount_paid_cents, currency, hosted_invoice_url, invoice_pdf_url, period_start, period_end, issued_at, created_at"
@@ -62,6 +76,7 @@ export async function GET(request) {
       .eq("organization_id", auth.orgId)
       .order("issued_at", { ascending: false, nullsFirst: false })
       .limit(20);
+    if (invoicesError) throw new Error("Billing history unavailable");
 
     const sub = entitlement.subscription;
 
@@ -128,6 +143,6 @@ export async function GET(request) {
     });
   } catch (err) {
     console.error("[billing/subscription] Error:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Billing information is temporarily unavailable. Please retry." }, { status: 503 });
   }
 }
