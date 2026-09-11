@@ -396,21 +396,30 @@ export async function GET(request) {
 
     // Step 3: Enrich each submission with activity logs and screenshots.
     const enrichedData = await Promise.all((data || []).map(async (submission) => {
-      const { data: activityLogs } = await supabase
-        .from('activity_logs')
-        .select('*')
-        .eq('organization_id', auth.orgId)
-        .eq('developer_id', submission.developer_id)
-        .eq('project_id', submission.project_id)
-        .order('created_at', { ascending: false })
-        .limit(10);
+      // Review authority does not grant access to private monitoring records.
+      // Apply the reviewer's own database policies to both enrichment sources.
+      const monitoringClient = orgScopedClient(auth.token);
+      let activityLogs = [];
+      try {
+        const { data: logs, error: logsError } = await monitoringClient
+          .from('activity_logs')
+          .select('*')
+          .eq('organization_id', auth.orgId)
+          .eq('developer_id', submission.developer_id)
+          .eq('project_id', submission.project_id)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        if (!logsError && Array.isArray(logs)) activityLogs = logs;
+      } catch {
+        // Unavailable monitoring must not bypass policies or prevent a review.
+      }
 
       let screenshots = [];
       try {
         // Org-scoped: the service client bypasses RLS, and the developer_email
         // OR-match would otherwise pull a contractor's screenshots from ANOTHER
         // tenant that reuses the same email. Bind to this reviewer's org.
-        const screenshotClient = orgScopedClient(auth.token);
+        const screenshotClient = monitoringClient;
         const { data: screenshotData } = await screenshotClient
           .from('screenshots')
           .select('*')
