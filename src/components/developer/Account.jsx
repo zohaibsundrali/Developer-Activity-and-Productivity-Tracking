@@ -1,4 +1,6 @@
 "use client";
+import AutomationRecovery from "@/components/admin/AutomationRecovery";
+import PlanFeatureBoundary from "@/components/billing/PlanFeatureBoundary";
 import TrackerDevices from "@/components/shared/TrackerDevices";
 
 import { useMemo, useState } from "react";
@@ -317,6 +319,9 @@ export default function Account({ user }) {
         )}
       </Card>
       <TrackerDevices />
+      <PlanFeatureBoundary key={`${user?.organization_id}:${user?.id}`} feature="automation">
+        <AutomationRecovery />
+      </PlanFeatureBoundary>
     </div>
   );
 }

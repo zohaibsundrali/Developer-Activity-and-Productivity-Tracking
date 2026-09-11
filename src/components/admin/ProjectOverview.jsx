@@ -295,6 +295,7 @@ export default function ProjectOverview() {
 
   // Owner/admin only, narrower than creating a project. A manager who could
   // reassign projects could hand themselves every project in the organization.
+  const canManageMilestones = allowed("task.manage");
   const canAssignManager = allowed("project.assign_manager");
 
   const saveManager = useCallback(
@@ -691,7 +692,7 @@ export default function ProjectOverview() {
               <CardHeader>
                 <div className="flex flex-wrap items-center gap-2">
                   <CardTitle>Milestones &amp; Phases</CardTitle>
-                  {!showForm && (
+                  {canManageMilestones && !showForm && (
                     <Button type="button" onClick={openAdd} className="ml-auto">
                       <Plus className="h-4 w-4" aria-hidden="true" /> Add milestone
                     </Button>
@@ -700,7 +701,7 @@ export default function ProjectOverview() {
               </CardHeader>
 
               <CardContent>
-                {showForm && (
+                {canManageMilestones && showForm && (
                   <form
                     onSubmit={submitForm}
                     className="animate-fade-in space-y-3 rounded-lg border border-border bg-muted/40 p-4"
@@ -795,7 +796,7 @@ export default function ProjectOverview() {
                             </div>
                           </div>
 
-                          <div className="flex shrink-0 items-center gap-2">
+                          {canManageMilestones && <div className="flex shrink-0 items-center gap-2">
                             <select
                               value={MILESTONE_STATUS.includes(m.status) ? m.status : "pending"}
                               onChange={(e) => changeMilestoneStatus(m, e.target.value)}
@@ -830,7 +831,7 @@ export default function ProjectOverview() {
                             >
                               <Trash2 className="h-4 w-4" aria-hidden="true" />
                             </Button>
-                          </div>
+                          </div>}
                         </li>
                       );
                     })}
@@ -841,7 +842,7 @@ export default function ProjectOverview() {
                       icon={Flag}
                       title="No milestones yet"
                       description="Break this project into phases to track progress."
-                      action={
+                      action={canManageMilestones &&
                         <Button type="button" variant="outline" onClick={openAdd}>
                           <Plus className="h-4 w-4" aria-hidden="true" /> Add milestone
                         </Button>

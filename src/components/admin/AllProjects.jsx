@@ -501,28 +501,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
 
       }
 
-      // ✅ Create TWO notifications: one for developer, one for admin
-
-      // 1. Notification for Developer
-      const { error: devNotificationError } = await supabase
-        .from('notifications')
-        .insert([
-          {
-            organization_id: getOrgId(),
-            assigned_developer_id: assignedDeveloper.id,
-            developer_id: assignedDeveloper.id,
-            admin_id: null, // Not for admin dashboard
-            admin_email: null,
-            message: `🎯 New Project Assigned: "${newProject.name}" has been assigned to you. Start working on it now!`,
-            type: 'project_assigned',
-            read: false,
-            created_at: new Date().toISOString()
-          }
-        ]);
-
-      if (devNotificationError) {
-        console.error('Developer notification error:', devNotificationError);
-      }
+      // The database announces the committed project assignment.
 
       // 2. Notification for Admin (confirmation)
       const { error: adminNotificationError } = await supabase

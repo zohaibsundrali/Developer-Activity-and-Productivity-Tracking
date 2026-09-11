@@ -233,3 +233,12 @@ python3 scripts/expand-sql-fixture.py database/tests/agile_container_write_autho
 docker exec "$audit_container" createdb -U postgres sensitive_notification_test
 python3 scripts/expand-sql-fixture.py database/tests/sensitive_notification_privacy.sql | \
   docker exec -i "$audit_container" psql -U postgres -d sensitive_notification_test -v ON_ERROR_STOP=1
+
+# Production gap regression: actual migrations, rollback and current recipient access.
+for fixture in sprint_status_notifications notification_entity_privacy atomic_employee_save proposal_decision_transaction durable_actor_automation_jobs server_notification_event_guard work_transition_notices milestone_write_authority; do
+  docker exec "$audit_container" createdb -U postgres "${fixture}_test"
+  python3 scripts/expand-sql-fixture.py "database/tests/${fixture}.sql" | \
+    docker exec -i "$audit_container" psql -U postgres -d "${fixture}_test" -v ON_ERROR_STOP=1
+done
+
+python3 scripts/test-proposal-decision-concurrency.py "$audit_container" proposal_decision_transaction_test

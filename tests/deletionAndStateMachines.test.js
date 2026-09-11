@@ -860,10 +860,10 @@ describe("two Approve clicks move the money once", () => {
  * 4. POST /api/proposals/[id]/decide
  * =================================================================== */
 
-const PROPOSAL = "prop-1";
+const PROPOSAL = "10000000-0000-4000-8000-000000000001";
 
 function seedProposal(status) {
-  return makeDb({
+  const seeded = makeDb({
     tables: {
       project_proposals: [
         {
@@ -884,7 +884,25 @@ function seedProposal(status) {
       memberships: [],
     },
   });
+  // Route contract stub; actual transaction/rollback/concurrency is exercised
+  // by database/tests/proposal_decision_transaction.sql and its race script.
+  seeded.client.rpc = async (name, args) => {
+    const p = seeded.tables.project_proposals[0];
+    if (name !== 'decide_project_proposal') return { data: [], error: null };
+    if (['accepted', 'rejected'].includes(p.status)) return { data: null, error: { message: 'PROPOSAL_CONFLICT' } };
+    if (args.p_decision === 'accepted') {
+      const project = { id: 'created-project' };
+      seeded.tables.projects.push(project);
+      seeded.tables.project_clients.push({ project_id: project.id, client_id: p.client_id });
+      p.project_id = project.id;
+    }
+    p.status = args.p_decision === 'estimate' ? 'in_review' : args.p_decision;
+    return { data: { proposal: p }, error: null };
+  };
+  return seeded;
 }
+
+
 
 async function runDecide(body, auth = actor({ role: "admin" })) {
   getAuthedOrg.mockResolvedValue(auth);
@@ -900,7 +918,7 @@ describe("a declined proposal stays declined", () => {
     db = seedProposal("rejected");
     const { status, body } = await runDecide({ decision: "accepted" });
     expect(status).toBe(409);
-    expect(body.error).toMatch(/declined/i);
+    expect(body.error).toMatch(/final decision/i);
     expect(db.tables.projects).toHaveLength(0);
     expect(db.tables.project_clients).toHaveLength(0);
     expect(theProposal().status).toBe("rejected");
@@ -924,7 +942,7 @@ describe("a declined proposal stays declined", () => {
     db = seedProposal("accepted");
     const { status, body } = await runDecide({ decision: "rejected", reason: "no" });
     expect(status).toBe(409);
-    expect(body.error).toMatch(/accepted/i);
+    expect(body.error).toMatch(/final decision/i);
   });
 
   it("still accepts a live proposal — the terminal check is not a blanket refusal", async () => {
@@ -1091,17 +1109,17 @@ describe('proposal acceptance composes project capabilities', () => {
   });
   it('does not let proposal.decide assign a manager without the separate capability', async () => {
     db = seedProposal('submitted');
-    const { status } = await runDecide({ decision: 'accepted', managerId: 'manager', managerType: 'developer' }, actor({ role: 'manager' }));
+    const { status } = await runDecide({ decision: 'accepted', managerId: '10000000-0000-4000-8000-000000000002', managerType: 'developer' }, actor({ role: 'manager' }));
     expect(status).toBe(403);expect(db.tables.projects).toHaveLength(0);expect(theProposal().status).toBe('submitted');
   });
   it('honors an explicit manager-assignment denial for admins too', async () => {
     db = seedProposal('submitted');
-    const { status } = await runDecide({ decision: 'accepted', managerId: 'manager' }, actor({ role: 'admin', overrides: { 'project.assign_manager': false } }));
+    const { status } = await runDecide({ decision: 'accepted', managerId: '10000000-0000-4000-8000-000000000002' }, actor({ role: 'admin', overrides: { 'project.assign_manager': false } }));
     expect(status).toBe(403);expect(db.tables.projects).toHaveLength(0);
   });
   it('permits rejection without project creation or assignment authority', async () => {
     db = seedProposal('submitted');
-    const { status } = await runDecide({ decision: 'rejected', reason: 'No capacity', managerId: 'ignored' }, actor({ role: 'admin', overrides: { 'project.create': false, 'project.assign_manager': false } }));
+    const { status } = await runDecide({ decision: 'rejected', reason: 'No capacity', managerId: '10000000-0000-4000-8000-000000000002' }, actor({ role: 'admin', overrides: { 'project.create': false, 'project.assign_manager': false } }));
     expect(status).toBe(200);expect(theProposal().status).toBe('rejected');expect(db.tables.projects).toHaveLength(0);
   });
   it.each(['client', 'unknown'])('refuses a %s profile despite spoofed staff permissions', async userType => {

@@ -6,6 +6,8 @@ import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 import CommandPalette from "./CommandPalette";
 import GlobalSearchButton from "./GlobalSearchButton";
+import { processPendingAutomations } from "@/utils/automationDispatch";
+import { startAutomationSessionRecovery } from "@/utils/automationSessionRecovery";
 import { BRAND_NAME } from "@/components/brand/brand";
 
 // Deliberately still "devtrack.*" after the rename to Verisade. This key names a
@@ -41,6 +43,15 @@ export default function AppShell({
   navPending = false,
   children,
 }) {
+  useEffect(() => {
+    if (!user?.id || role === "client") return;
+    return startAutomationSessionRecovery({
+      windowTarget: window,
+      documentTarget: document,
+      recover: () => processPendingAutomations(),
+    });
+  }, [user?.id, user?.organization_id, role]);
+
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   // The shell owns the palette's open state because two things reach for it —

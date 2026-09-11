@@ -155,6 +155,7 @@ describe("every route that uses the service role", () => {
     // Reports and feature access verify billing using the service role; report rows use the caller JWT.
     // Atomic task-plan RPC receives only the verified organization and developer identity.
     // Reviewer candidates prove caller task RLS access before the typed service lookup.
-    expect(usingService.length).toBe(73);
+    // Durable automation claims only the verified typed actor’s jobs; task actions use caller JWT/RLS.
+    expect(usingService.length).toBe(74);
   });
 });

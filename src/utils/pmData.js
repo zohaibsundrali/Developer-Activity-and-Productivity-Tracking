@@ -4,12 +4,8 @@ import { authFetch } from "@/utils/authFetch";
 import { savePlanningRecord } from "@/utils/planningRecords";
 import { PROJECT_STATUS } from "@/utils/projectStatus";
 import { requireTaskMutation } from "@/utils/developerPlanMutations";
-import { notify, windowedDedupeKey } from "@/utils/notifications";
-
-// How close together two identical status changes have to be to count as one
-// event rather than two. Covers the mechanical repeats — an automation replay,
-// two drags racing the same read of the row — and nothing a person does.
-const STATUS_REPLAY_WINDOW_MS = 2 * 60 * 1000;
+import { writeMilestone } from "@/utils/milestoneRecords";
+import { notify } from "@/utils/notifications";
 
 /**
  * Data access for the Enterprise Project Management module.
@@ -285,37 +281,7 @@ export async function changeTaskStatus(taskId, nextStatus, options = {}) {
     /* automation is non-critical */
   }
 
-  // Tell the assignee their work moved. Only non-terminal moves reach this
-  // point — `completed` / `rejected` were handed to reviewTask above and the
-  // review route sends its own notification, so there is no second one here.
-  try {
-    if (prev.developer_id) {
-      await notify({
-        audience: "developer",
-        recipientId: prev.developer_id,
-        category: "status",
-        type: "task_status_changed",
-        title: "Task status changed",
-        message: `"${prev.task_title || "A task"}" moved from ${statusLabel(from)} to ${statusLabel(nextStatus)}.`,
-        taskId,
-        projectId: prev.project_id || null,
-        // Keyed by the whole transition and a short window, because the same
-        // destination is reached legitimately more than once a day: sent back
-        // for changes and resubmitted walks in_progress -> awaiting_approval
-        // twice, and the second submission is exactly the one the reviewer is
-        // waiting on. Keying on the destination and the calendar day announced
-        // the first and silently swallowed every one after it.
-        dedupeKey: windowedDedupeKey(
-          `status:${from}>${nextStatus}`,
-          taskId,
-          prev.developer_id,
-          STATUS_REPLAY_WINDOW_MS
-        ),
-      });
-    }
-  } catch {
-    /* the status is already saved — failing to announce it must not undo that */
-  }
+  // Actual status transitions are announced atomically by the database.
   return { error: null, task: { ...prev, status: nextStatus } };
 }
 
@@ -771,53 +737,10 @@ export async function setStoryPoints(taskId, points) {
   return updateTask(taskId, { story_points: Number.isNaN(n) ? null : n });
 }
 
-// Everyone carrying work in a sprint hears when it opens or closes — those are
-// the two moments that change what they are expected to be doing today. The
-// assignees come out of one query over the sprint's tasks and are collapsed in
-// memory, so a fifty-task sprint is still two reads.
-async function notifySprintStatus(sprintId, status) {
-  const [{ data: sprint }, { data: tasks }] = await Promise.all([
-    supabase.from("sprints").select("id, name, project_id").eq("id", sprintId).single(),
-    supabase.from("developer_tasks").select("developer_id").eq("sprint_id", sprintId),
-  ]);
-
-  const recipients = new Set((tasks || []).map((t) => t.developer_id).filter(Boolean).map(String));
-  if (!recipients.size) return;
-
-  const started = status === "active";
-  const name = sprint?.name || "A sprint";
-  await Promise.all(
-    [...recipients].map((id) =>
-      notify({
-        audience: "developer",
-        recipientId: id,
-        category: "sprint",
-        type: started ? "sprint_started" : "sprint_completed",
-        title: started ? "Sprint started" : "Sprint completed",
-        message: started
-          ? `Sprint "${name}" has started — your tasks in it are now in flight.`
-          : `Sprint "${name}" has been completed.`,
-        projectId: sprint?.project_id || null,
-        entityType: "sprint",
-        entityId: sprintId,
-        // A sprint starts once and ends once, so the key needs no date: a
-        // replayed transition lands on the row that is already there.
-        dedupeKey: `sprint_${status}:${sprintId}:${id}`,
-      })
-    )
-  );
-}
-
-// Move a sprint through planned → active → completed.
+// Status and recipient notifications commit together in the database. This also
+// covers status edits made through saveSprint and direct authorized requests.
 export async function setSprintStatus(sprintId, status) {
   const { error } = await savePlanningRecord(supabase, getOrgId(), "sprints", undefined, { id: sprintId, status });
-  if (!error && (status === "active" || status === "completed")) {
-    try {
-      await notifySprintStatus(sprintId, status);
-    } catch {
-      /* the sprint has already moved — announcing it is best effort */
-    }
-  }
   return { error };
 }
 
@@ -1155,146 +1078,16 @@ export async function loadMilestones(projectId) {
     .order("due_date", { ascending: true, nullsFirst: false });
   return data || [];
 }
-/**
- * A milestone is the project's own deadline, and the people who answer for it
- * are rarely the person who ticked the box — the developer carrying the project
- * and the staff who own it should hear it here rather than from the client.
- *
- * Two reads, whatever the size of the recipient list: the project row names
- * everyone, and one membership read says how each of them is addressed.
- */
-async function notifyMilestoneComplete(milestone) {
-  const projectId = milestone?.project_id;
-  if (!milestone?.id || !projectId) return;
-
-  const { data: project } = await supabase
-    .from("projects")
-    .select("id, name, assigned_to, created_by, added_by, manager_id")
-    .eq("id", projectId)
-    .single();
-  if (!project) return;
-
-  // A project records its owners as three separate id columns and none of them
-  // says whether the id belongs to an admin or a developer — which decides
-  // whether the row is addressed by admin_id/admin_email or developer_id. The
-  // membership row is the only place that answers it.
-  const staffIds = [
-    ...new Set([project.created_by, project.added_by, project.manager_id].filter(Boolean).map(String)),
-  ];
-  const { data: staff } = staffIds.length
-    ? await supabase
-        .from("memberships")
-        .select("user_id, user_type, email")
-        .eq("organization_id", getOrgId())
-        .in("user_id", staffIds)
-    : { data: [] };
-
-  const title = milestone.title || "A milestone";
-  const projectName = project.name || "the project";
-  const metadata = {
-    milestoneId: milestone.id,
-    milestoneTitle: milestone.title || null,
-    projectId: project.id,
-    projectName: project.name || null,
-    status: "completed",
-  };
-  const common = {
-    category: "project",
-    type: "milestone_completed",
-    title: "Milestone reached",
-    message: `Milestone "${title}" on ${projectName} is complete.`,
-    projectId: project.id,
-    entityType: "milestone",
-    entityId: milestone.id,
-    metadata,
-  };
-  // A milestone completes once, so the key carries no date: re-saving one that
-  // is already complete lands on the row that is already there.
-  const keyFor = (recipientId) => `milestone_completed:${milestone.id}:${recipientId}`;
-
-  const sends = [];
-  const seen = new Set();
-
-  if (project.assigned_to) {
-    seen.add(String(project.assigned_to));
-    sends.push(
-      notify({
-        ...common,
-        audience: "developer",
-        recipientId: project.assigned_to,
-        dedupeKey: keyFor(project.assigned_to),
-      })
-    );
-  }
-
-  for (const m of staff || []) {
-    const id = m?.user_id ? String(m.user_id) : null;
-    // The assigned developer is often also the manager; one person, one row.
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    const isAdmin = m.user_type === "admin";
-    sends.push(
-      notify({
-        ...common,
-        audience: isAdmin ? "admin" : "developer",
-        recipientId: m.user_id,
-        recipientEmail: isAdmin ? m.email || null : null,
-        dedupeKey: keyFor(m.user_id),
-      })
-    );
-  }
-
-  await Promise.all(sends);
-}
-
 export async function saveMilestone(projectId, patch) {
-  const orgId = getOrgId();
-  if (patch.id) {
-    const { id, ...rest } = patch;
-    const { error } = await supabase
-      .from("milestones")
-      .update({ ...rest, updated_at: new Date().toISOString() })
-      .eq("id", id);
-    if (!error) await logActivity({ projectId, entityType: "milestone", entityId: id, action: "updated", meta: { title: patch.title } });
-    if (!error && rest.status === "completed") {
-      try {
-        // The patch carries only what the form changed, so the title comes off
-        // the row. There is no comparison against the previous status because
-        // the dedupe key already makes a repeat a no-op, and a read to
-        // establish "it was not complete before" would be a second chance to
-        // fail for no extra guarantee.
-        const { data: row } = await supabase
-          .from("milestones")
-          .select("id, title, project_id")
-          .eq("id", id)
-          .single();
-        await notifyMilestoneComplete(row || { id, title: patch.title, project_id: projectId });
-      } catch {
-        /* the milestone is saved — announcing it must not report a failure */
-      }
-    }
-    return { error };
+  const result = await writeMilestone(supabase, getOrgId(), projectId, patch);
+  if (!result.error) {
+    try { await logActivity({ projectId, entityType: "milestone", entityId: result.milestone.id, action: patch.id ? "updated" : "created", meta: { title: result.milestone.title } }); }
+    catch { /* The confirmed milestone transaction already committed. */ }
   }
-  const { data, error } = await supabase
-    .from("milestones")
-    .insert({ organization_id: orgId, project_id: projectId, ...patch })
-    .select()
-    .single();
-  if (!error && data) await logActivity({ projectId, entityType: "milestone", entityId: data.id, action: "created", meta: { title: data.title } });
-  // A milestone can be created already complete when a project is set up from
-  // work that is finished, and that is still the moment it was reached.
-  if (!error && data?.status === "completed") {
-    try {
-      await notifyMilestoneComplete(data);
-    } catch {
-      /* the milestone is saved — announcing it must not report a failure */
-    }
-  }
-  return { milestone: data, error };
+  return result;
 }
 export async function deleteMilestone(id) {
-  const { error } = await supabase.from("milestones").delete().eq("id", id);
-  return { error };
+  return writeMilestone(supabase, getOrgId(), null, { id }, true);
 }
 
 // ---- Project templates (projects.is_template + clone) ----------------------

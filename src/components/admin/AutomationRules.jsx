@@ -1,4 +1,5 @@
 "use client";
+import AutomationRecovery from "@/components/admin/AutomationRecovery";
 import PlanFeatureBoundary from "@/components/billing/PlanFeatureBoundary";
 
 import { useState, useEffect, useCallback } from "react";
@@ -619,6 +620,8 @@ function AutomationRulesContent() {
           </>
         }
       />
+
+      <AutomationRecovery />
 
       {/* 1) Scope picker */}
       <Card className="sm:py-5">
