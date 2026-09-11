@@ -47,6 +47,9 @@ for sql_file in \
   database/tests/permission_fields.sql \
   database/tests/project_staffing_fixture.sql \
   supabase/migrations/20260911071332_production_project_staffing_permissions.sql \
-  database/tests/project_staffing.sql; do
+  database/tests/project_staffing.sql \
+  database/tests/typed_permission_fixture.sql \
+  supabase/migrations/20260911072728_production_typed_permission_identity.sql \
+  database/tests/typed_permission.sql; do
   docker exec -i "$audit_container" psql -U postgres -d quota_test -v ON_ERROR_STOP=1 < "$sql_file"
 done

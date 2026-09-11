@@ -162,7 +162,7 @@ describe("loadProjectRoles", () => {
   });
 
   it("returns {} when the session is incomplete rather than guessing", async () => {
-    expect(await loadProjectRoles(null, { orgId: "o", appUserId: "u" })).toEqual({});
+    expect(await loadProjectRoles(null, { orgId: "o", appUserId: "u", userType: "developer" })).toEqual({});
     expect(await loadProjectRoles({}, { orgId: null, appUserId: "u" })).toEqual({});
     expect(await loadProjectRoles({}, { orgId: "o", appUserId: null })).toEqual({});
     expect(await loadProjectRoles({}, null)).toEqual({});
@@ -179,6 +179,12 @@ describe("loadProjectRoles", () => {
     return { client: { from: (t) => { calls.table = t; return q; } }, calls };
   };
 
+  it.each([undefined, "client", "unknown"])("refuses missing or unsupported profile type %s", async userType => {
+    const { client, calls } = recordingClient([{ project_id: PID, project_role: "manager" }]);
+    expect(await loadProjectRoles(client, { orgId: "o", appUserId: "u", userType })).toEqual({});
+    expect(calls.table).toBeNull();
+  });
+
   it("builds the map the engine expects", async () => {
     const { client } = recordingClient([
       { project_id: PID, project_role: "manager" },
@@ -186,7 +192,7 @@ describe("loadProjectRoles", () => {
       { project_id: null, project_role: "qa" }, // dropped
       { project_id: "x", project_role: 7 },      // dropped
     ]);
-    expect(await loadProjectRoles(client, { orgId: "o", appUserId: "u" })).toEqual({
+    expect(await loadProjectRoles(client, { orgId: "o", appUserId: "u", userType: "developer" })).toEqual({
       [PID]: "manager",
       [OTHER]: "developer",
     });
@@ -197,15 +203,16 @@ describe("loadProjectRoles", () => {
     // would answer with somebody else's project roles — and asserting only the
     // returned shape does not notice, which mutation testing demonstrated.
     const { client, calls } = recordingClient([]);
-    await loadProjectRoles(client, { orgId: "o", appUserId: "u" });
+    await loadProjectRoles(client, { orgId: "o", appUserId: "u", userType: "developer" });
     expect(calls.table).toBe("project_members");
     expect(calls.eq).toContainEqual(["organization_id", "o"]);
     expect(calls.eq).toContainEqual(["user_id", "u"]);
+    expect(calls.eq).toContainEqual(["user_type", "developer"]);
   });
 
   it("narrows to one project when asked", async () => {
     const { client, calls } = recordingClient([]);
-    await loadProjectRoles(client, { orgId: "o", appUserId: "u" }, PID);
+    await loadProjectRoles(client, { orgId: "o", appUserId: "u", userType: "developer" }, PID);
     expect(calls.eq).toContainEqual(["project_id", PID]);
   });
 
@@ -223,7 +230,7 @@ describe("loadProjectRoles", () => {
         return q;
       },
     };
-    expect(await loadProjectRoles(client, { orgId: "o", appUserId: "u" })).toEqual({});
+    expect(await loadProjectRoles(client, { orgId: "o", appUserId: "u", userType: "developer" })).toEqual({});
   });
 });
 

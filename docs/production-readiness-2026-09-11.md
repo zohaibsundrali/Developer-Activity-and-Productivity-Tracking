@@ -29,7 +29,7 @@ Plans remain **Free, Professional, Business, Enterprise**. No Basic plan was int
 ## Deployment order and gates
 
 1. Obtain staging SQL access, inspect actual policies/grants/triggers and backup/recovery procedures. The connected SQL tool currently denies permission; no live schema definition inspection or new migration application was possible.
-2. Preserve the historical migrations through 096 and the two audit migrations already supplied. Apply the seven new timestamped migrations in ascending order: `20260911055537`, `20260911060849`, `20260911062113`, `20260911062805`, `20260911063616`, `20260911065148`, `20260911071332`. **Never run `database/tests/*` in Supabase.** They create synthetic schemas and roles.
+2. Preserve the historical migrations through 096 and the two audit migrations already supplied. Apply the eight new timestamped migrations in ascending order: `20260911055537`, `20260911060849`, `20260911062113`, `20260911062805`, `20260911063616`, `20260911065148`, `20260911071332`, `20260911072728`. **Never run `database/tests/*` in Supabase.** They create synthetic schemas and roles.
 3. Storage backfill deliberately aborts if an existing application object cannot be assigned unambiguously to its organization. Resolve historical object ownership before applying it. Do not delete metadata directly; use the Storage API for object cleanup. The private usage ledger requires object cleanup before deleting an organization with stored files.
 4. Validate upload/finalization/upsert/delete/signing against the actual staging Supabase Storage service. The accounting trigger extends a managed schema; its synthetic PostgreSQL tests do not establish compatibility with every Storage release.
 5. Deploy the updated desktop application together with device migrations before enabling the new web ingest handlers for existing devices. Users must log in again to enroll. Production fleet secrets no longer authorize these handlers.
@@ -63,3 +63,12 @@ The historical `project_members_write` policy admitted any organization manager,
 The project team API now checks locked subscriptions before privileged writes and checks `capacity.allocate` when allocation is explicitly submitted. Omitting allocation no longer resets a saved value to null. It also rejects manager demotion through team upsert. Seven new API tests cover these cases; actual PostgreSQL tests cover project scope, override combinations, identity changes, missing target membership and manager removal/demotion.
 
 Follow-up web regression: **100 files / 3,143 tests passed**, and the production build passed. This does not replace the previously recorded staging billing failures or establish full policy parity for other tables. GitHub write access and staging SQL verification remain required.
+
+
+## Profile-type identity follow-up
+
+Membership uniqueness is `(organization_id, user_id, user_type)`. Historical SQL override lookup and project-role lookup omitted `user_type`, so an Admin-table and Developer-table identity sharing the same UUID could inherit each other's exceptions or scoped project role. The server project-role loader and migration `20260911072728_production_typed_permission_identity.sql` now include the verified profile type. Missing/unsupported types fail closed; suspended memberships cannot provide overrides. SQL tests deliberately create colliding UUIDs across profile types and verify both isolation and preservation of the matching identity's access.
+
+The concurrent quota test was also corrected: its old two-second sleep could finish before the second Docker process established its snapshot. It now waits for the first transaction to be idle in transaction and the second to be observably blocked on a database lock before releasing the first. This avoids treating sequential execution as a concurrency test. The full SQL regression passed with the explicit barrier and typed-identity cases.
+
+Typed-identity follow-up validation: **100 web test files / 3,146 tests passed**, production build passed, and all isolated PostgreSQL regressions passed. Supabase SQL access was rechecked with a read-only policy query and still returned “You do not have permission to perform this action.” There are now eight pending migrations; production verification remains incomplete.
