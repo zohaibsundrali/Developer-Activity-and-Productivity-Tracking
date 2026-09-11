@@ -70,9 +70,26 @@ create trigger project_manager_roster before insert or update or delete on publi
  for each row execute function public.guard_project_manager_roster();
 -- Repair authoritative, currently eligible historical manager mappings only.
 -- Ambiguous/inactive legacy assignments require explicit reassignment.
+-- Only the historical metadata backfill bypasses the delivery billing trigger.
+-- The table lock prevents concurrent writes; DDL and backfill roll back together.
+-- No runtime role, JWT claim, or session setting gains a billing bypass.
+lock table public.projects in access exclusive mode;
+do $backfill$
+declare previous_state "char";
+begin
+ select tgenabled into previous_state from pg_trigger
+ where tgrelid='public.projects'::regclass and tgname='delivery_write_lock' and not tgisinternal;
+ if previous_state is not null then
+  alter table public.projects disable trigger delivery_write_lock;
+ end if;
 update public.projects p set manager_type=coalesce(p.manager_type,public.project_unique_identity_type(p.organization_id,p.manager_id::text))
 where p.manager_id is not null and exists(select 1 from public.memberships m
  where m.organization_id=p.organization_id and m.user_id=p.manager_id
   and m.user_type=coalesce(p.manager_type,public.project_unique_identity_type(p.organization_id,p.manager_id::text))
   and m.status='active' and m.role in ('owner','admin','manager','team_lead'));
+ if previous_state in ('O','A','R') then
+  execute 'alter table public.projects enable ' || case previous_state
+   when 'A' then 'always ' when 'R' then 'replica ' else '' end || 'trigger delivery_write_lock';
+ end if;
+end $backfill$;
 commit;

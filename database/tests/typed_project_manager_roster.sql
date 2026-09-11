@@ -1,14 +1,14 @@
 \set ON_ERROR_STOP on
 \ir typed_project_ownership.sql
-create table organizations(id uuid primary key);
-insert into organizations select distinct organization_id from projects;
 alter table projects add column assigned_to uuid;
 -- Include the real legacy schema, backfill and UPDATE-only sync trigger.
 \ir ../071_project_members.sql
 \ir ../../supabase/migrations/20260911071332_production_project_staffing_permissions.sql
 drop function auth_override(text);
 \ir ../../supabase/migrations/20260911072728_production_typed_permission_identity.sql
+create or replace function app_private.org_unlocked(uuid) returns boolean language sql stable as $$ select false $$;
 \ir ../../supabase/migrations/20260911123702_production_typed_project_manager_roster.sql
+create or replace function app_private.org_unlocked(uuid) returns boolean language sql stable as $$ select true $$;
 do $$ declare org uuid:='74000000-0000-0000-0000-000000000001'; actor uuid:='74000000-0000-0000-0000-000000000011';
  collision uuid:='74000000-0000-0000-0000-000000000013'; project uuid:='74000000-0000-0000-0000-000000000104'; old_member uuid; begin
  -- Foundation fixture assigned a developer manager; legacy071 backfilled it.

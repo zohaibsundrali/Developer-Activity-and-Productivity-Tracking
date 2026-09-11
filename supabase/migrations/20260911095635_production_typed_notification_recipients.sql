@@ -1,4 +1,7 @@
 begin;
+create schema if not exists private;
+revoke all on schema private from public, anon, authenticated;
+
 alter table public.notifications add column admin_recipient_type text
   check (admin_recipient_type in ('admin','developer'));
 alter table public.notifications add column recipient_keys text[] not null default '{}';
