@@ -27,7 +27,9 @@ docker exec "$audit_container" createdb -U postgres quota_test
 for sql_file in \
   database/tests/quota_fixture.sql \
   supabase/migrations/20260911055537_production_quota_enforcement.sql \
-  database/tests/quota.sql; do
+  supabase/migrations/20260911083056_production_delivery_write_lock.sql \
+  database/tests/quota.sql \
+  database/tests/delivery_write_lock.sql; do
   docker exec -i "$audit_container" psql -U postgres -d quota_test -v ON_ERROR_STOP=1 < "$sql_file"
 done
 python3 scripts/test-quota-concurrency.py "$audit_container"
