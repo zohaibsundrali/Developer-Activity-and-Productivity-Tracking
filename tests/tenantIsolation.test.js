@@ -153,6 +153,7 @@ describe("every route that uses the service role", () => {
     // touched, so an id from another tenant answers 404; and an amendment is
     // written from the row that was read back, never from the body.
     // Reports and feature access verify billing using the service role; report rows use the caller JWT.
-    expect(usingService.length).toBe(71);
+    // Atomic task-plan RPC receives only the verified organization and developer identity.
+    expect(usingService.length).toBe(72);
   });
 });

@@ -4,7 +4,6 @@ import { dateOnlyFromQuery } from "@/utils/queryDates";
 import { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabaseClient';
 import { authFetch } from '@/utils/authFetch';
-import { taskIdsWithSubmissions } from '@/utils/replanGuard';
 import TaskCompletionModal from "@/components/developer/TaskCompletionModal";
 import { GanttChartSquare } from "lucide-react";
 // The only sanctioned source of concrete colour values — SweetAlert styles its
@@ -347,164 +346,6 @@ export default function ProjectDetailsPage() {
   };
 
   // Save tasks to Supabase - SIMPLIFIED VERSION
-  const saveTasksToSupabase = async () => {
-    try {
-      
-      // Step 1: Get developer info
-      let developerToUse = currentDeveloper;
-      
-      // If developer not in state, try localStorage
-      if (!developerToUse || !developerToUse.id) {
-        const storedUser = sessionStorage.getItem("developerUser");
-        if (storedUser) {
-          try {
-            const userData = JSON.parse(storedUser);
-            const userId = userData.user?.id || userData.id;
-            
-            if (userId) {
-              developerToUse = {
-                id: userId,
-                name: userData.user?.user_metadata?.full_name || 
-                      userData.user?.email?.split('@')[0] || 
-                      'Developer',
-                email: userData.user?.email || userData.email || 'unknown@example.com',
-                user_id: userId
-              };
-            }
-          } catch (e) {
-            // Silently handle error
-          }
-        }
-      }
-      
-      // If still no developer, try Supabase auth directly
-      if (!developerToUse || !developerToUse.id) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          developerToUse = {
-            id: user.id,
-            name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Developer',
-            email: user.email,
-            user_id: user.id
-          };
-        }
-      }
-      
-      // Final check for developer
-      if (!developerToUse || !developerToUse.id) {
-        throw new Error('Please log in to submit work.');
-      }
-      
-      // Step 2: Check project
-      if (!project || !project.id) {
-        throw new Error('Project information not available.');
-      }
-      
-      // Step 3: Prepare tasks for Supabase
-      const tasksToSave = tasks.map((task, index) => {
-        // Validate required fields
-        if (!task.title || task.title.trim() === '') {
-          throw new Error(`Task ${index + 1} title is required`);
-        }
-        if (!task.startDate || task.startDate.trim() === '') {
-          throw new Error(`Task ${index + 1} start date is required`);
-        }
-        if (!task.endDate || task.endDate.trim() === '') {
-          throw new Error(`Task ${index + 1} end date is required`);
-        }
-        
-        // Validate dates
-        const startDate = new Date(task.startDate);
-        const endDate = new Date(task.endDate);
-        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-          throw new Error(`Task ${index + 1} has invalid dates`);
-        }
-        if (endDate < startDate) {
-          throw new Error(`Task ${index + 1}: End date cannot be before start date`);
-        }
-        
-        return {
-          project_id: project.id,
-          developer_id: developerToUse.id,
-          task_title: task.title,
-          task_description: task.description || '',
-          task_order: index,
-          start_date: task.startDate,
-          end_date: task.endDate,
-          status: 'pending',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-      });
-      
-      // Step 4: Replace only the tasks that have not been started.
-      //
-      // This used to delete every task for the pair, which took approved work
-      // with it — and developer_tasks cascades, so the matching submissions,
-      // admin reviews and time logs went too. Re-saving a plan therefore erased
-      // the developer's own completed history and the productivity points it
-      // carried. Anything past To Do, or with a submission against it, is left
-      // alone; only untouched rows are swapped for the new plan.
-      const { data: existing } = await supabase
-        .from('developer_tasks')
-        .select('id, status')
-        .eq('project_id', project.id)
-        .eq('developer_id', developerToUse.id);
-
-      const untouched = (existing || []).filter((t) => (t.status || 'pending') === 'pending');
-      let replaceableIds = untouched.map((t) => t.id);
-
-      if (replaceableIds.length) {
-        // This guard must see EVERY submission standing against these tasks, not
-        // the subset the caller's own RLS view admits. It used to select
-        // task_submissions through the browser client; migration 047 narrowed
-        // that table to per-person, so for a manager or team_lead re-planning on
-        // someone else's behalf the query came back empty and the delete below
-        // removed tasks that DO have submissions — and developer_tasks cascades,
-        // so the submission went with the task. taskIdsWithSubmissions() asks the
-        // service-role route instead, which cannot be narrowed by any policy, and
-        // throws rather than returning an empty set if it cannot get an answer.
-        let hasSubmission;
-        try {
-          hasSubmission = await taskIdsWithSubmissions(project.id, replaceableIds);
-        } catch (guardError) {
-          // Fail closed: nothing is deleted and nothing is inserted, so the
-          // existing plan is left exactly as it stands.
-          throw new Error(
-            `Refusing to replace the previous plan — could not verify existing submissions: ${guardError.message}`
-          );
-        }
-        replaceableIds = replaceableIds.filter((id) => !hasSubmission.has(String(id)));
-      }
-
-      if (replaceableIds.length) {
-        const { error: deleteError } = await supabase
-          .from('developer_tasks')
-          .delete()
-          .in('id', replaceableIds);
-
-        if (deleteError) {
-          throw new Error(`Failed to replace the previous plan: ${deleteError.message}`);
-        }
-      }
-      
-      // Step 5: Insert new tasks
-      const { data, error } = await supabase
-        .from('developer_tasks')
-        .insert(tasksToSave)
-        .select();
-      
-      if (error) {
-        throw new Error(`Failed to save tasks: ${error.message}`);
-      }
-      
-      return data;
-      
-    } catch (error) {
-      throw error;
-    }
-  };
-
   // Handle submit work with Supabase integration - SIMPLIFIED VERSION
   const handleSubmitWork = async () => {
     try {
@@ -541,32 +382,21 @@ export default function ProjectDetailsPage() {
         return;
       }
       
-      // Step 3: Save to Supabase
-      const savedTasks = await saveTasksToSupabase();
-
-      // Step 3b: Mark task plan as submitted via backend (DB is source of truth)
-      const developerIdForSubmit = savedTasks?.[0]?.developer_id || currentDeveloper?.id;
-      if (!developerIdForSubmit) {
-        throw new Error('Developer ID not found. Please re-login and try again.');
-      }
-
-      // authFetch, not fetch: /api/task-plan/submit authenticates the caller with
-      // getAuthedOrg(), which reads a Bearer token. A bare fetch() sent no
-      // Authorization header, so this threw "Failed to submit task plan" for
-      // every role — AFTER saveTasksToSupabase() had already deleted and
-      // re-inserted the plan rows, leaving the DB half-applied and the user
-      // retrying on top of it. The body is unchanged.
-      const submitRes = await authFetch('/api/task-plan/submit', {
+      // Save the replacement and submit the plan in one database transaction.
+      const submitRes = await authFetch('/api/task-plan/save-submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId: project.id, developerId: developerIdForSubmit }),
+        body: JSON.stringify({ projectId: project.id, tasks: tasks.map(task => ({
+          task_title: task.title, task_description: task.description || '',
+          start_date: task.startDate, end_date: task.endDate,
+        })) }),
       });
-
       const submitResult = await submitRes.json().catch(() => ({}));
       if (!submitRes.ok || !submitResult.success) {
         throw new Error(submitResult.error || 'Failed to submit task plan.');
       }
-      
+      const savedTasks = submitResult.tasks || [];
+
       // Step 4: Update local tasks with real Supabase UUIDs so workflow buttons work
       if (savedTasks && savedTasks.length > 0) {
         const updatedTasks = savedTasks.map(t => ({
@@ -579,6 +409,7 @@ export default function ProjectDetailsPage() {
           supabaseId: t.id
         }));
         setTasks(updatedTasks);
+        localStorage.setItem(`project_tasks_${project.id}`, JSON.stringify(updatedTasks));
       }
 
       // Step 5: Update local state
@@ -598,7 +429,6 @@ export default function ProjectDetailsPage() {
       
       // Update localStorage
       localStorage.setItem(`project_submitted_${project.id}`, 'true');
-      localStorage.setItem(`project_tasks_${project.id}`, JSON.stringify(tasks));
       
       // Step 5: Show success message
       setValidationSuccess('Tasks submitted successfully! Admin can now view your work.');

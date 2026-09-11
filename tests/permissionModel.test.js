@@ -141,6 +141,9 @@ describe("user_type is no longer asked authorization questions", () => {
    * identical in a grep and only one of them is a bug.
    */
   const STORAGE_ONLY = {
+    "src/app/api/task-plan/save-submit/route.js":
+      "requires the Developer profile referenced by projects.assigned_developer_id; " +
+      "task.update_own separately decides authorization, preventing cross-table UUID collisions",
     "src/app/api/auth/provision/route.js":
       "derives a DEFAULT role from the caller's hint; the profile table then " +
       "follows userTypeForRole(role), and the rank check runs regardless",
