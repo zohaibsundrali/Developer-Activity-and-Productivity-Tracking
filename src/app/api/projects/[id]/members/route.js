@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { requirePermission } from "@/utils/serverPermissions";
 import { mayActOnProject, withProjectRoles } from "@/utils/projectAccess";
+import { requireUnlocked } from "@/utils/entitlements";
 import { PROJECT_ROLES } from "@/utils/roles";
 
 export const dynamic = "force-dynamic";
@@ -180,6 +181,11 @@ export async function POST(request, { params }) {
     // Allocation is optional and bounded. Absent stays NULL — inventing 100
     // would make the capacity screen confidently wrong about every backfilled
     // row, which is worse than it admitting it does not know.
+    const hasAllocation = Object.hasOwn(body, "allocationPct");
+    if (hasAllocation) {
+      const allocationDenied = requirePermission(auth, "capacity.allocate", { projectId });
+      if (allocationDenied) return allocationDenied;
+    }
     let allocationPct = null;
     if (body?.allocationPct !== undefined && body?.allocationPct !== null && body?.allocationPct !== "") {
       const n = Number(body.allocationPct);
@@ -216,6 +222,17 @@ export async function POST(request, { params }) {
       );
     }
 
+    const { data: previousMember, error: previousError } = await svc
+      .from("project_members").select("project_role")
+      .eq("organization_id", auth.orgId).eq("project_id", projectId).eq("user_id", userId).maybeSingle();
+    if (previousError) return NextResponse.json({ error: "Could not verify the existing project role." }, { status: 503 });
+    if (previousMember?.project_role === "manager" && projectRole !== "manager") {
+      return NextResponse.json({ error: "Assign a different project manager before changing this role." }, { status: 409 });
+    }
+
+    const billingBlock = await requireUnlocked(svc, auth.orgId);
+    if (billingBlock) return NextResponse.json(billingBlock, { status: billingBlock.status });
+
     const { error } = await svc
       .from("project_members")
       .upsert(
@@ -225,7 +242,7 @@ export async function POST(request, { params }) {
           user_id: userId,
           user_type: membership.user_type === "admin" ? "admin" : "developer",
           project_role: projectRole,
-          allocation_pct: allocationPct,
+          ...(hasAllocation ? { allocation_pct: allocationPct } : {}),
           added_by: auth.appUserId || null,
           updated_at: new Date().toISOString(),
         },
@@ -290,6 +307,9 @@ export async function DELETE(request, { params }) {
         { status: 409 }
       );
     }
+
+    const billingBlock = await requireUnlocked(svc, auth.orgId);
+    if (billingBlock) return NextResponse.json(billingBlock, { status: billingBlock.status });
 
     const { error } = await svc
       .from("project_members")
