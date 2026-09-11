@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { requirePermission } from "@/utils/serverPermissions";
+import { loadOverrides } from "@/utils/permissionOverrides";
+import { canReceiveTaskNotification } from "@/utils/taskNotificationAccess";
 import { checkFeatureAccess } from "@/utils/entitlements";
 import { sendTemplatedEmail, emailMode } from "@/utils/emailService";
 
@@ -79,7 +81,7 @@ export async function POST(request) {
     if (memErr) {
       return NextResponse.json({ error: "Notification recipients unavailable" }, { status: 500 });
     }
-    const allowed = (members || []).filter((member) =>
+    let allowed = (members || []).filter((member) =>
       member.status === "active" && ["admin", "developer"].includes(member.user_type));
     if (!allowed.length) {
       return NextResponse.json({ error: "No valid recipients in your organization" }, { status: 400 });
@@ -90,13 +92,30 @@ export async function POST(request) {
     if (taskId) {
       const { data, error } = await svc
         .from("developer_tasks")
-        .select("id, task_title, project_id, organization_id")
+        .select("id, task_title, project_id, organization_id, developer_id")
         .eq("id", taskId)
         .eq("organization_id", auth.orgId)
         .maybeSingle();
       if (error) return NextResponse.json({ error: "Task lookup unavailable" }, { status: 503 });
       if (!data) return NextResponse.json({ error: "Task not found" }, { status: 404 });
       task = data;
+      if (!canReceiveTaskNotification(auth, task)) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      try {
+        const eligible = await Promise.all(allowed.map(async (member) => {
+          const subject = { orgId: auth.orgId, appUserId: member.user_id,
+            userType: member.user_type, role: member.role };
+          subject.overrides = await loadOverrides(svc, subject);
+          return canReceiveTaskNotification(subject, task) ? member : null;
+        }));
+        allowed = eligible.filter(Boolean);
+      } catch {
+        return NextResponse.json({ error: "Recipient permissions unavailable" }, { status: 503 });
+      }
+      if (!allowed.length) {
+        return NextResponse.json({ error: "No recipients can access this task" }, { status: 403 });
+      }
     }
     const { data: org } = await svc
       .from("organizations")

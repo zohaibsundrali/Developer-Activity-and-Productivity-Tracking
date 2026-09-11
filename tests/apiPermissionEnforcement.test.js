@@ -332,6 +332,33 @@ describe('automation notification recipient boundaries', () => {
     expect((await send(body)).status).toBe(400);
     expect(state.emails).toHaveLength(0);
   });
+  it('does not disclose task details to an unassigned contributor', async () => {
+    state.tables.developer_tasks = { select: () => ({ data: { id: 'task', organization_id: ORG, developer_id: 'someone-else', task_title: 'Private task' } }) };
+    expect((await send({ taskId: 'task' })).status).toBe(403);
+    expect(state.emails).toHaveLength(0);
+    expect(queries('notifications', 'insert')).toHaveLength(0);
+  });
+  it('allows the assignee and reads their own typed overrides', async () => {
+    state.tables.developer_tasks = { select: () => ({ data: { id: 'task', organization_id: ORG, developer_id: COLLEAGUE } }) };
+    expect((await send({ taskId: 'task' })).status).toBe(200);
+    const lookup = queries('user_permissions', 'select')[0];
+    expect(hasEq(lookup, 'memberships.user_id', COLLEAGUE)).toBe(true);
+    expect(hasEq(lookup, 'memberships.user_type', 'developer')).toBe(true);
+    expect(hasEq(lookup, 'memberships.organization_id', ORG)).toBe(true);
+  });
+  it('honors an assignee permission denial before fan-out', async () => {
+    state.tables.developer_tasks = { select: () => ({ data: { id: 'task', organization_id: ORG, developer_id: COLLEAGUE } }) };
+    state.tables.user_permissions = { select: () => ({ data: [{ permission_key: 'task.view_own', allowed: false }] }) };
+    expect((await send({ taskId: 'task' })).status).toBe(403);
+    expect(state.emails).toHaveLength(0);
+  });
+  it('fails closed when recipient overrides cannot be read', async () => {
+    state.tables.developer_tasks = { select: () => ({ data: { id: 'task', organization_id: ORG, developer_id: COLLEAGUE } }) };
+    state.tables.user_permissions = { select: () => ({ error: { code: '42501', message: 'private details' } }) };
+    expect((await send({ taskId: 'task' })).status).toBe(503);
+    expect(state.emails).toHaveLength(0);
+    expect(queries('notifications', 'insert')).toHaveLength(0);
+  });
   it('uses the admin recipient field for admin identities', async () => {
     state.tables.memberships.select = () => ({ data: [{ user_id: COLLEAGUE, user_type: 'admin', status: 'active', email: 'a@example.test' }] });
     expect((await send()).status).toBe(200);

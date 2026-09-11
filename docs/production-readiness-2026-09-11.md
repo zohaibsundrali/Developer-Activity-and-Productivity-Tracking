@@ -103,3 +103,11 @@ Malformed notification fields and oversized recipient lists now fail validation 
 This does not establish complete task-level notification privacy: per-recipient task permission/override checks, typed identity in the database recipient predicate, and all direct notification writers still require audit. No real emails or business records were created during these tests.
 
 Automation follow-up validation: **102 test files / 3,200 tests passed** and the production build passed with existing lint warnings. Eleven new behavior cases cover recipient status/type, malformed requests, missing tasks, recipient identity fields, fallback lookup errors, and suppressed-insert counts. The static role-array test now documents the recipient profile-type filter separately from caller authorization.
+
+## Task notification permission follow-up
+
+Automation messages with a task reference now validate the sender and each recipient against the existing task reader/reviewer permissions. `task.view_all` or `task.review` permits reading others' work; receiving one's own work requires `task.view_own` and a matching Developer-profile assignment. An Admin-profile UUID cannot impersonate a Developer assignment. Each recipient's overrides are loaded with their organization, profile type, and profile ID; lookup failure aborts before notification insertion or email. Explicit denies and grants follow the shared permission engine. Requests with no eligible recipients return 403.
+
+These checks apply to task-referenced automation notifications. They do not certify the generic direct database notification writers, the historical task-table policies, or the recipient predicate's legacy identity fields. Free-text organization automation messages remain available to active staff recipients under the existing automation permission and subscription gate.
+
+Task notification validation: **103 test files / 3,219 tests passed**, and the production build passed with existing lint warnings. Nineteen new tests cover role access, own assignment, typed UUID collisions, grants/denies, organization isolation, unavailable overrides, and API fan-out prevention. Tests used mocked database/email operations; staging verification and the nine pending migrations remain outstanding.
