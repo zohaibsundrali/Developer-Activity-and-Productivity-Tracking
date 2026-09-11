@@ -155,7 +155,7 @@ export default function TaskCompletionModal({
         .from("task-submissions")
         .upload(storagePath, selectedFile, {
           cacheControl: "3600",
-          upsert: true,
+          upsert: false,
         });
 
       if (uploadError) {

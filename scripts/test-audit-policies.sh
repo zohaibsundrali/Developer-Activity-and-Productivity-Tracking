@@ -89,3 +89,13 @@ docker exec "$audit_container" createdb -U postgres submission_authority_test
 sed '/^\\ir /r supabase/migrations/20260911094725_production_submission_write_authority.sql' \
   database/tests/submission_write_authority.sql | sed '/^\\ir /d' | \
   docker exec -i "$audit_container" psql -U postgres -d submission_authority_test -v ON_ERROR_STOP=1
+
+docker exec "$audit_container" createdb -U postgres comment_integrity_test
+sed '/^\\ir /r supabase/migrations/20260911095524_production_task_comment_integrity.sql' \
+  database/tests/task_comment_integrity.sql | sed '/^\\ir /d' | \
+  docker exec -i "$audit_container" psql -U postgres -d comment_integrity_test -v ON_ERROR_STOP=1
+
+docker exec "$audit_container" createdb -U postgres proof_objects_test
+sed '/^\\ir /r supabase/migrations/20260911095840_production_proof_object_immutability.sql' \
+  database/tests/proof_object_immutability.sql | sed '/^\\ir /d' | \
+  docker exec -i "$audit_container" psql -U postgres -d proof_objects_test -v ON_ERROR_STOP=1
