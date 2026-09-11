@@ -225,3 +225,11 @@ python3 scripts/test-assignment-notification-concurrency.py "$audit_container" a
 docker exec "$audit_container" createdb -U postgres task_notification_privacy_test
 python3 scripts/expand-sql-fixture.py database/tests/task_notification_privacy.sql | \
   docker exec -i "$audit_container" psql -U postgres -d task_notification_privacy_test -v ON_ERROR_STOP=1
+
+docker exec "$audit_container" createdb -U postgres agile_container_test
+python3 scripts/expand-sql-fixture.py database/tests/agile_container_write_authority.sql | \
+  docker exec -i "$audit_container" psql -U postgres -d agile_container_test -v ON_ERROR_STOP=1
+
+docker exec "$audit_container" createdb -U postgres sensitive_notification_test
+python3 scripts/expand-sql-fixture.py database/tests/sensitive_notification_privacy.sql | \
+  docker exec -i "$audit_container" psql -U postgres -d sensitive_notification_test -v ON_ERROR_STOP=1

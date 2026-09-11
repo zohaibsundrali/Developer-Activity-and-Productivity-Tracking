@@ -1,7 +1,8 @@
+import { canReceiveSignalNotice } from "@/utils/sensitiveNotificationAudience";
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { resolveEntitlement, getUsage } from "@/utils/entitlements";
-import { runDetectors, filterForViewer, signalReportingVisibility, DEFAULTS } from "@/utils/signals";
+import { runDetectors, signalReportingVisibility, DEFAULTS } from "@/utils/signals";
 import { authCan } from "@/utils/serverPermissions";
 
 export const dynamic = "force-dynamic";
@@ -59,11 +60,8 @@ export async function GET(request) {
     const bundle = await collect(svc, auth, now, since);
     // One shared, pure implementation of the visibility rule — the nightly job
     // in /api/cron applies the same function to the same signals.
-    const signals = filterForViewer(runDetectors(bundle, now), {
-      role: auth.role,
-      canView: true,
-      visiblePeople: bundle.visiblePeople,
-    });
+    const signals = runDetectors(bundle, now).filter(signal =>
+      canReceiveSignalNotice(auth, signal, bundle.reportsTo));
 
     return NextResponse.json({
       generatedAt: now.toISOString(),

@@ -1,17 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId } from "@/utils/orgContext";
 import { loadAgile } from "@/utils/pmData";
 import { loadEmployees } from "@/utils/employeesData";
-import { showError } from "@/utils/alerts";
+import { createAgileRequest, loadAgileProjects } from "@/utils/agileWorkspaceRequests";
 import SprintPlanning from "@/components/admin/SprintPlanning";
 import SprintBoard from "@/components/admin/SprintBoard";
 import { SELECT_CLASS, ViewSkeleton } from "@/components/admin/views/viewKit";
 // The page <h1> reads the same string the sidebar and topbar do.
 import { sectionTitle } from "@/components/shell/navConfig";
-import { EmptyState, PageHeader, Skeleton, SkeletonCard, Tabs } from "@/components/ui";
+import { ErrorState, EmptyState, PageHeader, Skeleton, SkeletonCard, Tabs } from "@/components/ui";
 import { LayoutList, Kanban, FolderOpen } from "lucide-react";
 
 /* Agile workspace: project picker + tabbed Backlog/Planning and Sprint Board.
@@ -24,7 +24,7 @@ const TABS = [
 ];
 
 export default function AgileWorkspace() {
-  const [orgId, setOrgId] = useState(null);
+  const orgId = getOrgId();
   const [projects, setProjects] = useState([]);
   const [projectId, setProjectId] = useState(null);
 
@@ -37,65 +37,51 @@ export default function AgileWorkspace() {
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [loading, setLoading] = useState(false);
 
-  /* ---- projects ---- */
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoadingProjects(true);
-      const id = getOrgId();
-      if (!cancelled) setOrgId(id);
-      const runQuery = (withArchived) => {
-        let q = supabase.from("projects").select("id, name").eq("organization_id", id);
-        if (withArchived) q = q.eq("archived", false);
-        return q.order("created_at", { ascending: false });
-      };
-      try {
-        let { data, error } = await runQuery(true);
-        if (error) ({ data, error } = await runQuery(false));
-        if (cancelled) return;
-        const rows = data || [];
-        setProjects(rows);
-        setProjectId(rows.length ? rows[0].id : null);
-      } catch (err) {
-        if (!cancelled) showError("Failed to load projects", err?.message || String(err));
-      } finally {
-        if (!cancelled) setLoadingProjects(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+  const [projectError, setProjectError] = useState(null);
+  const [dataError, setDataError] = useState(null);
+  const [projectOrg, setProjectOrg] = useState(null);
+  const [dataScope, setDataScope] = useState(null);
+  const scope = `${orgId}:${projectId}`;
+  const liveScope = useRef(scope); liveScope.current = scope;
+  const projectRequest = useMemo(() => createAgileRequest(), []);
+  const dataRequest = useMemo(() => createAgileRequest(), []);
+  const clearData = useCallback(() => {
+    setSprints([]); setEpics([]); setTasks([]); setEmployees([]);
   }, []);
 
-  /* ---- agile data ---- */
-  const reload = useCallback(async () => {
-    if (!projectId) {
-      setSprints([]);
-      setEpics([]);
-      setTasks([]);
-      return;
-    }
-    setLoading(true);
-    try {
-      const id = orgId || getOrgId();
-      const [{ sprints: s, epics: e, tasks: t }, empRes] = await Promise.all([
-        loadAgile(projectId),
-        loadEmployees(id),
-      ]);
-      setSprints(s || []);
-      setEpics(e || []);
-      setTasks(t || []);
-      setEmployees(empRes?.employees || []);
-    } catch (err) {
-      showError("Failed to load agile data", err?.message || String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [projectId, orgId]);
+  const reloadProjects = useCallback(() => projectRequest.run({
+    load: () => loadAgileProjects(supabase, orgId),
+    isCurrent: () => getOrgId() === orgId,
+    onStart: () => { setLoadingProjects(true); setProjectError(null); setProjects([]); setProjectId(null); clearData(); },
+    onResult: rows => { setProjects(rows); setProjectId(rows[0]?.id || null); setProjectOrg(orgId); setLoadingProjects(false); },
+    onError: error => { setProjects([]); setProjectId(null); setProjectError(error); setProjectOrg(orgId); setLoadingProjects(false); },
+  }), [orgId, projectRequest, clearData]);
 
   useEffect(() => {
-    reload();
-  }, [reload]);
+    reloadProjects().catch(() => {});
+    return () => projectRequest.cancel();
+  }, [reloadProjects, projectRequest]);
+
+  const reload = useCallback(() => dataRequest.run({
+    load: async () => {
+      if (!projectId) return { sprints: [], epics: [], tasks: [], employees: [] };
+      const [agile, people] = await Promise.all([loadAgile(projectId), loadEmployees(orgId)]);
+      if (people?.error) throw people.error;
+      return { ...agile, employees: people?.employees || [] };
+    },
+    isCurrent: () => getOrgId() === orgId && liveScope.current === scope,
+    onStart: () => { setLoading(true); setDataError(null); clearData(); },
+    onResult: data => {
+      setSprints(data.sprints || []); setEpics(data.epics || []); setTasks(data.tasks || []); setEmployees(data.employees);
+      setDataScope(scope); setLoading(false);
+    },
+    onError: error => { clearData(); setDataError(error); setDataScope(scope); setLoading(false); },
+  }), [projectId, orgId, scope, dataRequest, clearData]);
+
+  useEffect(() => {
+    reload().catch(() => {});
+    return () => dataRequest.cancel();
+  }, [reload, dataRequest]);
 
   // One header for every state, so the screen always owns its <h1>.
   // No refresh action: this screen never had one, and adding a control that
@@ -107,7 +93,7 @@ export default function AgileWorkspace() {
     />
   );
 
-  if (loadingProjects) {
+  if (loadingProjects || projectOrg !== orgId) {
     return (
       <div>
         {header}
@@ -123,6 +109,8 @@ export default function AgileWorkspace() {
       </div>
     );
   }
+
+  if (projectError) return <div>{header}<ErrorState title="Could not load projects" description={projectError.message || "Please retry."} onRetry={() => reloadProjects().catch(() => {})} /></div>;
 
   if (!projects.length) {
     return (
@@ -182,12 +170,14 @@ export default function AgileWorkspace() {
           />
         </div>
 
-        {loading ? (
+        {loading || dataScope !== scope ? (
           tab === "planning" ? (
             <SkeletonCard lines={6} />
           ) : (
             <ViewSkeleton viewType="kanban" />
           )
+        ) : dataError ? (
+          <ErrorState title="Could not load agile data" description={dataError.message || "Please retry."} onRetry={() => reload().catch(() => {})} />
         ) : tab === "planning" ? (
           <SprintPlanning
             projectId={projectId}

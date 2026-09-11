@@ -1,3 +1,4 @@
+import { sensitiveNotificationAudience, canReceiveBillingNotice, canReceiveSignalNotice } from "@/utils/sensitiveNotificationAudience";
 import { NextResponse } from "next/server";
 import { serviceClient } from "@/utils/serverAuth";
 import { recordEvent } from "@/utils/systemEvents";
@@ -6,8 +7,6 @@ import { checkFeatureAccess } from "@/utils/entitlements";
 import { recoverInvitations } from "@/utils/invitationRecovery";
 import {
   runDetectors,
-  filterForViewer,
-  SIGNAL_ROLES as SIGNAL_NOTIFY_ROLES,
   DEFAULTS as SIGNAL_DEFAULTS,
 } from "@/utils/signals";
 // The identical query set the dashboard uses. Two copies of "what the detectors
@@ -286,7 +285,7 @@ async function runJobs() {
 
       const { data: recipients } = await svc
         .from("memberships")
-        .select("organization_id, user_id, user_type, email, role")
+        .select("organization_id, user_id, user_type, email, role, status")
         .in("organization_id", orgIds)
         .in("role", TRIAL_NOTIFY_ROLES)
         .eq("status", "active");
@@ -305,9 +304,12 @@ async function runJobs() {
         (sentToday || []).map((n) => `${n.organization_id}:${n.admin_id}`)
       );
 
+      const billingAudience = await sensitiveNotificationAudience(svc, recipients || []);
+      if (billingAudience.failed) summary.errors.push({ job: "trial_reminders", message: "Recipient permissions unavailable; affected notices withheld." });
       const byOrg = new Map(live.map((s) => [s.organization_id, s]));
       const rows = [];
-      for (const member of recipients || []) {
+      for (const { member, auth: recipientAuth } of billingAudience.audience) {
+        if (!canReceiveBillingNotice(recipientAuth)) continue;
         const sub = byOrg.get(member.organization_id);
         if (!sub) continue;
         if (already.has(`${member.organization_id}:${member.user_id}`)) continue;
@@ -414,14 +416,17 @@ async function runJobs() {
 
       const { data: recipients, error: recErr } = await svc
         .from("memberships")
-        .select("user_id, user_type, email, role, reports_to")
+        .select("organization_id, user_id, user_type, email, role, reports_to, status")
         .eq("organization_id", org.id)
         .eq("status", "active")
-        .in("role", SIGNAL_NOTIFY_ROLES);
+        .in("user_type", ["admin", "developer"]);
       if (recErr) {
         summary.errors.push({ job: "signals", org: org.id, message: recErr.message });
         continue;
       }
+
+      const signalAudience = await sensitiveNotificationAudience(svc, recipients || [], org.id);
+      if (signalAudience.failed) summary.errors.push({ job: "signals", org: org.id, message: "Recipient permissions unavailable; affected notices withheld." });
 
       // Collected first, inserted as one batch per organization. One awaited
       // INSERT per signal per recipient is ~1,700 serial round trips at 50 orgs
@@ -431,27 +436,8 @@ async function runJobs() {
       const rows = [];
 
       for (const s of worth) {
-        for (const member of recipients || []) {
-          // A manager hears only about their own reports; owner/admin/hr hear
-          // everything. Team-level signals go to all of them.
-          // THE SAME FUNCTION the dashboard applies, not a second copy of the
-          // rule. The first version reimplemented it here, and the review found
-          // that both implementations were wrong in the same way while the
-          // tests covering them could not tell — because they matched the text
-          // of the filter instead of running it.
-          //
-          // `visiblePeople` for this recipient: everyone whose `reports_to`
-          // points at them, under either spelling of their identifier.
-          const theirIds = [member.user_id, member.email]
-            .filter(Boolean)
-            .map((v) => String(v).trim().toLowerCase());
-          const visiblePeople = new Set(
-            Object.entries(bundle.reportsTo || {})
-              .filter(([, manager]) => theirIds.includes(manager))
-              .map(([subject]) => subject)
-          );
-
-          if (!filterForViewer([s], { role: member.role, visiblePeople }).length) continue;
+        for (const { member, auth: recipientAuth } of signalAudience.audience) {
+          if (!canReceiveSignalNotice(recipientAuth, s, bundle.reportsTo)) continue;
 
           rows.push({
             organization_id: org.id,

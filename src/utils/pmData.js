@@ -1,6 +1,7 @@
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
+import { savePlanningRecord } from "@/utils/planningRecords";
 import { PROJECT_STATUS } from "@/utils/projectStatus";
 import { requireTaskMutation } from "@/utils/developerPlanMutations";
 import { notify, windowedDedupeKey } from "@/utils/notifications";
@@ -408,41 +409,23 @@ export async function loadSprints(projectId) {
   const orgId = getOrgId();
   let q = supabase.from("sprints").select("*").eq("organization_id", orgId).order("sort_order");
   if (projectId) q = q.eq("project_id", projectId);
-  const { data } = await q;
+  const { data, error } = await q;
+  if (error) throw error;
   return data || [];
 }
 export async function loadEpics(projectId) {
   const orgId = getOrgId();
   let q = supabase.from("epics").select("*").eq("organization_id", orgId);
   if (projectId) q = q.eq("project_id", projectId);
-  const { data } = await q;
+  const { data, error } = await q;
+  if (error) throw error;
   return data || [];
 }
 export async function saveSprint(projectId, patch) {
-  const orgId = getOrgId();
-  if (patch.id) {
-    const { error } = await supabase.from("sprints").update(patch).eq("id", patch.id);
-    return { error };
-  }
-  const { data, error } = await supabase
-    .from("sprints")
-    .insert({ organization_id: orgId, project_id: projectId, ...patch })
-    .select()
-    .single();
-  return { sprint: data, error };
+  return savePlanningRecord(supabase, getOrgId(), "sprints", projectId, patch);
 }
 export async function saveEpic(projectId, patch) {
-  const orgId = getOrgId();
-  if (patch.id) {
-    const { error } = await supabase.from("epics").update(patch).eq("id", patch.id);
-    return { error };
-  }
-  const { data, error } = await supabase
-    .from("epics")
-    .insert({ organization_id: orgId, project_id: projectId, ...patch })
-    .select()
-    .single();
-  return { epic: data, error };
+  return savePlanningRecord(supabase, getOrgId(), "epics", projectId, patch);
 }
 
 // ---- Task detail sub-resources --------------------------------------
@@ -827,7 +810,7 @@ async function notifySprintStatus(sprintId, status) {
 
 // Move a sprint through planned → active → completed.
 export async function setSprintStatus(sprintId, status) {
-  const { error } = await supabase.from("sprints").update({ status }).eq("id", sprintId);
+  const { error } = await savePlanningRecord(supabase, getOrgId(), "sprints", undefined, { id: sprintId, status });
   if (!error && (status === "active" || status === "completed")) {
     try {
       await notifySprintStatus(sprintId, status);
@@ -840,12 +823,13 @@ export async function setSprintStatus(sprintId, status) {
 
 // Load everything an agile view needs for one project in one shot.
 export async function loadAgile(projectId) {
-  const [sprints, epics, { tasks }] = await Promise.all([
+  const [sprints, epics, taskResult] = await Promise.all([
     loadSprints(projectId),
     loadEpics(projectId),
     loadTasks(projectId),
   ]);
-  return { sprints, epics, tasks };
+  if (taskResult.error) throw taskResult.error;
+  return { sprints, epics, tasks: taskResult.tasks };
 }
 
 // ---- Burndown ------------------------------------------------------------

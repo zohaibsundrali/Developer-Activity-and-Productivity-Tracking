@@ -607,11 +607,11 @@ export const SIGNAL_ROLES = [...ALL_PEOPLE_ROLES, "manager", "team_lead"];
  * registered under BOTH the membership id and the email — a signal's subject id
  * is whichever of the two the session rows carried. See `personKey`.
  */
-export function filterForViewer(signals = [], { role, visiblePeople = new Set(), canView } = {}) {
+export function filterForViewer(signals = [], { role, visiblePeople = new Set(), canView, canViewBilling } = {}) {
   if (canView === false || (canView !== true && !SIGNAL_ROLES.includes(role))) return [];
 
   const seesAllPeople = ALL_PEOPLE_ROLES.includes(role);
-  const seesBilling = BILLING_ROLES.includes(role);
+  const seesBilling = canViewBilling ?? BILLING_ROLES.includes(role);
 
   return signals.filter((s) => {
     if (s.kind === "plan_pressure" && !seesBilling) return false;
