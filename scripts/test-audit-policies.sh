@@ -73,6 +73,7 @@ for sql_file in \
 done
 for sql_file in \
   database/tests/review_transaction_fixture.sql \
+  supabase/migrations/20260911094725_production_submission_write_authority.sql \
   supabase/migrations/20260911085808_production_review_transaction.sql \
   database/tests/review_transaction.sql; do
   docker exec -i "$audit_container" psql -U postgres -d quota_test -v ON_ERROR_STOP=1 < "$sql_file"
@@ -82,3 +83,9 @@ for sql_file in \
   database/tests/submission_transaction.sql; do
   docker exec -i "$audit_container" psql -U postgres -d quota_test -v ON_ERROR_STOP=1 < "$sql_file"
 done
+
+# Standalone adversarial fixture retains intentionally broad legacy policies.
+docker exec "$audit_container" createdb -U postgres submission_authority_test
+sed '/^\\ir /r supabase/migrations/20260911094725_production_submission_write_authority.sql' \
+  database/tests/submission_write_authority.sql | sed '/^\\ir /d' | \
+  docker exec -i "$audit_container" psql -U postgres -d submission_authority_test -v ON_ERROR_STOP=1
