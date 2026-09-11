@@ -39,6 +39,15 @@ const MAX_CASES_PER_RUN = 500;
 
 const clip = (v, n) => (typeof v === "string" && v.trim() ? v.trim().slice(0, n) : null);
 
+function qualityTransactionError(error) {
+  const message = error?.message || '';
+  const status = error?.code === '42501' ? 403 : error?.code === 'P0002' ? 404 :
+    ['22023', '22P02'].includes(error?.code) ? 400 : message.startsWith('QA_CONFLICT:') ? 409 :
+    /^(BILLING_LOCKED|PLAN_LIMIT_REACHED):/.test(message) ? 402 : 503;
+  return NextResponse.json({ success: false, error: status === 503 ? 'Could not save the QA workflow. Please retry.' :
+    message.split(':').slice(1).join(':').trim() || 'QA workflow refused' }, { status });
+}
+
 export async function GET(request) {
   try {
     const auth = await getAuthedOrg(request);
@@ -209,129 +218,26 @@ export async function POST(request) {
         return NextResponse.json({ success: false, error: "Give the run a name" }, { status: 400 });
       }
 
-      // THE SCOPE IS READ FROM THE DATABASE, not taken from the body. A run is
-      // "every active case in this project at this moment"; letting the caller
-      // send the list would let a run quietly omit the cases it would fail.
-      const { data: cases, error: caseErr } = await svc
-        .from("test_cases")
-        .select("id")
-        .eq("organization_id", auth.orgId)
-        .eq("project_id", projectId)
-        .eq("status", "active")
-        .limit(MAX_CASES_PER_RUN);
-      if (caseErr) {
-        return NextResponse.json({ success: false, error: caseErr.message }, { status: 500 });
-      }
-      if (!cases?.length) {
-        return NextResponse.json(
-          { success: false, error: "That project has no active test cases yet" },
-          { status: 400 }
-        );
-      }
-
-      const { data: run, error: runErr } = await svc
-        .from("test_runs")
-        .insert({
-          organization_id: auth.orgId,
-          project_id: projectId,
-          name,
-          notes: clip(body?.notes, 4000),
-          created_by: auth.appUserId,
-        })
-        .select()
-        .single();
-      if (runErr) {
-        return NextResponse.json({ success: false, error: runErr.message }, { status: 500 });
-      }
-
-      const { error: exErr } = await svc.from("test_executions").insert(
-        cases.map((c) => ({
-          organization_id: auth.orgId,
-          run_id: run.id,
-          test_case_id: c.id,
-        }))
-      );
-      if (exErr) {
-        // A run with no executions is a run with no scope — it would render as
-        // "0 of 0" and mean nothing. Remove it rather than leave it.
-        await svc.from("test_runs").delete().eq("id", run.id);
-        return NextResponse.json({ success: false, error: exErr.message }, { status: 500 });
-      }
-
-      return NextResponse.json({ success: true, run, cases: cases.length });
+      const { data, error } = await svc.rpc('create_quality_run', {
+        p_org: auth.orgId, p_actor: auth.appUserId, p_type: auth.userType,
+        p_project: projectId, p_name: name, p_notes: clip(body?.notes, 4000),
+      });
+      if (error) return qualityTransactionError(error);
+      return NextResponse.json(data);
     }
 
-    // action === "bug" — raise a defect from a failed execution and link it.
     const executionId = body?.executionId;
     if (!UUID_RE.test(String(executionId || ""))) {
       return NextResponse.json({ success: false, error: "Invalid executionId" }, { status: 400 });
     }
-
-    const { data: execution } = await svc
-      .from("test_executions")
-      .select("*, test_cases(title, steps, expected_result, project_id)")
-      .eq("organization_id", auth.orgId)
-      .eq("id", executionId)
-      .maybeSingle();
-    if (!execution) {
-      return NextResponse.json({ success: false, error: "Not found" }, { status: 404 });
-    }
-    if (!["failed", "blocked"].includes(execution.result)) {
-      // The CHECK in 081 refuses this too. Answering here gives the reason
-      // rather than a constraint name.
-      return NextResponse.json(
-        { success: false, error: "Only a failed or blocked test raises a defect" },
-        { status: 409 }
-      );
-    }
-    if (execution.bug_task_id) {
-      return NextResponse.json(
-        { success: false, error: "That result already has a defect linked" },
-        { status: 409 }
-      );
-    }
-
-    const tc = execution.test_cases || {};
-    const today = new Date().toISOString().slice(0, 10);
-    const { data: bug, error: bugErr } = await svc
-      .from("developer_tasks")
-      .insert({
-        organization_id: auth.orgId,
-        project_id: tc.project_id,
-        task_title: `Failed test: ${tc.title || "test case"}`.slice(0, 300),
-        task_description: clip(body?.description, 8000),
-        // The SAME shape the Bug Queue writes. See the note at the top.
-        task_type: "bug",
-        // `createTask` supplies these four and the base schema needs them:
-        // start_date and end_date are NOT NULL, and a bug that starts life
-        // without a status is invisible to every board that filters on one.
-        // Written out rather than calling createTask because that helper uses
-        // the BROWSER client and reads the org from sessionStorage; here the
-        // organization comes from the verified token.
-        status: "pending",
-        priority: "medium",
-        start_date: today,
-        end_date: today,
-        severity: SEVERITIES.includes(body?.severity) ? body.severity : "major",
-        steps_to_reproduce: tc.steps || null,
-        environment: clip(body?.environment, 2000),
-        reported_by: auth.appUserId,
-      })
-      .select()
-      .single();
-    if (bugErr) {
-      return NextResponse.json({ success: false, error: bugErr.message }, { status: 500 });
-    }
-
-    const { error: linkErr } = await svc
-      .from("test_executions")
-      .update({ bug_task_id: bug.id, updated_at: new Date().toISOString() })
-      .eq("id", executionId);
-    if (linkErr) {
-      return NextResponse.json({ success: false, error: linkErr.message }, { status: 500 });
-    }
-
-    return NextResponse.json({ success: true, bug });
+    const { data, error } = await svc.rpc('raise_quality_bug', {
+      p_org: auth.orgId, p_actor: auth.appUserId, p_type: auth.userType,
+      p_execution: executionId, p_description: clip(body?.description, 8000),
+      p_severity: SEVERITIES.includes(body?.severity) ? body.severity : "major",
+      p_environment: clip(body?.environment, 2000),
+    });
+    if (error) return qualityTransactionError(error);
+    return NextResponse.json(data);
   } catch (e) {
     return NextResponse.json(
       { success: false, error: e?.message || "Could not save that" },

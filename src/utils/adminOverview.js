@@ -419,10 +419,11 @@ export async function loadAdminOverview(
   // reads as "you have no notifications" rather than "we looked in the wrong
   // column".
   let notificationsQ = supabase
-    .from("notifications")
+    .from("notification_inbox")
     .select("id, title, message, category, type, created_at, project_id, read")
     .eq("organization_id", orgId)
     .eq("read", false)
+    .is("dismissed_at", null)
     .order("created_at", { ascending: false })
     .limit(8);
   const recipientKey = notificationRecipientKey({ userId: adminId || developerId, userType: adminId ? "admin" : "developer" });

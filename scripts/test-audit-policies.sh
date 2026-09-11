@@ -105,7 +105,10 @@ for sql_file in \
   database/tests/typed_notification_fixture.sql \
   supabase/migrations/20260911095635_production_typed_notification_recipients.sql \
   database/tests/typed_notification.sql \
-  scripts/sql/notification-recipient-preflight.sql; do
+  scripts/sql/notification-recipient-preflight.sql \
+  database/tests/notification_state_fixture.sql \
+  supabase/migrations/20260911102420_production_notification_recipient_state.sql \
+  database/tests/notification_state.sql; do
   docker exec -i "$audit_container" psql -U postgres -d typed_notification_test -v ON_ERROR_STOP=1 < "$sql_file"
 done
 
@@ -126,3 +129,24 @@ sed -e '/^\\ir task_authorization_fixture.sql/r database/tests/task_authorizatio
   -e '/^\\ir .*20260911101008/r supabase/migrations/20260911101008_production_project_mutation_authority.sql' \
   database/tests/project_mutation_authority.sql | sed '/^\\ir /d' | \
   docker exec -i "$audit_container" psql -U postgres -d project_authority_test -v ON_ERROR_STOP=1
+
+docker exec "$audit_container" createdb -U postgres pm_storage_test
+python3 scripts/expand-sql-fixture.py database/tests/pm_storage_task_scope.sql | \
+  docker exec -i "$audit_container" psql -U postgres -d pm_storage_test -v ON_ERROR_STOP=1
+# Confirm the actual migration refuses a public bucket before any policy DDL.
+docker exec "$audit_container" psql -U postgres -d pm_storage_test -v ON_ERROR_STOP=1 \
+  -c "update storage.buckets set public=true where id='task-submissions'" >/dev/null
+if pm_preflight_result=$(docker exec -i "$audit_container" psql -U postgres -d pm_storage_test -v ON_ERROR_STOP=1 \
+  < supabase/migrations/20260911102625_production_pm_storage_task_scope.sql 2>&1); then
+  printf '%s\n' 'Public task bucket was incorrectly accepted' >&2
+  exit 1
+fi
+if [[ "$pm_preflight_result" != *TASK_BUCKET_PUBLIC* ]]; then
+  printf '%s\n' "$pm_preflight_result" >&2
+  exit 1
+fi
+
+docker exec "$audit_container" createdb -U postgres quality_transactions_test
+python3 scripts/expand-sql-fixture.py database/tests/quality_transactions.sql | \
+  docker exec -i "$audit_container" psql -U postgres -d quality_transactions_test -v ON_ERROR_STOP=1
+python3 scripts/test-quality-concurrency.py "$audit_container" quality_transactions_test

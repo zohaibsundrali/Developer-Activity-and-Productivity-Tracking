@@ -28,7 +28,7 @@ import Swal from 'sweetalert2';
 import { isSessionExpired, clearDeveloperSession } from '@/utils/sessionPolicy';
 // Scheme check for anything this page is about to hand to fetch(), an anchor's
 // href or window.open. See the download handler for what went wrong without it.
-import { safeHref } from '@/utils/safeUrl';
+import { safeProjectFileValue, resolveProjectFileUrl } from '@/utils/projectFiles';
 
 export default function ProjectDetailsPage() {
   return <PermissionBoundary><ProjectPermissionGate /></PermissionBoundary>;
@@ -72,9 +72,9 @@ function ProjectDetailsContent() {
       // controls, because the id is also a query parameter. A `javascript:`
       // value here reached `link.href = ...; link.click()` in the download
       // handler's catch block and executed in this page's origin, with the
-      // signed-in session. `safeHref` returns "" for every scheme that is not
-      // http(s), so the three sinks below have nothing to follow.
-      file_url: safeHref(searchParams.get('file_url')),
+      // signed-in session. `safeProjectFileValue` rejects unsafe schemes while retaining private keys, and
+      // only the resolved URL reaches navigation below.
+      file_url: safeProjectFileValue(searchParams.get('file_url')),
       file_name: decodeURIComponent(searchParams.get('file_name') || ''),
       assigned_at: searchParams.get('assigned_at'),
       assigned_date: searchParams.get('assigned_date'),
@@ -94,7 +94,7 @@ function ProjectDetailsContent() {
   // same DOM XSS with one more step. The 'null' literal is the string Next puts
   // in the URL for a missing value, and safeHref rejects it anyway (no scheme,
   // no leading slash); it is spelled out here because the old conditionals did.
-  const fileHref = safeHref(project.file_url);
+  const storedFile = safeProjectFileValue(project.file_url);
 
   // Get assigned date
   // Each candidate goes through dateFromQuery: a timestamp that arrived via
@@ -703,8 +703,9 @@ function ProjectDetailsContent() {
   // navigation. Note the ORDER: the check has to happen before the try block,
   // not inside it, or the catch becomes the bypass all over again.
   const handleDownloadFile = async () => {
+    const fileHref = await resolveProjectFileUrl(storedFile);
     if (!fileHref) {
-      showInfo("No file", "No file available for download.");
+      showInfo("No file", "The file is unavailable or you no longer have access.");
       return;
     }
 
@@ -751,7 +752,7 @@ function ProjectDetailsContent() {
           "Opening in new tab",
           "Opening file in new tab. Please use the browser's Save as option to download."
         );
-        window.open(fileHref, '_blank');
+        window.open(fileHref, '_blank', 'noopener,noreferrer');
       }
       
     } finally {
@@ -1359,7 +1360,7 @@ function ProjectDetailsContent() {
                 </div>
 
                 {/* File Attachment */}
-                {fileHref && (
+                {storedFile && (
                   <div className="mb-6">
                     <h2 className="text-lg font-semibold mb-3 text-foreground">Project Files</h2>
                     <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">

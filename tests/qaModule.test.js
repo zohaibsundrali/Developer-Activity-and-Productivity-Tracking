@@ -107,8 +107,8 @@ describe("a defect is still a bug in the bug queue", () => {
 
   it("writes a developer_tasks row with task_type bug", () => {
     // 061 refused a second pipeline. This keeps that.
-    expect(route).toMatch(/from\("developer_tasks"\)/);
-    expect(route).toMatch(/task_type: "bug"/);
+    expect(read('supabase/migrations/20260911102436_production_quality_transactions.sql')).toContain('insert into public.developer_tasks');
+    expect(read('supabase/migrations/20260911102436_production_quality_transactions.sql')).toContain("'bug','pending','medium'");
   });
 
   it("supplies the columns the base schema requires", () => {
@@ -116,7 +116,7 @@ describe("a defect is still a bug in the bug queue", () => {
     // status is invisible to every board that filters on one. `createTask`
     // supplies these; this route cannot call it, so it supplies them itself.
     for (const col of ["status:", "priority:", "start_date:", "end_date:"]) {
-      expect(route, col).toContain(col);
+      expect(read('supabase/migrations/20260911102436_production_quality_transactions.sql'), col).toContain(col.replace(':', ''));
     }
   });
 
@@ -218,22 +218,25 @@ describe("the route decides who may do what, per act", () => {
     // Letting the caller send the case list would let a run quietly omit the
     // cases it would fail.
     const post = route.slice(route.indexOf('if (action === "run")'));
-    expect(post).toMatch(/from\("test_cases"\)/);
-    expect(post).toMatch(/eq\("status", "active"\)/);
+    expect(post).toContain("svc.rpc('create_quality_run'");
+    const transaction = read('supabase/migrations/20260911102436_production_quality_transactions.sql');
+    expect(transaction).toContain("from public.test_cases where organization_id=p_org and project_id=p_project and status='active'");
     expect(post).not.toMatch(/body\?\.caseIds/);
   });
 
-  it("removes a run whose executions could not be written", () => {
-    // A run with no scope renders as "0 of 0" and means nothing.
-    expect(route).toMatch(/from\("test_runs"\)\s*\.delete\(\)\s*\.eq\("id", run\.id\)/);
+  it("commits runs and execution scope in one transaction", () => {
+    const transaction = read('supabase/migrations/20260911102436_production_quality_transactions.sql');
+    expect(transaction).toContain('insert into public.test_runs');
+    expect(transaction).toContain('insert into public.test_executions');
+    expect(route).toContain("svc.rpc('create_quality_run'");
   });
 
   it("refuses a second defect on one result", () => {
-    expect(route).toMatch(/already has a defect linked/);
+    expect(read('supabase/migrations/20260911102436_production_quality_transactions.sql')).toMatch(/already has a defect linked/);
   });
 
   it("refuses a defect on a result that is not failed or blocked", () => {
-    expect(route).toMatch(/Only a failed or blocked test raises a defect/);
+    expect(read('supabase/migrations/20260911102436_production_quality_transactions.sql')).toMatch(/Only a failed or blocked test raises a defect/);
   });
 
   it("scopes every lookup to the caller's organization", () => {

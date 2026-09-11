@@ -2,6 +2,7 @@ import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
 import { PROJECT_STATUS } from "@/utils/projectStatus";
+import { requireTaskMutation } from "@/utils/developerPlanMutations";
 import { notify, windowedDedupeKey } from "@/utils/notifications";
 
 // How close together two identical status changes have to be to count as one
@@ -203,10 +204,18 @@ export async function createTask(projectId, patch) {
 // ({ projectId, action, meta }) an entry is written to the pm_activity feed.
 // Callers that omit logCtx behave exactly as before (no logging).
 export async function updateTask(taskId, patch, logCtx = null) {
-  const { error } = await supabase
-    .from("developer_tasks")
-    .update({ ...patch, updated_at: new Date().toISOString() })
-    .eq("id", taskId);
+  let error = null;
+  try {
+    const orgId = getOrgId();
+    if (!orgId) throw new Error("Your organization could not be verified. Please sign in again.");
+    await requireTaskMutation(supabase
+      .from("developer_tasks")
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq("id", taskId)
+      .eq("organization_id", orgId), taskId);
+  } catch (failure) {
+    error = failure;
+  }
   if (!error && logCtx) {
     try {
       await logActivity({

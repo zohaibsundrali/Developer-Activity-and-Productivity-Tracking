@@ -157,13 +157,13 @@ describe("the three sinks that followed ?file_url= unchecked", () => {
       const code = stripComments(read(rel));
 
       it("imports the shared helper instead of rolling its own check", () => {
-        expect(code).toMatch(/import \{ safeHref \} from ['"]@\/utils\/safeUrl['"]/);
+        expect(code).toMatch(/import \{ safeProjectFileValue, resolveProjectFileUrl \} from ['"]@\/utils\/projectFiles['"]/);
         // A local re-implementation is the failure mode this is watching for.
         expect(code).not.toMatch(/function safeHref/);
       });
 
       it("sanitises the query-string value where it is read", () => {
-        expect(code).toMatch(/file_url:\s*safeHref\(searchParams\.get\('file_url'\)\)/);
+        expect(code).toMatch(/file_url:\s*safeProjectFileValue\(searchParams\.get\('file_url'\)\)/);
       });
 
       it("never reads project.file_url except to sanitise it", () => {
@@ -173,10 +173,10 @@ describe("the three sinks that followed ?file_url= unchecked", () => {
          * window.open, an <a href>, a router.push — fails this the moment it
          * reads the raw field.
          *
-         * The one permitted occurrence is `safeHref(project.file_url)`.
+         * The one permitted occurrence is `safeProjectFileValue(project.file_url)`.
          */
         const total = countOf(code, "project.file_url");
-        const sanitised = countOf(code, "safeHref(project.file_url)");
+        const sanitised = countOf(code, "safeProjectFileValue(project.file_url)");
         expect(total).toBeGreaterThan(0); // the field is still in play at all
         expect(total).toBe(sanitised);
       });

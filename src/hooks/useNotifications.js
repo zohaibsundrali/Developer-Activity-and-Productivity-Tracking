@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/utils/supabaseClient";
-import { isTypedNotificationRecipient, notificationRecipientKey } from "@/utils/notificationIdentity";
+import { createNotificationInboxEvents } from "@/utils/notificationInboxEvents";
+import { notificationRecipientKey } from "@/utils/notificationIdentity";
 import { createNotificationRequestGuard } from "@/utils/notificationRequestGuard";
 import { getOrgContext } from "@/utils/orgContext";
 import { setVisibleInterval } from "@/hooks/useVisibleInterval";
 import {
   fetchNotifications,
+  fetchInboxNotification,
   getUnreadCount,
   markRead,
   markAllRead,
@@ -55,9 +57,6 @@ const UNREAD_COUNT_POLL_MS = 60_000;
  * realtime subscription deliberately carries no server-side filter — see the
  * subscription effect below.
  */
-function isForRecipient(row, { userId, userType }) {
-  return isTypedNotificationRecipient(row, { userId, userType });
-}
 
 /**
  * Append a page without letting a row that arrived live show up twice.
@@ -322,24 +321,17 @@ export default function useNotifications({
   useEffect(() => {
     if (!hasIdentity) return undefined;
 
-    const handleChange = (payload) => {
-      const row = payload?.new;
-      if (!row || !isCurrentIdentity()) return;
-      // Realtime bypasses the org scoping the queries apply, so re-apply it.
-      if (row.organization_id !== orgId) return;
-      if (!isForRecipient(row, { userId, userType })) return;
-
-      setRows((prev) =>
-        upsertRow(prev, row, {
-          category: categoryRef.current,
-          unreadOnly: unreadOnlyRef.current,
-          isInsert: payload?.eventType === "INSERT",
-        })
-      );
-      // The badge is never inferred from the event — an INSERT the filter
-      // rejected still changes the true unread total.
-      refreshCountSoon();
-    };
+    const events = createNotificationInboxEvents({
+      organizationId: orgId, userId, userType,
+      isCurrent: isCurrentIdentity,
+      fetchRow: id => fetchInboxNotification(id, { userId }),
+      onRow: (data, { isInsert }) => setRows(prev => upsertRow(prev, data, {
+        category: categoryRef.current, unreadOnly: unreadOnlyRef.current, isInsert,
+      })),
+      onError: setError,
+      onCount: refreshCountSoon,
+    });
+    const handleChange = events.handle;
 
     // One topic per audience+user. Two surfaces sharing a client and a topic
     // name ("notifications-changes") got each other's bindings, and the second
@@ -352,9 +344,12 @@ export default function useNotifications({
       .channel(channelName)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" }, handleChange)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notifications" }, handleChange)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notification_recipients", filter: `user_id=eq.${userId}` }, handleChange)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notification_recipients", filter: `user_id=eq.${userId}` }, handleChange)
       .subscribe();
 
     return () => {
+      events.close();
       supabase.removeChannel(channel);
     };
   }, [hasIdentity, userId, userType, orgId, isCurrentIdentity, email, audience, refreshCountSoon]);
@@ -368,13 +363,15 @@ export default function useNotifications({
       setRows((prev) =>
         prev.map((row) => (row.id === id ? { ...row, read: true, read_at: new Date().toISOString() } : row))
       );
-      setUnreadCount((prev) => Math.max(0, prev - 1));
+      const previous = rowsRef.current.find(row => row.id === id);
+      if (previous && !previous.read) setUnreadCount((prev) => Math.max(0, prev - 1));
 
       const { error: markError } = await markRead(id);
       if (!isCurrentIdentity()) return;
       if (markError) {
         // Put it back rather than leaving a row that looks handled and is not.
-        setRows((prev) => prev.map((row) => (row.id === id ? { ...row, read: false, read_at: null } : row)));
+        setError(markError);
+        if (previous) setRows((prev) => prev.map((row) => (row.id === id ? { ...row, read: previous.read, read_at: previous.read_at } : row)));
       }
       refreshCount();
     },
@@ -440,7 +437,7 @@ export default function useNotifications({
 
     // Under "unread only" the list should now be empty; anywhere else the rows
     // stay put and just lose their emphasis.
-    if (unreadOnlyRef.current) loadPage(0, { append: false });
+    if (markError || unreadOnlyRef.current) loadPage(0, { append: false });
     refreshCount();
   }, [userId, email, audience, isCurrentIdentity, loadPage, refreshCount]);
 

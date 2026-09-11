@@ -76,6 +76,7 @@ vi.mock("@/utils/supabaseClient", () => {
         record.filters.push(["range", from, to]);
         return builder;
       },
+      maybeSingle() { return builder; },
       then(onFulfilled, onRejected) {
         return Promise.resolve(db.response).then(onFulfilled, onRejected);
       },
@@ -83,7 +84,13 @@ vi.mock("@/utils/supabaseClient", () => {
     return builder;
   };
 
-  return { supabase: { from: (table) => makeBuilder(table) } };
+  return { supabase: {
+    from: (table) => makeBuilder(table),
+    rpc: async (name, payload) => {
+      db.queries.push({ table: name, op: 'rpc', payload, filters: [] });
+      return db.response;
+    },
+  } };
 });
 
 import {
@@ -93,6 +100,8 @@ import {
   windowedDedupeKey,
   dismissNotification,
   fetchNotifications,
+  fetchInboxNotification,
+  markRead,
   getUnreadCount,
   markAllRead,
   fetchNotificationPreferences,
@@ -548,18 +557,17 @@ describe("dismissNotification", () => {
   it("stamps dismissed_at instead of deleting the notification", async () => {
     await dismissNotification("n1");
     const query = lastQuery();
-    expect(query.table).toBe("notifications");
-    expect(query.op).toBe("update");
-    expect(Object.keys(query.payload)).toEqual(["dismissed_at"]);
-    expect(query.payload.dismissed_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-    expect(hasFilter(query, "eq", "id", "n1")).toBe(true);
+    expect(query.table).toBe("set_notification_state");
+    expect(query.op).toBe("rpc");
+    expect(query.payload).toEqual({ p_notification: "n1", p_action: "dismiss" });
   });
 
   it("leaves an already-dismissed row's timestamp where it is", async () => {
     await dismissNotification("n1");
     // A second click, or a retry after a slow response, must not restate when
     // the notification left the list.
-    expect(hasFilter(lastQuery(), "is", "dismissed_at", null)).toBe(true);
+    expect(lastQuery().payload).toEqual({ p_notification: "n1", p_action: "dismiss" });
+    // Idempotence and server timestamps are exercised by notification_state.sql.
   });
 
   it("reports a failed dismissal rather than swallowing it", async () => {
@@ -586,8 +594,9 @@ describe("dismissed rows are excluded everywhere they are counted or listed", ()
   });
 
   it("keeps them out of what 'mark all as read' writes to", async () => {
-    await markAllRead({ userId: "u-1", audience: "developer" });
-    expect(hasFilter(lastQuery(), "is", "dismissed_at", null)).toBe(true);
+    await markAllRead({ userId: "u-1", audience: "developer", category: "mention" });
+    expect(lastQuery().table).toBe("mark_notification_inbox_read");
+    expect(lastQuery().payload).toEqual({ p_category: "mention" });
   });
 });
 
@@ -783,7 +792,8 @@ describe('typed notification inbox identity', () => {
     await getUnreadCount({ userId: ctx.userId, audience });
     expect(lastQuery().filters).toContainEqual(['contains', 'recipient_keys', ['developer:u-1']]);
     await markAllRead({ userId: ctx.userId, audience });
-    expect(lastQuery().filters).toContainEqual(['contains', 'recipient_keys', ['developer:u-1']]);
+    expect(lastQuery().table).toBe('mark_notification_inbox_read');
+    expect(lastQuery().payload).toEqual({ p_category: null });
   });
   it('fails closed when a requested identity differs from the session', async () => {
     await fetchNotifications({ userId: 'other', email: 'someone@test.dev', audience: 'admin' });
@@ -794,5 +804,28 @@ describe('typed notification inbox identity', () => {
     ctx.userType = 'admin';
     await fetchNotificationPreferences();
     expect(lastQuery().filters).toContainEqual(['eq', 'user_type', 'admin']);
+  });
+});
+
+
+describe('per-recipient notification state access', () => {
+  it('reads the recipient inbox view for list, badge and individual realtime refresh', async () => {
+    await fetchNotifications({ userId: ctx.userId });
+    expect(lastQuery().table).toBe('notification_inbox');
+    await getUnreadCount({ userId: ctx.userId });
+    expect(lastQuery().table).toBe('notification_inbox');
+    await fetchInboxNotification('n1', { userId: ctx.userId });
+    expect(lastQuery().table).toBe('notification_inbox');
+    expect(lastQuery().filters).toContainEqual(['eq', 'id', 'n1']);
+    expect(lastQuery().filters.some(f => f[1] === 'dismissed_at')).toBe(false);
+  });
+  it('marks the caller recipient state through the server without a caller-selected timestamp', async () => {
+    await markRead('n1');
+    expect(lastQuery()).toMatchObject({ table: 'set_notification_state', op: 'rpc', payload: { p_notification: 'n1', p_action: 'read' } });
+  });
+  it('does not bulk mark another requested identity', async () => {
+    const result = await markAllRead({ userId: 'other' });
+    expect(result.error).toBeInstanceOf(Error);
+    expect(db.queries).toHaveLength(0);
   });
 });

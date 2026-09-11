@@ -174,7 +174,7 @@ export async function fetchNotifications({
   const from = page * pageSize;
 
   let query = supabase
-    .from("notifications")
+    .from("notification_inbox")
     .select("id, title, message, type, category, read, read_at, created_at, task_id, project_id, submission_id, entity_type, entity_id, actor_id")
     .order("created_at", { ascending: false })
     // created_at ties would otherwise let a row appear on two pages or none.
@@ -209,7 +209,7 @@ export async function fetchNotifications({
 export async function getUnreadCount({ userId, email, audience = "admin", category = null } = {}) {
   const orgId = getOrgId();
   let query = supabase
-    .from("notifications")
+    .from("notification_inbox")
     .select("id", { count: "exact", head: true })
     .eq("read", false);
 
@@ -226,15 +226,21 @@ export async function getUnreadCount({ userId, email, audience = "admin", catego
   return { count: count ?? 0, error: null };
 }
 
-/** Mark one notification read. RLS restricts this to rows you can see. */
-export async function markRead(id) {
+/** Change only this caller's recipient state; timestamps are set by the DB. */
+async function setNotificationState(id, action) {
   if (!id) return { error: new Error("Missing notification id") };
-  const { error } = await supabase
-    .from("notifications")
-    .update({ read: true, read_at: new Date().toISOString() })
-    .eq("id", id)
-    .eq("read", false);
-  return { error };
+  return supabase.rpc("set_notification_state", { p_notification: id, p_action: action });
+}
+export async function markRead(id) {
+  return setNotificationState(id, "read");
+}
+
+/** Load authoritative per-recipient state after a realtime event, including dismissal. */
+export async function fetchInboxNotification(id, { userId } = {}) {
+  if (!id) return { data: null, error: new Error("Missing notification id") };
+  let query = supabase.from("notification_inbox").select("*").eq("id", id).eq("organization_id", getOrgId());
+  query = recipientFilter(query, { userId });
+  return query.maybeSingle();
 }
 
 /**
@@ -248,23 +254,12 @@ export async function markRead(id) {
  * an unasked-for, unrecoverable bulk action fired from a one-word button.
  * Unread is already the predicate, so `unreadOnly` needs no separate clause.
  */
-export async function markAllRead({ userId, email, audience = "admin", category = null } = {}) {
-  const orgId = getOrgId();
-  let query = supabase
-    .from("notifications")
-    .update({ read: true, read_at: new Date().toISOString() })
-    .eq("read", false);
-
-  if (orgId) query = query.eq("organization_id", orgId);
-  if (category) query = query.eq("category", category);
-  // The same predicate the count uses, so the button clears exactly the set the
-  // number over it describes — and so a row the user dismissed is not silently
-  // written to by a button they pressed about a list it is not in.
-  query = query.is("dismissed_at", null);
-  query = recipientFilter(query, { userId, email, audience });
-
-  const { error } = await query;
-  return { error };
+export async function markAllRead({ userId, category = null } = {}) {
+  const ctx = getOrgContext();
+  if (!ctx?.organizationId || ctx.userId !== userId || !notificationRecipientKey(ctx)) {
+    return { error: new Error("Not signed in") };
+  }
+  return supabase.rpc("mark_notification_inbox_read", { p_category: category });
 }
 
 /**
@@ -280,13 +275,7 @@ export async function markAllRead({ userId, email, audience = "admin", category 
  * timestamp and misreport when the row actually left the list.
  */
 export async function dismissNotification(id) {
-  if (!id) return { error: new Error("Missing notification id") };
-  const { error } = await supabase
-    .from("notifications")
-    .update({ dismissed_at: new Date().toISOString() })
-    .eq("id", id)
-    .is("dismissed_at", null);
-  return { error };
+  return setNotificationState(id, "dismiss");
 }
 
 /**
