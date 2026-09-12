@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { resolveSessionWorkContext, sessionWorkLabel } from "@/utils/sessionWorkContext";
 import { useParams, useRouter } from "next/navigation";
 import { Camera, Keyboard, LogIn, MousePointer2, Monitor } from "lucide-react";
 import { useAuth } from "../../../contexts/AuthContext.jsx";
@@ -66,6 +67,8 @@ export default function SessionDetailPage() {
   useEffect(() => {
     if (!userEmail || !sessionId) return;
 
+    let active = true;
+    setSession(null);
     const fetchSession = async () => {
       try {
         setSessionLoading(true);
@@ -76,16 +79,18 @@ export default function SessionDetailPage() {
           .eq("session_id", sessionId)
           .limit(1);
         if (error) throw error;
-        setSession(data?.[0] || null);
+        const resolved = await resolveSessionWorkContext(supabase, data || []);
+        if (active) setSession(resolved[0] || null);
       } catch {
-        setSession(null);
+        if (active) setSession(null);
       } finally {
-        setSessionLoading(false);
+        if (active) setSessionLoading(false);
       }
     };
 
     fetchSession();
-  }, [userEmail, sessionId]);
+    return () => { active = false; };
+  }, [userEmail, sessionId, user?.organization_id]);
 
   // For this detail route, we care about the specific sessionId from the URL,
   // but we still use the logged-in user's identity for security.
@@ -182,6 +187,7 @@ export default function SessionDetailPage() {
             </div>
           ) : session ? (
             <dl className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
+              <div><dt className="text-muted-foreground">Tracked work</dt><dd>{sessionWorkLabel(session)}</dd></div>
               <div className="flex items-baseline gap-2">
                 <dt className="text-muted-foreground">Started</dt>
                 <dd className="tabular-nums text-foreground">{started || "—"}</dd>

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { resolveSessionWorkContext } from "@/utils/sessionWorkContext";
 import { History, LogIn, RefreshCw } from "lucide-react";
 import { supabase } from "../../utils/supabaseClient";
 import { useAuth } from "../../contexts/AuthContext.jsx";
@@ -37,6 +38,7 @@ function SessionCardSkeleton() {
 export default function SessionsPage() {
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
+  const requestGeneration = useRef(0);
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -45,9 +47,11 @@ export default function SessionsPage() {
     if (!authLoading && user?.email) {
       fetchSessions(user.email);
     }
-  }, [authLoading, user?.email]);
+    return () => { requestGeneration.current++; };
+  }, [authLoading, user?.email, user?.organization_id]);
 
   const fetchSessions = async (email) => {
+    const generation = ++requestGeneration.current;
     try {
       setLoading(true);
       setError("");
@@ -58,13 +62,14 @@ export default function SessionsPage() {
         .order("start_time", { ascending: false })
         .limit(50);
       if (error) throw error;
-      setSessions(data || []);
+      const resolved = await resolveSessionWorkContext(supabase, data || []);
+      if (generation === requestGeneration.current) setSessions(resolved);
     } catch (err) {
       // Previously swallowed silently, which left the screen showing "no
       // sessions" after a failed read. Surface it with a retry instead.
-      setError(err?.message || "Could not load your sessions.");
+      if (generation === requestGeneration.current) setError(err?.message || "Could not load your sessions.");
     } finally {
-      setLoading(false);
+      if (generation === requestGeneration.current) setLoading(false);
     }
   };
 

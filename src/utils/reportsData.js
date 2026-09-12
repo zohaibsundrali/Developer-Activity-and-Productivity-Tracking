@@ -13,12 +13,13 @@ import { normalizeStatus, sumSeconds } from "@/utils/pmData";
  *     Task-attributable. Only exists for work someone explicitly timed.
  *
  *  2. `productivity_sessions` + friends — the DESKTOP tracker. Accurate for
- *     total worked time, but carries NO project_id/task_id, so it can only be
- *     rolled up PER DEVELOPER PER DAY, never per task or per project.
+ *     total tracked time. New desktop sessions may carry project/task links;
+ *     this report still aggregates desktop time per developer/day separately
+ *     from task_time_logs to avoid counting the same work twice.
  *
- * Also note: the desktop writers insert with the service role and do NOT set
- * organization_id, so tracking rows cannot be filtered by org. We therefore
- * scope them by the org's developer ids / emails instead.
+ * Current device writers provide organization_id under authenticated RLS.
+ * This reader also scopes historical rows by the organization's developer
+ * identities; historical records may lack newer attribution columns.
  *
  * `productivity_sessions.total_duration` is treated as SECONDS, matching the
  * existing readers (DashboardOverview, DeveloperActivity).
@@ -26,7 +27,7 @@ import { normalizeStatus, sumSeconds } from "@/utils/pmData";
 
 const DONE = new Set(["completed", "reviewed"]);
 export const TRACKING_CAVEAT =
-  "Desktop tracked hours are per developer per day — the tracker records no task or project link, so they are not attributed to individual tasks.";
+  "This report groups desktop time per developer per day. Project/task selections appear in session history; they do not automatically create task time logs or billable entries.";
 
 /**
  * PostgREST caps a single response at 1000 rows, so the previous unpaged
