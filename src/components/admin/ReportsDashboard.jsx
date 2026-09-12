@@ -1,7 +1,10 @@
 "use client";
+import { useAuth } from "@/contexts/AuthContext";
+import { getOrgContext } from "@/utils/orgContext";
+import { reportIdentity, validateReportBundle, currentReportState } from "@/utils/reportViewState";
 import PlanFeatureBoundary from "@/components/billing/PlanFeatureBoundary";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   loadReportData,
   defaultRange,
@@ -158,12 +161,9 @@ function formatDayShort(value) {
 /** Validate + order a {from,to} pair before it reaches the data layer. */
 function normalizeRange(range) {
   const fallback = defaultRange();
-  const from = range?.from || fallback.from;
-  const to = range?.to || fallback.to;
-  const df = new Date(`${from}T00:00:00`);
-  const dt = new Date(`${to}T00:00:00`);
-  if (Number.isNaN(df.getTime()) || Number.isNaN(dt.getTime())) return fallback;
-  return df > dt ? { from: to, to: from } : { from, to };
+  // Preserve the selected dates. Invalid/reversed input must produce the API's
+  // explicit validation error, not a different report under unchanged controls.
+  return { from: range?.from ?? fallback.from, to: range?.to ?? fallback.to };
 }
 
 const sum = (arr) => (Array.isArray(arr) ? arr.reduce((s, n) => s + (Number(n) || 0), 0) : 0);
@@ -199,8 +199,8 @@ function TablePager({ page, pageCount, total, shown, onPage }) {
 function ReportsDashboardContent() {
   // Lazy init — never call new Date() at module scope.
   const [range, setRange] = useState(() => defaultRange());
-  const [bundle, setBundle] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [result, setResult] = useState(null);
+  const { user, authStatus } = useAuth();
   const [exporting, setExporting] = useState(false);
   const [tab, setTab] = useState("overview");
   const [nonce, setNonce] = useState(0);
@@ -208,27 +208,41 @@ function ReportsDashboardContent() {
   const [delayPage, setDelayPage] = useState(1);
 
   /* ---- data ---- */
-  // Refresh re-runs the effect below rather than duplicating the fetch, so the
-  // cancellation guard covers every load path.
+  const context = getOrgContext();
+  // AuthContext subscribes to login/logout events; storage is also checked at
+  // response/export time to close the interval before that reactive update.
+  const identity = authStatus === "authenticated" && user ? reportIdentity(context) : null;
+  const requestedRange = useMemo(() => normalizeRange(range), [range]);
+  const scope = JSON.stringify([identity, range.from, range.to, nonce]);
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  const liveScope = useRef(scope);
+  liveScope.current = scope;
+  const { bundle, loading, error } = currentReportState(result, scope, !!identity);
+  const isCurrent = useCallback(() => mounted.current && liveScope.current === scope && identity !== null && reportIdentity(getOrgContext()) === identity, [scope, identity]);
   const load = useCallback(() => setNonce((n) => n + 1), []);
 
   useEffect(() => {
     let cancelled = false;
+    if (!identity) return;
     (async () => {
-      setLoading(true);
       try {
-        const data = await loadReportData(normalizeRange(range));
-        if (!cancelled) setBundle(data || null);
+        const data = await loadReportData(requestedRange);
+        if (!cancelled && isCurrent()) {
+          validateReportBundle(data, context.organizationId, requestedRange);
+          setResult({ scope, bundle: data, error: "" });
+        }
       } catch (err) {
-        if (!cancelled) showError("Failed to load reports", err?.message || String(err));
-      } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && isCurrent()) {
+          setResult({ scope, bundle: null, error: err?.message || "Failed to load reports. Please retry." });
+        }
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, [range, nonce]);
+    return () => { cancelled = true; };
+  }, [scope, identity, requestedRange, isCurrent, context?.organizationId]);
 
   const setRangePart = (key, value) => setRange((r) => ({ ...r, [key]: value }));
 
@@ -583,6 +597,7 @@ function ReportsDashboardContent() {
   }, [tab, projectRows, teamRows, timeRows, delayRows, overviewRows]);
 
   const handleExportCsv = useCallback(async () => {
+    if (!bundle || loading || error || exporting || !isCurrent()) return;
     setExporting(true);
     try {
       exportCsv({
@@ -595,9 +610,10 @@ function ReportsDashboardContent() {
     } finally {
       setExporting(false);
     }
-  }, [activeExport]);
+  }, [activeExport, bundle, loading, error, exporting, isCurrent]);
 
   const handleExportPdf = useCallback(async () => {
+    if (!bundle || loading || error || exporting || !isCurrent()) return;
     setExporting(true);
     try {
       const safe = normalizeRange(range);
@@ -609,13 +625,14 @@ function ReportsDashboardContent() {
         rows,
         filename: activeExport.file,
         meta: [`Rows: ${rows.length}`],
+        shouldContinue: isCurrent,
       });
     } catch (err) {
       showError("Export failed", err?.message || String(err));
     } finally {
       setExporting(false);
     }
-  }, [activeExport, range]);
+  }, [activeExport, range, bundle, loading, error, exporting, isCurrent]);
 
   /* ---- render ---- */
   return (
@@ -670,7 +687,7 @@ function ReportsDashboardContent() {
               <Button
                 variant="outline"
                 onClick={handleExportCsv}
-                disabled={exporting || loading}
+                disabled={exporting || loading || !!error || !bundle}
                 title={`Export the ${activeExport.label} table as CSV`}
               >
                 <Download aria-hidden="true" /> Export CSV
@@ -678,7 +695,7 @@ function ReportsDashboardContent() {
               <Button
                 variant="outline"
                 onClick={handleExportPdf}
-                disabled={exporting || loading}
+                disabled={exporting || loading || !!error || !bundle}
                 title={`Export the ${activeExport.label} table as PDF`}
               >
                 <FileText aria-hidden="true" /> Export PDF
@@ -687,7 +704,11 @@ function ReportsDashboardContent() {
           </div>
         </div>
 
+        <p className="text-xs text-muted-foreground">Report dates and daily totals use UTC.</p>
+        {error && <div role="alert" className={PANEL_CLASS}><p className="text-sm text-destructive">{error}</p><Button variant="outline" onClick={load} disabled={!identity} className="mt-3">Retry reports</Button></div>}
+
         {/* ---------- KPI strip ---------- */}
+        {bundle && <>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <StatCard title="Projects" value={kpis.projects} icon={FolderKanban} tone="primary" />
           <StatCard title="Tasks" value={kpis.tasks} icon={ListChecks} tone="info" />
@@ -718,6 +739,8 @@ function ReportsDashboardContent() {
         {/* ---------- Tab bar ---------- */}
         <Tabs tabs={TABS} active={tab} onChange={setTab} aria-label="Report section" />
 
+        </>}
+
         {/* ---------- Tab content ---------- */}
         {loading && !bundle ? (
           // Skeleton shaped like the overview: a wide chart beside a narrow one.
@@ -733,7 +756,7 @@ function ReportsDashboardContent() {
               <Skeleton className="h-[300px] w-full rounded-lg" />
             </div>
           </div>
-        ) : (
+        ) : bundle ? (
           <>
             {tab === "overview" && (
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -1088,7 +1111,7 @@ function ReportsDashboardContent() {
               </div>
             )}
           </>
-        )}
+        ) : null}
       </div>
     </div>
   );
