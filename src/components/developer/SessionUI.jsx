@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { sessionWorkLabel } from "@/utils/sessionWorkContext";
 import { AppWindow, CameraOff, Globe, Keyboard, MousePointer2 } from "lucide-react";
 import EChart from "@/components/charts/EChart";
 import {
@@ -170,6 +171,7 @@ export function SessionCard({ session, onClick }) {
         </div>
       </div>
 
+      <p className="mt-3 text-sm text-muted-foreground">{sessionWorkLabel(session)}</p>
       <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
         <div className="flex items-baseline justify-between gap-3">
           <dt className="text-muted-foreground">Start</dt>
