@@ -113,7 +113,7 @@ function rateLimit(recipients, now = Date.now()) {
  * @param maxAttempts ceiling, clamped to MAX_ATTEMPTS
  */
 export function shouldRetry(failureKind, attempt, maxAttempts = MAX_ATTEMPTS) {
-  if (failureKind === "permanent") return false;
+  if (failureKind === "permanent" || failureKind === "uncertain") return false;
   if (!failureKind) return false; // success, or nothing to retry
   const cap = Math.max(1, Math.min(Number(maxAttempts) || MAX_ATTEMPTS, MAX_ATTEMPTS));
   return attempt < cap;
@@ -293,6 +293,7 @@ export async function sendEmail({
     attempts: result.attempts,
     error: result.ok ? null : redactSecrets(result.error || "send failed"),
     permanent,
+    deliveryUncertain: result.failureKind === "uncertain",
     rateLimited: false,
     invalid: rejected,
     recipients: recipients.length,

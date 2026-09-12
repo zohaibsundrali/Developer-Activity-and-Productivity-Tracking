@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+import { fetchWithDeadline } from "@/utils/fetchDeadline";
 import { sendEmail } from "@/utils/emailService";
 import { renderTemplate } from "@/utils/emailTemplates";
 import { RESET_PASSWORD_PATH, resolveAppOrigin } from "@/components/auth/resetRedirect";
@@ -127,6 +128,7 @@ export async function POST(request) {
 
     const admin = createClient(supabaseUrl, serviceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
+      global: { fetch: fetchWithDeadline(10_000) },
     });
 
     const redirectTo = `${origin}${RESET_PASSWORD_PATH}`;
@@ -171,9 +173,10 @@ export async function POST(request) {
 
     // `delivered` is false in mock mode even though `ok` is true — see the note
     // on the return shape in src/utils/emailService.js. Either way the person
-    // asked for a link and no link left the building, so hand the job back to
-    // Supabase, which has its own transport.
-    if (!result.ok || !result.delivered) {
+    // asked for a link, so hand confirmed failures back to Supabase.
+    // A timed-out send might already be delivered; do not mint another link
+    // or immediately resend through the fallback in that case.
+    if ((!result.ok || !result.delivered) && !result.deliveryUncertain) {
       console.error("[forgot-password] email_delivery_unconfirmed");
       await supabaseFallback(request, email);
     }
@@ -216,6 +219,7 @@ async function supabaseFallback(request, email) {
 
     const client = createClient(url, anon, {
       auth: { autoRefreshToken: false, persistSession: false },
+      global: { fetch: fetchWithDeadline(10_000) },
     });
 
     await client.auth.resetPasswordForEmail(email, {

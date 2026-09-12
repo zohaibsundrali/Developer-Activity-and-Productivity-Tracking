@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
-const state = vi.hoisted(() => ({ generateLink: vi.fn(), send: vi.fn(), from: vi.fn(() => { throw new Error('Reserved account has no profile or membership'); }) }));
-vi.mock('@supabase/supabase-js', () => ({ createClient: () => ({ from: state.from, auth: { admin: { generateLink: state.generateLink } } }) }));
+const state = vi.hoisted(() => ({ generateLink: vi.fn(), send: vi.fn(), fallback: vi.fn(), from: vi.fn(() => { throw new Error('Reserved account has no profile or membership'); }) }));
+vi.mock('@supabase/supabase-js', () => ({ createClient: () => ({ from: state.from, auth: { admin: { generateLink: state.generateLink }, resetPasswordForEmail: state.fallback } }) }));
 vi.mock('@/utils/emailService', () => ({ sendEmail: state.send }));
 import { POST } from '@/app/api/auth/forgot-password/route';
 afterEach(() => vi.unstubAllEnvs());
@@ -53,4 +53,16 @@ it.each(['throw', 'returned-error', 'email-throw'])('does not log provider crede
   expect(JSON.stringify([...errorLog.mock.calls, ...warnLog.mock.calls])).not.toContain(secret);
   expect(errorLog.mock.calls.length + warnLog.mock.calls.length).toBeGreaterThan(0);
  } finally { errorLog.mockRestore(); warnLog.mockRestore(); }
+});
+
+it('does not invoke fallback after uncertain delivery', async () => {
+ vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'test-only');
+ vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://auth.test');
+ vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://app.test');
+ state.generateLink.mockResolvedValue({ data: { properties: { action_link: 'https://auth.test/recovery' } } });
+ state.send.mockResolvedValue({ ok: false, delivered: false, deliveryUncertain: true });
+ state.fallback.mockClear();
+ const response = await POST(new Request('https://app.test/api/auth/forgot-password', { method: 'POST', headers: { 'x-real-ip': 'uncertain-case' }, body: JSON.stringify({ email: 'uncertain@example.test' }) }));
+ expect(response.status).toBe(200);
+ expect(state.fallback).not.toHaveBeenCalled();
 });

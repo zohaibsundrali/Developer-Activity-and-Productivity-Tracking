@@ -1,0 +1,18 @@
+create role anon; create role authenticated; create role service_role bypassrls;
+create schema auth; create schema app_private;
+create table auth.users(id uuid primary key,email text,raw_app_meta_data jsonb,deleted_at timestamptz,banned_until timestamptz,email_confirmed_at timestamptz);
+create function auth.uid() returns uuid language sql as $$select null::uuid$$;
+create function auth.jwt() returns jsonb language sql as $$select '{}'::jsonb$$;
+create function public.role_rank(text) returns integer language sql as $$select 1$$;
+create function app_private.organization_deleting(uuid) returns boolean language sql as $$select false$$;
+create table public.organizations(id uuid primary key);
+create table public.memberships(organization_id uuid,user_id uuid,user_type text,role text,status text,deletion_blocked boolean,email text);
+create table public.admin_users(id uuid primary key,organization_id uuid,auth_user_id uuid,email text);
+create table public.developers(like public.admin_users including all);
+create table public.clients(like public.admin_users including all);
+create table public.invitations(id uuid primary key,status text,expires_at timestamptz,organization_id uuid,email text);
+create table app_private.invitation_attempts(invitation_id uuid,claim_id uuid,profile_id uuid,auth_user_id uuid,completed_at timestamptz,lease_until timestamptz);
+create table app_private.organization_deletions(id uuid primary key,organization_id uuid);
+create table public.email_verifications(id uuid primary key,email text,code_hash text,verified_at timestamptz,consumed_at timestamptz,created_at timestamptz,expires_at timestamptz,attempts integer);
+create table public.billing_plans(code text primary key);
+create table public.developer_tasks(id uuid primary key);
