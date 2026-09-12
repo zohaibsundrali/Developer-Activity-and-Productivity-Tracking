@@ -1,10 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import { reportIdentity, validateReportBundle, currentReportState } from '../src/utils/reportViewState';
+import { reportIdentity, validateReportAggregate, currentReportState } from '../src/utils/reportViewState';
 
 const context = { organizationId: 'org', userType: 'developer', userId: 'person', role: 'manager' };
 const range = { from: '2026-09-01', to: '2026-09-12' };
-const fields = ['projects', 'tasks', 'employees', 'timeLogs', 'sessions'];
-const data = { orgId: 'org', range, ...Object.fromEntries(fields.map(key => [key, []])), truncated: Object.fromEntries(fields.map(key => [key, false])) };
+const data = {orgId:'org',range,view:'time',rows:[],total:0,nextOffset:null};
 
 describe('report view authority and refresh state', () => {
   it('distinguishes tenant, typed profile, and role transitions', () => {
@@ -23,24 +22,17 @@ describe('report view authority and refresh state', () => {
   it('keeps a failed request distinct from successful empty data and permits retry', () => {
     expect(currentReportState({ scope: 'failed', bundle: null, error: 'Unavailable' }, 'failed', true)).toEqual({ bundle: null, loading: false, error: 'Unavailable' });
     expect(currentReportState({ scope: 'failed', bundle: null, error: 'Unavailable' }, 'retry', true).loading).toBe(true);
-    expect(validateReportBundle(data, 'org', range)).toBe(data);
+    expect(validateReportAggregate(data, 'org', range, 'time')).toBe(data);
   });
-  it('rejects missing arrays, absent flags and incorrectly typed flags', () => {
-    for (const key of fields) {
-      expect(() => validateReportBundle({ ...data, [key]: null }, 'org', range)).toThrow(/incomplete/);
-      for (const invalid of [undefined, null, 'false', 0]) {
-        expect(() => validateReportBundle({ ...data, truncated: { ...data.truncated, [key]: invalid } }, 'org', range)).toThrow(/incomplete/);
-      }
-    }
-    for (const truncated of [undefined, null, [], true, {}]) {
-      expect(() => validateReportBundle({ ...data, truncated }, 'org', range)).toThrow(/incomplete/);
+  it('rejects incomplete pages', () => {
+    for (const patch of [{rows:null},{total:-1},{nextOffset:1}]) {
+      expect(() => validateReportAggregate({...data,...patch},'org',range,'time')).toThrow();
     }
   });
-  it('rejects mismatched organization/range and truncated successful responses', () => {
-    expect(() => validateReportBundle(data, 'other', range)).toThrow(/did not match/);
-    expect(() => validateReportBundle(data, 'org', { ...range, to: '2026-09-11' })).toThrow(/did not match/);
-    expect(() => validateReportBundle(null, 'org', range)).toThrow();
-    expect(() => validateReportBundle({ ...data, truncated: { ...data.truncated, tasks: true } }, 'org', range)).toThrow(/shorter date range/);
+  it('rejects mismatched organization/range and view', () => {
+    expect(() => validateReportAggregate(data,'other',range,'time')).toThrow();
+    expect(() => validateReportAggregate(data,'org',{...range,to:'2026-09-11'},'time')).toThrow();
+    expect(() => validateReportAggregate(data,'org',range,'team')).toThrow();
   });
 });
 

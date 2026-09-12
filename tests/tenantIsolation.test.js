@@ -87,7 +87,7 @@ describe("every route that uses the service role", () => {
      * number.
      */
     const usingService = ROUTES.filter((f) =>
-      /serviceClient\(|SUPABASE_SERVICE_ROLE_KEY/.test(stripComments(readFileSync(f, "utf8")))
+      /serviceClient\(|SUPABASE_SERVICE_ROLE_KEY|prepareReport\(/.test(stripComments(readFileSync(f, "utf8")))
     );
     // 57 -> 58: /api/admin/permissions, added with the overrides screen. It
     // reads memberships and user_permissions with the service role, and its
@@ -158,6 +158,8 @@ describe("every route that uses the service role", () => {
     // Durable automation claims only the verified typed actor’s jobs; task actions use caller JWT/RLS.
     // Organization deletion derives tenant/typed owner from auth; receipt GET is
     // read-only and requires a hashed random capability. RPCs revalidate scope.
-    expect(usingService.length).toBe(75);
+    // Report JSON and CSV both call prepareReport: service billing lookup is
+    // scoped to verified auth.orgId; report_data itself uses caller JWT/RLS.
+    expect(usingService.length).toBe(76);
   });
 });

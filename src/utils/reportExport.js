@@ -30,7 +30,7 @@ function safeName(name) {
   return String(name || "report").replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80);
 }
 
-function triggerDownload(blob, filename) {
+export function downloadReportBlob(blob, filename) {
   if (typeof window === "undefined") return;
   const a = document.createElement("a");
   const url = URL.createObjectURL(blob);
@@ -59,7 +59,7 @@ export function exportCsv({ columns, rows, filename = "report", shouldContinue =
   // Prepend a BOM so Excel opens UTF-8 correctly.
   const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
   if (!shouldContinue()) return;
-  triggerDownload(blob, `${safeName(filename)}_${stamp()}.csv`);
+  downloadReportBlob(blob, `${safeName(filename)}_${stamp()}.csv`);
 }
 
 // ---- PDF ------------------------------------------------------------------

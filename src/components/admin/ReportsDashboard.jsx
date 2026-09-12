@@ -1,22 +1,13 @@
 "use client";
 import { useAuth } from "@/contexts/AuthContext";
 import { getOrgContext } from "@/utils/orgContext";
-import { reportIdentity, validateReportBundle, currentReportState } from "@/utils/reportViewState";
+import { reportIdentity, validateReportAggregate, currentReportState } from "@/utils/reportViewState";
 import PlanFeatureBoundary from "@/components/billing/PlanFeatureBoundary";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import {
-  loadReportData,
-  defaultRange,
-  projectPerformance,
-  teamProductivity,
-  statusDistribution,
-  timeTrackingRows,
-  deadlineDelays,
-  dailyTrend,
-  summaryKpis,
-  TRACKING_CAVEAT,
-} from "@/utils/reportsData";
+import { defaultRange, TRACKING_CAVEAT } from "@/utils/reportsData";
+import { loadReportOverview, loadReportPage, loadReportExportRows } from "@/utils/reportApiData";
+import { exportReportCsv } from "@/utils/reportCsvDownload";
 import { exportCsv, exportPdf } from "@/utils/reportExport";
 import { formatDuration } from "@/utils/pmData";
 import StatCard from "@/components/shell/StatCard";
@@ -202,10 +193,11 @@ function ReportsDashboardContent() {
   const [result, setResult] = useState(null);
   const { user, authStatus } = useAuth();
   const [exporting, setExporting] = useState(false);
+  const exportLock = useRef(false);
   const [tab, setTab] = useState("overview");
   const [nonce, setNonce] = useState(0);
-  const [timePage, setTimePage] = useState(1);
-  const [delayPage, setDelayPage] = useState(1);
+  const [pageSelection, setPageSelection] = useState(null);
+  const [tableResult, setTableResult] = useState(null);
 
   /* ---- data ---- */
   const context = getOrgContext();
@@ -213,7 +205,11 @@ function ReportsDashboardContent() {
   // response/export time to close the interval before that reactive update.
   const identity = authStatus === "authenticated" && user ? reportIdentity(context) : null;
   const requestedRange = useMemo(() => normalizeRange(range), [range]);
-  const scope = JSON.stringify([identity, range.from, range.to, nonce]);
+  const baseScope = JSON.stringify([identity, range.from, range.to, nonce]);
+  const pageKey = `${baseScope}:${tab}`;
+  const page = pageSelection?.key === pageKey ? pageSelection.page : 1;
+  const setPage = value => setPageSelection({ key: pageKey, page: value });
+  const scope = `${pageKey}:${page}`;
   const mounted = useRef(false);
   useEffect(() => {
     mounted.current = true;
@@ -221,7 +217,14 @@ function ReportsDashboardContent() {
   }, []);
   const liveScope = useRef(scope);
   liveScope.current = scope;
-  const { bundle, loading, error } = currentReportState(result, scope, !!identity);
+  const liveBaseScope = useRef(baseScope);
+  liveBaseScope.current = baseScope;
+  const overviewState = currentReportState(result, baseScope, !!identity);
+  const tableState = currentReportState(tableResult, scope, !!identity);
+  const bundle = overviewState.bundle;
+  const loading = overviewState.loading || (tab !== "overview" && tableState.loading);
+  const error = overviewState.error || (tab !== "overview" ? tableState.error : "");
+  const isBaseCurrent = useCallback(() => mounted.current && liveBaseScope.current === baseScope && identity !== null && reportIdentity(getOrgContext()) === identity, [baseScope, identity]);
   const isCurrent = useCallback(() => mounted.current && liveScope.current === scope && identity !== null && reportIdentity(getOrgContext()) === identity, [scope, identity]);
   const load = useCallback(() => setNonce((n) => n + 1), []);
 
@@ -230,87 +233,63 @@ function ReportsDashboardContent() {
     if (!identity) return;
     (async () => {
       try {
-        const data = await loadReportData(requestedRange);
-        if (!cancelled && isCurrent()) {
-          validateReportBundle(data, context.organizationId, requestedRange);
-          setResult({ scope, bundle: data, error: "" });
+        const data = await loadReportOverview(requestedRange);
+        if (!cancelled && isBaseCurrent()) {
+          validateReportAggregate(data, context.organizationId, requestedRange, "overview");
+          setResult({ scope: baseScope, bundle: data, error: "" });
         }
       } catch (err) {
-        if (!cancelled && isCurrent()) {
-          setResult({ scope, bundle: null, error: err?.message || "Failed to load reports. Please retry." });
+        if (!cancelled && isBaseCurrent()) {
+          setResult({ scope: baseScope, bundle: null, error: err?.message || "Failed to load reports. Please retry." });
         }
       }
     })();
     return () => { cancelled = true; };
-  }, [scope, identity, requestedRange, isCurrent, context?.organizationId]);
+  }, [baseScope, identity, requestedRange, isBaseCurrent, context?.organizationId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!identity || tab === "overview") return;
+    (async () => {
+      try {
+        const offset = (page - 1) * ROWS_PER_PAGE;
+        const data = await loadReportPage(requestedRange, tab, { offset, limit: ROWS_PER_PAGE });
+        if (!cancelled && isCurrent()) {
+          validateReportAggregate(data, context.organizationId, requestedRange, tab, offset, ROWS_PER_PAGE);
+          if (page > 1 && offset >= data.total) {
+            setPageSelection({ key: pageKey, page: Math.max(1, Math.ceil(data.total / ROWS_PER_PAGE)) });
+            return;
+          }
+          setTableResult({ scope, bundle: data, error: "" });
+        }
+      } catch (err) {
+        if (!cancelled && isCurrent()) setTableResult({ scope, bundle: null, error: err?.message || "Failed to load report page." });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [scope, identity, requestedRange, tab, page, pageKey, isCurrent, context?.organizationId]);
 
   const setRangePart = (key, value) => setRange((r) => ({ ...r, [key]: value }));
 
-  /* ---- derived tables (all guarded against a null bundle) ---- */
-  const kpis = useMemo(
-    () =>
-      bundle
-        ? summaryKpis(bundle)
-        : { projects: 0, tasks: 0, done: 0, completionRate: 0, loggedHours: 0, trackedHours: 0, overdue: 0 },
-    [bundle]
-  );
-
-  const projectRows = useMemo(() => (bundle ? projectPerformance(bundle) || [] : []), [bundle]);
-  const teamRows = useMemo(() => (bundle ? teamProductivity(bundle) || [] : []), [bundle]);
-  const timeRows = useMemo(() => (bundle ? timeTrackingRows(bundle) || [] : []), [bundle]);
-  const delayRows = useMemo(() => (bundle ? deadlineDelays(bundle) || [] : []), [bundle]);
-  const trend = useMemo(
-    () => (bundle ? dailyTrend(bundle) : { days: [], completed: [], loggedHours: [], trackedHours: [] }),
-    [bundle]
-  );
-  // "No data" is a state a chart must say out loud — an axis with nothing on
-  // it is not an empty state.
-  const dist = useMemo(
-    () =>
-      bundle
-        ? bundle.statusCounts || statusDistribution(bundle.tasks)
-        : { pending: 0, in_progress: 0, awaiting_approval: 0, completed: 0 },
-    [bundle]
-  );
-
-  /** Overview exports as the daily trend series, one row per day. */
-  const overviewRows = useMemo(() => {
-    const days = Array.isArray(trend?.days) ? trend.days : [];
-    return days.map((d, i) => ({
-      date: d,
-      completed: trend?.completed?.[i] ?? 0,
-      loggedHours: trend?.loggedHours?.[i] ?? 0,
-      trackedHours: trend?.trackedHours?.[i] ?? 0,
-    }));
-  }, [trend]);
-
-  const totalTimedHours = useMemo(() => sum(timeRows.map((r) => r.hours)), [timeRows]);
-
-  const hasTrend =
-    (trend?.days?.length || 0) > 0 &&
-    (sum(trend?.completed) > 0 || sum(trend?.loggedHours) > 0 || sum(trend?.trackedHours) > 0);
-  const hasStatus =
-    (dist?.pending || 0) + (dist?.in_progress || 0) + (dist?.awaiting_approval || 0) + (dist?.completed || 0) > 0;
-
-  /* ---- paged slices (the totals above stay over the full row set) ---- */
-  const timePageCount = Math.max(1, Math.ceil(timeRows.length / ROWS_PER_PAGE));
-  const delayPageCount = Math.max(1, Math.ceil(delayRows.length / ROWS_PER_PAGE));
-  const timeStart = (Math.min(timePage, timePageCount) - 1) * ROWS_PER_PAGE;
-  const delayStart = (Math.min(delayPage, delayPageCount) - 1) * ROWS_PER_PAGE;
-  const pagedTimeRows = useMemo(
-    () => timeRows.slice(timeStart, timeStart + ROWS_PER_PAGE),
-    [timeRows, timeStart]
-  );
-  const pagedDelayRows = useMemo(
-    () => delayRows.slice(delayStart, delayStart + ROWS_PER_PAGE),
-    [delayRows, delayStart]
-  );
-
-  // A new bundle means new rows underneath — go back to the first page.
-  useEffect(() => {
-    setTimePage(1);
-    setDelayPage(1);
-  }, [bundle]);
+  /* Overview totals and charts are independent of the visible table page. */
+  const kpis = bundle?.kpis || {};
+  const trend = useMemo(() => bundle?.trend || { days: [], completed: [], loggedHours: [], trackedHours: [] }, [bundle]);
+  const dist = useMemo(() => bundle?.statusCounts || {}, [bundle]);
+  const rows = useMemo(() => tableState.bundle?.rows || [], [tableState.bundle]);
+  const projectRows = useMemo(() => tab === "projects" ? rows : [], [tab, rows]);
+  const teamRows = useMemo(() => tab === "team" ? rows : [], [tab, rows]);
+  const timeRows = useMemo(() => tab === "time" ? rows : [], [tab, rows]);
+  const delayRows = useMemo(() => tab === "delays" ? rows : [], [tab, rows]);
+  const pagedTimeRows = timeRows;
+  const pagedDelayRows = delayRows;
+  const tableTotal = tableState.bundle?.total ?? 0;
+  const pageCount = Math.max(1, Math.ceil(tableTotal / ROWS_PER_PAGE));
+  const overviewRows = useMemo(() => trend.days.map((date, i) => ({ date,
+    completed: trend.completed[i], loggedHours: trend.loggedHours[i], trackedHours: trend.trackedHours[i],
+  })), [trend]);
+  const totalTimedHours = bundle?.totals?.timedHours ?? 0;
+  const hasTrend = trend.days.length > 0 && (sum(trend.completed) > 0 || sum(trend.loggedHours) > 0 || sum(trend.trackedHours) > 0);
+  const hasStatus = (dist.pending || 0) + (dist.in_progress || 0) + (dist.awaiting_approval || 0) + (dist.completed || 0) + (dist.rejected || 0) > 0;
 
   /* ---- charts ---- */
 
@@ -415,13 +394,14 @@ function ReportsDashboardContent() {
   );
 
   const statusOption = useMemo(() => {
-    // The four counts already on screen — no new aggregation, just the total so
+    // The five counts already on screen — no new aggregation, just the total so
     // the ring has a number in the middle instead of a hole.
     const total =
       (dist?.pending || 0) +
       (dist?.in_progress || 0) +
       (dist?.awaiting_approval || 0) +
-      (dist?.completed || 0);
+      (dist?.completed || 0) +
+      (dist?.rejected || 0);
     return {
       textStyle: { fontFamily: FONT_FAMILY },
       tooltip: {
@@ -432,7 +412,7 @@ function ReportsDashboardContent() {
       // Legend sits under the ring rather than above it: at 375px a top-right
       // legend and a donut compete for the same corner.
       legend: {
-        ...legendFor(4),
+        ...legendFor(5),
         top: "auto",
         right: "auto",
         bottom: 0,
@@ -465,20 +445,14 @@ function ReportsDashboardContent() {
               itemStyle: { color: SEMANTIC.warning },
             },
             { name: "Done", value: dist?.completed || 0, itemStyle: { color: SEMANTIC.success } },
+            { name: "Rejected", value: dist?.rejected || 0, itemStyle: { color: SEMANTIC.danger } },
           ],
         },
       ],
     };
   }, [dist]);
 
-  const projectTop = useMemo(
-    () =>
-      [...projectRows]
-        .sort((a, b) => (b.total || 0) - (a.total || 0))
-        .slice(0, 10)
-        .reverse(), // echarts category axis draws bottom-up
-    [projectRows]
-  );
+  const projectTop = useMemo(() => [...(bundle?.projectTop || [])].reverse(), [bundle]);
 
   const projectChartOption = useMemo(
     () => ({
@@ -526,14 +500,7 @@ function ReportsDashboardContent() {
     [projectTop]
   );
 
-  const teamTop = useMemo(
-    () =>
-      [...teamRows]
-        .sort((a, b) => (b.done || 0) - (a.done || 0))
-        .slice(0, 12)
-        .reverse(), // echarts category axis draws bottom-up; keep the leader on top
-    [teamRows]
-  );
+  const teamTop = useMemo(() => [...(bundle?.teamTop || [])].reverse(), [bundle]);
 
   const teamChartOption = useMemo(
     () => ({
@@ -597,9 +564,14 @@ function ReportsDashboardContent() {
   }, [tab, projectRows, teamRows, timeRows, delayRows, overviewRows]);
 
   const handleExportCsv = useCallback(async () => {
-    if (!bundle || loading || error || exporting || !isCurrent()) return;
+    if (!bundle || loading || error || exportLock.current || !isCurrent()) return;
+    exportLock.current = true;
     setExporting(true);
     try {
+      if (tab !== "overview") {
+        await exportReportCsv(requestedRange, tab, { shouldContinue: isCurrent, filename: activeExport.file });
+        return;
+      }
       exportCsv({
         columns: activeExport.columns,
         rows: activeExport.rows || [],
@@ -607,18 +579,21 @@ function ReportsDashboardContent() {
         shouldContinue: () => isCurrent() && !!bundle && !loading && !error,
       });
     } catch (err) {
-      showError("Export failed", err?.message || String(err));
+      if (isCurrent()) showError("Export failed", err?.message || String(err));
     } finally {
-      setExporting(false);
+      exportLock.current = false;
+      if (mounted.current) setExporting(false);
     }
-  }, [activeExport, bundle, loading, error, exporting, isCurrent]);
+  }, [activeExport, bundle, loading, error, isCurrent, tab, requestedRange]);
 
   const handleExportPdf = useCallback(async () => {
-    if (!bundle || loading || error || exporting || !isCurrent()) return;
+    if (!bundle || loading || error || exportLock.current || !isCurrent()) return;
+    exportLock.current = true;
     setExporting(true);
     try {
       const safe = normalizeRange(range);
-      const rows = activeExport.rows || [];
+      const rows = tab === "overview" ? overviewRows : await loadReportExportRows(requestedRange, tab, isCurrent);
+      if (!rows || !isCurrent()) return;
       await exportPdf({
         title: activeExport.label,
         subtitle: `Range: ${safe.from} → ${safe.to}`,
@@ -629,11 +604,12 @@ function ReportsDashboardContent() {
         shouldContinue: isCurrent,
       });
     } catch (err) {
-      showError("Export failed", err?.message || String(err));
+      if (isCurrent()) showError("Export failed", err?.message || String(err));
     } finally {
-      setExporting(false);
+      exportLock.current = false;
+      if (mounted.current) setExporting(false);
     }
-  }, [activeExport, range, bundle, loading, error, exporting, isCurrent]);
+  }, [activeExport, range, bundle, loading, error, isCurrent, tab, requestedRange, overviewRows]);
 
   /* ---- render ---- */
   return (
@@ -743,7 +719,7 @@ function ReportsDashboardContent() {
         </>}
 
         {/* ---------- Tab content ---------- */}
-        {loading && !bundle ? (
+        {loading ? (
           // Skeleton shaped like the overview: a wide chart beside a narrow one.
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-3" aria-busy="true">
             <div className={`${PANEL_CLASS} xl:col-span-2 space-y-3`}>
@@ -757,7 +733,7 @@ function ReportsDashboardContent() {
               <Skeleton className="h-[300px] w-full rounded-lg" />
             </div>
           </div>
-        ) : bundle ? (
+        ) : bundle && !error ? (
           <>
             {tab === "overview" && (
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -820,7 +796,7 @@ function ReportsDashboardContent() {
                     Ten largest projects, split into done and remaining tasks.
                   </p>
                   <div className="mt-3">
-                    {projectRows.length > 0 ? (
+                    {projectTop.length > 0 ? (
                       /* Height follows the row count: ten projects in a fixed
                          300px box left each bar a sliver with its name clipped. */
                       <EChart
@@ -906,6 +882,7 @@ function ReportsDashboardContent() {
                       </tbody>
                     </table>
                   </div>
+                  <TablePager page={page} pageCount={pageCount} total={tableTotal} shown={rows.length} onPage={setPage} />
                 </div>
               </div>
             )}
@@ -916,7 +893,7 @@ function ReportsDashboardContent() {
                   <h3 className="text-sm font-semibold text-foreground">Completed tasks per person</h3>
                   <p className="mt-0.5 text-xs text-muted-foreground">Top twelve, most completed first.</p>
                   <div className="mt-3">
-                    {teamRows.length > 0 ? (
+                    {teamTop.length > 0 ? (
                       /* One row per person at a readable band, rather than twelve
                          columns squeezed under 35°-rotated names. */
                       <EChart
@@ -959,7 +936,7 @@ function ReportsDashboardContent() {
                           </tr>
                         ) : (
                           teamRows.map((r) => (
-                            <tr key={r.userId || r.name} className="border-t border-border hover:bg-muted/40">
+                            <tr key={`${r.userType}:${r.userId}`} className="border-t border-border hover:bg-muted/40">
                               <td className="whitespace-nowrap px-3 py-2 font-medium text-foreground">{cell(r.name)}</td>
                               <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{cell(r.role)}</td>
                               <td className="px-3 py-2 tabular-nums">{cell(r.total)}</td>
@@ -976,6 +953,7 @@ function ReportsDashboardContent() {
                       </tbody>
                     </table>
                   </div>
+                  <TablePager page={page} pageCount={pageCount} total={tableTotal} shown={rows.length} onPage={setPage} />
                   <p className="mt-3 text-xs text-muted-foreground">{TRACKING_CAVEAT}</p>
                 </div>
               </div>
@@ -1008,7 +986,7 @@ function ReportsDashboardContent() {
                         <tbody>
                           {pagedTimeRows.map((r, i) => (
                             <tr
-                              key={`${r.date}-${r.developer}-${r.task}-${timeStart + i}`}
+                              key={r.id}
                               className="border-t border-border hover:bg-muted/40"
                             >
                               <td className="whitespace-nowrap px-3 py-2 tabular-nums text-muted-foreground">
@@ -1027,11 +1005,11 @@ function ReportsDashboardContent() {
                       </table>
                     </div>
                     <TablePager
-                      page={Math.min(timePage, timePageCount)}
-                      pageCount={timePageCount}
-                      total={timeRows.length}
+                      page={page}
+                      pageCount={pageCount}
+                      total={tableTotal}
                       shown={pagedTimeRows.length}
-                      onPage={setTimePage}
+                      onPage={setPage}
                     />
                     <div className="mt-3 flex items-center justify-end gap-2 border-t border-border pt-3 text-sm">
                       <span className="text-muted-foreground">Total:</span>
@@ -1073,7 +1051,7 @@ function ReportsDashboardContent() {
                       <tbody>
                         {pagedDelayRows.map((r, i) => (
                           <tr
-                            key={`${r.task}-${r.due}-${delayStart + i}`}
+                            key={r.id}
                             className="border-t border-border hover:bg-muted/40"
                           >
                             <td className="px-3 py-2 font-medium text-foreground">{cell(r.task)}</td>
@@ -1102,11 +1080,11 @@ function ReportsDashboardContent() {
                 )}
                 {delayRows.length > 0 && (
                   <TablePager
-                    page={Math.min(delayPage, delayPageCount)}
-                    pageCount={delayPageCount}
-                    total={delayRows.length}
+                    page={page}
+                    pageCount={pageCount}
+                    total={tableTotal}
                     shown={pagedDelayRows.length}
-                    onPage={setDelayPage}
+                    onPage={setPage}
                   />
                 )}
               </div>
