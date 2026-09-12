@@ -131,7 +131,7 @@ describe('the upload route writes the shape the reader expects', () => {
 
   it('keys new objects {org}/{developer}/{ts}-{uuid}.png', () => {
     expect(routeSource).toContain(
-      '`${orgPrefix}/${developer.id}/${Date.now()}-${crypto.randomUUID()}.png`'
+      '`${orgPrefix}/${developer.id}/capture_${captureId}.png`'
     );
   });
 

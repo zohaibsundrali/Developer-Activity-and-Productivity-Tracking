@@ -229,7 +229,17 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { developer_id, image_data, context, timestamp } = await request.json();
+    let body;
+    try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 }); }
+    if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    const { developer_id, image_data, context, timestamp, capture_id } = body;
+    if (capture_id != null && (typeof capture_id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(capture_id))) {
+      return NextResponse.json({ error: "capture_id must be a UUID" }, { status: 400 });
+    }
+    if ((context != null && (typeof context !== "string" || context.length > 10000)) ||
+        (timestamp != null && (typeof timestamp !== "string" || !Number.isFinite(Date.parse(timestamp))))) {
+      return NextResponse.json({ error: "Invalid screenshot context or timestamp" }, { status: 400 });
+    }
 
     if (auth.developerId && developer_id !== auth.developerId) return NextResponse.json({ error: 'Device cannot submit another member’s screenshot' }, { status: 403 });
 
@@ -254,7 +264,9 @@ export async function POST(request) {
     //
     // Checked on the DECODED bytes, because that is what gets stored.
     const buffer = base64ToBuffer(image_data);
-    if (!isPng(buffer)) {
+    if (buffer.length > 6 * 1024 * 1024) return NextResponse.json({ error: "Screenshot too large" }, { status: 413 });
+    const dimensions = pngDimensions(buffer);
+    if (!dimensions) {
       return NextResponse.json(
         { error: 'image_data must be a base64-encoded PNG' },
         { status: 415 }
@@ -270,12 +282,13 @@ export async function POST(request) {
     }
 
     // Identity must be real; organization comes from the developer row.
-    const { data: developer } = await db
+    const { data: developer, error: developerError } = await db
       .from('developers')
-      .select('id, organization_id')
+      .select('id, organization_id, email')
       .eq('id', developer_id)
       .maybeSingle();
 
+    if (developerError) return NextResponse.json({ error: "Developer lookup unavailable" }, { status: 503 });
     if (!developer) {
       // NO ORACLE WHEN UNAUTHENTICATED. `403 Unknown developer` versus a 200
       // told an anonymous caller whether a given uuid names a real person, in
@@ -289,66 +302,65 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Unknown developer' }, { status: 403 });
     }
 
-    // PATH SHAPE — LOAD-BEARING. Do not change without changing the reader.
-    //
-    //     {organization_id}/{developer_id}/{ts}-{uuid}.png
-    //
-    // Segment 1 is the organization id: 019's policy compares it to auth_org().
-    // Segment 2 is the developer id: migration 040 (PART 15) passes it through
-    // public.try_uuid() into public.auth_can_read_member(), which is what limits
-    // a signed URL to the subject themselves, their management chain, and
-    // owner/admin/hr. 019 checked segment 1 only, so any colleague could sign
-    // any colleague's capture; segment 2 is the whole fix. A developer id that
-    // is not a uuid in segment 2 resolves to null and the object becomes
-    // owner/admin-only — fail closed, by design.
-    //
-    // `unassigned` when the developer row has no organization: nothing can match
-    // that against auth_org(), so the object is service-role-only. Also by
-    // design; 040's PART 15 comment calls this case out explicitly.
-    //
-    // The random component keeps objects unguessable.
-    //
-    // The read side asserts this same shape in `isMonitoringPath()` in
-    // src/utils/screenshotFiles.js, and scripts/migrate-screenshots.mjs writes
-    // migrated objects to it. tests/screenshotPaths.test.js pins all three
-    // together — if you edit the line below, that test fails.
-    const orgPrefix = developer.organization_id || 'unassigned';
-    const fileName = `${orgPrefix}/${developer.id}/${Date.now()}-${crypto.randomUUID()}.png`;
-
-    const { error: uploadError } = await db.storage
-      .from(SCREENSHOT_BUCKET)
-      .upload(fileName, buffer, {
-        contentType: 'image/png',
-        upsert: false
-      });
-
-    if (uploadError) throw uploadError;
-
-    // Save to database. Only REAL columns of the screenshots table are written.
-    // public_url is deliberately left null for private-bucket objects: there is
-    // no durable URL any more, readers sign storage_path on demand. (image_url /
-    // thumbnail_url / activity_context / session_id do NOT exist in this
-    // table's schema and previously made this insert fail.)
-    const { error } = await db
-      .from('screenshots')
-      .insert([
-        {
-          developer_id: developer.id,
-          organization_id: developer.organization_id,
-          storage_path: fileName,
-          filename: fileName.split('/').pop(),
-          annotation_text: context || null,
-          timestamp: safeTimestamp(timestamp)
-        }
-      ]);
-
-    if (error) throw error;
-
-    return NextResponse.json({
-      success: true,
-      message: 'Screenshot uploaded successfully',
-      path: fileName
-    });
+    if (!developer.organization_id || !developer.email || (auth.orgId && auth.orgId !== developer.organization_id)) {
+      return NextResponse.json({ error: "Developer identity is incomplete" }, { status: 403 });
+    }
+    const orgPrefix = developer.organization_id;
+    const captureId = (capture_id || crypto.randomUUID()).toLowerCase();
+    const fileName = `${orgPrefix}/${developer.id}/capture_${captureId}.png`;
+    let previous = null;
+    if (auth.client) {
+      const lookup = await db.from('screenshots').select('capture_metadata, storage_path')
+        .eq('organization_id', orgPrefix).eq('capture_id', captureId).maybeSingle();
+      if (lookup.error) return NextResponse.json({ error: 'Capture receipt lookup unavailable' }, { status: 503 });
+      previous = lookup.data;
+    }
+    const metadata = {
+      organization_id: orgPrefix, developer_id: developer.id, developer_email: developer.email,
+      filename: fileName.split('/').pop(), storage_path: fileName, public_url: null,
+      width: dimensions.width, height: dimensions.height, size_kb: Number((buffer.length / 1024).toFixed(2)),
+      mime_type: 'image/png', app_active: null, is_annotated: Boolean(context), annotation_text: context || null,
+      timestamp: timestamp ? new Date(timestamp).toISOString() : previous?.capture_metadata?.timestamp || new Date().toISOString(),
+    };
+    if (previous && (previous.storage_path !== fileName || !sameMetadata(previous.capture_metadata, metadata))) {
+      return NextResponse.json({ error: 'Capture ID already belongs to different screenshot metadata' }, { status: 409 });
+    }
+    // Immutable upload only. A timeout/duplicate can mean this exact object was
+    // already committed; verify bytes before finalizing instead of overwriting.
+    let uploadError = previous ? new Error("Existing receipt requires object verification") : null;
+    if (!previous) try {
+      ({ error: uploadError } = await db.storage.from(SCREENSHOT_BUCKET).upload(fileName, buffer, {
+        contentType: 'image/png', upsert: false,
+      }));
+    } catch (error) { uploadError = error; }
+    if (uploadError) {
+      let existing;
+      try { existing = await db.storage.from(SCREENSHOT_BUCKET).download(fileName); }
+      catch { return NextResponse.json({ error: 'Screenshot upload could not be confirmed', capture_id: captureId }, { status: 503 }); }
+      if (existing.error || !existing.data) return NextResponse.json({ error: 'Screenshot upload could not be confirmed' }, { status: 503 });
+      if (existing.data.size !== buffer.length) return NextResponse.json({ error: 'Capture ID already belongs to different screenshot bytes' }, { status: 409 });
+      const stored = Buffer.from(await existing.data.arrayBuffer());
+      if (stored.length !== buffer.length || !crypto.timingSafeEqual(
+        crypto.createHash('sha256').update(stored).digest(), crypto.createHash('sha256').update(buffer).digest())) {
+        return NextResponse.json({ error: 'Capture ID already belongs to different screenshot bytes' }, { status: 409 });
+      }
+    }
+    if (auth.client) {
+      const finalized = await db.rpc('finalize_screenshot_capture', { p_capture_id: captureId, p_metadata: metadata });
+      if (finalized.error || !finalized.data?.success || finalized.data.storage_path !== fileName || finalized.data.capture_id !== captureId) {
+        const message = finalized.error?.message || '';
+        const status = message.startsWith('SCREENSHOT_CAPTURE_CONFLICT') ? 409
+          : /^(PLAN_LIMIT_REACHED|BILLING_LOCKED|PLAN_FEATURE_REQUIRED)/.test(message) ? 402
+          : finalized.error?.code === '42501' ? 403 : 503;
+        return NextResponse.json({ error: 'Screenshot metadata could not be confirmed', capture_id: captureId }, { status });
+      }
+    } else {
+      // Existing nonproduction staged clients have no authenticated device RPC
+      // context. Keep their guarded legacy insert but supply every required field.
+      const { error } = await db.from('screenshots').insert([metadata]);
+      if (error) return NextResponse.json({ error: 'Screenshot metadata could not be confirmed' }, { status: 503 });
+    }
+    return NextResponse.json({ success: true, message: 'Screenshot uploaded successfully', path: fileName, capture_id: captureId });
 
   } catch {
     return NextResponse.json(
@@ -358,31 +370,20 @@ export async function POST(request) {
   }
 }
 
-function safeTimestamp(value) {
-  const d = value ? new Date(value) : new Date();
-  return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+function sameMetadata(left, right) {
+  return left && Object.keys(left).length === Object.keys(right).length &&
+    Object.keys(right).every(key => left[key] === right[key]);
 }
 
 function base64ToBuffer(base64String) {
   return Buffer.from(base64String, 'base64');
 }
 
-/**
- * The eight-byte PNG signature.
- *
- * Buffer.from(..., 'base64') accepts anything — it drops non-base64 characters
- * rather than failing — so the only way to know the payload is an image is to
- * look at the decoded bytes. The magic number is checked rather than a declared
- * content-type because nothing here declares one: the stored object's type is
- * hardcoded to image/png at the upload call, so an unchecked payload would be
- * arbitrary bytes served under an image type.
- *
- * PNG only, deliberately: the desktop agent sends PNG, and a checker that
- * accepted "any image" would be a longer list to keep correct for no gain.
- */
-function isPng(buffer) {
-  if (!buffer || buffer.length < 8) return false;
-  return buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e &&
-         buffer[3] === 0x47 && buffer[4] === 0x0d && buffer[5] === 0x0a &&
-         buffer[6] === 0x1a && buffer[7] === 0x0a;
+// Read the mandatory first PNG IHDR chunk without trusting submitted dimensions.
+function pngDimensions(buffer) {
+  if (buffer.length < 33 || !buffer.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) ||
+      buffer.readUInt32BE(8) !== 13 || buffer.toString('ascii', 12, 16) !== 'IHDR') return null;
+  const width = buffer.readUInt32BE(16), height = buffer.readUInt32BE(20);
+  if (!width || !height || width > 16384 || height > 16384) return null;
+  return { width, height };
 }
