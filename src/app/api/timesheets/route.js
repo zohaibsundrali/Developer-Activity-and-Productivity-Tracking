@@ -89,31 +89,56 @@ export async function GET(request) {
     if (requestedWeek !== null && !isoMonday(requestedWeek)) {
       return NextResponse.json({ success: false, error: "weekStart must be a Monday, as YYYY-MM-DD" }, { status: 400 });
     }
+    const rawLimit = searchParams.get("limit");
+    const limit = rawLimit === null ? 300 : Number(rawLimit);
+    if (rawLimit !== null && (!/^[1-9]\d{0,2}$/.test(rawLimit) || limit > 300)) {
+      return NextResponse.json({ success: false, error: "limit must be an integer from 1 to 300" }, { status: 400 });
+    }
+    const requestedStatus = searchParams.get("status");
+    const status = ["draft", "submitted", "approved", "rejected"].includes(requestedStatus) ? requestedStatus : null;
+    const scope = !canReadAnyone || searchParams.get("scope") === "me" ? "me" : "all";
+    const binding = { scope, status, weekFilter: requestedWeek, organizationId: auth.orgId, userId: auth.appUserId, userType: auth.userType };
+    let cursor = null;
+    const rawCursor = searchParams.get("cursor");
+    if (rawCursor !== null) {
+      try {
+        if (!rawCursor || rawCursor.length > 2048 || !/^[A-Za-z0-9_-]+$/.test(rawCursor)) throw new Error("Invalid cursor");
+        cursor = JSON.parse(Buffer.from(rawCursor, "base64url").toString("utf8"));
+        if (!cursor || !isoMonday(cursor.weekStart) || (typeof cursor.id !== "string" || !UUID_RE.test(cursor.id)) || Object.entries(binding).some(([key, value]) => cursor[key] !== value)) throw new Error("Invalid cursor");
+      } catch {
+        return NextResponse.json({ success: false, error: "Invalid timesheet cursor. Reload the list." }, { status: 400 });
+      }
+    }
     const svc = orgScopedClient(auth.token);
-
-    let query = svc
-      .from("timesheets")
-      .select("*")
-      .eq("organization_id", auth.orgId)
-      .order("week_start", { ascending: false })
-      .limit(300);
-
-    if (!canReadAnyone || searchParams.get("scope") === "me") {
-      query = query.eq("user_id", auth.appUserId).eq("user_type", auth.userType);
+    const buildQuery = (after, pageLimit, columns = "*") => {
+      let query = svc.from("timesheets").select(columns)
+        .eq("organization_id", auth.orgId)
+        .order("week_start", { ascending: false }).order("id", { ascending: false }).limit(pageLimit);
+      if (scope === "me") query = query.eq("user_id", auth.appUserId).eq("user_type", auth.userType);
+      if (requestedWeek !== null) query = query.eq("week_start", requestedWeek);
+      if (status !== null) query = query.eq("status", status);
+      // Both interpolated values are constrained to safe date/UUID alphabets.
+      if (after) query = query.or(`week_start.lt.${after.weekStart},and(week_start.eq.${after.weekStart},id.lt.${after.id})`);
+      return query;
+    };
+    const { data, error } = await buildQuery(cursor, limit);
+    if (error) return databaseFailure(error);
+    if (!Array.isArray(data)) return databaseFailure({ code: "XX000" });
+    let hasMore = false;
+    let nextCursor = null;
+    if (data.length) {
+      const last = data[data.length - 1];
+      if (!isoMonday(last.week_start) || !UUID_RE.test(last.id)) return databaseFailure({ code: "XX000" });
+      const after = { weekStart: last.week_start, id: last.id };
+      // A hosted row cap can be smaller than limit. Probe explicitly rather
+      // than treating every short page as a complete result.
+      const probe = await buildQuery(after, 1, "id");
+      if (probe.error) return databaseFailure(probe.error);
+      if (!Array.isArray(probe.data)) return databaseFailure({ code: "XX000" });
+      hasMore = probe.data.length > 0;
+      if (hasMore) nextCursor = Buffer.from(JSON.stringify({ ...after, ...binding })).toString("base64url");
     }
-
-    if (requestedWeek !== null) query = query.eq("week_start", requestedWeek);
-
-    const status = searchParams.get("status");
-    if (status && ["draft", "submitted", "approved", "rejected"].includes(status)) {
-      query = query.eq("status", status);
-    }
-
-    const { data, error } = await query;
-    if (error) {
-      return databaseFailure(error);
-    }
-    return NextResponse.json({ success: true, timesheets: data || [] });
+    return NextResponse.json({ success: true, timesheets: data, hasMore, nextCursor });
   } catch (e) {
     return NextResponse.json(
       { success: false, error: "Timesheets are temporarily unavailable. Please retry." },
