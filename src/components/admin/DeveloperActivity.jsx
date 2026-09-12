@@ -1,4 +1,5 @@
 "use client";
+import { useMonitoringScreenshots } from "@/hooks/useMonitoringScreenshots";
 import { useAuth } from "@/contexts/AuthContext";
 import { loadMonitoringLogins } from "@/utils/monitoringLogins";
 import { loadMonitoringSessions, sumMonitoringSessionDuration } from "@/utils/monitoringSessions";
@@ -18,7 +19,6 @@ import { reportIdentity } from "@/utils/reportViewState";
 import { getOrgContext, getOrgId } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
 import { showPre } from "@/utils/alerts";
-import { resolveScreenshotUrls } from "@/utils/screenshotFiles";
 import { setVisibleInterval } from "@/hooks/useVisibleInterval";
 import EChart from "@/components/charts/EChart";
 import {
@@ -118,10 +118,6 @@ const donutLegend = { ...baseLegend, bottom: 0, top: "auto", left: "center", rig
 const POLL_INTERVAL = 10_000; // 10 seconds
 const MOUSE_PAGE_SIZE = 50;
 
-// Legacy limits on the remaining monitoring sources; sessions, app usage
-// and mouse pages use verified pagination. These constants do not prove full coverage.
-const SCREENSHOT_LIMIT = 200;
-
 export default function DeveloperActivity() {
   const { user, authStatus } = useAuth();
   const router = useRouter();
@@ -206,8 +202,8 @@ export default function DeveloperActivity() {
   const [keyboardData, setKeyboardData] = useState([]);
   const [keyboardTruncated, setKeyboardTruncated] = useState(false);
   const [appUsageData, setAppUsageData] = useState([]);
-  const [screenshots, setScreenshots] = useState([]);
-  const [selectedScreenshot, setSelectedScreenshot] = useState(null);
+  const [selectedScreenshotId, setSelectedScreenshotId] = useState(null);
+  const [screenshotRetryVersion, setScreenshotRetryVersion] = useState(0);
   const [loginRecords, setLoginRecords] = useState([]);
 
   const monitoringOrg = getOrgId();
@@ -225,12 +221,27 @@ export default function DeveloperActivity() {
     getOrganizationId: getOrgId, getIdentity: () => reportIdentity(getOrgContext()),
     getScope: () => liveScope.current, canMonitor: () => allowed('monitoring.view'),
   }), [monitoringOrg, monitoringIdentity, activityScope]);
+  const screenshotPage = useMonitoringScreenshots({
+    client: supabase, organizationId: monitoringOrg, profileId: selectedDeveloper,
+    start: dateWindow?.start, end: dateWindow?.end, scope: activityScope,
+    enabled: canMonitor && !!dateWindow && developers.some(dev => dev.id === selectedDeveloper),
+    makeGuard: makeMonitoringGuard,
+  });
+  const screenshots = screenshotPage.rows;
+  const refreshScreenshotPage = screenshotPage.refresh;
+  const renewScreenshotImages = screenshotPage.retryImages;
+  const retryScreenshotImages = useCallback(() => {
+    setScreenshotRetryVersion(version => version + 1);
+    return renewScreenshotImages();
+  }, [renewScreenshotImages]);
+  const selectedScreenshot = screenshots.find(shot => shot.id === selectedScreenshotId) || null;
+  useEffect(() => { setSelectedScreenshotId(null); }, [activityScope, screenshotPage.page]);
   const [clearedScope, setClearedScope] = useState(null);
   const activityGeneration = useRef(0);
   const mouseGeneration = useRef(0);
   const clearActivity = useCallback(() => {
     setSessions([]); setMouseData([]); setKeyboardData([]); setKeyboardTruncated(false); setAppUsageData([]);
-    setScreenshots([]); setSelectedScreenshot(null); setLoginRecords([]);
+    setLoginRecords([]);
     setActiveSession(null); setMouseTotalCount(0);
   }, []);
   useEffect(() => {
@@ -291,34 +302,18 @@ export default function DeveloperActivity() {
 
     try {
       // Fetch monitoring sources through their existing caller-scoped access paths.
-      const [sessionsRes, keyboardApiRes, appRes, screenshotRes, screenshotCreatedAtRes, loginRes] = await Promise.all([
+      const [sessionsRes, keyboardApiRes, appRes, loginRes] = await Promise.all([
         loadMonitoringSessions(supabase, { organizationId: monitoringOrg, profileId: devId, email: devEmail, start, end }, active).then(data => ({ data })),
         authFetch(`/api/keyboard-stats?developerId=${encodeURIComponent(devId || "")}&userId=${encodeURIComponent(dev.user_id || "")}&email=${encodeURIComponent(devEmail || "")}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`).then(async r => { const body = await r.json(); if (!r.ok) throw new Error(body?.error || 'Could not load keyboard activity.'); return body; }),
         loadMonitoringAppUsage(supabase, { organizationId: monitoringOrg, email: devEmail, start, end }, active).then(data => ({ data })),
-        // Screenshots schema has varied; select '*' and normalize client-side.
-        supabase.from("screenshots").select("*")
-          .eq('developer_id', devId)
-          .gte("timestamp", start)
-          .lt("timestamp", end)
-          .order("timestamp", { ascending: false })
-          .limit(SCREENSHOT_LIMIT),
-        // Fallback for rows missing `timestamp`: use created_at but keep the same date range.
-        supabase.from("screenshots").select("*")
-          .eq('developer_id', devId)
-          .gte("created_at", start)
-          .lt("created_at", end)
-          .order("created_at", { ascending: false })
-          .limit(SCREENSHOT_LIMIT),
         loadMonitoringLogins(supabase, { organizationId: monitoringOrg, profileId: devId, start, end }, active).then(data => ({ data })),
       ]);
 
-      for (const result of [sessionsRes, appRes, screenshotRes, screenshotCreatedAtRes, loginRes]) {
+      for (const result of [sessionsRes, appRes, loginRes]) {
         if (result?.error) throw result.error;
       }
       if (!active()) return;
       const finalLogins = loginRes.data || [];
-      const startMs = Date.parse(start);
-      const endMs = Date.parse(end);
 
       const finalSessions = sessionsRes.data || [];
       // Handle keyboard API response
@@ -345,37 +340,6 @@ export default function DeveloperActivity() {
 
       const finalApp = appRes.data || [];
 
-      let screenshotRows = screenshotRes.data || [];
-      let screenshotCreatedAtRows = screenshotCreatedAtRes.data || [];
-      let finalScreenshots = [];
-
-      // Keyboard data already fetched via API route with all fallbacks built-in
-
-      // Normalize + strictly filter screenshots to the selected range.
-      // Also require a real image URL so the UI never shows count-only/placeholder rows.
-      const merged = new Map();
-      [...(screenshotRows || []), ...(screenshotCreatedAtRows || [])].forEach((r) => {
-        const key = r?.id || `${r?.developer_id || ""}-${r?.created_at || ""}-${r?.timestamp || ""}`;
-        if (!merged.has(key)) merged.set(key, r);
-      });
-      // Sign private-bucket rows first: they carry no durable public_url, so the
-      // URL filter below would otherwise discard every Phase 2 screenshot.
-      const resolvedShots = await resolveScreenshotUrls(Array.from(merged.values()));
-      finalScreenshots = resolvedShots
-        .map((r) => {
-          const imageUrl = r?.public_url || null;
-          const displayTs = r?.timestamp || r?.created_at || null;
-          const displayMsRaw = parseDbTimeMs(displayTs);
-          const displayMs = Number.isNaN(displayMsRaw) ? parseDbTimeMs(r?.created_at) : displayMsRaw;
-          return { ...r, public_url: imageUrl, _display_ts: displayTs, _display_ms: displayMs };
-        })
-        .filter((r) => {
-          if (!r.public_url) return false;
-          if (r._display_ms == null || Number.isNaN(r._display_ms)) return false;
-          return r._display_ms >= startMs && r._display_ms < endMs;
-        })
-        .sort((a, b) => (b._display_ms || 0) - (a._display_ms || 0));
-
       if (!active()) return;
       // Detect active session
       const activeSessionRow = finalSessions.find(s => s.status === "active") || null;
@@ -385,7 +349,6 @@ export default function DeveloperActivity() {
       setKeyboardData(finalKeyboard);
       setKeyboardTruncated(keyboardApiRes?.truncated === true);
       setAppUsageData(finalApp);
-      setScreenshots(finalScreenshots);
       setLoginRecords(finalLogins);
       setLastUpdated(new Date());
     } catch (err) {
@@ -394,7 +357,7 @@ export default function DeveloperActivity() {
       // A silent realtime refresh can supersede an initial visible request.
       if (active()) setLoading(false);
     }
-  }, [selectedDeveloper, developers, getDateFilter, clearActivity, parseDbTimeMs, makeMonitoringGuard, monitoringOrg]);
+  }, [selectedDeveloper, developers, getDateFilter, clearActivity, makeMonitoringGuard, monitoringOrg]);
 
   // ─── Mouse Activity (server-side pagination) ───
   const fetchMousePage = useCallback(async ({ page = 1, silent = false } = {}) => {
@@ -611,80 +574,27 @@ export default function DeveloperActivity() {
     };
   }, [selectedDeveloper, developers, getDateFilter, monitoringOrg, canMonitor, makeMonitoringGuard, fetchDeveloperActivity]);
 
-  // ─── Supabase Realtime for screenshots ───
-  const screenshotChannelRef = useRef(null);
+  // Screenshot metadata and signed URLs have their own page lifecycle.
   useEffect(() => {
-    if (screenshotChannelRef.current) {
-      supabase.removeChannel(screenshotChannelRef.current);
-      screenshotChannelRef.current = null;
-    }
-    const dev = developers.find(d => d.id === selectedDeveloper);
-    if (!dev || !monitoringOrg || !canMonitor || !allowed('monitoring.view')) return;
-
-    const window = getDateFilter();
-    if (!window) return;
-    const { start, end } = window;
+    if (!selectedDeveloper || !canMonitor || !getDateFilter()) return;
     const guard = makeMonitoringGuard();
-    const startMs = new Date(start).getTime();
-    const endMs = new Date(end).getTime();
-
-    const normalizeRow = (row) => {
-      const imageUrl = row?.public_url || null;
-      const displayTs = row?.timestamp || row?.created_at || null;
-      const displayMsRaw = parseDbTimeMs(displayTs);
-      const displayMs = Number.isNaN(displayMsRaw) ? parseDbTimeMs(row?.created_at) : displayMsRaw;
-      return { ...row, public_url: imageUrl, _display_ts: displayTs, _display_ms: displayMs };
-    };
-
-    const shouldInclude = (row) => {
-      // Private-bucket rows have no public_url — a storage_path is enough,
-      // the URL is signed on ingest below.
-      const imageUrl =
-        row?.public_url || row?.image_url || row?.thumbnail_url || row?.publicUrl || row?.storage_path;
-      if (!imageUrl) return false;
-      const displayTs = row?.timestamp || row?.created_at;
-      if (!displayTs) return false;
-      const tRaw = parseDbTimeMs(displayTs);
-      const t = Number.isNaN(tRaw) ? parseDbTimeMs(row?.created_at) : tRaw;
-      if (Number.isNaN(t)) return false;
-      return t >= startMs && t < endMs;
-    };
-
-    // Sign (if private) then prepend. Shared by both realtime subscriptions.
-    const ingest = async (incoming) => {
-      if (!guard.accepts(incoming) || incoming.developer_id !== dev.id || !shouldInclude(incoming)) return;
-      let signed;
-      try { [signed] = await resolveScreenshotUrls([incoming]); }
-      catch {
-        if (guard.current()) setActivityError('Could not load the new screenshot. Refresh activity to retry.');
-        return;
-      }
-      if (!guard.accepts(incoming)) return;
-      if (!signed) return;
-      const row = normalizeRow(signed);
-      if (!row.public_url) return;
-      setScreenshots(prev => {
-        if (!guard.accepts(incoming) || (row.id && prev.some(s => s.id === row.id))) return prev;
-        // Trim to the same ceiling the fetch uses. Without this an admin page
-        // left open accumulated screenshots without limit — every other
-        // realtime handler here caps its array, this one did not.
-        return [row, ...prev].slice(0, SCREENSHOT_LIMIT);
-      });
-      setLastUpdated(previous => guard.current() ? new Date() : previous);
-    };
-
-    const ssChannel = supabase
-      .channel("admin-activity-screenshots")
-      .on("postgres_changes", {
-        event: "INSERT",
-        schema: "public",
-        table: "screenshots",
-        filter: `developer_id=eq.${dev.id}`,
-      }, (payload) => { ingest(payload.new); })
-      .subscribe();
-    screenshotChannelRef.current = ssChannel;
-    return () => { guard.dispose(); supabase.removeChannel(ssChannel); if (screenshotChannelRef.current === ssChannel) screenshotChannelRef.current = null; };
-  }, [selectedDeveloper, developers, getDateFilter, parseDbTimeMs, monitoringOrg, canMonitor, makeMonitoringGuard]);
+    const refresh = createMonitoringAppRefresh({
+      guard: { current: guard.current, accepts: row => guard.accepts(row) && row.developer_id === selectedDeveloper },
+      refresh: refreshScreenshotPage,
+    });
+    let channel = supabase.channel("admin-activity-screenshots");
+    for (const event of ["INSERT", "UPDATE"]) {
+      channel = channel.on("postgres_changes", {
+        event, schema: "public", table: "screenshots", filter: `developer_id=eq.${selectedDeveloper}`,
+      }, payload => refresh.notify(payload?.new));
+    }
+    channel.subscribe();
+    return () => { guard.dispose(); refresh.dispose(); supabase.removeChannel(channel); };
+  }, [selectedDeveloper, canMonitor, getDateFilter, makeMonitoringGuard, refreshScreenshotPage]);
+  useEffect(() => {
+    if (!autoRefresh || !selectedDeveloper || !canMonitor) return;
+    return setVisibleInterval(refreshScreenshotPage, POLL_INTERVAL);
+  }, [autoRefresh, selectedDeveloper, canMonitor, refreshScreenshotPage]);
 
   // ─── Supabase Realtime for developer_logins ───
   useEffect(() => {
@@ -931,7 +841,7 @@ export default function DeveloperActivity() {
         title={sectionTitle("developer-activity", "admin")}
         description="Sessions, input, applications and screenshots recorded by the desktop tracker."
         actions={
-          <Button variant="outline" onClick={fetchAdminDevelopers}>
+          <Button variant="outline" onClick={() => { fetchAdminDevelopers(); refreshScreenshotPage(); }}>
             <RefreshCw aria-hidden="true" />
             Refresh
           </Button>
@@ -942,6 +852,7 @@ export default function DeveloperActivity() {
       {developerError ? <ErrorState title="Could not load developers" description={developerError} onRetry={fetchAdminDevelopers} /> : null}
       <KeyboardCoverageNotice truncated={keyboardTruncated} loadedCount={keyboardData.length} canNarrowRange />
       {activityError ? <ErrorState title="Could not load activity" description={activityError} onRetry={() => { fetchDeveloperActivity(); fetchMousePage({ page: mousePage }); }} /> : null}
+      {viewMode !== "screenshots" && screenshotPage.error && <ErrorState title="Could not load screenshots" description={screenshotPage.error} onRetry={refreshScreenshotPage} />}
       {/* Filters */}
       <div className="mb-6 bg-card rounded-xl p-5 border border-border shadow-card">
 
@@ -1065,7 +976,7 @@ export default function DeveloperActivity() {
 
       {/* Loading — skeletons shaped like the view underneath (tiles, two
           panels, a table) rather than a spinner on a blank page. */}
-      {loading && (
+      {viewMode !== "screenshots" && (loading || (!hasData && screenshotPage.loading)) && (
         <div className="space-y-6" aria-busy="true">
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6">
             {[0, 1, 2, 3, 4, 5].map((i) => (
@@ -1083,7 +994,7 @@ export default function DeveloperActivity() {
       )}
 
       {/* Main Content */}
-      {developer && !loading && !activityError && (hasData || viewMode === "logins") && (
+      {developer && (viewMode === "screenshots" || (!loading && !activityError && (hasData || viewMode === "logins"))) && (
         <div className="space-y-6">
 
           {/* ==================== OVERVIEW ==================== */}
@@ -1101,7 +1012,7 @@ export default function DeveloperActivity() {
                 {/* <StatCard icon={<Pause className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Idle Time" value={fmtDuration(totalIdleTime)} bg="bg-destructive/10" /> */}
                 <StatCard icon={<MousePointer2 className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Mouse Active %" value={`${avgMouseActive.toFixed(1)}%`} bg="bg-info/10" />
                 <StatCard icon={<Target className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Kb Activity %" value={`${avgKeyboardActivity.toFixed(1)}%`} bg="bg-primary/10" />
-                <StatCard icon={<Camera className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Screenshots" value={screenshots.length} bg="bg-accent" />
+                <StatCard icon={<Camera className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Screenshots" value={screenshotPage.total ?? "Unavailable"} bg="bg-accent" />
               </div>
 
               <p className="text-xs text-muted-foreground">Recorded session time is grouped by the date each session started.</p>
@@ -1970,7 +1881,7 @@ export default function DeveloperActivity() {
             <div className="space-y-6">
               {/* Screenshot Summary Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard icon={<Camera className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Total Screenshots" value={screenshots.length} bg="bg-accent" />
+                <StatCard icon={<Camera className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Total Screenshots" value={screenshotPage.total ?? "Unavailable"} bg="bg-accent" />
                 {screenshots.length > 0 && (
                   <div className="bg-card p-4 rounded-xl border border-border shadow-card">
                     <div className="flex items-center">
@@ -1978,7 +1889,7 @@ export default function DeveloperActivity() {
                         <CircleDot className="h-5 w-5 text-foreground" aria-hidden="true" />
                       </div>
                       <div>
-                        <p className="text-xs text-muted-foreground">Latest Capture</p>
+                        <p className="text-xs text-muted-foreground">{screenshotPage.page === 1 ? "Latest Capture" : "Latest on This Page"}</p>
                         <p className="text-sm font-bold text-foreground">{fmtDbExactTime((screenshots[0].timestamp || screenshots[0].created_at) || "")}</p>
                       </div>
                     </div>
@@ -1987,55 +1898,26 @@ export default function DeveloperActivity() {
                 )}
               </div>
 
-              {/* Debug Info (shown when 0 screenshots) */}
-              {/* {screenshots.length === 0 && developer && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <h4 className="text-sm font-semibold text-warning mb-2">Debug: No screenshots found</h4>
-                  <div className="text-xs text-yellow-700 space-y-1">
-                    <p><strong>Developer ID:</strong> {developer.id}</p>
-                    <p><strong>Developer Email:</strong> {developer.email}</p>
-                    <p><strong>Date Filter:</strong> {selectedDate} ({timeRange})</p>
-                    <p>Check browser console for <code>[Screenshots]</code> logs showing query results and errors.</p>
-                    <p className="mt-2 text-warning">Common causes: RLS policy blocking reads, developer_id/email mismatch, or date filter excluding data.</p>
-                    <button
-                      onClick={async () => {
-                        const { data, error } = await supabase
-                          .from("screenshots")
-                          .select("id, developer_id, developer_email, public_url, storage_path, timestamp, created_at")
-                          .limit(5);
-                        showPre(
-                          "Screenshot diagnostics",
-                          error
-                            ? `RLS Error: ${error.message}`
-                            : `Found ${data?.length || 0} total screenshots.\n${
-                                data?.length
-                                  ? `Sample: developer_email=${data[0].developer_email}, developer_id=${data[0].developer_id}, has_url=${Boolean(data[0].public_url || data[0].image_url || data[0].thumbnail_url)}, storage_path=${data[0].storage_path || "(none)"}`
-                                  : "Table is empty."
-                              }`,
-                          error ? "error" : "info"
-                        );
-                      }}
-                      className="mt-2 px-3 py-1 bg-yellow-200 hover:bg-yellow-300 text-yellow-900 rounded text-xs font-medium transition-colors"
-                    >
-                      Run Diagnostic Query
-                    </button>
-                  </div>
-                </div>
-              )} */}
-
+              {screenshotPage.error && <ErrorState title="Could not load screenshots" description={screenshotPage.error} onRetry={refreshScreenshotPage} />}
+              <div className="flex flex-wrap items-center gap-3">
+                <Button variant="outline" disabled={screenshotPage.loading || !screenshotPage.hasPrevious} onClick={screenshotPage.previous}>Previous</Button>
+                <span className="text-sm text-muted-foreground">Page {screenshotPage.page} · {screenshotPage.total ?? "—"} captures</span>
+                <Button variant="outline" disabled={screenshotPage.loading || !screenshotPage.hasNext} onClick={screenshotPage.next}>Next</Button>
+                <Button variant="outline" disabled={screenshotPage.loading || !screenshots.length} onClick={retryScreenshotImages}>Reload Images</Button>
+              </div>
               {/* Screenshot Gallery */}
               <div className="rounded-xl border border-border bg-card p-6 shadow-card">
-                <h3 className="text-lg font-semibold text-foreground mb-4">Screenshot Gallery ({screenshots.length})</h3>
-                {screenshots.length > 0 ? (
+                <h3 className="text-lg font-semibold text-foreground mb-4">Screenshot Gallery — Page {screenshotPage.page} ({screenshots.length})</h3>
+                {screenshotPage.loading ? <Skeleton className="h-48 w-full" /> : screenshotPage.error ? null : screenshots.length > 0 ? (
                   <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
                     {screenshots.map((ss, i) => (
                       <ScreenshotTile
-                        key={ss.id || i}
+                        key={`${ss.id}:${screenshotRetryVersion}`}
                         shot={ss}
                         index={i}
-                        latest={i === 0}
+                        latest={screenshotPage.page === 1 && i === 0}
                         time={fmtDbExactTime(ss.timestamp || ss.created_at)}
-                        onSelect={() => setSelectedScreenshot(ss)}
+                        onSelect={() => setSelectedScreenshotId(ss.id)}
                       />
                     ))}
                   </div>
@@ -2055,7 +1937,7 @@ export default function DeveloperActivity() {
               {/* Screenshot Timeline */}
               {screenshots.length > 0 && (
                 <div className="rounded-xl border border-border bg-card p-6 shadow-card">
-                  <h3 className="text-lg font-semibold text-foreground mb-4">Screenshot Timeline</h3>
+                  <h3 className="text-lg font-semibold text-foreground mb-4">Screenshot Timeline — Current Page</h3>
                   <div className="max-h-96 space-y-2 overflow-y-auto">
                     {screenshots.map((ss, i) => (
                       // Fixed row height + a reserved 64×48 thumb slot: the row
@@ -2064,20 +1946,21 @@ export default function DeveloperActivity() {
                         type="button"
                         key={ss.id || i}
                         className={`flex h-16 w-full items-center gap-4 rounded-lg border bg-card px-3 text-left transition-colors duration-150 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-                          i === 0 ? "border-primary" : "border-border"
+                          screenshotPage.page === 1 && i === 0 ? "border-primary" : "border-border"
                         }`}
-                        onClick={() => setSelectedScreenshot(ss)}
+                        onClick={() => setSelectedScreenshotId(ss.id)}
                       >
                         <div className="w-16 shrink-0 text-center">
                           <p className="text-sm font-semibold tabular-nums text-foreground">
                             {fmtDbExactTime(ss.timestamp || ss.created_at)}
                           </p>
-                          {i === 0 && <span className="text-xs text-primary">Latest</span>}
+                          {screenshotPage.page === 1 && i === 0 && <span className="text-xs text-primary">Latest</span>}
                         </div>
                         <div className="h-10 w-px shrink-0 bg-border" />
                         <div className="relative h-12 w-16 shrink-0 overflow-hidden rounded border border-border bg-muted">
                           {ss.public_url ? (
-                            <img
+                            <ScreenshotImage
+                              key={`${ss.id}:${screenshotRetryVersion}`}
                               src={ss.public_url}
                               alt=""
                               className="absolute inset-0 h-full w-full object-cover"
@@ -2155,7 +2038,7 @@ export default function DeveloperActivity() {
                   focus restoration, which the hand-rolled overlay never had. */}
               <Modal
                 open={Boolean(selectedScreenshot)}
-                onClose={() => setSelectedScreenshot(null)}
+                onClose={() => setSelectedScreenshotId(null)}
                 title="Screenshot details"
                 description={selectedScreenshot?.app_active || undefined}
                 size="xl"
@@ -2164,7 +2047,8 @@ export default function DeveloperActivity() {
                   <div className="flex flex-col gap-5 md:flex-row">
                     <div className="flex min-h-[240px] flex-1 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted">
                       {selectedScreenshot.public_url ? (
-                        <img
+                        <ScreenshotImage
+                          key={`${selectedScreenshot.id}:${screenshotRetryVersion}`}
                           src={selectedScreenshot.public_url}
                           alt={selectedScreenshot.filename || "Screenshot"}
                           className="max-h-[60vh] max-w-full object-contain"
@@ -2175,7 +2059,9 @@ export default function DeveloperActivity() {
                       )}
                     </div>
 
-                    <dl className="w-full shrink-0 space-y-4 md:w-64">
+                    <div className="w-full shrink-0 space-y-4 md:w-64">
+                      <Button variant="outline" onClick={retryScreenshotImages}>Reload Image</Button>
+                    <dl className="space-y-4">
                       {[
                         { label: "Filename", value: selectedScreenshot.filename, wrap: true },
                         {
@@ -2196,7 +2082,7 @@ export default function DeveloperActivity() {
                             : null,
                         },
                         { label: "MIME type", value: selectedScreenshot.mime_type },
-                        { label: "Developer", value: selectedScreenshot.developer_email, wrap: true },
+                        { label: "Developer", value: selectedScreenshot.developer_email || developer?.email, wrap: true },
                       ].map((row) => (
                         <div key={row.label}>
                           <dt className="text-xs uppercase tracking-wide text-muted-foreground">{row.label}</dt>
@@ -2210,6 +2096,7 @@ export default function DeveloperActivity() {
                         </div>
                       ))}
                     </dl>
+                    </div>
                   </div>
                 )}
               </Modal>
@@ -2293,7 +2180,7 @@ export default function DeveloperActivity() {
 
       {/* No Data State — the shared dashed-border EmptyState, like every other
           screen, instead of this file's own bare centred icon. */}
-      {!loading && !activityError && selectedDeveloper && !hasData && viewMode !== "logins" && (
+      {!loading && !activityError && !screenshotPage.loading && !screenshotPage.error && screenshotPage.total === 0 && selectedDeveloper && !hasData && viewMode !== "logins" && viewMode !== "screenshots" && (
         <EmptyState
           icon={Monitor}
           title="No activity data found for selected period"
@@ -2325,6 +2212,13 @@ export default function DeveloperActivity() {
   );
 }
 
+// A failed image stays unavailable until its signed URL changes or the user retries.
+function ScreenshotImage({ src, alt, className, loading }) {
+  const [failedUrl, setFailedUrl] = useState(null);
+  if (!src || failedUrl === src) return <span role="status" className="p-2 text-xs text-muted-foreground">Image unavailable. Use Reload Images to retry.</span>;
+  return <img src={src} alt={alt} className={className} loading={loading} decoding="async" onError={() => setFailedUrl(src)} />;
+}
+
 // ─── Screenshot tile ───
 /**
  * The 16:9 frame is painted before the image exists and keeps its size in
@@ -2334,6 +2228,7 @@ export default function DeveloperActivity() {
  */
 function ScreenshotTile({ shot, index, latest, time, onSelect }) {
   const [state, setState] = useState(shot?.public_url ? "loading" : "failed");
+  useEffect(() => { setState(shot?.public_url ? "loading" : "failed"); }, [shot?.public_url]);
   const app = shot?.app_active || "Unknown app";
 
   return (
