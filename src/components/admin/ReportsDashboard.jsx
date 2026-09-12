@@ -604,6 +604,7 @@ function ReportsDashboardContent() {
         columns: activeExport.columns,
         rows: activeExport.rows || [],
         filename: activeExport.file,
+        shouldContinue: () => isCurrent() && !!bundle && !loading && !error,
       });
     } catch (err) {
       showError("Export failed", err?.message || String(err));
