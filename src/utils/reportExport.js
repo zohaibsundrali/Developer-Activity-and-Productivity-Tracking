@@ -1,3 +1,5 @@
+import { csvRow } from "@/utils/csvSerialization";
+
 /**
  * Report export helpers — CSV (native, no dependency) and PDF (jsPDF).
  *
@@ -30,32 +32,33 @@ function safeName(name) {
 
 function triggerDownload(blob, filename) {
   if (typeof window === "undefined") return;
-  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
+  const url = URL.createObjectURL(blob);
   a.href = url;
   a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  // Revoke on the next tick so Safari has time to start the download.
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  try {
+    document.body.appendChild(a);
+    a.click();
+  } finally {
+    try { a.remove(); }
+    finally {
+      // Leave enough time for the browser to start a successful download,
+      // but release the object URL even if DOM insertion/clicking failed.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  }
 }
 
 // ---- CSV ------------------------------------------------------------------
-// RFC-4180 style escaping: wrap in quotes when the value contains a quote,
-// comma, or newline; double any embedded quotes.
-function csvEscape(value) {
-  const s = String(value ?? "");
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-export function exportCsv({ columns, rows, filename = "report" }) {
+export function exportCsv({ columns, rows, filename = "report", shouldContinue = () => true }) {
+  if (!shouldContinue()) return;
   const cols = columns || [];
-  const header = cols.map((c) => csvEscape(c.label ?? c.key)).join(",");
-  const body = (rows || []).map((r) => cols.map((c) => csvEscape(cellText(r, c))).join(","));
+  const header = csvRow(cols.map((c) => c.label ?? c.key));
+  const body = (rows || []).map((r) => csvRow(cols.map((c) => r?.[c.key])));
   const csv = [header, ...body].join("\r\n");
   // Prepend a BOM so Excel opens UTF-8 correctly.
   const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+  if (!shouldContinue()) return;
   triggerDownload(blob, `${safeName(filename)}_${stamp()}.csv`);
 }
 
