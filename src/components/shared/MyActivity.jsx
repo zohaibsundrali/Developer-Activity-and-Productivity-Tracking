@@ -12,6 +12,7 @@ import {
   Skeleton,
 } from "@/components/ui";
 import StatCard from "@/components/shell/StatCard";
+import KeyboardCoverageNotice from "@/components/shared/KeyboardCoverageNotice";
 import { authFetch } from "@/utils/authFetch";
 import { allowed } from "@/utils/permissions";
 import { myActivityPanels, loadMyTypedTeam } from "@/utils/monitoringUiAccess";
@@ -234,6 +235,7 @@ export default function MyActivity() {
         title="Recorded activity"
         description="What the desktop tracker has recorded against your account."
       >
+        <KeyboardCoverageNotice truncated={activity?.truncated} loadedCount={activity?.data?.length ?? 0} />
         {failed.includes("your recorded activity") ? <ErrorState description="Could not load your recorded activity." onRetry={load} /> : !activity || (activity.data || []).length === 0 ? (
           <EmptyState
             icon={Keyboard}
@@ -242,9 +244,9 @@ export default function MyActivity() {
           />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
-            <StatCard title="Sessions" value={activity.count ?? 0} icon={Activity} />
+            <StatCard title="Loaded activity records" value={activity.data.length} icon={Activity} />
             <StatCard
-              title="Keystrokes"
+              title={activity.truncated === true ? "Keystrokes in loaded records" : "Keystrokes"}
               value={keystrokes.toLocaleString()}
               icon={Keyboard}
               hint={

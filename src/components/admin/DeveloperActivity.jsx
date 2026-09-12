@@ -1,4 +1,6 @@
 "use client";
+import KeyboardCoverageNotice from "@/components/shared/KeyboardCoverageNotice";
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
@@ -228,6 +230,7 @@ export default function DeveloperActivity() {
   const [mouseTotalCount, setMouseTotalCount] = useState(0);
   const [mousePageLoading, setMousePageLoading] = useState(false);
   const [keyboardData, setKeyboardData] = useState([]);
+  const [keyboardTruncated, setKeyboardTruncated] = useState(false);
   const [appUsageData, setAppUsageData] = useState([]);
   const [screenshots, setScreenshots] = useState([]);
   const [selectedScreenshot, setSelectedScreenshot] = useState(null);
@@ -244,7 +247,7 @@ export default function DeveloperActivity() {
   const activityGeneration = useRef(0);
   const mouseGeneration = useRef(0);
   const clearActivity = useCallback(() => {
-    setSessions([]); setMouseData([]); setKeyboardData([]); setAppUsageData([]);
+    setSessions([]); setMouseData([]); setKeyboardData([]); setKeyboardTruncated(false); setAppUsageData([]);
     setScreenshots([]); setSelectedScreenshot(null); setLoginRecords([]);
     setTodayTotalSeconds(0); setActiveSession(null); setMouseTotalCount(0);
   }, []);
@@ -558,6 +561,7 @@ export default function DeveloperActivity() {
 
       setSessions(finalSessions);
       setKeyboardData(finalKeyboard);
+      setKeyboardTruncated(keyboardApiRes?.truncated === true);
       setAppUsageData(finalApp);
       setScreenshots(finalScreenshots);
       setLoginRecords(finalLogins);
@@ -1129,6 +1133,7 @@ export default function DeveloperActivity() {
 
       {!canMonitor ? <ErrorState title="Monitoring access is not allowed" description="Your current permissions do not include developer monitoring." /> : null}
       {developerError ? <ErrorState title="Could not load developers" description={developerError} onRetry={fetchAdminDevelopers} /> : null}
+      <KeyboardCoverageNotice truncated={keyboardTruncated} loadedCount={keyboardData.length} canNarrowRange />
       {activityError ? <ErrorState title="Could not load activity" description={activityError} onRetry={() => fetchDeveloperActivity()} /> : null}
       {/* Filters */}
       <div className="mb-6 bg-card rounded-xl p-5 border border-border shadow-card">
@@ -1694,7 +1699,7 @@ export default function DeveloperActivity() {
               {keyboardData.length > 0 && (
                 <>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <StatCard icon={<Keyboard className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Total Keystrokes" value={totalKeystrokes.toLocaleString()} bg="bg-accent" />
+                    <StatCard icon={<Keyboard className="h-5 w-5 text-foreground" aria-hidden="true" />} label={keyboardTruncated ? "Loaded Keystrokes" : "Total Keystrokes"} value={totalKeystrokes.toLocaleString()} bg="bg-accent" />
                     <StatCard icon={<Gauge className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Avg WPM" value={avgWPM.toFixed(1)} bg="bg-success/10" />
                     <StatCard icon={<Target className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Activity Score" value={avgKeyboardScore.toFixed(1)} bg="bg-warning/10" />
                     <div className="bg-card p-4 rounded-xl border border-border shadow-card">
@@ -1715,7 +1720,7 @@ export default function DeveloperActivity() {
                     <StatCard icon={<Timer className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Active Time" value={`${totalKbActiveTime.toFixed(1)} min`} bg="bg-success/10" />
                     <StatCard icon={<Pause className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Idle Time" value={`${totalKbIdleTime.toFixed(1)} min`} bg="bg-destructive/10" />
                     <StatCard icon={<Type className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Unique Keys" value={totalUniqueKeys.toLocaleString()} bg="bg-info/10" />
-                    <StatCard icon={<Clock className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Total Time" value={`${totalKbTime.toFixed(1)} min`} bg="bg-muted" />
+                    <StatCard icon={<Clock className="h-5 w-5 text-foreground" aria-hidden="true" />} label={keyboardTruncated ? "Loaded Keyboard Time" : "Total Time"} value={`${totalKbTime.toFixed(1)} min`} bg="bg-muted" />
                   </div>
 
                   {/* Active Session Keyboard Summary */}
@@ -1723,7 +1728,7 @@ export default function DeveloperActivity() {
                     <div className="rounded-xl border border-border bg-accent p-6">
                       <h3 className="text-lg font-semibold mb-4 text-accent-foreground">
                         Active Session Keyboard Activity
-                        <span className="text-sm font-normal ml-2 text-muted-foreground">({sessionKeyboardData.length} records)</span>
+                        <span className="text-sm font-normal ml-2 text-muted-foreground">({sessionKeyboardData.length} loaded records)</span>
                       </h3>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="bg-card p-4 rounded-lg text-center border border-border">
@@ -1797,7 +1802,7 @@ export default function DeveloperActivity() {
 
                   {/* Keyboard Activity Timeline Table */}
                   <div className="rounded-xl border border-border bg-card p-6 shadow-card">
-                    <h3 className="text-lg font-semibold text-foreground mb-4">Keyboard Activity Timeline ({keyboardData.length})</h3>
+                    <h3 className="text-lg font-semibold text-foreground mb-4">Keyboard Activity Timeline ({keyboardData.length} loaded records)</h3>
                     <div className="overflow-x-auto max-h-96 overflow-y-auto">
                       <table className="min-w-full divide-y divide-border">
                         <thead className="bg-muted sticky top-0">
@@ -1841,7 +1846,7 @@ export default function DeveloperActivity() {
                         </tbody>
                       </table>
                     </div>
-                    {keyboardData.length > 50 && <p className="text-center text-sm text-muted-foreground mt-3">Showing 50 of {keyboardData.length} records</p>}
+                    {keyboardData.length > 50 && <p className="text-center text-sm text-muted-foreground mt-3">Showing 50 of {keyboardData.length} loaded records</p>}
                   </div>
                 </>
               )}
