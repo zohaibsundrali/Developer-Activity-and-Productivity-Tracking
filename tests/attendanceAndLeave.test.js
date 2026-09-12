@@ -215,7 +215,10 @@ describe("attendance is written as yourself unless you hold attendance.manage", 
   });
 
   it("confirms the target is in this organization before writing", () => {
-    expect(route).toMatch(/from\("memberships"\)[\s\S]{0,240}eq\("organization_id", auth\.orgId\)/);
+    expect(route).toContain('orgScopedClient(auth.token).rpc("record_attendance"');
+    const migration = read("supabase/migrations/20260912113733_production_transactional_attendance.sql");
+    expect(migration).toContain("m.organization_id=org and m.user_id=target and m.user_type=kind and m.status='active' and not m.deletion_blocked");
+    expect(migration).toContain("public.auth_org()");
   });
 
   it("validates any id it is handed before it reaches a query", () => {
