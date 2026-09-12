@@ -1,4 +1,5 @@
 "use client";
+import { useProjectProductivityMetrics } from "@/hooks/useProjectProductivityMetrics";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -117,14 +118,8 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
-  const [showMetricsModal, setShowMetricsModal] = useState(false);
-  const [metricsLoading, setMetricsLoading] = useState(false);
-  const [metricsError, setMetricsError] = useState("");
-  const [metricsData, setMetricsData] = useState(null);
-  // Remembers which project the open metrics modal is for, so the error state's
-  // Retry can call handleViewMetrics with the exact same argument. Never used
-  // to decide what is fetched.
-  const [metricsProject, setMetricsProject] = useState(null);
+  const { showMetricsModal, metricsLoading, metricsError, metricsData, metricsProject,
+    openMetrics, closeMetrics } = useProjectProductivityMetrics();
 
   const [newProject, setNewProject] = useState({
     name: "",
@@ -248,31 +243,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
       return;
     }
 
-    try {
-      setMetricsLoading(true);
-      setMetricsError("");
-      setMetricsData(null);
-      setMetricsProject(project);
-      setShowMetricsModal(true);
-
-      const url = `/api/productivity?type=project&projectId=${project.id}&developerId=${project.assigned_developer_id}`;
-      const res = await authFetch(url);
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        setMetricsError(data.error || "Failed to load productivity metrics.");
-        return;
-      }
-
-      setMetricsData({
-        ...data,
-        project,
-      });
-    } catch (err) {
-      setMetricsError("Error loading productivity metrics. Please try again.");
-    } finally {
-      setMetricsLoading(false);
-    }
+    await openMetrics(project, project.assigned_developer_id);
   };
 
   // New function to handle delete confirmation
@@ -922,11 +893,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
         {showMetricsModal && (
           <Modal
             open
-            onClose={() => {
-              setShowMetricsModal(false);
-              setMetricsData(null);
-              setMetricsError("");
-            }}
+            onClose={closeMetrics}
             title="Developer Productivity"
             description={metricsData?.project?.name || undefined}
             size="lg"
@@ -992,7 +959,7 @@ export default function AllProjects({ developers: initialDevelopers, supabase })
                         </div>
                         <div className="rounded-xl border border-border bg-card p-4 text-center shadow-card">
                           <div className="text-2xl font-semibold tabular-nums text-foreground">{pct}%</div>
-                          <div className="mt-1 text-xs text-muted-foreground">Productivity</div>
+                          <div className="mt-1 text-xs text-muted-foreground">On-time rate</div>
                           <div className="mt-2 flex justify-center">
                             <Badge size="sm" variant={health.variant}>{health.label}</Badge>
                           </div>

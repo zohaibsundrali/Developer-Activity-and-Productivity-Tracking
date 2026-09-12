@@ -1,7 +1,10 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/utils/supabaseClient";
-import { getOrgId } from "@/utils/orgContext";
+import { getOrgContext } from "@/utils/orgContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { reportIdentity } from "@/utils/reportViewState";
+import { loadProductivityPermission, loadProductivityOptions, productivityQuery, loadProductivityView } from "@/utils/productivityViewData";
 import { authFetch } from "@/utils/authFetch";
 import EChart from "@/components/charts/EChart";
 import {
@@ -43,91 +46,65 @@ import {
 const STATUS_COLORS = [SEMANTIC.success, SEMANTIC.danger, SEMANTIC.track];
 
 export default function ProductivityDashboard({ currentAdmin }) {
-  const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState("overall"); // overall, developer, project
+  const { user, authStatus } = useAuth();
+  const [viewMode, setViewMode] = useState("overall");
   const [selectedDeveloper, setSelectedDeveloper] = useState("");
   const [selectedProject, setSelectedProject] = useState("");
-  const [developers, setDevelopers] = useState([]);
-  const [projects, setProjects] = useState([]);
-  const [productivityData, setProductivityData] = useState(null);
-  // Presentation only: the fetch below already knew when it failed, it just
-  // had nowhere to say so.
-  const [loadError, setLoadError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const [rosterResult, setRosterResult] = useState(null);
+  const [dataResult, setDataResult] = useState(null);
+  const context = getOrgContext();
+  const identity = authStatus === "authenticated" && user ? reportIdentity(context) : null;
+  const rosterScope = JSON.stringify([identity, attempt]);
+  const scope = JSON.stringify([rosterScope, viewMode, selectedDeveloper, selectedProject, context?.organizationId]);
+  const live = useRef({ identity, rosterScope, scope });
+  live.current = { identity, rosterScope, scope };
+  const mounted = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => { setSelectedDeveloper(""); setSelectedProject(""); }, [identity]);
+  const currentIdentity = useCallback(() => mounted.current && identity !== null
+    && live.current.identity === identity && reportIdentity(getOrgContext()) === identity, [identity]);
+  const roster = rosterResult?.scope === rosterScope ? rosterResult : null;
+  const data = dataResult?.scope === scope ? dataResult : null;
+  const developers = roster?.options?.developers || [];
+  const projects = roster?.options?.projects || [];
+  const selectionMissing = (viewMode === "developer" && !selectedDeveloper) || (viewMode === "project" && !selectedProject);
+  const loading = !!identity && (!roster || (!roster.error && !selectionMissing && !data));
+  const loadError = !identity ? (authStatus === "pending" ? "" : "Sign in to view productivity.") : roster?.error || data?.error || "";
+  const productivityData = !loading && !loadError && !selectionMissing ? data?.value || null : null;
+  const fetchProductivityData = useCallback(() => setAttempt(value => value + 1), []);
 
-  // Fetch developers and projects on mount
   useEffect(() => {
-    fetchDevelopersAndProjects();
-  }, [currentAdmin]);
+    let cancelled = false;
+    if (!identity) return;
+    const current = () => !cancelled && currentIdentity() && live.current.rosterScope === rosterScope;
+    (async () => {
+      try {
+        if (!await loadProductivityPermission(authFetch, current)) return;
+        const options = await loadProductivityOptions(supabase, context.organizationId, current);
+        if (options && current()) setRosterResult({ scope: rosterScope, options, error: "" });
+      } catch (error) {
+        if (current()) setRosterResult({ scope: rosterScope, options: null, error: error?.message || "Could not load productivity options." });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [identity, rosterScope, currentIdentity, context?.organizationId]);
 
-  // Fetch productivity data when view or selection changes
   useEffect(() => {
-    fetchProductivityData();
-  }, [viewMode, selectedDeveloper, selectedProject]);
-
-  const fetchDevelopersAndProjects = async () => {
-    try {
-      const orgId = getOrgId();
-
-      // Fetch developers
-      let devQuery = supabase
-        .from("developers")
-        .select("id, name, email")
-        .order("name");
-      if (orgId) devQuery = devQuery.eq("organization_id", orgId);
-      const { data: devs } = await devQuery;
-
-      setDevelopers(devs || []);
-
-      // Fetch projects
-      let projQuery = supabase
-        .from("projects")
-        .select("id, name")
-        .order("name");
-      if (orgId) projQuery = projQuery.eq("organization_id", orgId);
-      const { data: projs } = await projQuery;
-
-      setProjects(projs || []);
-    } catch (error) {
-      console.error("Fetch error:", error);
-    }
-  };
-
-  const fetchProductivityData = async () => {
-    try {
-      setLoading(true);
-      setLoadError("");
-
-      let url = "/api/productivity?";
-
-      if (viewMode === "overall") {
-        url += "type=overall";
-      } else if (viewMode === "developer" && selectedDeveloper) {
-        url += `type=developer&developerId=${selectedDeveloper}`;
-      } else if (viewMode === "project" && selectedProject) {
-        url += `type=project&projectId=${selectedProject}`;
-        if (selectedDeveloper) {
-          url += `&developerId=${selectedDeveloper}`;
-        }
-      } else {
-        setLoading(false);
-        return;
+    let cancelled = false;
+    if (!identity || !roster?.options || roster.error || selectionMissing) return;
+    const current = () => !cancelled && currentIdentity() && live.current.scope === scope;
+    (async () => {
+      try {
+        const url = productivityQuery(viewMode, selectedDeveloper, selectedProject, roster.options);
+        const value = await loadProductivityView(authFetch, url, current, context.organizationId);
+        if (value && current()) setDataResult({ scope, value, error: "" });
+      } catch (error) {
+        if (current()) setDataResult({ scope, value: null, error: error?.message || "Could not load productivity data." });
       }
-
-      const response = await authFetch(url);
-      const data = await response.json();
-
-      if (data.success) {
-        setProductivityData(data);
-      } else {
-        setLoadError(data?.error || "The productivity service returned no data.");
-      }
-    } catch (error) {
-      console.error("Fetch productivity error:", error);
-      setLoadError(error?.message || "Could not reach the productivity service.");
-    } finally {
-      setLoading(false);
-    }
-  };
+    })();
+    return () => { cancelled = true; };
+  }, [identity, roster, selectionMissing, scope, currentIdentity, viewMode, selectedDeveloper, selectedProject, context?.organizationId]);
 
   const ProductivityGauge = ({ percentage, size = 200 }) => {
     const value = parseFloat(percentage) || 0;
@@ -146,7 +123,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
         className="relative shrink-0"
         style={{ width: size, height: size }}
         role="img"
-        aria-label={`Productivity ${value} percent`}
+        aria-label={`On-time completion rate ${value} percent`}
       >
         <svg width={size} height={size} className="-rotate-90" aria-hidden="true">
           {/* Track */}
@@ -174,7 +151,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span className="text-3xl font-semibold tabular-nums text-foreground">{value}%</span>
-          <span className="text-sm text-muted-foreground">Productivity</span>
+          <span className="text-sm text-muted-foreground">On-time rate</span>
         </div>
       </div>
     );
@@ -246,7 +223,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
       },
       xAxis: {
         ...valueAxis,
-        name: "Productivity",
+        name: "On-time rate",
         nameLocation: "middle",
         nameGap: 28,
         max: 100,
@@ -254,7 +231,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
       },
       series: [
         {
-          name: "Productivity %",
+          name: "On-time rate %",
           type: "bar",
           barMaxWidth: 18,
           itemStyle: roundedBarH(PRIMARY),
@@ -311,7 +288,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-            <p className="text-sm text-muted-foreground">Avg Productivity</p>
+            <p className="text-sm text-muted-foreground">Avg on-time rate</p>
             <p className="text-3xl font-bold text-primary">{averageProductivity}%</p>
           </div>
           <div className="rounded-xl border border-border bg-card p-4 shadow-card">
@@ -334,8 +311,8 @@ export default function ProductivityDashboard({ currentAdmin }) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           {/* Bar Chart */}
           <Section
-            title="Developer productivity"
-            description="Top ten developers, scored out of 100."
+            title="Developer on-time completion"
+            description="Top ten developers by on-time completed tasks as a share of all completed tasks."
             className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5"
           >
             {hasBarData ? (
@@ -606,7 +583,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
             >
               {productivityPercentage}%
             </div>
-            <div className="text-sm text-muted-foreground mt-1">Productivity</div>
+            <div className="text-sm text-muted-foreground mt-1">On-time rate</div>
             <div className="text-xs text-muted-foreground">
               Points: {productivityPoints >= 0 ? `+${productivityPoints}` : productivityPoints}
             </div>
@@ -659,9 +636,10 @@ export default function ProductivityDashboard({ currentAdmin }) {
 
         {/* Productivity formula note (same logic as developer timesheet) */}
         <div className="mt-6 bg-info/10 border border-info/20 rounded-lg p-4 text-sm text-info-on-tint">
-          <strong>Productivity Formula:</strong>
-          {" "}(On-time tasks − Late tasks) / Total tasks × 100
-          {" "}+ 50% · On-time completion = +1 point · Late completion = −1 point
+          <strong>On-time completion rate:</strong>
+          {" "}On-time completed tasks / All completed tasks × 100.
+          {" "}Unassessed completions remain in the denominator; they are not counted as late.
+          {" "}Net points are on-time tasks minus late tasks.
         </div>
       </div>
     );
@@ -707,13 +685,15 @@ export default function ProductivityDashboard({ currentAdmin }) {
         {/* Formula Explanation */}
         <div className="bg-info/10 border border-info/20 rounded-xl p-4 mb-6">
           <h4 className="font-semibold text-info mb-2">
-            Productivity Formula
+            Task scoring
           </h4>
+          <p className="text-info">The gauge shows on-time completed tasks / all completed tasks × 100. This differs from the weighted task score.</p>
           <p className="text-info">{formula?.description}</p>
           <p className="text-info mt-1 font-mono text-sm">
             {formula?.calculation}
           </p>
           <p className="text-info/80 text-sm mt-1">{formula?.example}</p>
+          <p className="text-info/80 text-sm mt-1">The stored weighted score adds half-credit for pending, in-progress and awaiting-review tasks, then is limited to 0–100. Unassessed completed tasks contribute zero.</p>
         </div>
 
         {/* Stats */}
@@ -807,10 +787,12 @@ export default function ProductivityDashboard({ currentAdmin }) {
                     </td>
                     <td className="px-4 py-3 text-center">
                       {task.status === "completed" ? (
-                        task.isOnTime ? (
+                        task.isOnTime === true ? (
                           <span className="text-success">✓ Yes</span>
-                        ) : (
+                        ) : task.isOnTime === false ? (
                           <span className="text-destructive">✗ No</span>
+                        ) : (
+                          <span className="text-muted-foreground">Not assessed</span>
                         )
                       ) : (
                         <span className="text-muted-foreground">-</span>
@@ -881,6 +863,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
           <Field label="Developer" htmlFor="productivity-developer">
             <select
               id="productivity-developer"
+              disabled={!roster?.options}
               value={selectedDeveloper}
               onChange={(e) => setSelectedDeveloper(e.target.value)}
               className={selectClass}
@@ -900,6 +883,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
           <Field label="Project" htmlFor="productivity-project">
             <select
               id="productivity-project"
+              disabled={!roster?.options}
               value={selectedProject}
               onChange={(e) => setSelectedProject(e.target.value)}
               className={selectClass}
@@ -917,6 +901,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
         <button
           type="button"
           onClick={fetchProductivityData}
+          disabled={loading || !identity}
           aria-label="Refresh productivity data"
           className="ml-auto inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
@@ -926,7 +911,7 @@ export default function ProductivityDashboard({ currentAdmin }) {
 
       {/* Content */}
       <div className="p-4 sm:p-6">
-        {loading ? (
+        {loading || authStatus === "pending" ? (
           // Skeleton shaped like the overall view: four tiles, two charts, a table.
           <div className="space-y-6" aria-busy="true">
             <div className="grid grid-cols-2 gap-4 md:grid-cols-4">

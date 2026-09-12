@@ -1,0 +1,91 @@
+\ir transactional_timesheet_review.sql
+create table productivity_metrics(organization_id uuid,developer_id uuid,project_id uuid,total_tasks integer,completed_on_time integer,completed_late integer,pending_tasks integer,rejected_tasks integer,productivity_percentage numeric,productivity_points integer,updated_at timestamptz,unique(developer_id,project_id));
+alter table productivity_metrics enable row level security;
+grant select,insert,update,delete on productivity_metrics to authenticated,service_role;
+create policy org_isolation on productivity_metrics for all to authenticated using(organization_id=auth_org() and not auth_is_client()) with check(organization_id=auth_org() and not auth_is_client());
+create or replace function auth_plan_feature(k text) returns boolean language sql stable as $$select coalesce(nullif(current_setting('test.productivity_plan',true),''),'yes')='yes'$$;
+\ir ../../supabase/migrations/20260912132120_production_canonical_productivity_recalculation.sql
+select set_config('request.jwt.claims',timesheet_test_claims('owner'),false);
+insert into projects(id,organization_id,name) values('99800000-0000-0000-0000-000000000001','99100000-0000-0000-0000-000000000001','Productivity fixture'),('99800000-0000-0000-0000-000000000002','99100000-0000-0000-0000-000000000001','Empty group');
+insert into developer_tasks(id,organization_id,project_id,developer_id,status,is_on_time) values
+ ('99800000-0000-0000-0000-000000000011','99100000-0000-0000-0000-000000000001','99800000-0000-0000-0000-000000000001','99100000-0000-0000-0000-000000000011','completed',true),
+ ('99800000-0000-0000-0000-000000000012','99100000-0000-0000-0000-000000000001','99800000-0000-0000-0000-000000000001','99100000-0000-0000-0000-000000000011','approved',false),
+ ('99800000-0000-0000-0000-000000000013','99100000-0000-0000-0000-000000000001','99800000-0000-0000-0000-000000000001','99100000-0000-0000-0000-000000000011','doing',null),
+ ('99800000-0000-0000-0000-000000000014','99100000-0000-0000-0000-000000000001','99800000-0000-0000-0000-000000000001','99100000-0000-0000-0000-000000000011','reviewed',null);
+set role authenticated;
+select recalculate_productivity('99100000-0000-0000-0000-000000000011','99800000-0000-0000-0000-000000000001');
+do $$begin if not exists(select 1 from productivity_metrics where project_id='99800000-0000-0000-0000-000000000001' and productivity_percentage=25 and pending_tasks=2 and productivity_points=0 and completed_on_time=1 and completed_late=1) then raise exception 'Canonical weighted score mismatch';end if;end$$;
+select timesheet_expect('update productivity_metrics set productivity_percentage=99','permission denied');
+select timesheet_expect('delete from productivity_metrics','permission denied');
+select timesheet_expect('insert into productivity_metrics(organization_id,developer_id,project_id,productivity_percentage) values(auth_org(),auth_app_user_id(),''99800000-0000-0000-0000-000000000002'',99)','permission denied');
+select timesheet_expect('select recalculate_productivity(null,null,false)','PRODUCTIVITY_INPUT_INVALID');
+select timesheet_expect('select recalculate_productivity(''99100000-0000-0000-0000-000000000011'',''99800000-0000-0000-0000-000000000001'',true)','PRODUCTIVITY_INPUT_INVALID');
+select timesheet_expect('select recalculate_productivity(''99100000-0000-0000-0000-000000000012'',''99800000-0000-0000-0000-000000000001'')','PRODUCTIVITY_TARGET_NOT_FOUND');
+select set_config('test.productivity_plan','no',false);
+select timesheet_expect('select recalculate_productivity(null,null,true)','PRODUCTIVITY_PLAN_REQUIRED');
+do $$begin if exists(select 1 from productivity_metrics) then raise exception 'Free owner broad metric read';end if;end$$;
+reset role;
+select set_config('request.jwt.claims',timesheet_test_claims('developer'),false);
+set role authenticated;
+do $$begin if (select count(*) from productivity_metrics)<>1 then raise exception 'Free own metrics refused';end if;end$$;
+select timesheet_expect('select recalculate_productivity(null,null,true)','PRODUCTIVITY_FORBIDDEN');
+reset role;
+select set_config('request.jwt.claims',timesheet_test_claims('admin'),false);
+set role authenticated;
+do $$begin if exists(select 1 from productivity_metrics) then raise exception 'Colliding admin read developer own metrics';end if;end$$;
+reset role;
+select set_config('test.productivity_plan','yes',false);
+select set_config('request.jwt.claims',timesheet_test_claims('owner'),false);
+set role authenticated;
+select set_config('test.billing_locked','yes',false);
+select timesheet_expect('select recalculate_productivity(null,null,true)','BILLING_LOCKED');
+select set_config('test.billing_locked','no',false);
+reset role;
+-- Even a trusted writer's supplied counters are replaced by actual task facts.
+insert into productivity_metrics(organization_id,developer_id,project_id,total_tasks,productivity_percentage) values('99100000-0000-0000-0000-000000000001','99100000-0000-0000-0000-000000000011','99800000-0000-0000-0000-000000000002',99,99);
+do $$begin if exists(select 1 from productivity_metrics where project_id='99800000-0000-0000-0000-000000000002' and (total_tasks<>0 or productivity_percentage<>0)) then raise exception 'Forged trusted metric accepted';end if;end$$;
+-- A failure after one group's update rolls back the entire recalculation.
+create function inject_productivity_failure() returns trigger language plpgsql as $$begin if current_setting('test.productivity_failure',true)='yes' and new.project_id='99800000-0000-0000-0000-000000000002' then raise exception 'INJECTED_PRODUCTIVITY_FAILURE';end if;return new;end$$;
+create trigger zzzz_fixture_failure before insert or update on productivity_metrics for each row execute function inject_productivity_failure();
+create temporary table metric_before_failure as select to_jsonb(m) value from productivity_metrics m;
+select set_config('test.productivity_failure','yes',false);
+set role authenticated;
+select timesheet_expect('select recalculate_productivity(null,null,true)','INJECTED_PRODUCTIVITY_FAILURE');
+reset role;
+do $$begin if exists((select to_jsonb(m) from productivity_metrics m except select value from metric_before_failure) union all (select value from metric_before_failure except select to_jsonb(m) from productivity_metrics m)) then raise exception 'Failed recalculation partially committed';end if;end$$;
+select set_config('test.productivity_failure','no',false);
+set role authenticated;
+do $$declare r jsonb;begin r:=recalculate_productivity(null,null,true);if (r->>'updatedCount')::int<2 then raise exception 'Existing empty groups not refreshed';end if;end$$;
+reset role;
+insert into user_permissions(membership_id,permission_key,allowed) select id,'productivity.recalculate',false from memberships where user_id='99100000-0000-0000-0000-000000000012';
+set role authenticated;
+select timesheet_expect('select recalculate_productivity(null,null,true)','PRODUCTIVITY_FORBIDDEN');
+reset role;
+do $$begin if has_function_privilege('anon','recalculate_productivity(uuid,uuid,boolean)','EXECUTE') or has_function_privilege('service_role','recalculate_productivity(uuid,uuid,boolean)','EXECUTE') then raise exception 'RPC privilege leak';end if;end$$;
+begin;
+delete from user_permissions where permission_key='productivity.recalculate';
+insert into user_permissions(membership_id,permission_key,allowed) select id,'productivity.recalculate',true from memberships where user_type='developer' and user_id='99100000-0000-0000-0000-000000000011';
+select set_config('request.jwt.claims',timesheet_test_claims('developer'),true);
+set local role authenticated;
+select recalculate_productivity('99100000-0000-0000-0000-000000000011','99800000-0000-0000-0000-000000000001');
+reset role;
+insert into user_permissions(membership_id,permission_key,allowed) select id,'productivity.view_own',false from memberships where user_type='developer' and user_id='99100000-0000-0000-0000-000000000011';
+set local role authenticated;
+do $$begin if exists(select 1 from productivity_metrics) then raise exception 'Own read denial bypassed';end if;end$$;
+reset role;
+insert into user_permissions(membership_id,permission_key,allowed) select id,'report.view',false from memberships where user_id='99100000-0000-0000-0000-000000000012';
+select set_config('request.jwt.claims',timesheet_test_claims('owner'),true);
+set local role authenticated;
+do $$begin if exists(select 1 from productivity_metrics) then raise exception 'Paid report override denial bypassed';end if;end$$;
+reset role;
+insert into developer_tasks(id,organization_id,project_id,developer_id,status,is_on_time) values('99800000-0000-0000-0000-000000000015','99100000-0000-0000-0000-000000000001','99800000-0000-0000-0000-000000000001','99100000-0000-0000-0000-000000000011','completed',null);
+set local role authenticated;
+select recalculate_productivity('99100000-0000-0000-0000-000000000011','99800000-0000-0000-0000-000000000001');
+reset role;
+do $$begin if not exists(select 1 from productivity_metrics where project_id='99800000-0000-0000-0000-000000000001' and total_tasks=5 and productivity_percentage=20 and completed_late=1) then raise exception 'Unknown punctuality counted late';end if;end$$;
+insert into organizations(id,name) values('99800000-0000-0000-0000-000000000099','Other tenant');
+insert into developers(id,organization_id,auth_user_id) values('99800000-0000-0000-0000-000000000099','99800000-0000-0000-0000-000000000099',null);
+set local role authenticated;
+select timesheet_expect('select recalculate_productivity(''99800000-0000-0000-0000-000000000099'',''99800000-0000-0000-0000-000000000001'')','PRODUCTIVITY_TARGET_NOT_FOUND');
+reset role;
+rollback;

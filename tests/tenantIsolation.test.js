@@ -160,6 +160,8 @@ describe("every route that uses the service role", () => {
     // read-only and requires a hashed random capability. RPCs revalidate scope.
     // Report JSON and CSV both call prepareReport: service billing lookup is
     // scoped to verified auth.orgId; report_data itself uses caller JWT/RLS.
-    expect(usingService.length).toBe(76);
+    // Productivity also checks reports billing for verified auth.orgId;
+    // task/profile reads and recalculation RPC use the caller JWT.
+    expect(usingService.length).toBe(77);
   });
 });
