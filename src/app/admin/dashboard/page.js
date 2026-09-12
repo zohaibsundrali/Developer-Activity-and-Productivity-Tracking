@@ -1,5 +1,6 @@
 "use client";
 
+import { logoutAndRedirect } from '@/utils/browserLogout';
 import { loadDashboardOwnProjects } from "@/utils/dashboardOwnProjects";
 import { ErrorState } from "@/components/ui";
 import PermissionBoundary from "@/components/auth/PermissionBoundary";
@@ -255,10 +256,7 @@ const withAdminAuth = (WrappedComponent) => {
       };
     }, [router]);
 
-    const handleLogout = () => {
-      clearAdminSession();
-      router.push("/login");
-    };
+    const handleLogout = () => logoutAndRedirect();
 
     if (loading) {
       return <DashboardBootSkeleton />;
@@ -415,15 +413,7 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
     }
   };
 
-  const handleLogout = () => {
-    try { supabase.auth.signOut(); } catch {}
-    if (parentLogout) {
-      parentLogout();
-    } else {
-      clearAdminSession();
-      router.push("/login");
-    }
-  };
+  const handleLogout = () => parentLogout ? parentLogout() : logoutAndRedirect();
 
   const renderContent = () => {
     if (!user) return null;

@@ -13,7 +13,7 @@ import path from 'node:path';
  * and it could put its own role back. These tests pin the three things that
  * keep that closed —
  *   1. who may change whose role (authorize.js),
- *   2. that a partial failure lands on the RESTRICTIVE side (write order),
+ *   2. partial failures describe reconciliation instead of promising ranked safety,
  *   3. that updating the claim preserves organization_id / user_type /
  *      app_user_id — dropping organization_id would make auth_org() return null
  *      and lock the member out of their own org.
@@ -67,7 +67,7 @@ const allow = (a, m, newRole) => authorizeRoleChange({ actor: a, membership: m, 
 
 // ── The fake service client ───────────────────────────────────────────────
 // Records the ORDER of the two writes, because which one goes first is the
-// whole safety argument, and the exact app_metadata object handed to
+// established recovery contract, and the exact app_metadata object handed to
 // updateUserById, because the merge is the other half.
 function makeSvc({ membership, profile, claims, fail = {} }) {
   const calls = { order: [], rowUpdates: [], claimUpdates: [] };
@@ -349,13 +349,13 @@ describe('authorizeRoleChange — target and role validation', () => {
   });
 });
 
-describe('writeClaimFirst — the safe order', () => {
-  it('writes the JWT claim first on a demotion, dropping the privilege first', () => {
+describe('writeClaimFirst — the established write order', () => {
+  it('writes Auth metadata first on a lower-ranked assignment', () => {
     expect(writeClaimFirst('admin', 'developer')).toBe(true);
     expect(writeClaimFirst('owner', 'admin')).toBe(true);
   });
 
-  it('writes the membership row first on a promotion, granting nothing early', () => {
+  it('writes membership first on a higher-ranked assignment', () => {
     expect(writeClaimFirst('developer', 'hr')).toBe(false);
     expect(writeClaimFirst('employee', 'admin')).toBe(false);
   });
@@ -469,7 +469,7 @@ describe('POST /api/admin/members/role', () => {
     expect(calls.order).toEqual(['auth_claim', 'membership_row']);
   });
 
-  it('leaves the restrictive state when the second write fails on a demotion', async () => {
+  it('reports reconciliation when the membership write fails on a demotion', async () => {
     const { res, json, calls } = await post({
       auth: actor('owner'),
       membership: member('admin', { user_type: 'admin' }),
@@ -477,13 +477,15 @@ describe('POST /api/admin/members/role', () => {
       fail: { row: true },
     });
     expect(res.status).toBe(500);
-    expect(json).toMatchObject({ partial: true, applied: 'auth_claim', failed: 'membership_row' });
-    // The claim (the only thing RLS reads) already holds the LOWER role.
+    expect(json).toMatchObject({ partial: true, applied: 'auth_claim', failed: 'membership_row', requestedRole: 'developer' });
+    expect(json.error).toMatch(/Retry this role change/);
+    expect(json.error).not.toMatch(/Sync roles/);
+    // Auth has the requested role; the membership still needs the same change.
     expect(calls.claimUpdates[0].attrs.app_metadata.role).toBe('developer');
     expect(calls.order).toEqual(['auth_claim', 'membership_row']);
   });
 
-  it('leaves the restrictive state when the second write fails on a promotion', async () => {
+  it('reports reconciliation when the Auth write fails on a promotion', async () => {
     const { res, json, calls } = await post({
       auth: actor('owner'),
       membership: member('developer'),
@@ -491,10 +493,37 @@ describe('POST /api/admin/members/role', () => {
       fail: { claim: true },
     });
     expect(res.status).toBe(500);
-    expect(json).toMatchObject({ partial: true, applied: 'membership_row', failed: 'auth_claim' });
-    // The claim was NOT raised, so RLS still enforces the lower role.
+    expect(json).toMatchObject({ partial: true, applied: 'membership_row', failed: 'auth_claim', requestedRole: 'manager' });
+    expect(json.error).toMatch(/mismatched roles are blocked/);
+    // Auth remains old; strict role comparison rejects this mismatch.
     expect(calls.claimUpdates).toEqual([]);
     expect(calls.order).toEqual(['membership_row', 'auth_claim']);
+  });
+
+  it('supports a legitimate HR to Manager change and requires a session refresh', async () => {
+    const { defaultRolesFor } = await import('@/utils/permissionCatalogue');
+    expect(ROLE_RANK.manager).toBeGreaterThan(ROLE_RANK.hr);
+    expect(defaultRolesFor('employee.manage')).toContain('hr');
+    expect(defaultRolesFor('employee.manage')).not.toContain('manager');
+    const { res, json, calls } = await post({
+      auth: actor('owner'), membership: member('hr'),
+      body: { membershipId: 'mem-1', role: 'manager' },
+    });
+    expect(res.status).toBe(200);
+    expect(json).toMatchObject({ role: 'manager', sessionRefreshRequired: true });
+    expect(calls.claimUpdates[0].attrs.app_metadata.role).toBe('manager');
+    expect(calls.rowUpdates[0].role).toBe('manager');
+  });
+
+  it('does not describe partial HR to Manager access as a safe lower role', async () => {
+    const { res, json } = await post({
+      auth: actor('owner'), membership: member('hr'),
+      body: { membershipId: 'mem-1', role: 'manager' }, fail: { claim: true },
+    });
+    expect(res.status).toBe(500);
+    expect(json).toMatchObject({ partial: true, requestedRole: 'manager', applied: 'membership_row', failed: 'auth_claim' });
+    expect(json.error).toMatch(/mismatched roles are blocked/);
+    expect(json.error).not.toMatch(/more restrictive/);
   });
 
   it('changes nothing when the FIRST write fails', async () => {

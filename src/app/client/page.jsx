@@ -1,4 +1,5 @@
 "use client";
+import { logoutAndRedirect } from '@/utils/browserLogout';
 import PlanFeatureBoundary from "@/components/billing/PlanFeatureBoundary";
 
 import { useEffect, useState, useTransition } from "react";
@@ -188,15 +189,7 @@ function ClientDashboardContent() {
 
   const handleViewProject = handleViewProjectIn("projects");
 
-  const handleLogout = () => {
-    try {
-      supabase.auth.signOut();
-    } catch {
-      // ignore
-    }
-    clearClientSession();
-    router.push("/login");
-  };
+  const handleLogout = () => logoutAndRedirect();
 
   const projectId = activeProjectId;
 

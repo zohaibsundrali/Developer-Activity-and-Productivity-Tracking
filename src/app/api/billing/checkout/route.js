@@ -36,6 +36,8 @@ export async function POST(request) {
     if (!billingConfigured()) {
       return NextResponse.json({ error: "Billing is not configured." }, { status: 503 });
     }
+    const origin = appOrigin(request);
+    if (!origin) return NextResponse.json({ error: "Billing return URL is not configured correctly." }, { status: 503 });
     const stripe = stripeClient();
 
     const { planCode } = await request.json().catch(() => ({}));
@@ -79,7 +81,7 @@ export async function POST(request) {
 
     const { data: existing, error: subscriptionError } = await svc
       .from("organization_subscriptions")
-      .select("stripe_customer_id, stripe_subscription_id, plan_code, status")
+      .select("stripe_customer_id, stripe_subscription_id, plan_code, status, updated_at")
       .eq("organization_id", organizationId)
       .maybeSingle();
 
@@ -121,7 +123,6 @@ export async function POST(request) {
       if (customerSaveError) return NextResponse.json({ error: "Could not save billing customer. Please retry." }, { status: 503 });
     }
 
-    const origin = appOrigin(request);
     const trialDays = Number(plan.trial_days) > 0 ? Number(plan.trial_days) : null;
     // Carried on the session AND on the subscription: a subscription.updated
     // event arriving months later has no session attached to look at.
@@ -218,19 +219,21 @@ export async function POST(request) {
 
       // The webhook records the authoritative state; this write only keeps the
       // billing screen from showing the old plan until that event lands.
-      const { error: planSaveError } = await svc
+      // A webhook or another plan request may have committed after our read.
+      // Never replace that newer state with this request's older plan choice.
+      if (!existing?.updated_at) return NextResponse.json({ error: "Stripe accepted the change; billing synchronization is pending. Refresh shortly." }, { status: 503 });
+      const { data: savedPlan, error: planSaveError } = await svc
         .from("organization_subscriptions")
-        .upsert(
-          {
-            organization_id: organizationId,
-            stripe_customer_id: customerId,
-            stripe_subscription_id: liveSubscription.id,
-            plan_code: plan.code,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "organization_id" }
-        );
-      if (planSaveError) return NextResponse.json({ error: "Stripe accepted the change; billing synchronization is pending. Refresh shortly." }, { status: 503 });
+        .update({
+          stripe_customer_id: customerId,
+          stripe_subscription_id: liveSubscription.id,
+          plan_code: plan.code,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("organization_id", organizationId)
+        .eq("updated_at", existing.updated_at)
+        .select("organization_id");
+      if (planSaveError || !savedPlan?.length) return NextResponse.json({ error: "Stripe accepted the change; billing synchronization is pending. Refresh shortly." }, { status: 503 });
 
       // No Stripe-hosted page is involved, so there is nothing to redirect to
       // for payment. `url` points back at the billing screen because the caller

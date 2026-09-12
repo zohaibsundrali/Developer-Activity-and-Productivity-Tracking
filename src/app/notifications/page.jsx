@@ -1,5 +1,6 @@
 "use client";
 
+import { logoutAndRedirect } from '@/utils/browserLogout';
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
@@ -175,16 +176,7 @@ export default function NotificationsPage() {
     });
   };
 
-  const handleLogout = () => {
-    try {
-      supabase.auth.signOut();
-    } catch {
-      // Sign-out must not depend on the network call succeeding; the local
-      // session is cleared either way.
-    }
-    session.clear();
-    router.push("/login");
-  };
+  const handleLogout = () => logoutAndRedirect();
 
   return (
     <AppShell

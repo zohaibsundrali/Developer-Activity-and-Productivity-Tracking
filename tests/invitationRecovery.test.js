@@ -5,7 +5,7 @@ function fixture({ lookupError = null, mismatch = false, deleteError = null, fin
   const svc = {
     rpc: vi.fn(async name => name === 'claim_invitation_cleanup' ? { data: [attempt] } : { error: finishError }),
     auth: { admin: {
-      getUserById: vi.fn(async () => ({ data: lookupError ? null : { user: { app_metadata: { invitation_id: mismatch ? 'other' : 'invite', organization_id: 'org', app_user_id: 'profile' } } }, error: lookupError })),
+      getUserById: vi.fn().mockResolvedValueOnce(({ data: lookupError ? null : { user: { id: 'auth', app_metadata: { invitation_id: mismatch ? 'other' : 'invite', organization_id: 'org', app_user_id: 'profile' } } }, error: lookupError })).mockResolvedValue({ data: null, error: { status: 404 } }),
       deleteUser: vi.fn(async () => ({ error: deleteError })),
     } },
   };
@@ -39,5 +39,26 @@ describe('leased invitation recovery', () => {
   it('does not count an unconfirmed cleanup as complete', async () => {
     const svc = fixture({ finishError: { message: 'timeout' } });
     expect((await recoverInvitations(svc)).cleaned).toBe(0);
+  });
+});
+
+describe('uncertain Auth cleanup responses', () => {
+  it('retains the reservation on an empty successful lookup', async () => {
+    const svc = fixture();
+    svc.auth.admin.getUserById.mockReset().mockResolvedValue({ data: { user: null }, error: null });
+    expect((await recoverInvitations(svc)).cleaned).toBe(0);
+    expect(svc.auth.admin.deleteUser).not.toHaveBeenCalled();
+    expect(svc.rpc).toHaveBeenCalledTimes(1);
+  });
+  it.each([
+    { data: { user: { id: 'auth' } }, error: null },
+    { data: null, error: { status: 503 } },
+    { data: null, error: null },
+  ])('retains the attempt until absence is confirmed: %j', async verification => {
+    const svc = fixture();
+    svc.auth.admin.getUserById.mockResolvedValue(verification);
+    expect((await recoverInvitations(svc)).cleaned).toBe(0);
+    expect(svc.auth.admin.deleteUser).toHaveBeenCalledOnce();
+    expect(svc.rpc).toHaveBeenCalledTimes(1);
   });
 });

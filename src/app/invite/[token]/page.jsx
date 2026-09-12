@@ -22,6 +22,7 @@ const GUARD_ICONS = {
   revoked: Ban,
   accepted: BadgeCheck,
   expired: Clock3,
+  unavailable: Clock3,
 };
 
 /**
@@ -86,6 +87,7 @@ export default function AcceptInvitePage() {
   const token = params?.token;
 
   const [loading, setLoading] = useState(true);
+  const [lookupAttempt, setLookupAttempt] = useState(0);
   const [invitation, setInvitation] = useState(null);
   const [orgName, setOrgName] = useState("");
   const [guard, setGuard] = useState(null); // 'not-found' | 'revoked' | 'accepted' | 'expired'
@@ -101,6 +103,12 @@ export default function AcceptInvitePage() {
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    setLoading(true);
+    setGuard(null);
+    setInvitation(null);
+    setOrgName("");
 
     const loadInvite = async () => {
       if (!token) {
@@ -115,17 +123,23 @@ export default function AcceptInvitePage() {
         // The invitee is NOT authenticated and `invitations` has RLS, so we
         // must resolve the token through a service-role server route (the
         // anon browser client would get 0 rows and show "not found").
-        const res = await fetch(`/api/invitations/lookup?token=${encodeURIComponent(token)}`);
+        const res = await fetch(`/api/invitations/lookup?token=${encodeURIComponent(token)}`, { signal: controller.signal, cache: "no-store" });
         const invite = await res.json().catch(() => ({}));
 
         if (!active) return;
 
         if (!res.ok || !invite || invite.error) {
-          setGuard("not-found");
+          setGuard(res.status === 404 || res.status === 400 ? "not-found" : "unavailable");
           setLoading(false);
           return;
         }
 
+        if (typeof invite.role !== "string" || typeof invite.email !== "string" ||
+            !["pending", "accepted", "revoked", "expired"].includes(invite.status)) {
+          setGuard("unavailable");
+          setLoading(false);
+          return;
+        }
         setInvitation(invite);
 
         // Guard states
@@ -150,16 +164,20 @@ export default function AcceptInvitePage() {
         setLoading(false);
       } catch (err) {
         if (!active) return;
-        setGuard("not-found");
+        setGuard("unavailable");
         setLoading(false);
+      } finally {
+        clearTimeout(timeout);
       }
     };
 
     loadInvite();
     return () => {
       active = false;
+      clearTimeout(timeout);
+      controller.abort();
     };
-  }, [token]);
+  }, [token, lookupAttempt]);
 
   const handleAccept = async (e) => {
     e.preventDefault();
@@ -194,6 +212,10 @@ export default function AcceptInvitePage() {
   };
 
   const guardMessages = {
+    unavailable: {
+      title: "Invitation temporarily unavailable",
+      text: "We couldn't check your invitation. Please retry; this does not mean your link is invalid.",
+    },
     "not-found": {
       title: "Invitation not found",
       text: "We couldn't find this invitation. The link may be incorrect or no longer exist.",
@@ -261,6 +283,12 @@ export default function AcceptInvitePage() {
             <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
               {guardMessages[guard].text}
             </p>
+            {guard === "unavailable" && (
+              <button type="button" onClick={() => setLookupAttempt(value => value + 1)}
+                className="mt-6 mr-3 rounded-lg border border-border px-5 py-3 text-sm font-medium">
+                Retry
+              </button>
+            )}
             <Link
               href="/login"
               className="mt-6 inline-flex h-11 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-5 text-sm font-medium text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"

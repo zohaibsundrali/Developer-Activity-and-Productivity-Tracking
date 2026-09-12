@@ -683,7 +683,7 @@ describe('sync-roles helpers', () => {
 describe('getAuthedOrg — drift is recorded where it is detected', () => {
   // The real getAuthedOrg, over the fake Supabase client. Each case uses a
   // distinct auth user id because the recorder de-duplicates per account.
-  const authDb = (user, memberships = []) => makeDb({ authUsers: [user], memberships });
+  const authDb = (user, memberships = [], developers = [{ id: user.app_metadata?.app_user_id, organization_id: user.app_metadata?.organization_id, auth_user_id: user.id }]) => makeDb({ authUsers: [user], memberships, developers });
 
   it('records and rejects the missing-membership signature', async () => {
     const user = authUser({
@@ -737,15 +737,36 @@ describe('getAuthedOrg — drift is recorded where it is detected', () => {
     expect(await realServerAuth.getAuthedOrg(req('tok:auth-1'))).toBeNull();
   });
 
-  it('uses the current membership role after a demotion', async () => {
+  it('rejects mismatched role stores after a demotion', async () => {
     const user = authUser({ app_metadata: { organization_id: ORG, app_user_id: 'app-1', user_type: 'developer', role: 'owner' } });
     hoisted.client = authDb(user, [membership({ role: 'employee' })]).svc;
-    expect(await realServerAuth.getAuthedOrg(req('tok:auth-1'))).toMatchObject({ role: 'employee' });
+    expect(await realServerAuth.getAuthedOrg(req('tok:auth-1'))).toBeNull();
   });
 
-  it('preserves a claim-first demotion when updating the membership failed', async () => {
+  it('rejects a claim-first demotion when updating membership failed', async () => {
     hoisted.client = authDb(authUser(), [membership({ role: 'owner' })]).svc;
-    expect(await realServerAuth.getAuthedOrg(req('tok:auth-1'))).toMatchObject({ role: 'developer' });
+    expect(await realServerAuth.getAuthedOrg(req('tok:auth-1'))).toBeNull();
+  });
+
+  it.each([null, 'replacement-auth-user'])('rejects detached/relinked profile %s despite valid claims and membership', async (authId) => {
+    hoisted.client = authDb(authUser(), [membership()], [{ id: 'app-1', organization_id: ORG, auth_user_id: authId }]).svc;
+    expect(await realServerAuth.getAuthedOrg(req('tok:auth-1'))).toBeNull();
+  });
+
+  it('rejects a missing current profile', async () => {
+    hoisted.client = authDb(authUser(), [membership()], []).svc;
+    expect(await realServerAuth.getAuthedOrg(req('tok:auth-1'))).toBeNull();
+  });
+
+  it.each([['hr','manager'],['manager','hr'],['qa','developer']])('rejects non-nested stale role %s when membership is %s', async (claimRole, currentRole) => {
+    const user=authUser({app_metadata:{organization_id:ORG,app_user_id:'app-1',user_type:'developer',role:claimRole}});
+    hoisted.client=authDb(user,[membership({role:currentRole})]).svc;
+    expect(await realServerAuth.getAuthedOrg(req('tok:auth-1'))).toBeNull();
+  });
+
+  it.each([{deleted_at:'2026-01-01'}, {banned_until:'2999-01-01'}])('rejects a disabled Auth user %s',async flags=>{
+    hoisted.client=authDb(authUser(flags),[membership()]).svc;
+    expect(await realServerAuth.getAuthedOrg(req('tok:auth-1'))).toBeNull();
   });
 
   it('rejects incomplete identity claims', async () => {

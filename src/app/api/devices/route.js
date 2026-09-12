@@ -17,7 +17,8 @@ export async function DELETE(request) {
   try {
   const auth = await getAuthedOrg(request);
   if (!auth || auth.userType === "client") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const { id } = await request.json().catch(() => ({}));
+  const body = await request.json().catch(() => null);
+  const id = body && !Array.isArray(body) && typeof body === "object" ? body.id : null;
   if (typeof id !== "string" || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)) {
     return NextResponse.json({ error: "Valid device id is required" }, { status: 400 });
   }

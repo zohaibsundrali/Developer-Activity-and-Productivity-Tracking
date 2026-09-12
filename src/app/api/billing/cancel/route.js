@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { requirePermission } from "@/utils/serverPermissions";
-import { stripeClient, billingConfigured } from "@/utils/stripeServer";
+import { stripeClient, billingConfigured, toIso } from "@/utils/stripeServer";
 
 export const dynamic = "force-dynamic";
 
@@ -29,16 +29,22 @@ export async function POST(request) {
     }
     const stripe = stripeClient();
 
-    const { resume } = await request.json().catch(() => ({}));
+    let body;
+    try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 }); }
+    if (!body || Array.isArray(body) || typeof body !== "object" || (body.resume !== undefined && typeof body.resume !== "boolean")) {
+      return NextResponse.json({ error: "resume must be a boolean." }, { status: 400 });
+    }
+    const { resume } = body;
     const cancelAtPeriodEnd = resume !== true;
 
     const svc = serviceClient();
-    const { data: subscription } = await svc
+    const { data: subscription, error: lookupError } = await svc
       .from("organization_subscriptions")
-      .select("stripe_subscription_id, status")
+      .select("stripe_subscription_id, stripe_customer_id, status, updated_at")
       .eq("organization_id", auth.orgId)
       .maybeSingle();
 
+    if (lookupError) return NextResponse.json({ error: "Subscription lookup unavailable. Please retry." }, { status: 503 });
     if (!subscription?.stripe_subscription_id) {
       return NextResponse.json(
         { error: "No active subscription to change." },
@@ -46,21 +52,37 @@ export async function POST(request) {
       );
     }
 
+    const deletion = await svc.rpc("organization_deletion_active", { p_org: auth.orgId });
+    if (deletion.error || typeof deletion.data !== "boolean") return NextResponse.json({ error: "Organization state unavailable. Please retry." }, { status: 503 });
+    if (deletion.data) return NextResponse.json({ error: "Organization deletion is in progress." }, { status: 409 });
+    const current = await stripe.subscriptions.retrieve(subscription.stripe_subscription_id);
+    const customerId = typeof current.customer === "string" ? current.customer : current.customer?.id;
+    if (!subscription.stripe_customer_id || customerId !== subscription.stripe_customer_id || current.metadata?.organization_id !== auth.orgId) {
+      return NextResponse.json({ error: "Billing ownership needs review. Contact support." }, { status: 409 });
+    }
     const updated = await stripe.subscriptions.update(subscription.stripe_subscription_id, {
       cancel_at_period_end: cancelAtPeriodEnd,
     });
 
+    const after = await svc.rpc("organization_deletion_active", { p_org: auth.orgId });
+    if (after.error || typeof after.data !== "boolean") return NextResponse.json({ error: "Stripe accepted the change; organization state could not be verified. Refresh shortly." }, { status: 503 });
+    if (after.data) return NextResponse.json({ error: "Organization deletion is in progress; cleanup will reconcile billing." }, { status: 409 });
+
     // Written through straight away so the page reflects the click without
     // waiting on a webhook; the webhook is still the source of truth and will
     // overwrite this with whatever Stripe actually recorded.
-    await svc
+    const { data: saved, error: saveError } = await svc
       .from("organization_subscriptions")
       .update({
-        cancel_at_period_end: cancelAtPeriodEnd,
-        canceled_at: cancelAtPeriodEnd ? new Date().toISOString() : null,
+        cancel_at_period_end: Boolean(updated.cancel_at_period_end),
+        canceled_at: toIso(updated.canceled_at),
         updated_at: new Date().toISOString(),
       })
-      .eq("organization_id", auth.orgId);
+      .eq("organization_id", auth.orgId)
+      .eq("stripe_subscription_id", subscription.stripe_subscription_id)
+      .eq("updated_at", subscription.updated_at)
+      .select("organization_id");
+    if (saveError || !saved?.length) return NextResponse.json({ error: "Stripe accepted the change; billing synchronization is pending. Refresh shortly." }, { status: 503 });
 
     return NextResponse.json({
       // Same success flag the rest of the billing API uses; the page reads it to

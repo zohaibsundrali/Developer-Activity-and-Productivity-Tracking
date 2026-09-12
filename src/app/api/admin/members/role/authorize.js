@@ -173,25 +173,12 @@ export function authorizeRoleChange({ actor, membership, newRole }) {
 }
 
 /**
- * WHICH STORE GOES FIRST.
- *
- * There is no transaction spanning Postgres and the Auth user store, so a
- * failure between the two writes always leaves a mismatch. The only choice
- * available is WHICH mismatch, and the two are not equally bad:
- *
- *   - a stale-PERMISSIVE state (RLS still believes the higher role) is a live
- *     privilege escalation — precisely the defect being fixed;
- *   - a stale-RESTRICTIVE state (RLS believes the lower role) is an annoyance:
- *     the member sees UI they cannot yet write through, and /sync-roles or a
- *     retry repairs it.
- *
- * So: always write whichever store ends up holding the LOWER privilege first.
- * On a demotion that is the JWT claim (drop the privilege before the app row
- * advertises it); on a promotion it is the membership row (record the intent
- * before the claim grants anything). Either way the intermediate state is the
- * MINIMUM of the old and new role, never the maximum.
- *
- * Returns true when the auth claim must be written first.
+ * Preserve the established two-write order: Auth first for a lower-ranked
+ * assignment, membership first otherwise. Rank controls assignment hierarchy;
+ * it is not a permission lattice (HR and Manager have different capabilities).
+ * Authorization rejects role mismatches instead of selecting a "lower" role.
+ * A partial failure must be retried with the requested role before session
+ * refresh; syncing the old membership back can reverse an intended demotion.
  */
 export function writeClaimFirst(currentRole, newRole) {
   return rank(newRole) < rank(currentRole);
