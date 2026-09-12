@@ -1,9 +1,10 @@
 "use client";
+import { useProjectProductivityMetrics } from "@/hooks/useProjectProductivityMetrics";
 import { resolveProjectFileUrl } from "@/utils/projectFiles";
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { showInfo, showWarning } from "@/utils/alerts";
-import { authFetch } from "@/utils/authFetch";
+import { getOrgContext } from "@/utils/orgContext";
 import { projectStatusMeta } from "@/utils/projectStatus";
 import {
   BarChart3,
@@ -69,13 +70,8 @@ export default function MyProjects({
   const [sortBy, setSortBy] = useState('recent');
   const [filterStatus, setFilterStatus] = useState('all');
 
-  const [showMetricsModal, setShowMetricsModal] = useState(false);
-  const [metricsLoading, setMetricsLoading] = useState(false);
-  const [metricsError, setMetricsError] = useState("");
-  const [metricsData, setMetricsData] = useState(null);
-  // Remembered so the error state's Retry has something to retry — metricsData
-  // is null on failure, so it could not carry the project.
-  const [metricsProject, setMetricsProject] = useState(null);
+  const { showMetricsModal, metricsLoading, metricsError, metricsData, metricsProject,
+    openMetrics, closeMetrics } = useProjectProductivityMetrics();
 
   // Guarded: an unparseable timestamp used to reach the card as the literal
   // string "Invalid Date".
@@ -138,37 +134,12 @@ export default function MyProjects({
   const handleViewMetrics = async (project) => {
     if (!project?.id) return;
 
-    if (!user?.id) {
+    if (!user?.id || getOrgContext()?.userId !== user.id) {
       showWarning("Not logged in", "Please login again to view metrics.");
       return;
     }
 
-    try {
-      setMetricsLoading(true);
-      setMetricsError("");
-      setMetricsData(null);
-      setMetricsProject(project);
-      setShowMetricsModal(true);
-
-      // Developer-side metrics must be scoped to the logged-in developer.
-      const url = `/api/productivity?type=project&projectId=${project.id}&developerId=${encodeURIComponent(String(user.id))}`;
-      const res = await authFetch(url);
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok || !data.success) {
-        setMetricsError(data.error || "Failed to load productivity metrics.");
-        return;
-      }
-
-      setMetricsData({
-        ...data,
-        project,
-      });
-    } catch (err) {
-      setMetricsError("Error loading productivity metrics. Please try again.");
-    } finally {
-      setMetricsLoading(false);
-    }
+    await openMetrics(project, user.id);
   };
 
   // Filter projects based on status
@@ -275,12 +246,7 @@ export default function MyProjects({
         {/* Metrics / Productivity Modal (Developer view) */}
         <Modal
           open={showMetricsModal}
-          onClose={() => {
-            setShowMetricsModal(false);
-            setMetricsData(null);
-            setMetricsError("");
-            setMetricsProject(null);
-          }}
+          onClose={closeMetrics}
           title="Your productivity on this project"
           description={metricsData?.project?.name || metricsProject?.name || undefined}
           size="lg"
@@ -340,7 +306,7 @@ export default function MyProjects({
                   >
                     {metricsData.productivityPercentage || 0}%
                   </div>
-                  <div className="mt-1 text-xs text-muted-foreground">Productivity</div>
+                  <div className="mt-1 text-xs text-muted-foreground">On-time rate</div>
                   <div className="text-xs tabular-nums text-muted-foreground">
                     Points:{" "}
                     {metricsData.productivityPoints >= 0

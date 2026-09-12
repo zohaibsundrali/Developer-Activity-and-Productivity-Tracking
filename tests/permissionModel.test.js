@@ -141,6 +141,8 @@ describe("user_type is no longer asked authorization questions", () => {
    * identical in a grep and only one of them is a bug.
    */
   const STORAGE_ONLY = {
+    "src/app/api/productivity/route.js":
+      "matches own task/project assignments only to Developer profiles and keeps colliding Admin identities separate; permission keys authorize every view",
     "src/app/api/keyboard-stats/route.js":
       "matches own monitoring records to Developer profiles; effective monitoring.view or monitoring.view_own separately authorizes reads",
     "src/app/api/task-submission/route.js":
