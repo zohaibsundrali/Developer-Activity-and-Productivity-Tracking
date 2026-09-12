@@ -5,7 +5,9 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
 import { allowed } from "@/utils/permissions";
-import { getOrgId } from "@/utils/orgContext";
+import { createKeyboardRealtimeGuard } from "@/utils/keyboardRealtimeGuard";
+import { reportIdentity } from "@/utils/reportViewState";
+import { getOrgContext, getOrgId } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
 import { showPre } from "@/utils/alerts";
 import { resolveScreenshotUrls } from "@/utils/screenshotFiles";
@@ -709,16 +711,15 @@ export default function DeveloperActivity() {
       keyboardChannelRef.current = null;
     }
     const dev = developers.find(d => d.id === selectedDeveloper);
-    if (!dev) return;
+    if (!dev || !monitoringOrg || !canMonitor || !allowed('monitoring.view')) return;
 
     const { start, end } = getDateFilter();
-    const startMs = new Date(start).getTime();
-    const endMs = new Date(end).getTime();
-    const inRange = (row) => {
-      const t = new Date(row?.tracked_at).getTime();
-      if (Number.isNaN(t)) return false;
-      return t >= startMs && t < endMs;
-    };
+    const guard = createKeyboardRealtimeGuard({
+      organizationId: monitoringOrg, identity: reportIdentity(getOrgContext()), scope: activityScope,
+      developer: dev, start, end, getOrganizationId: getOrgId,
+      getIdentity: () => reportIdentity(getOrgContext()), getScope: () => liveScope.current,
+      canMonitor: () => allowed('monitoring.view'),
+    });
 
     let kbChannel = supabase.channel("admin-activity-keyboard");
     const kbFilters = [`developer_id=eq.${dev.id}`];
@@ -732,9 +733,9 @@ export default function DeveloperActivity() {
         table: "keyboard_stats",
         filter: f,
       }, (payload) => {
-        if (!inRange(payload.new)) return;
+        if (!guard.accepts(payload?.new)) return;
         setKeyboardData(prev => {
-          if (prev.some(k => k.id === payload.new.id)) return prev;
+          if (!guard.accepts(payload?.new) || prev.some(k => k.id === payload.new.id)) return prev;
           return [payload.new, ...prev];
         });
         setLastUpdated(new Date());
@@ -742,8 +743,12 @@ export default function DeveloperActivity() {
     });
     kbChannel.subscribe();
     keyboardChannelRef.current = kbChannel;
-    return () => { supabase.removeChannel(kbChannel); };
-  }, [selectedDeveloper, developers, getDateFilter]);
+    return () => {
+      guard.dispose();
+      supabase.removeChannel(kbChannel);
+      if (keyboardChannelRef.current === kbChannel) keyboardChannelRef.current = null;
+    };
+  }, [selectedDeveloper, developers, getDateFilter, monitoringOrg, canMonitor, activityScope]);
 
   // ─── Supabase Realtime for app_usage ───
   const appChannelRef = useRef(null);

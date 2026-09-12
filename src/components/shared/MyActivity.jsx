@@ -1,4 +1,5 @@
 "use client";
+import { keyboardActivityCount } from "@/utils/keyboardActivityCount";
 
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Activity, BarChart3, Keyboard, Users } from "lucide-react";
@@ -102,7 +103,7 @@ export default function MyActivity() {
     if (panels.activity) try {
       if (actRes.status !== "fulfilled") throw new Error("unreachable");
       const json = await actRes.value.json().catch(() => ({}));
-      if (!actRes.value.ok) throw new Error(json?.error || "failed");
+      if (!actRes.value.ok || keyboardActivityCount(json) === null) throw new Error(json?.error || "failed");
       if (!active()) return;
       setActivity(json);
     } catch {
@@ -140,10 +141,7 @@ export default function MyActivity() {
     return [...map.values()];
   }, [team]);
 
-  const keystrokes = useMemo(() => {
-    const rows = activity?.data || [];
-    return rows.reduce((sum, r) => sum + (Number(r.keystrokes ?? r.key_count ?? 0) || 0), 0);
-  }, [activity]);
+  const keystrokes = useMemo(() => keyboardActivityCount(activity), [activity]);
 
   if (loading || loadedScope !== scope) {
     return (
@@ -247,7 +245,7 @@ export default function MyActivity() {
             <StatCard title="Loaded activity records" value={activity.data.length} icon={Activity} />
             <StatCard
               title={activity.truncated === true ? "Keystrokes in loaded records" : "Keystrokes"}
-              value={keystrokes.toLocaleString()}
+              value={keystrokes === null ? "—" : keystrokes.toLocaleString()}
               icon={Keyboard}
               hint={
                 activity.dateRange
