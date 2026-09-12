@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { sessionBreakSummary, breakDuration } from "@/utils/sessionBreaks";
 import { sessionWorkLabel } from "@/utils/sessionWorkContext";
 import { AppWindow, CameraOff, Globe, Keyboard, MousePointer2 } from "lucide-react";
 import EChart from "@/components/charts/EChart";
@@ -140,6 +141,7 @@ export function formatSessionDuration(totalSeconds) {
 export function SessionCard({ session, onClick }) {
   if (!session) return null;
 
+  const breaks = sessionBreakSummary(session);
   const isActive = String(session.status || "").toLowerCase() === "active";
   const start = session.start_time ? new Date(session.start_time).toLocaleString() : "Unknown";
   const end = session.end_time ? new Date(session.end_time).toLocaleString() : "Ongoing";
@@ -172,6 +174,7 @@ export function SessionCard({ session, onClick }) {
       </div>
 
       <p className="mt-3 text-sm text-muted-foreground">{sessionWorkLabel(session)}</p>
+      {breaks.available && <p className="mt-1 text-sm text-muted-foreground">{breaks.periods.length} recorded breaks · {breakDuration(breaks.seconds)} closed-break time{breaks.open ? " · end pending" : ""}</p>}
       <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
         <div className="flex items-baseline justify-between gap-3">
           <dt className="text-muted-foreground">Start</dt>
