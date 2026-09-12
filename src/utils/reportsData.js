@@ -25,7 +25,8 @@ import { normalizeStatus, sumSeconds } from "@/utils/pmData";
  * existing readers (DashboardOverview, DeveloperActivity).
  */
 
-const DONE = new Set(["completed", "reviewed"]);
+// Use the same status vocabulary as the board and database status counts.
+const taskIsCompleted = (task) => normalizeStatus(task.status) === "completed";
 export const TRACKING_CAVEAT =
   "This report groups desktop time per developer per day. Project/task selections appear in session history; they do not automatically create task time logs or billable entries.";
 
@@ -298,13 +299,13 @@ export function projectPerformance({ projects, tasks, timeLogs }) {
   return (projects || []).map((p) => {
     const list = (tasks || []).filter((t) => t.project_id === p.id);
     const total = list.length;
-    const done = list.filter((t) => DONE.has(t.status)).length;
-    const inProgress = list.filter((t) => t.status === "in_progress").length;
+    const done = list.filter((t) => taskIsCompleted(t)).length;
+    const inProgress = list.filter((t) => normalizeStatus(t.status) === "in_progress").length;
     const pending = total - done - inProgress;
     const overdue = list.filter(
-      (t) => !DONE.has(t.status) && (t.due_date || t.end_date) && ymd(t.due_date || t.end_date) < today
+      (t) => !taskIsCompleted(t) && (t.due_date || t.end_date) && ymd(t.due_date || t.end_date) < today
     ).length;
-    const rated = list.filter((t) => DONE.has(t.status) && t.is_on_time !== null && t.is_on_time !== undefined);
+    const rated = list.filter((t) => taskIsCompleted(t) && t.is_on_time !== null && t.is_on_time !== undefined);
     const onTime = rated.filter((t) => t.is_on_time).length;
     const seconds = sumSeconds((timeLogs || []).filter((l) => l.project_id === p.id));
     const deadline = p.end_date || p.deadline || null;
@@ -356,8 +357,8 @@ export function teamProductivity({ employees, tasks, timeLogs, sessions }) {
     const isDeveloper = e.userType === "developer";
     const list = isDeveloper ? (tasks || []).filter((t) => t.developer_id === e.userId) : [];
     const total = list.length;
-    const done = list.filter((t) => DONE.has(t.status)).length;
-    const rated = list.filter((t) => DONE.has(t.status) && t.is_on_time !== null && t.is_on_time !== undefined);
+    const done = list.filter((t) => taskIsCompleted(t)).length;
+    const rated = list.filter((t) => taskIsCompleted(t) && t.is_on_time !== null && t.is_on_time !== undefined);
     const onTime = rated.filter((t) => t.is_on_time).length;
     const points = list.reduce((s, t) => s + (Number(t.productivity_points) || 0), 0);
     const loggedSeconds = sumSeconds((timeLogs || []).filter((l) =>
@@ -423,7 +424,7 @@ export function deadlineDelays({ tasks, projects, employees }) {
     if (!due) return;
     const dueYmd = ymd(due);
     if (!dueYmd) return;
-    const isDone = DONE.has(t.status);
+    const isDone = taskIsCompleted(t);
     const completedOn = t.actual_completion_date || t.reviewed_at || t.updated_at;
     if (isDone) {
       const compYmd = completedOn ? ymd(completedOn) : null;
@@ -461,7 +462,7 @@ export function dailyTrend({ tasks, timeLogs, sessions, range }) {
 
   const completedBy = new Map();
   (tasks || []).forEach((t) => {
-    if (!DONE.has(t.status)) return;
+    if (!taskIsCompleted(t)) return;
     const key = ymd(t.actual_completion_date || t.reviewed_at || t.updated_at);
     if (key) completedBy.set(key, (completedBy.get(key) || 0) + 1);
   });

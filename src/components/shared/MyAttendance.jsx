@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { CalendarDays, Clock, LogIn, LogOut, MapPin } from "lucide-react";
 
 import {
@@ -14,6 +14,10 @@ import {
   StatusPill,
 } from "@/components/ui";
 import StatCard from "@/components/shell/StatCard";
+import { attendanceActionRequest, priorAttendanceCheckout } from "@/utils/attendanceActions";
+import { useAuth } from "@/contexts/AuthContext";
+import { getOrgContext } from "@/utils/orgContext";
+import { attendanceIdentity, loadAttendanceRange, validateAttendanceReceipt } from "@/utils/attendanceRequests";
 import { authFetch } from "@/utils/authFetch";
 import { showError, showSuccess } from "@/utils/alerts";
 
@@ -27,8 +31,7 @@ import { showError, showSuccess } from "@/utils/alerts";
  * it again underneath.
  *
  * THE DATE COMES FROM THIS BROWSER, DELIBERATELY. The server runs in UTC, so an
- * organization in Karachi checking in at 09:00 PKT is still on the previous UTC
- * day until lunchtime. Sending `YYYY-MM-DD` as the user's own calendar reads it
+ * organization may start its local calendar day before UTC does. Sending `YYYY-MM-DD` as the user's own calendar reads it
  * is what stops a morning check-in landing on yesterday. The route validates it
  * hard rather than trusting it.
  */
@@ -76,33 +79,57 @@ const STATUS_LABEL = {
 };
 
 export default function MyAttendance() {
+  useAuth(); // Subscribe to account changes; storage supplies the typed display context.
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const today = localDay();
-
-  const load = useCallback(async () => {
-    setError("");
-    try {
-      // Thirty days back: enough to answer "how was last month" without paging,
-      // and small enough that the screen is never a list nobody reads.
-      const from = localDay(new Date(Date.now() - 30 * 86400000));
-      const res = await authFetch(`/api/attendance?scope=me&from=${from}&to=${today}`);
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json?.success) {
-        throw new Error(json?.error || "Could not load your attendance.");
-      }
-      setRecords(json.records || []);
-    } catch (e) {
-      setError(e?.message || "Could not load your attendance.");
-    } finally {
-      setLoading(false);
-    }
-  }, [today]);
+  const [today, setToday] = useState(localDay);
+  const liveDay = useRef(today);
+  liveDay.current = today;
+  const context = getOrgContext();
+  const identity = attendanceIdentity(context);
+  const liveIdentity = useRef(identity);
+  liveIdentity.current = identity;
+  const mounted = useRef(true);
+  const generation = useRef(0);
+  const actionLock = useRef(null);
+  const [loadedIdentity, setLoadedIdentity] = useState(null);
+  const currentIdentity = useCallback(() => mounted.current && identity !== null
+    && liveIdentity.current === identity && attendanceIdentity(getOrgContext()) === identity, [identity]);
 
   useEffect(() => {
+    mounted.current = true;
+    const clock = setInterval(() => setToday(localDay()), 30000);
+    return () => { mounted.current = false; ++generation.current; clearInterval(clock); };
+  }, []);
+
+  const load = useCallback(async () => {
+    const ticket = ++generation.current;
+    const current = () => ticket === generation.current && currentIdentity();
+    setLoading(true);
+    setError("");
+    setRecords([]);
+    setLoadedIdentity(null);
+    try {
+      if (!identity) throw new Error("Your identity could not be confirmed. Sign in again.");
+      const start = new Date(`${today}T12:00:00`);
+      start.setDate(start.getDate() - 29);
+      const rows = await loadAttendanceRange(authFetch, { from: localDay(start), to: today, context: getOrgContext(), current });
+      if (!current()) return;
+      setRecords(rows);
+      setLoadedIdentity(identity);
+    } catch (e) {
+      if (ticket === generation.current && mounted.current && (!identity || currentIdentity())) setError(e?.message || "Could not load your attendance.");
+    } finally {
+      if (ticket === generation.current && mounted.current && (!identity || currentIdentity())) setLoading(false);
+    }
+  }, [today, identity, currentIdentity]);
+
+  useEffect(() => {
+    actionLock.current = null;
+    setBusy(false);
     load();
   }, [load]);
 
@@ -124,35 +151,53 @@ export default function MyAttendance() {
     return { present, onLeave, hours };
   }, [records]);
 
-  const act = async (action) => {
+  const act = async (action, record = null) => {
+    if (actionLock.current || loading || error || loadedIdentity !== identity || !currentIdentity()) return;
+    const actualToday = localDay();
+    const request = attendanceActionRequest(action, today, actualToday, record);
+    if (!request) {
+      if (today !== actualToday) setToday(actualToday);
+      return;
+    }
+    if (record && !records.some((row) => row === record)) return;
+    const ticket = {};
+    actionLock.current = ticket;
     setBusy(true);
+    const captured = getOrgContext();
     try {
       const res = await authFetch("/api/attendance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, workDate: today }),
+        body: JSON.stringify(request),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json?.success) {
-        throw new Error(json?.error || "That did not go through.");
+      if (!currentIdentity() || liveDay.current !== today || actionLock.current !== ticket) return;
+      if (!res.ok || !json?.success) throw new Error(json?.error || "That did not go through.");
+      const confirmed = validateAttendanceReceipt(json, captured, request.workDate, action);
+      if (json.unchanged && !confirmed.check_in_at) {
+        showSuccess(`Attendance unchanged: ${STATUS_LABEL[confirmed.status] || confirmed.status}.`);
+        await load();
+        return;
       }
-      if (json.unchanged) {
-        // Not an error and not a success — the button was pressed twice and
-        // the second press changed nothing. Saying "checked in!" again would
-        // be a lie about a write that did not happen.
-        showSuccess(action === "check_out" ? "Already checked out." : "Already checked in.");
-      } else {
-        showSuccess(action === "check_out" ? "Checked out." : "Checked in.");
-      }
+      showSuccess(json.unchanged
+        ? (action === "check_out" ? "Already checked out." : "Already checked in.")
+        : (action === "check_out" ? "Checked out." : "Checked in."));
       await load();
     } catch (e) {
-      showError(e?.message || "That did not go through.");
+      if (currentIdentity() && liveDay.current === today && actionLock.current === ticket) {
+        showError(e?.message || "That did not go through.");
+        // A network failure may follow a committed write: confirm state again.
+        await load();
+      }
     } finally {
-      setBusy(false);
+      if (actionLock.current === ticket) {
+        actionLock.current = null;
+        if (currentIdentity()) setBusy(false);
+      }
     }
   };
 
-  if (loading) {
+  if (loading || (!error && loadedIdentity !== identity)) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-8 w-52" />
@@ -167,6 +212,7 @@ export default function MyAttendance() {
   }
 
   const onLeaveToday = todayRecord?.status === "on_leave";
+  const nonWorkingDay = ["on_leave", "holiday", "absent"].includes(todayRecord?.status);
   const checkedIn = Boolean(todayRecord?.check_in_at);
   const checkedOut = Boolean(todayRecord?.check_out_at);
 
@@ -193,8 +239,8 @@ export default function MyAttendance() {
           {/* An approved leave day is not a day to check in on. The button is
               hidden rather than disabled: there is nothing the person could do
               to make it work, so offering it would only raise a question. */}
-          {onLeaveToday ? (
-            <Badge variant="warning">On approved leave today</Badge>
+          {nonWorkingDay ? (
+            <Badge variant="warning">{onLeaveToday ? "On approved leave today" : STATUS_LABEL[todayRecord.status]}</Badge>
           ) : (
             <div className="flex gap-2">
               <Button
@@ -256,6 +302,7 @@ export default function MyAttendance() {
                   <th className="py-2 pr-4 font-medium">In</th>
                   <th className="py-2 pr-4 font-medium">Out</th>
                   <th className="py-2 pr-4 font-medium">Hours</th>
+                  <th className="py-2 pr-4 font-medium">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -275,6 +322,15 @@ export default function MyAttendance() {
                       {/* An open day shows a dash, not 0.0 — it is unknown, not zero. */}
                       <td className="py-2 pr-4 text-muted-foreground">
                         {h === null ? "—" : h.toFixed(1)}
+                      </td>
+                      <td className="py-2 pr-4">
+                        {priorAttendanceCheckout(r, today) ? (
+                          <Button variant="outline" disabled={busy}
+                            aria-label={`Check out shift from ${r.work_date}`}
+                            onClick={() => act("check_out", r)}>
+                            Check out shift
+                          </Button>
+                        ) : null}
                       </td>
                     </tr>
                   );

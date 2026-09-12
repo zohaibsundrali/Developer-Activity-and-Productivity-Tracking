@@ -158,10 +158,6 @@ describe("user_type is no longer asked authorization questions", () => {
     "src/app/api/search/route.js":
       "builds the result URL (/admin/... vs /developer/...) and filters " +
       "candidates by which directory they came from",
-    "src/app/api/attendance/route.js":
-      "writes attendance_records.user_type — which profile table the person's " +
-      "row lives in. For somebody else it reads the membership rather than " +
-      "guessing; the authorization is attendance.log_own / attendance.manage",
     "src/app/api/leave/route.js":
       "writes leave_requests.user_type, the same storage column; every " +
       "authorization decision in the file is a permission key",
