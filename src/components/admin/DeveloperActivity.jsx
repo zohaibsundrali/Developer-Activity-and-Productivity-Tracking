@@ -125,7 +125,6 @@ const LOGIN_LIMIT = 500;
 export default function DeveloperActivity() {
   const { user, authStatus } = useAuth();
   const router = useRouter();
-  const [currentAdmin, setCurrentAdmin] = useState(null);
   const [developers, setDevelopers] = useState([]);
   const [selectedDeveloper, setSelectedDeveloper] = useState("");
   const [selectedDate, setSelectedDate] = useState("");
@@ -276,21 +275,6 @@ export default function DeveloperActivity() {
   const pollRef = useRef(null);
   const realtimeChannelRef = useRef(null);
   const loginChannelRef = useRef(null);
-
-  // ─── Admin Auth ───
-  useEffect(() => {
-    const getCurrentAdmin = () => {
-      try {
-        const adminData = JSON.parse(sessionStorage.getItem("adminUser"));
-        setCurrentAdmin(adminData && adminData.email ? adminData : null);
-      } catch {
-        setCurrentAdmin(null);
-      }
-    };
-    getCurrentAdmin();
-    window.addEventListener("storage", getCurrentAdmin);
-    return () => window.removeEventListener("storage", getCurrentAdmin);
-  }, []);
 
   // ─── Fetch Developers ───
   const fetchAdminDevelopers = useCallback(async () => {
@@ -1124,15 +1108,6 @@ export default function DeveloperActivity() {
     return "bg-muted text-muted-foreground";
   };
 
-  const refreshAdminData = () => {
-    try {
-      const adminData = JSON.parse(sessionStorage.getItem("adminUser"));
-      if (adminData) { setCurrentAdmin(adminData); fetchAdminDevelopers(); }
-    } catch (err) {
-      // Silently handle error
-    }
-  };
-
   // ─── Render ───
   if (authStatus === "pending") return <Skeleton className="h-48 w-full" />;
   if (!canMonitor) return <ErrorState title="Monitoring access is not allowed" description="Your current permissions do not include developer monitoring." />;
@@ -1145,7 +1120,7 @@ export default function DeveloperActivity() {
         title={sectionTitle("developer-activity", "admin")}
         description="Sessions, input, applications and screenshots recorded by the desktop tracker."
         actions={
-          <Button variant="outline" onClick={refreshAdminData}>
+          <Button variant="outline" onClick={fetchAdminDevelopers}>
             <RefreshCw aria-hidden="true" />
             Refresh
           </Button>
@@ -1171,7 +1146,7 @@ export default function DeveloperActivity() {
               value={selectedDeveloper}
               onChange={(e) => setSelectedDeveloper(e.target.value)}
               className="w-full px-4 py-2.5 border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
-              disabled={!currentAdmin || fetchingDevelopers}
+              disabled={fetchingDevelopers}
             >
               <option value="">Choose Developer</option>
               {fetchingDevelopers ? (
@@ -1183,30 +1158,14 @@ export default function DeveloperActivity() {
               )}
             </select>
 
-            {!currentAdmin && (
-              <div className="mt-2">
-                <p className="text-xs text-destructive">Please login to view developers</p>
-                <button
-                  // Deliberately a HARD load, unlike the in-app links in this
-                  // file. Signing out of a stale session must tear down the
-                  // whole document so in-memory auth state and any live
-                  // Supabase subscriptions cannot survive the redirect.
-                  // Do not "optimise" this into router.push.
-                  onClick={() => window.location.href = "/login"}
-                  className="text-xs text-info hover:text-info/80 underline"
-                >
-                  Go to Login
-                </button>
-              </div>
-            )}
-            {currentAdmin && fetchingDevelopers && <p className="text-xs text-muted-foreground mt-2">Loading developers...</p>}
+            {fetchingDevelopers && <p className="text-xs text-muted-foreground mt-2">Loading developers...</p>}
             {/* "No developers added by you yet" used to be repeated here as a
                 warning line with an underlined pseudo-link beside it. The
                 empty state below now says it once, in the place the eye
                 already goes when the screen has nothing on it, and carries the
                 one action as a real primary Button. */}
-            {currentAdmin && !fetchingDevelopers && developers.length > 0 && (
-              <p className="text-xs text-muted-foreground mt-2">Showing {developers.length} developer{developers.length !== 1 ? "s" : ""} added by you</p>
+            {!fetchingDevelopers && developers.length > 0 && (
+              <p className="text-xs text-muted-foreground mt-2">Showing {developers.length} developer{developers.length !== 1 ? "s" : ""} available to you</p>
             )}
           </div>
 
@@ -2529,45 +2488,21 @@ export default function DeveloperActivity() {
       )}
 
       {/* No Developer Selected */}
-      {!selectedDeveloper && !loading && (
-        currentAdmin ? (
-          fetchingDevelopers ? null : developers.length === 0 ? (
-            /* Nothing to choose from, so "pick someone from the list above" is
-               not the message — adding the first developer is. It is the only
-               action on the screen, so it is the default (primary) Button. */
-            <EmptyState
-              icon={User}
-              title="No developers yet"
-              description="Add a developer to this organization and their tracked sessions, input and screenshots will show up here."
-              action={
-                <Button
-                  // In-app route change: router.push keeps the shell mounted.
-                  // A window.location assignment here reloaded the whole
-                  // document — flash, lost scroll, shell rebuilt from scratch.
-                  onClick={() => router.push("/admin/dashboard?section=employees")}
-                >
-                  Add a Developer
-                </Button>
-              }
-            />
-          ) : (
-            <EmptyState
-              icon={User}
-              title="Select a developer to view activity data"
-              description="Pick someone from the Select Developer list above to see their sessions, input and screenshots."
-            />
-          )
+      {!selectedDeveloper && !loading && !fetchingDevelopers && !developerError && (
+        developers.length === 0 ? (
+          <EmptyState
+            icon={User}
+            title="No developers available"
+            description="No developer profiles are currently available to your account in this organization."
+            action={allowed('member.view') ? (
+              <Button onClick={() => router.push("/admin/dashboard?section=employees")}>View Employees</Button>
+            ) : undefined}
+          />
         ) : (
           <EmptyState
-            icon={LockKeyhole}
-            title="Please login to access developer activity"
-            description="Only admins can view developer activity data"
-            action={
-              /* Hard load on purpose — see the note on the other Go to Login
-                 button: the stale session and its subscriptions must die with
-                 the document. Not a candidate for router.push. */
-              <Button onClick={() => window.location.href = "/login"}>Go to Login</Button>
-            }
+            icon={User}
+            title="Select a developer to view activity data"
+            description="Pick someone from the Select Developer list above to see their sessions, input and screenshots."
           />
         )
       )}
