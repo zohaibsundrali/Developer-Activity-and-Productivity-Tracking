@@ -1,4 +1,5 @@
 "use client";
+import IdleReminderSettings from '@/components/shared/IdleReminderSettings';
 import ScreenshotPolicySettings from "@/components/shared/ScreenshotPolicySettings";
 import TrackerDevices from "@/components/shared/TrackerDevices";
 
@@ -521,6 +522,7 @@ export default function AdminAccount({ user }) {
         </Section>
       </div>
       <ScreenshotPolicySettings key={`screenshots:${user?.organization_id}:${user?.id}`} orgId={user?.organization_id} readOnly={false} />
+      <IdleReminderSettings key={`screenshots:${user?.organization_id}:${user?.id}`} orgId={user?.organization_id} readOnly={false} />
       <TrackerDevices />
     </div>
   );

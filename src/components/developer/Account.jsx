@@ -1,6 +1,7 @@
 "use client";
 import AutomationRecovery from "@/components/admin/AutomationRecovery";
 import PlanFeatureBoundary from "@/components/billing/PlanFeatureBoundary";
+import IdleReminderSettings from '@/components/shared/IdleReminderSettings';
 import ScreenshotPolicySettings from "@/components/shared/ScreenshotPolicySettings";
 import TrackerDevices from "@/components/shared/TrackerDevices";
 
@@ -320,6 +321,7 @@ export default function Account({ user }) {
         )}
       </Card>
       <ScreenshotPolicySettings key={`screenshots:${user?.organization_id}:${user?.id}`} orgId={user?.organization_id} readOnly />
+      <IdleReminderSettings key={`screenshots:${user?.organization_id}:${user?.id}`} orgId={user?.organization_id} readOnly />
       <TrackerDevices />
       <PlanFeatureBoundary key={`${user?.organization_id}:${user?.id}`} feature="automation">
         <AutomationRecovery />

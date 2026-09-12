@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import IdleReminderSettings from '@/components/shared/IdleReminderSettings';
 import ScreenshotPolicySettings from "@/components/shared/ScreenshotPolicySettings";
 import TrackingRetentionSettings from "./TrackingRetentionSettings";
 import OrganizationDeletionPanel from "./OrganizationDeletionPanel";
@@ -434,6 +435,7 @@ export default function OrganizationSettings({ readOnly = false }) {
       )}
     </fieldset>
     <ScreenshotPolicySettings key={`screenshots:${orgId}`} orgId={orgId} readOnly={false} />
+    <IdleReminderSettings key={`screenshots:${orgId}`} orgId={orgId} readOnly={false} />
     {!readOnly && <TrackingRetentionSettings key={`retention:${orgId}`} orgId={orgId} />}
     <OrganizationDeletionPanel key={`deletion:${orgId}`} orgId={orgId} />
     </>
