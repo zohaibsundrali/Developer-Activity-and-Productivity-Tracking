@@ -117,7 +117,7 @@ function fakeClient() {
                 ? state.emailVerified
                   ? [{ id: "verification-1" }]
                   : []
-                : { id: `${table}-1` },
+                : { id: table === "admin_users" ? "admin-1" : `${table}-1`, organization_id: "org-1", ...patch },
             error: state.updateErrors?.[table] || null,
           };
           const builder = {
@@ -252,7 +252,7 @@ describe("signup refuses without acceptance", () => {
   it("still refuses missing email before anything else, unchanged", async () => {
     const res = await signupPOST(req({ password: "x", termsAccepted: true }));
     expect(res.status).toBe(400);
-    expect((await res.json()).error).toBe("email and password are required");
+    expect((await res.json()).error).toMatch(/valid email/);
   });
 });
 
@@ -295,99 +295,8 @@ describe("invitation accept refuses without acceptance", () => {
 // 2. What gets recorded when acceptance IS present
 // ---------------------------------------------------------------------------
 
-describe("signup records the acceptance", () => {
-  it("succeeds and writes exactly one terms_acceptances row", async () => {
-    const res = await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true }));
-    expect(res.status).toBe(200);
-    expect((await res.json()).success).toBe(true);
-    expect(acceptanceRows()).toHaveLength(1);
-  });
-
-  it("stores the document VERSION, not merely a boolean", async () => {
-    await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true }));
-    const row = acceptanceRows()[0].row;
-    expect(row.document_version).toBe(EXPECTED_VERSION);
-    expect(row.document_version).toBeTruthy();
-    expect(row.document).toBe("terms_of_service");
-    // The whole point: a boolean could not answer "who accepted the version
-    // that contained clause 3.5". Nothing here is a bare true/false flag.
-    expect(row.terms_accepted).toBeUndefined();
-  });
-
-  it("takes the version from the Terms module, never from the request", async () => {
-    await signupPOST(
-      req({ ...SIGNUP_BODY, termsAccepted: true, termsVersion: "1900-01-01", document_version: "spoofed" })
-    );
-    expect(acceptanceRows()[0].row.document_version).toBe(EXPECTED_VERSION);
-  });
-
-  it("records who and when", async () => {
-    const before = Date.now();
-    await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true }));
-    const row = acceptanceRows()[0].row;
-    expect(row.organization_id).toBe("org-1");
-    expect(row.user_id).toBe("admin-1");
-    expect(row.user_type).toBe("admin");
-    expect(row.email).toBe("ada@example.com");
-    const at = Date.parse(row.accepted_at);
-    expect(Number.isNaN(at)).toBe(false);
-    expect(at).toBeGreaterThanOrEqual(before - 1000);
-    expect(at).toBeLessThanOrEqual(Date.now() + 1000);
-  });
-
-  it("marks the entry point as signup", async () => {
-    await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true }));
-    expect(acceptanceRows()[0].row.entry_point).toBe("signup");
-  });
-
-  it("captures the IP when the request already carries one", async () => {
-    await signupPOST(
-      req({ ...SIGNUP_BODY, termsAccepted: true }, { "x-forwarded-for": "203.0.113.9, 70.41.3.18" })
-    );
-    expect(acceptanceRows()[0].row.ip).toBe("203.0.113.9");
-  });
-
-  it("stores null rather than junk when the IP is absent or malformed", async () => {
-    await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true }));
-    expect(acceptanceRows()[0].row.ip).toBeNull();
-
-    resetState();
-    await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true }, { "x-forwarded-for": "not-an-ip" }));
-    expect(acceptanceRows()[0].row.ip).toBeNull();
-
-    resetState();
-    await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true }, { "x-forwarded-for": "999.1.1.1" }));
-    expect(acceptanceRows()[0].row.ip).toBeNull();
-  });
-
-  it("stores nothing beyond what it needs — no user agent, headers or body", async () => {
-    await signupPOST(
-      req({ ...SIGNUP_BODY, termsAccepted: true }, { "user-agent": "Mozilla/5.0 (spy)" })
-    );
-    expect(Object.keys(acceptanceRows()[0].row).sort()).toEqual([
-      "accepted_at",
-      "document",
-      "document_version",
-      "email",
-      "entry_point",
-      "ip",
-      "organization_id",
-      "user_id",
-      "user_type",
-    ]);
-  });
-
-  it("does not fail the signup if the acceptance insert errors", async () => {
-    // The account already exists by this point; a "registration failed"
-    // message for an account that does exist is worse than a logged failure.
-    resetState({ insertErrors: { terms_acceptances: { message: "boom" } } });
-    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const res = await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true }));
-    expect(res.status).toBe(200);
-    expect(spy).toHaveBeenCalled();
-    spy.mockRestore();
-  });
-});
+// Signup consent/plan persistence is exercised against PostgreSQL in
+// database/tests/transactional_signup_recovery.sql and the route in signupIdentityLinking.test.js.
 
 describe("invitation acceptance transaction contract", () => {
   it("passes the server Terms version and validated IP to the atomic operation", async () => {
@@ -413,72 +322,7 @@ describe("invitation acceptance transaction contract", () => {
 // 3. Existing behaviour is untouched
 // ---------------------------------------------------------------------------
 
-describe("nothing else about signup or accept changed", () => {
-  it("signup still creates admin, organization, membership and auth user in order", async () => {
-    await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true }));
-    // `organization_subscriptions` sits between the membership and the terms
-    // record: every organization gets exactly one subscription row from the
-    // moment it exists, so the shape of the data does not depend on when the
-    // account was created. The acceptance is still written, and still last.
-    expect(state.inserts.map((i) => i.table)).toEqual([
-      "admin_users",
-      "organizations",
-      "memberships",
-      "organization_subscriptions",
-      "terms_acceptances",
-    ]);
-    expect(state.createdUsers).toHaveLength(1);
-    expect(state.createdUsers[0].app_metadata.role).toBe("owner");
-  });
-
-  it("signup still rolls back the admin row when the organization fails", async () => {
-    resetState({ insertErrors: { organizations: { message: "nope" } } });
-    const res = await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true }));
-    expect(res.status).toBe(500);
-    expect(state.deletes.map((d) => d.table)).toEqual(["admin_users"]);
-    expect(acceptanceRows()).toEqual([]);
-  });
-
-  it("signup still 409s on a duplicate email", async () => {
-    resetState({ insertErrors: { admin_users: { code: "23505", message: "dupe" } } });
-    const res = await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true }));
-    expect(res.status).toBe(409);
-    expect(acceptanceRows()).toEqual([]);
-  });
-
-  // ── The email-verification gate (migration 056) ──────────────────────
-  //
-  // Until this existed, the verification code was generated by the browser,
-  // held in React state and compared by the browser — so this route created
-  // organizations for addresses nobody had ever proven they could read. A
-  // direct POST skipped the step entirely, which is exactly what these tests
-  // do: they never touch the registration page.
-
-  it("REFUSES a signup for an address with no verified code", async () => {
-    resetState({ emailVerified: false });
-    const res = await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true }));
-    expect(res.status).toBe(403);
-    expect((await res.json()).code).toBe("email_not_verified");
-  });
-
-  it("creates nothing at all when the address is unverified", async () => {
-    // The gate runs BEFORE any write, so a refused signup must leave no
-    // admin_users row, no organization, no membership and no auth account —
-    // the same property the Terms gate above has.
-    resetState({ emailVerified: false });
-    await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true }));
-    expect(state.inserts).toEqual([]);
-    expect(state.createdUsers).toEqual([]);
-  });
-
-  it("consumes the verification, so one code cannot create two organizations", async () => {
-    resetState();
-    await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true }));
-    const consume = state.updates.find((u) => u.table === "email_verifications");
-    expect(consume).toBeTruthy();
-    expect(consume.patch.consumed_at).toBeTruthy();
-  });
-
+describe("invitation state regressions", () => {
   it("accept still rejects an already-used invitation with 409", async () => {
     state.invitation.status = "accepted";
     const res = await acceptPOST(req({ ...ACCEPT_BODY, termsAccepted: true }));
@@ -581,93 +425,8 @@ describe("the consent checkbox defaults to unchecked", () => {
  * here is about the server ignoring what it was told when what it was told
  * would hand out something valuable.
  */
-describe("the plan a signup starts on", () => {
-  const subRow = () => state.inserts.find((i) => i.table === "organization_subscriptions")?.row;
-
-  it("starts on free when no plan is asked for", async () => {
-    await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true }));
-    expect(subRow()).toMatchObject({ plan_code: "free", status: "active" });
-    expect(subRow().trial_end).toBeUndefined();
-  });
-
-  it("starts a 7-day trial on a paid plan that has one", async () => {
-    resetState({ plan: { code: "business", name: "Business", trial_days: 7, is_active: true } });
-    const before = Date.now();
-    await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true, planCode: "business" }));
-
-    const row = subRow();
-    expect(row).toMatchObject({ plan_code: "business", status: "trialing" });
-    const days = (new Date(row.trial_end) - before) / 86400000;
-    expect(days).toBeGreaterThan(6.9);
-    expect(days).toBeLessThan(7.1);
-  });
-
-  it("REFUSES a paid plan that has no self-serve trial, and falls back to free", async () => {
-    // database/053 seeds enterprise with trial_days = 0, meaning "sold, not
-    // signed up for". `trialEndFor` treats 0 as a nonsensical value and falls
-    // back to its 7-day default, so without an explicit check this granted a
-    // free 7-day trial of the unlimited plan — every limit -1, every feature
-    // on, no payment of any kind — to anyone who clicked the Enterprise card.
-    resetState({ plan: { code: "enterprise", name: "Enterprise", trial_days: 0, is_active: true } });
-    const res = await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true, planCode: "enterprise" }));
-
-    expect(subRow()).toMatchObject({ plan_code: "free", status: "active" });
-    const body = await res.json();
-    expect(body.plan.code).toBe("free");
-  });
-
-  it("falls back to free for a plan code that does not exist", async () => {
-    resetState({ plan: null });
-    await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true, planCode: "made-up-plan" }));
-    expect(subRow()).toMatchObject({ plan_code: "free", status: "active" });
-  });
-
-  it("records the card step only when it actually happened", async () => {
-    resetState({ plan: { code: "business", name: "Business", trial_days: 7, is_active: true } });
-    await signupPOST(
-      req({ ...SIGNUP_BODY, termsAccepted: true, planCode: "business", paymentMethodProvided: true })
-    );
-    expect(subRow().last_payment_status).toBe("demo_card_on_file");
-
-    resetState({ plan: { code: "business", name: "Business", trial_days: 7, is_active: true } });
-    await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true, planCode: "business" }));
-    expect(subRow().last_payment_status).toBeNull();
-  });
-
-  it("never reports a trial it failed to create", async () => {
-    // The response used to be built from the row it MEANT to insert, so a
-    // failed insert still told the user "you're on a Business trial until the
-    // 17th" — and then handed them free limits on day one.
-    resetState({
-      plan: { code: "business", name: "Business", trial_days: 7, is_active: true },
-      insertErrors: { organization_subscriptions: { message: "nope" } },
-    });
-    const res = await signupPOST(req({ ...SIGNUP_BODY, termsAccepted: true, planCode: "business" }));
-    const body = await res.json();
-
-    expect(body.success).toBe(true); // the account still exists
-    expect(body.plan).toEqual({ code: "free", status: "active", trialEndsAt: null });
-  });
-
-  it("carries no card data into the subscription row", async () => {
-    resetState({ plan: { code: "business", name: "Business", trial_days: 7, is_active: true } });
-    await signupPOST(
-      req({
-        ...SIGNUP_BODY,
-        termsAccepted: true,
-        planCode: "business",
-        paymentMethodProvided: true,
-        // Even if a caller sends these by hand, nothing may read them.
-        cardNumber: "4242424242424242",
-        cvc: "123",
-      })
-    );
-    const serialized = JSON.stringify(state.inserts);
-    expect(serialized).not.toContain("4242");
-    expect(serialized).not.toContain("123");
-  });
-});
-
+// Signup consent/plan persistence is exercised against PostgreSQL in
+// database/tests/transactional_signup_recovery.sql and the route in signupIdentityLinking.test.js.
 
 describe("invitation write failures", () => {
   it.each(["PLAN_LIMIT_REACHED: employees", "BILLING_LOCKED"])("returns 402 for %s without deleting a reserved Auth account", async message => {

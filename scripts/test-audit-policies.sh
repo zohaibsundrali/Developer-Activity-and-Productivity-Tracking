@@ -244,12 +244,15 @@ done
 python3 scripts/test-proposal-decision-concurrency.py "$audit_container" proposal_decision_transaction_test
 
 # Unattended jobs, destructive lifecycle recovery, and existing leave contract.
-for fixture in unattended_actor_automation tracking_retention_jobs typed_leave_authority organization_deletion_lifecycle leave_day_contract leave_contract_capacity automation_retention_deletion_integration current_profile_authority invitation_cleanup_confirmation; do
+for fixture in unattended_actor_automation tracking_retention_jobs typed_leave_authority organization_deletion_lifecycle leave_day_contract leave_contract_capacity automation_retention_deletion_integration current_profile_authority invitation_cleanup_confirmation profile_provisioning operator_identity_repair transactional_signup_recovery completed_signup_cleanup atomic_recurring_tasks; do
   docker exec "$audit_container" createdb -U postgres "${fixture}_test"
   python3 scripts/expand-sql-fixture.py "database/tests/${fixture}.sql" | \
     docker exec -i "$audit_container" psql -U postgres -d "${fixture}_test" -v ON_ERROR_STOP=1
 done
 python3 scripts/test-leave-overlap-concurrency.py "$audit_container" typed_leave_authority_test
+python3 scripts/test-identity-repair-concurrency.py "$audit_container" operator_identity_repair_test
+python3 scripts/test-signup-recovery-concurrency.py "$audit_container" transactional_signup_recovery_test
+python3 scripts/test-recurring-task-concurrency.py "$audit_container" atomic_recurring_tasks_test
 
 python3 scripts/test-organization-deletion-concurrency.py "$audit_container" organization_deletion_lifecycle_test
 

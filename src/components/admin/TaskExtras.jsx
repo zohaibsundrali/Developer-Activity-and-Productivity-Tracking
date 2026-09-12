@@ -14,6 +14,7 @@ import {
   TASK_TYPES,
 } from "@/utils/pmData";
 import { showError } from "@/utils/alerts";
+import { recurrenceConfiguration } from "@/utils/recurringTasks";
 import { Badge, Button } from "@/components/ui";
 import { Tag, Repeat, SlidersHorizontal, History, Plus } from "lucide-react";
 
@@ -64,7 +65,8 @@ export default function TaskExtras({ task, projectId, members, onChanged }) {
 
   // ---- recurring local state (initialized from task.recurrence) ------
   const [recFreq, setRecFreq] = useState(task?.recurrence?.freq || "weekly");
-  const [recEvery, setRecEvery] = useState(task?.recurrence?.interval || 1);
+  const [recEvery, setRecEvery] = useState(task?.recurrence?.interval ?? 1);
+  const [recError, setRecError] = useState("");
 
   // ---- "new label" / "add field" inputs ------------------------------
   const [newLabelName, setNewLabelName] = useState("");
@@ -86,7 +88,8 @@ export default function TaskExtras({ task, projectId, members, onChanged }) {
   // Keep recurrence inputs in sync when a different task is shown.
   useEffect(() => {
     setRecFreq(task?.recurrence?.freq || "weekly");
-    setRecEvery(task?.recurrence?.interval || 1);
+    setRecEvery(task?.recurrence?.interval ?? 1);
+    setRecError("");
   }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- loaders -------------------------------------------------------
@@ -177,18 +180,29 @@ export default function TaskExtras({ task, projectId, members, onChanged }) {
   };
 
   const commitRecurring = async (checked, freq, every) => {
-    const interval = Number(every) || 1;
-    const recurrence = checked ? { freq, interval } : {};
+    let recurrence = {};
+    if (checked) {
+      try {
+        recurrence = recurrenceConfiguration(freq, every);
+      } catch (error) {
+        setRecError(error.message);
+        return;
+      }
+    }
+    setRecError("");
     try {
       const { error } = await setRecurring(
         taskId,
         { is_recurring: checked, recurrence },
         { projectId, action: "recurring_changed", meta: { is_recurring: checked } }
       );
-      if (error) return showError("Could not update recurrence", error.message || String(error));
+      if (error) {
+        setRecError(error.message || "Could not save recurrence. Please retry.");
+        return;
+      }
       await afterChanged();
     } catch (err) {
-      showError("Could not update recurrence", err?.message || String(err));
+      setRecError(err?.message || "Could not save recurrence. Please retry.");
     }
   };
 
@@ -458,6 +472,11 @@ export default function TaskExtras({ task, projectId, members, onChanged }) {
               <input
                 type="number"
                 min={1}
+                max={3650}
+                step={1}
+                aria-label="Recurrence interval"
+                aria-invalid={Boolean(recError)}
+                aria-describedby={recError ? `recurrence-error-${taskId}` : undefined}
                 className={`${FIELD_CLASS} w-16 tabular-nums`}
                 value={recEvery}
                 onChange={(e) => setRecEvery(e.target.value)}
@@ -467,6 +486,7 @@ export default function TaskExtras({ task, projectId, members, onChanged }) {
           </div>
         ) : null}
 
+        {recError ? <p id={`recurrence-error-${taskId}`} role="alert" className="mt-2 text-xs text-destructive">{recError}</p> : null}
         <p className="mt-2 text-xs text-muted-foreground">
           Recurring tasks are spawned by the automation scheduler.
         </p>

@@ -81,6 +81,8 @@ function fakeClient() {
   return {
     async rpc(name, args) {
       state.rpcCalls.push({ name, args });
+      if (name === "claim_signup") return { data: { id: "signup-1", auth_user_id: "auth-1", profile_id: "admin-1", organization_id: "org-1" } };
+      if (name === "finish_signup") return { data: { success: true } };
       return { data: name === "claim_invitation" ? { auth_user_id: "auth-1", profile_id: "profile-1" } : { success: true }, error: null };
     },
     from(table) {
@@ -101,7 +103,7 @@ function fakeClient() {
           // with .update().eq().is().not().gte().select() as a single write
           // (migration 056). A single-level `{ eq }` throws on the second link.
           const result = {
-            data: table === "email_verifications" ? [{ id: "verification-1" }] : { id: `${table}-1` },
+            data: table === "email_verifications" ? [{ id: "verification-1" }] : { id: table === "admin_users" ? "admin-1" : `${table}-1`, organization_id: "org-1", ...patch },
             error: null,
           };
           const builder = {
@@ -174,14 +176,14 @@ const SIGNUP_BODY = {
   email: "ada@example.com",
   password: PASSWORD,
   timezone: "UTC",
-  termsAccepted: true,
+  termsAccepted: true, verificationGrant: 'a'.repeat(64),
 };
 
 const ACCEPT_BODY = {
   token: "tok-1",
   fullName: "Grace Hopper",
   password: PASSWORD,
-  termsAccepted: true,
+  termsAccepted: true, verificationGrant: 'a'.repeat(64),
 };
 
 /** Every row that reached a profile table on this request. */
@@ -220,12 +222,11 @@ describe("signup creates no plaintext password row", () => {
     const res = await signupPOST(req(SIGNUP_BODY));
     expect(res.status).toBe(200);
 
-    const rows = profileRows();
-    expect(rows).toHaveLength(1);
-    expect(rows[0].table).toBe("admin_users");
-    // `not.toHaveProperty` rather than a null check: an explicit null would
-    // still be a writer to remove later, and the column may yet be dropped.
-    expect(rows[0].row).not.toHaveProperty("password");
+    // Profile writes now occur inside the tested finalization transaction.
+    expect(profileRows()).toEqual([]);
+    const reserve = state.rpcCalls.find(call => call.name === "claim_signup");
+    expect(reserve.args.p_details).not.toHaveProperty("password");
+    expect(state.rpcCalls.some(call => call.name === "finish_signup")).toBe(true);
   });
 
   it("puts the password nowhere in the database, on any table", async () => {
@@ -236,6 +237,7 @@ describe("signup creates no plaintext password row", () => {
     for (const { table, patch } of state.updates) {
       expect(JSON.stringify(patch), `update of ${table}`).not.toContain(PASSWORD);
     }
+    expect(JSON.stringify(state.rpcCalls)).not.toContain(PASSWORD);
   });
 
   it("still provisions the real Supabase Auth credential, so sign-in works", async () => {

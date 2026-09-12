@@ -168,11 +168,14 @@ describe("client accounts can be created and then self-managed", () => {
     expect(insert?.[0]).not.toMatch(/\bpassword\b/);
   });
 
-  it("rolls the profile row back when the login cannot be created", () => {
-    // A client profile that can never sign in is worse than no row: it appears
-    // in every picker, can be linked to a project, and silently receives
-    // nothing.
-    expect(CREATE).toMatch(/\.from\("clients"\)\.delete\(\)\.eq\("id", createdId\)/);
+  it("preserves the profile after uncertain login creation and retries its identity", () => {
+    // Auth may have committed even when the HTTP response was lost. Removing
+    // its profile would detach a working credential and make retries orphan it.
+    expect(CREATE).not.toMatch(/\.from\("clients"\)\.delete\(\)/);
+    expect(CREATE).toContain('let client = found.data?.[0]');
+    expect(CREATE).toContain('appUserId: client.id');
+    expect(CREATE).toContain('The profile is saved');
+    expect(CREATE).toContain('!completed?.success || !completed.userId');
   });
 
   it("provisions with the client role and user type", () => {

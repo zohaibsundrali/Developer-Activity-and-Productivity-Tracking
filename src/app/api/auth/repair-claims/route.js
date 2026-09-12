@@ -2,74 +2,20 @@ import { NextResponse } from "next/server";
 import { getBearerToken, serviceClient } from "@/utils/serverAuth";
 import { wouldEscalateRole } from "@/utils/claimRepair";
 import { recordEvent } from "@/utils/systemEvents";
+import { PROFILE_TABLE } from "@/utils/roles";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET  /api/auth/repair-claims → what is wrong with MY claims (read-only)
- * POST /api/auth/repair-claims → repair MY claims
- *
- * THE CHICKEN-AND-EGG THIS EXISTS TO BREAK
- *  Every admin route — including /api/admin/members/sync-roles, the audit that
- *  repairs claim drift — starts with getAuthedOrg(). getAuthedOrg reads the
- *  organization, identity and role out of the caller's JWT and looks up the
- *  membership they name. When those claims are the thing that has drifted, that
- *  lookup fails and the route answers 401. So the person whose claims are
- *  broken is precisely the person who cannot reach the tool that fixes them:
- *  the only remaining repair is a human running
- *  database/052_repair_auth_claims.sql by hand.
- *
- *  This route is the way out. It repairs ONE user's claims — the caller's own —
- *  and it is the only route in the codebase that does not require the caller's
- *  claims to be correct first.
- *
- * HOW IT AUTHENTICATES WITHOUT TRUSTING THE CLAIMS
- *  Two different things are wrapped up in "the token":
- *    1. the SIGNATURE and the identity it carries (`sub`, `email`) — issued by
- *       Supabase Auth, verified here by auth.getUser(token). Nothing the caller
- *       can edit. This is trustworthy even when everything else is wrong.
- *    2. app_metadata (organization_id, app_user_id, user_type, role) — written
- *       into the auth user by this application, and the thing that goes stale.
- *  So this route authenticates on (1) and deliberately reads NOTHING from (2).
- *  The truth is then re-derived from the database, with the service role,
- *  starting from the verified identity:
- *    - profile rows (admin_users / developers) whose auth_user_id IS this
- *      verified `sub` — a link this application wrote deliberately, and
- *    - membership rows whose email IS this verified, confirmed address —
- *      the same rule 052 repairs on.
- *
- * WHY IT CANNOT BE USED TO MOVE BETWEEN ORGANIZATIONS
- *  - The request body is never read. Not validated and ignored — never parsed.
- *    There is no organizationId, userId, role or email input on this route, so
- *    there is nothing to smuggle a target in through.
- *  - The organization written into the claims is the one on the single matching
- *    membership row, which was written by that organization. The caller cannot
- *    influence which row is found: both lookup keys are fields of the verified
- *    token that only Supabase Auth can set.
- *  - AMBIGUITY IS REFUSED, NEVER GUESSED. Two or more active memberships for
- *    this identity → 409 and no write. A wrong guess would silently move
- *    somebody into a tenant they are not in, which is far worse than leaving
- *    them locked out; 052 makes the same call for the same reason.
- *  - ABSENCE IS REFUSED. No active membership → 404 and no write. There is no
- *    organization to point at, and inventing one is the same failure.
- *  - Only ACTIVE memberships count, so this cannot resurrect the access of a
- *    suspended member.
- *  - It never creates a membership, a profile row or an auth account, and never
- *    changes a role beyond copying the one the organization already recorded.
- *    A member with correct claims gains nothing by calling it.
- *
- * AFTERWARDS
- *  updateUserById changes the STORED claims. The caller's current access token
- *  still carries the old ones until it refreshes, so the response asks them to
- *  sign out and back in — the same instruction 052 ends with.
+ * Explicit self-service metadata repair only. Supabase verifies the caller;
+ * an existing typed profile auth_user_id link and same-organization active
+ * membership establish identity. Confirmed email is used only to detect
+ * ambiguity or explain a missing link, never to authorize a repair. Missing
+ * links require operator reconciliation; this route never writes profiles.
+ * Request body is intentionally ignored. Role escalation remains forbidden.
  */
-
-// Mirrors 052: only `status = 'active'` counts. A null status cannot occur (the
-// column is NOT NULL with a default) but is treated as active so a legacy row
-// is never silently ignored.
 function isActiveMembership(status) {
-  if (!status) return true;
-  return String(status).trim().toLowerCase() === "active";
+  return status === "active";
 }
 
 function normalizeEmail(email) {
@@ -97,50 +43,43 @@ function driftedFields(membership, claims) {
   return Object.keys(want).filter((k) => !same(have[k], want[k]));
 }
 
-/**
- * Every ACTIVE membership that belongs to this verified identity.
- *
- * Two independent routes to the same person, unioned so that a disagreement
- * between them surfaces as ambiguity rather than being resolved by whichever
- * happened to be checked first:
- *
- *  1. the auth_user_id link on the profile row. Strongest evidence — this
- *     application wrote it when the account was provisioned.
- *  2. the address on the membership row. This is what 052 matches on, and it is
- *     the only route left for a user whose profile row was never linked. The
- *     address must be CONFIRMED on the auth account: every account-creation path
- *     in this codebase sets email_confirm, so an unconfirmed address means an
- *     unverified self-signup, and letting one of those claim a membership row
- *     by address would be a way into somebody else's organization.
- */
+function checkedRows(result) {
+  if (result.error) throw Object.assign(new Error("Identity lookup unavailable"), { code: "identity_lookup_unavailable" });
+  return result.data || [];
+}
+
+/** Email candidates cannot authorize repair without an existing profile link. */
 async function findActiveMemberships(svc, authUser) {
   const found = new Map();
 
   // ── 1. via the profile link ──
-  const [{ data: admins }, { data: devs }] = await Promise.all([
-    svc.from("admin_users").select("id").eq("auth_user_id", authUser.id),
-    svc.from("developers").select("id").eq("auth_user_id", authUser.id),
-  ]);
-
-  const profiles = [
-    ...(admins || []).map((a) => ({ id: a.id, type: "admin" })),
-    ...(devs || []).map((d) => ({ id: d.id, type: "developer" })),
-  ];
+  const profileTypes = Object.keys(PROFILE_TABLE);
+  const results = await Promise.all(profileTypes.map(type =>
+    svc.from(PROFILE_TABLE[type]).select("id, organization_id").eq("auth_user_id", authUser.id)
+  ));
+  const profiles = results.flatMap((result, index) => checkedRows(result).map(p => ({
+    ...p, type: profileTypes[index],
+  })));
+  const linkedMemberships = new Set();
 
   for (const p of profiles) {
-    const { data } = await svc
+    const result = await svc
       .from("memberships")
-      .select("id, organization_id, user_id, user_type, email, role, status")
+      .select("id, organization_id, user_id, user_type, email, role, status, deletion_blocked")
       .eq("user_id", p.id)
-      .eq("user_type", p.type);
-    for (const row of data || []) {
-      if (isActiveMembership(row.status)) found.set(row.id, row);
+      .eq("user_type", p.type)
+      .eq("organization_id", p.organization_id);
+    for (const row of checkedRows(result)) {
+      if (isActiveMembership(row.status) && row.deletion_blocked !== true) {
+        found.set(row.id, row);
+        linkedMemberships.add(row.id);
+      }
     }
   }
 
   // ── 2. via the confirmed address ──
   const email = normalizeEmail(authUser.email);
-  const emailConfirmed = Boolean(authUser.email_confirmed_at || authUser.confirmed_at);
+  const emailConfirmed = Boolean(authUser.email_confirmed_at);
   if (email && emailConfirmed) {
     // Matched CASE-INSENSITIVELY and loosely (`%addr%`), then filtered on a
     // normalised comparison in code. 052 matches on lower(btrim(email)) and this
@@ -151,18 +90,18 @@ async function findActiveMemberships(svc, authUser) {
     // inside an address is a wildcard to Postgres, so the pattern can pull in
     // extra rows, and every one of them is dropped by the exact comparison
     // below before it can influence anything.
-    const { data } = await svc
+    const result = await svc
       .from("memberships")
-      .select("id, organization_id, user_id, user_type, email, role, status")
+      .select("id, organization_id, user_id, user_type, email, role, status, deletion_blocked")
       .ilike("email", `%${email}%`);
-    for (const row of data || []) {
-      if (!isActiveMembership(row.status)) continue;
+    for (const row of checkedRows(result)) {
+      if (!isActiveMembership(row.status) || row.deletion_blocked === true) continue;
       if (normalizeEmail(row.email) !== email) continue;
       found.set(row.id, row);
     }
   }
 
-  return [...found.values()];
+  return { memberships: [...found.values()], linkedMemberships };
 }
 
 /**
@@ -184,7 +123,13 @@ async function resolveSelf(request, svc, { route }) {
   }
   const authUser = data.user;
 
-  const memberships = await findActiveMemberships(svc, authUser);
+  let candidates;
+  try {
+    candidates = await findActiveMemberships(svc, authUser);
+  } catch {
+    throw Object.assign(new Error("Identity lookup unavailable"), { code: "identity_lookup_unavailable" });
+  }
+  const { memberships, linkedMemberships } = candidates;
 
   if (memberships.length === 0) {
     // 052's `orphan_no_member`. There is no organization to point the claims
@@ -244,6 +189,12 @@ async function resolveSelf(request, svc, { route }) {
   }
 
   const membership = memberships[0];
+  if (!linkedMemberships.has(membership.id)) {
+    return { response: NextResponse.json({
+      error: "Your sign-in has no matching profile link. An operator must verify and repair the link before you can sign in.",
+      code: "profile_link_requires_operator", repairable: false, activeMemberships: 1,
+    }, { status: 409 }) };
+  }
   const claims = authUser.app_metadata || {};
 
   // REFUSED BEFORE ANYTHING IS WRITTEN, and refused for GET too, so the
@@ -274,7 +225,7 @@ async function resolveSelf(request, svc, { route }) {
       response: NextResponse.json(
         {
           error:
-            "Your membership records a higher role than your sign-in does. This cannot be applied automatically — ask an owner or admin to set your role from the Members screen.",
+            "Your membership role would add permissions to your sign-in. Ask an owner or admin to apply the intended role from the Members screen.",
           code: "role_would_escalate",
           repairable: false,
           activeMemberships: 1,
@@ -315,6 +266,10 @@ export async function GET(request) {
       ...describe(membership, drift),
     });
   } catch (err) {
+    if (err?.code === "identity_lookup_unavailable") return NextResponse.json({
+      error: "Identity verification is temporarily unavailable. Please retry.",
+      code: "identity_lookup_unavailable", repairable: false,
+    }, { status: 503 });
     console.error("[auth/repair-claims] Failed to inspect claims:", err);
     return NextResponse.json({ error: "Could not check your account" }, { status: 500 });
   }
@@ -399,6 +354,10 @@ export async function POST(request) {
       note: "Sign out and back in for the repaired claims to take effect.",
     });
   } catch (err) {
+    if (err?.code === "identity_lookup_unavailable") return NextResponse.json({
+      error: "Identity verification is temporarily unavailable. Please retry.",
+      code: "identity_lookup_unavailable", repairable: false,
+    }, { status: 503 });
     console.error("[auth/repair-claims] Failed to repair claims:", err);
     return NextResponse.json({ error: "Could not repair your account" }, { status: 500 });
   }

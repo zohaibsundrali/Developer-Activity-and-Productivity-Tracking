@@ -1,5 +1,9 @@
 import { stripeClient } from '@/utils/stripeServer';
 
+// Cleanup retries are owned by the durable job ledger. A single SDK request
+// must not spend the default 80 seconds plus automatic retries in this worker.
+const billingRequestOptions = { timeout: 10_000, maxNetworkRetries: 0 };
+
 async function rpc(svc, name, args) {
   const result = await svc.rpc(name, args);
   if (result.error) throw new Error('Organization cleanup operation failed');
@@ -12,17 +16,17 @@ async function cancelBilling(svc, job) {
   if (!stripe) throw new Error('Billing provider unavailable');
   const shared = await svc.from('organization_subscriptions').select('organization_id').eq('stripe_customer_id', job.stripe_customer_id).neq('organization_id', job.organization_id).limit(1);
   if (shared.error || shared.data?.length) throw new Error('Billing customer is shared');
-  const customer = await stripe.customers.retrieve(job.stripe_customer_id);
+  const customer = await stripe.customers.retrieve(job.stripe_customer_id, {}, billingRequestOptions);
   if (customer.deleted || customer.metadata?.organization_id !== job.organization_id) throw new Error('Billing customer identity mismatch');
   // An already-issued hosted session must not create a fresh subscription
   // after workspace access is frozen. Verify tenant identity before expiring.
   let checkoutCursor;
   do {
-    const page = await stripe.checkout.sessions.list({ customer: job.stripe_customer_id, status: 'open', limit: 100, ...(checkoutCursor ? { starting_after: checkoutCursor } : {}) });
+    const page = await stripe.checkout.sessions.list({ customer: job.stripe_customer_id, status: 'open', limit: 100, ...(checkoutCursor ? { starting_after: checkoutCursor } : {}) }, billingRequestOptions);
     for (const session of page.data) {
       if (session.metadata?.organization_id !== job.organization_id || (typeof session.customer === 'string' ? session.customer : session.customer?.id) !== job.stripe_customer_id)
         throw new Error('Checkout identity mismatch');
-      const expired = await stripe.checkout.sessions.expire(session.id);
+      const expired = await stripe.checkout.sessions.expire(session.id, {}, billingRequestOptions);
       if (expired.status !== 'expired') throw new Error('Checkout expiration not confirmed');
     }
     if (page.has_more && !page.data.length) throw new Error('Incomplete checkout listing');
@@ -30,7 +34,7 @@ async function cancelBilling(svc, job) {
   } while (checkoutCursor);
   const subscriptions = []; let cursor;
   do {
-    const page = await stripe.subscriptions.list({ customer: job.stripe_customer_id, status: 'all', limit: 100, ...(cursor ? { starting_after: cursor } : {}) });
+    const page = await stripe.subscriptions.list({ customer: job.stripe_customer_id, status: 'all', limit: 100, ...(cursor ? { starting_after: cursor } : {}) }, billingRequestOptions);
     for (const sub of page.data) {
       if ((typeof sub.customer === 'string' ? sub.customer : sub.customer?.id) !== job.stripe_customer_id || sub.metadata?.organization_id !== job.organization_id)
         throw new Error('Subscription identity mismatch');
@@ -42,7 +46,7 @@ async function cancelBilling(svc, job) {
   if (job.stripe_subscription_id && !subscriptions.some(sub => sub.id === job.stripe_subscription_id)) throw new Error('Stored subscription was not verified');
   for (const sub of subscriptions) {
     if (['canceled', 'incomplete_expired'].includes(sub.status)) continue;
-    const cancelled = await stripe.subscriptions.cancel(sub.id, { invoice_now: false, prorate: false });
+    const cancelled = await stripe.subscriptions.cancel(sub.id, { invoice_now: false, prorate: false }, billingRequestOptions);
     if (cancelled.status !== 'canceled') throw new Error('Subscription cancellation not confirmed');
   }
 }

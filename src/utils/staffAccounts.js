@@ -15,19 +15,10 @@ import { userTypeForRole } from "@/utils/roles";
  * because a second copy of it is how the two would come to disagree about what
  * a failed provision leaves behind.
  *
- * ORDER OF WRITES, AND WHY IT IS THIS ONE
- *
- *   1. `developers`   — the profile row, which the auth account points back at
- *                       via app_metadata.app_user_id, so it must exist first.
- *   2. `memberships`  — the org seat, which is what gives them org context at
- *                       login and what RLS reads.
- *   3. /api/auth/provision — the login.
- *
- * If (3) fails, (1) and (2) are DELETED again. A profile without a login is
- * worse than a plainly failed add: the person appears in every staff list and
- * every assignee picker, holds a seat against the plan limit, and can never
- * sign in to notice. Nobody would connect the empty inbox to the button that
- * was pressed weeks earlier.
+ * The profile is saved first, then /api/auth/provision reserves a stable Auth
+ * identity and finalizes the checked link and active membership together.
+ * Uncertain failures preserve the profile; submitting the same details retries
+ * the reservation instead of deleting rows underneath a pending provider call.
  *
  * WHAT DOES NOT GET WRITTEN: the password. `developers.password` is a legacy
  * plaintext column that RLS exposes to every authenticated member of the
@@ -103,27 +94,17 @@ export async function createStaffMember({ orgId, actor, name, email, password, r
   const cleanName = String(name).trim();
   const cleanEmail = String(email).trim();
 
-  // Checked before writing so a repeat add reads as "already there" rather
-  // than as a constraint violation. Org-scoped: the same person may work for
-  // two organizations on this install, and a global check would refuse the
-  // second one.
+  // Reuse the same saved profile on retry. The server alone decides whether
+  // its reserved Auth identity can be completed; never adopt an account by email.
+  let created = null;
   try {
-    const { data: existing, error: dupErr } = await supabase
-      .from("developers")
-      .select("email")
-      .eq("organization_id", orgId)
-      .ilike("email", cleanEmail);
-    if (!dupErr && existing && existing.length > 0) {
-      return {
-        error: "Somebody with that email address is already in this organization.",
-        code: "duplicate",
-        developer: null,
-      };
-    }
-  } catch {
-    // A failed duplicate check is not a reason to refuse the add — the insert
-    // below still has the database's own constraints behind it.
-  }
+    const { data: existing, error } = await supabase.from("developers")
+      .select("id, name, email, organization_id")
+      .eq("organization_id", orgId).ilike("email", cleanEmail);
+    if (error) return { error: "Could not check saved profiles. Please retry.", code: "failed", developer: null };
+    if ((existing || []).length > 1) return { error: "Multiple profiles use this address. Administrator review is required.", code: "duplicate", developer: null };
+    created = existing?.[0] || null;
+  } catch { return { error: "Could not check saved profiles. Please retry.", code: "failed", developer: null }; }
 
   // No `password` field. See the note at the top of this file.
   const profile = {
@@ -146,8 +127,7 @@ export async function createStaffMember({ orgId, actor, name, email, password, r
     added_by_name: actor?.name || "Admin",
   };
 
-  let created = null;
-  try {
+  if (!created) try {
     const { data, error } = await supabase.from("developers").insert([attributed]).select();
     if (error) {
       if (/added_by|schema cache/i.test(error.message || "")) {
@@ -175,31 +155,8 @@ export async function createStaffMember({ orgId, actor, name, email, password, r
     return { error: "The profile was not saved.", code: "failed", developer: null };
   }
 
-  // Undo everything this call wrote. Ordered membership-then-profile so the
-  // seat stops counting even if the second delete is the one that fails.
-  const rollback = async () => {
-    try {
-      await supabase.from("memberships").delete().eq("user_id", created.id);
-    } catch {
-      /* the profile row below is the one that matters */
-    }
-    try {
-      await supabase.from("developers").delete().eq("id", created.id);
-    } catch {
-      /* nothing further can be done from the browser */
-    }
-  };
-
-  await supabase.from("memberships").insert([
-    {
-      organization_id: orgId,
-      user_id: created.id,
-      user_type: userTypeForRole(role),
-      email: created.email,
-      role,
-      status: "active",
-    },
-  ]);
+  // Membership and the reserved Auth link are finalized atomically by the
+  // server. Preserve this profile across uncertain provider/network outcomes.
 
   // authFetch attaches the caller's Bearer token; the route derives the
   // organization from that token and refuses a role at or above the caller's.
@@ -227,14 +184,14 @@ export async function createStaffMember({ orgId, actor, name, email, password, r
 
   if (thrown || !res?.ok) {
     const payload = res ? await res.json().catch(() => null) : null;
-    await rollback();
+
 
     if (res?.status === 402) {
       return {
         error:
           payload?.detail ||
           payload?.error ||
-          "Your plan has no seat left for another account. Upgrade the plan to add more.",
+          "Your plan has no seat left. The profile is saved; upgrade and retry the same details.",
         code: "plan_limit",
         developer: null,
       };
@@ -243,18 +200,26 @@ export async function createStaffMember({ orgId, actor, name, email, password, r
       error:
         payload?.error ||
         thrown?.message ||
-        "The login could not be created, so nothing was saved.",
+        "Sign-in setup is incomplete. The profile is saved; retry the same email and role.",
       code: "failed",
       developer: null,
     };
   }
+
+  const provisioned = await res.json().catch(() => null);
+  if (!provisioned?.success || !provisioned.userId) return {
+    error: "Sign-in completion could not be verified. The profile is saved; retry the same details.", code: "failed", developer: null,
+  };
+  if (provisioned.alreadyExists) return {
+    error: "This account is already linked. Its password was not changed; use password recovery if needed.", code: "duplicate", developer: created,
+  };
 
   // Best effort from here down: the account works, and failing to announce it
   // must not be reported as the add having failed.
   try {
     const context = getOrgContext();
     if (!context?.userId || context.organizationId !== orgId || !['admin', 'developer'].includes(context.userType)) {
-      return { error: null, code: null, developer: created };
+      return { error: null, code: null, developer: created, passwordUnchanged: provisioned.passwordUnchanged };
     }
     await supabase.from("notifications").insert([
       {
@@ -271,5 +236,5 @@ export async function createStaffMember({ orgId, actor, name, email, password, r
     /* nobody is worse off for a missing notification row */
   }
 
-  return { error: null, code: null, developer: created };
+  return { error: null, code: null, developer: created, passwordUnchanged: provisioned.passwordUnchanged };
 }

@@ -57,12 +57,13 @@ export async function POST(request) {
       );
     }
 
-    const body = await request.json().catch(() => ({}));
+    const body = await request.json().catch(() => null);
+    if (!body || Array.isArray(body) || typeof body !== "object") return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
     const { email, password, role, userType, appUserId } = body;
 
-    if (!email || !password) {
+    if (typeof email !== "string" || typeof password !== "string" || password.length < 6 || typeof appUserId !== "string" || !appUserId) {
       return NextResponse.json(
-        { error: "email and password are required" },
+        { error: "A profile, email and password of at least 6 characters are required" },
         { status: 400 }
       );
     }
@@ -162,10 +163,10 @@ export async function POST(request) {
       const table = PROFILE_TABLE[resolvedUserType];
       const { data: row } = await svc
         .from(table)
-        .select("id, organization_id")
+        .select("id, organization_id, email")
         .eq("id", appUserId)
         .maybeSingle();
-      if (!row || row.organization_id !== auth.orgId) {
+      if (!row || row.organization_id !== auth.orgId || String(row.email || "").trim().toLowerCase() !== normalizedEmail) {
         return NextResponse.json(
           { error: "Target user does not belong to your organization" },
           { status: 403 }
@@ -193,34 +194,66 @@ export async function POST(request) {
       return NextResponse.json(seatLimit, { status: seatLimit.status });
     }
 
-    // ── Organization comes from the verified token, never the body ──
-    const app_metadata = {
-      organization_id: auth.orgId,
-      role: requestedRole,
-      user_type: resolvedUserType,
-      app_user_id: appUserId || null,
-    };
-
-    const { data, error } = await svc.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      app_metadata,
+    const reserved = await svc.rpc("reserve_profile_provision", {
+      p_org: auth.orgId, p_profile: appUserId, p_type: resolvedUserType,
+      p_role: requestedRole, p_email: normalizedEmail,
     });
-
-    if (error) {
-      // Already-registered is not fatal for this flow.
-      if (/already|exists|registered/i.test(error.message || "")) {
-        return NextResponse.json({ success: true, alreadyExists: true });
+    if (reserved.error || !reserved.data?.authUserId) return NextResponse.json({
+      error: reserved.error?.code === "42501" ? "Saved sign-in setup conflicts with the requested role, email or identity. Retry the original details, or ask an administrator to review it." : "The profile could not be reserved for sign-in. Its saved details remain available; please retry.",
+      retryable: true,
+    }, { status: reserved.error?.code === "42501" ? 409 : 503 });
+    const reservation = reserved.data;
+    const app_metadata = {
+      organization_id: auth.orgId, role: requestedRole, user_type: resolvedUserType,
+      app_user_id: appUserId, provisioning_id: reservation.reservationId,
+    };
+    const exactIdentity = user => user?.id === reservation.authUserId && !user.deleted_at
+      && !(user.banned_until && Date.parse(user.banned_until) > Date.now())
+      && String(user.email || "").trim().toLowerCase() === normalizedEmail
+      && ["organization_id", "role", "user_type", "app_user_id"].every(key => user.app_metadata?.[key] === app_metadata[key])
+      && (reservation.alreadyLinked || user.app_metadata?.provisioning_id === reservation.reservationId);
+    let user;
+    let passwordSet = false;
+    const found = await svc.auth.admin.getUserById(reservation.authUserId);
+    if (found.error && found.error.status !== 404 && found.error.code !== "user_not_found") return NextResponse.json({ error: "Sign-in verification is temporarily unavailable. Retry this saved profile.", retryable: true }, { status: 503 });
+    user = found.data?.user;
+    if (!found.error && !user) return NextResponse.json({ error: "Sign-in verification returned no identity. Retry this saved profile.", retryable: true }, { status: 503 });
+    if (!user) {
+      if (reservation.alreadyLinked) return NextResponse.json({ error: "The linked sign-in account needs administrator review.", retryable: true }, { status: 409 });
+      const created = await svc.auth.admin.createUser({ id: reservation.authUserId, email: normalizedEmail, password, email_confirm: true, app_metadata });
+      user = created.data?.user;
+      passwordSet = !created.error && Boolean(user);
+      if (created.error || !user) {
+        // A lost provider response or concurrent retry can leave the reserved
+        // account present. Read only its reserved ID; never adopt by email.
+        const recovered = await svc.auth.admin.getUserById(reservation.authUserId);
+        user = recovered.data?.user;
+        if (recovered.error || !user) return NextResponse.json({
+          error: "Sign-in setup is not complete. The profile is saved; retry with the same details. An email conflict requires administrator review.", retryable: true,
+        }, { status: 503 });
       }
-      return NextResponse.json({ error: error.message }, { status: 400 });
     }
+    if (!exactIdentity(user)) return NextResponse.json({ error: "Reserved sign-in identity does not match this profile. Administrator review is required.", retryable: true }, { status: 409 });
+    const finished = await svc.rpc("finish_profile_provision", { p_org: auth.orgId, p_profile: appUserId, p_type: resolvedUserType, p_role: requestedRole, p_email: normalizedEmail, p_auth: user.id });
+    if (finished.error || finished.data !== true) return NextResponse.json({ error: "Sign-in was created but profile synchronization is pending. Retry this saved profile.", retryable: true }, { status: 503 });
+    return NextResponse.json({ success: true, userId: user.id, alreadyExists: Boolean(reservation.alreadyLinked), passwordUnchanged: !passwordSet });
 
-    return NextResponse.json({ success: true, userId: data?.user?.id || null });
   } catch {
     return NextResponse.json(
       { error: "Failed to provision auth user" },
       { status: 500 }
     );
   }
+}
+
+// Organization-scoped recovery status; never expose reserved Auth IDs or secrets.
+export async function GET(request) {
+  try {
+    const auth = await getAuthedOrg(request);
+    if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (auth.userType === "client" || !authCan(auth, "member.provision")) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const result = await serviceClient().rpc("profile_provision_status", { p_org: auth.orgId });
+    if (result.error || !Array.isArray(result.data)) return NextResponse.json({ error: "Sign-in setup status unavailable." }, { status: 503 });
+    return NextResponse.json({ attempts: result.data });
+  } catch { return NextResponse.json({ error: "Sign-in setup status unavailable." }, { status: 503 }); }
 }

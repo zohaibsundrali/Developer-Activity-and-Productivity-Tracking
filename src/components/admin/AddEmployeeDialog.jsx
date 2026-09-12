@@ -21,7 +21,7 @@ import { showError, showSuccess, showWarning } from "@/utils/alerts";
  * organization has had designers, QA, HR and finance since migration 058.
  *
  * The writes it performs live in src/utils/staffAccounts.js — three of them,
- * with a rollback — and the note at the top of that file explains the order.
+ * with recoverable provisioning — and the note at the top of that file explains the order.
  */
 
 // snake_case → "Team Lead"
@@ -69,7 +69,7 @@ export default function AddEmployeeDialog({ open, onClose, onCreated }) {
     const orgId = getOrgId();
     setSaving(true);
     try {
-      const { error, code, developer } = await createStaffMember({
+      const { error, code, developer, passwordUnchanged } = await createStaffMember({
         orgId,
         actor: JSON.parse(sessionStorage.getItem("adminUser") || "null"),
         name: form.name,
@@ -84,13 +84,13 @@ export default function AddEmployeeDialog({ open, onClose, onCreated }) {
         if (code === "plan_limit") showWarning("Plan limit reached", error);
         else if (code === "duplicate") showWarning("Already here", error);
         else if (code === "validation") showWarning("Almost there", error);
-        else showError("Not created", error);
+        else showError("Sign-in setup incomplete", error);
         return;
       }
 
       showSuccess(
         "Added",
-        `${developer?.name || "They"} can sign in with that email and password.`
+        passwordUnchanged ? "Sign-in setup is complete. Use the original password or password recovery; the retry did not change it." : `${developer?.name || "They"} can sign in with that email and password.`
       );
       setForm(EMPTY);
       onClose?.();

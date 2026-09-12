@@ -1,3 +1,4 @@
+import { spawnRecurringTasks } from "@/utils/recurringTasks";
 import { runBackgroundMaintenance } from '@/utils/backgroundMaintenance';
 import { flushProposalDecisionEmails } from '@/utils/proposalDecisionEmails';
 import { sensitiveNotificationAudience, canReceiveBillingNotice, canReceiveSignalNotice } from "@/utils/sensitiveNotificationAudience";
@@ -60,16 +61,6 @@ function ymd(d) {
   return Number.isNaN(dt.getTime()) ? null : dt.toISOString().slice(0, 10);
 }
 
-function addInterval(dateStr, freq, interval) {
-  const d = new Date(`${dateStr}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return null;
-  const n = Math.max(1, Number(interval) || 1);
-  if (freq === "daily") d.setDate(d.getDate() + n);
-  else if (freq === "weekly") d.setDate(d.getDate() + 7 * n);
-  else if (freq === "monthly") d.setMonth(d.getMonth() + n);
-  else return null;
-  return ymd(d);
-}
 
 function authorized(request) {
   const secret = process.env.CRON_SECRET;
@@ -79,7 +70,7 @@ function authorized(request) {
 }
 
 async function runJobs() {
-  const svc = serviceClient();
+  const svc = serviceClient({ requestTimeoutMs: 10000 });
   const today = ymd(new Date());
   const tomorrow = ymd(new Date(Date.now() + 86400000));
   const summary = { remindersSent: 0, recurringSpawned: 0, trialReminders: 0, signalsRaised: 0, errors: [] };
@@ -172,88 +163,13 @@ async function runJobs() {
   try {
     const { data: recurring, error } = await svc
       .from("developer_tasks")
-      .select("*")
+      .select("id, organization_id, recurrence, due_date, end_date")
       .eq("is_recurring", true);
     if (error) throw error;
 
-    // Work out every occurrence first, so the inserts and the activity feed
-    // rows can go out as batches rather than three round trips per template.
-    const spawns = [];
-    for (const task of recurring || []) {
-      if (!(await automationAllowed(task.organization_id))) continue;
-      const rec = task.recurrence || {};
-      const freq = rec.freq;
-      if (!freq) continue;
-
-      // Anchor on the last spawn, else the task's own due/end date.
-      const anchor = rec.last_spawned || ymd(task.due_date || task.end_date);
-      if (!anchor) continue;
-
-      const next = addInterval(anchor, freq, rec.interval);
-      if (!next || next > today) continue; // not time yet
-
-      const {
-        id, created_at, updated_at, submitted_at, reviewed_at, reviewed_by,
-        actual_completion_date, admin_comments, rejection_reason, is_on_time,
-        productivity_points, ...keep
-      } = task;
-
-      spawns.push({
-        task,
-        rec,
-        next,
-        row: {
-          ...keep,
-          status: "pending",
-          start_date: next,
-          end_date: next,
-          due_date: next,
-          is_recurring: false, // the spawned occurrence is a one-off
-          recurrence: {},
-          created_at: new Date().toISOString(),
-        },
-      });
-    }
-
-    // A batched insert is atomic, so on failure nothing was spawned and we can
-    // safely retry one-by-one to keep a single bad template from blocking the
-    // rest — the old per-task behaviour.
-    const spawned = [];
-    for (const batch of chunk(spawns, INSERT_CHUNK)) {
-      const { error: insErr } = await svc.from("developer_tasks").insert(batch.map((s) => s.row));
-      if (!insErr) {
-        spawned.push(...batch);
-        continue;
-      }
-      for (const s of batch) {
-        const { error: oneErr } = await svc.from("developer_tasks").insert(s.row);
-        if (oneErr) summary.errors.push({ job: "recurring", taskId: s.task.id, message: oneErr.message });
-        else spawned.push(s);
-      }
-    }
-
-    // Advance each template's cursor so it can't double-spawn. The new value
-    // differs per template, so this one stays a per-task update.
-    for (const s of spawned) {
-      await svc
-        .from("developer_tasks")
-        .update({ recurrence: { ...s.rec, last_spawned: s.next } })
-        .eq("id", s.task.id);
-    }
-
-    const activity = spawned.map((s) => ({
-      organization_id: s.task.organization_id,
-      project_id: s.task.project_id,
-      entity_type: "task",
-      entity_id: s.task.id,
-      action: "recurring_spawned",
-      meta: { next: s.next },
-    }));
-    for (const batch of chunk(activity, INSERT_CHUNK)) {
-      await svc.from("pm_activity").insert(batch);
-    }
-
-    summary.recurringSpawned += spawned.length;
+    const spawned = await spawnRecurringTasks(svc, recurring, today, automationAllowed);
+    summary.recurringSpawned += spawned.spawned;
+    summary.errors.push(...spawned.errors);
   } catch (err) {
     summary.errors.push({ job: "recurring", message: err?.message || String(err) });
   }
@@ -535,8 +451,13 @@ export async function GET(request) {
   if (!authorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const summary = await runJobs();
-  return NextResponse.json({ ok: true, ranAt: new Date().toISOString(), ...summary });
+  try {
+    const summary = await runJobs();
+    const ok = summary.errors.length === 0;
+    return NextResponse.json({ ok, ranAt: new Date().toISOString(), ...summary }, { status: ok ? 200 : 503 });
+  } catch {
+    return NextResponse.json({ ok: false, error: 'Scheduled maintenance could not complete. Recorded work remains available for retry.' }, { status: 503 });
+  }
 }
 
 // Same work, for manual triggering from a terminal.

@@ -27,19 +27,9 @@ import {
  * able to sign in this minute. The client can change the password and their
  * name from the portal afterwards.
  *
- * ORDER OF WRITES, AND WHY IT IS THIS ONE
- *
- * The `clients` row first, then the auth account, then the membership. If the
- * auth account cannot be created — a duplicate address, a plan limit — the
- * clients row is deleted again, because a client profile that can never sign in
- * is worse than no row: it shows up in every picker, can be linked to a
- * project, and silently receives nothing. That is the same rollback
- * createStaffMember (src/utils/staffAccounts.js) does, for the same reason.
- *
- * The membership is last and is NOT rolled back on failure: by then the account
- * works and the person can sign in. A missing membership row costs them a line
- * in Organization → Members, which is a cosmetic problem somebody can fix,
- * whereas undoing a working login is not.
+ * Save the profile first. The server then reserves a stable Auth identity and
+ * atomically finalizes its link and active membership. Failed attempts preserve
+ * the profile; resubmitting the same details resumes its sign-in setup.
  */
 
 const MIN_PASSWORD = 8;
@@ -83,27 +73,18 @@ export default function CreateClientAccount({ reload }) {
     let createdId = null;
 
     try {
-      // 1) The profile row. `password` is deliberately NOT written: the column
-      //    is a legacy plaintext field and the credential belongs to Supabase
-      //    Auth, which stores it hashed.
-      const { data: client, error: insertErr } = await supabase
-        .from("clients")
-        .insert({
-          organization_id: orgId,
-          name,
-          email,
-          company: form.company.trim() || null,
-          phone: form.phone.trim() || null,
-          status: "active",
-        })
-        .select("id, name, email")
-        .single();
-
-      if (insertErr) {
-        if (insertErr.code === "23505") {
-          throw new Error("A client with that email already exists.");
-        }
-        throw insertErr;
+      const found = await supabase.from("clients").select("id, name, email")
+        .eq("organization_id", orgId).ilike("email", email);
+      if (found.error) throw new Error("Could not check saved profiles. Please retry.");
+      if ((found.data || []).length > 1) throw new Error("Multiple profiles use this address. Administrator review is required.");
+      let client = found.data?.[0];
+      if (!client) {
+        const inserted = await supabase.from("clients").insert({
+          organization_id: orgId, name, email, company: form.company.trim() || null,
+          phone: form.phone.trim() || null, status: "active",
+        }).select("id, name, email").single();
+        if (inserted.error || !inserted.data?.id) throw inserted.error || new Error("Profile could not be saved.");
+        client = inserted.data;
       }
       createdId = client.id;
 
@@ -122,10 +103,7 @@ export default function CreateClientAccount({ reload }) {
 
       if (!res.ok) {
         const payload = await res.json().catch(() => null);
-        // Roll the profile back before reporting, so a retry is not blocked by
-        // the half-made row this attempt left behind.
-        await supabase.from("clients").delete().eq("id", createdId);
-        createdId = null;
+        // Keep the saved profile: a timed-out provider request may still finish.
 
         if (res.status === 402) {
           showWarning(
@@ -135,37 +113,27 @@ export default function CreateClientAccount({ reload }) {
         } else {
           showError(
             "Account not created",
-            payload?.error || "The login could not be created. Nothing was saved."
+            payload?.error || "The profile is saved. Retry the same details to finish sign-in setup."
           );
         }
         return;
       }
 
-      // 3) The membership, so they appear in Organization → Members like
-      //    everyone else. Best-effort — see the note at the top of this file.
-      const { error: memberErr } = await supabase.from("memberships").insert({
-        organization_id: orgId,
-        user_id: client.id,
-        user_type: "client",
-        role: "client",
-        email,
-        status: "active",
-      });
-      if (memberErr) {
-        console.error("[CreateClientAccount] membership insert failed:", memberErr.message);
+      const completed = await res.json().catch(() => null);
+      if (!completed?.success || !completed.userId) throw new Error("Completion could not be verified. Retry the same details.");
+      if (completed.alreadyExists) {
+        showWarning("Already linked", "This account already has sign-in. Its password was not changed; use password recovery if needed.");
+        return;
       }
 
       setForm({ name: "", email: "", company: "", phone: "", password: "" });
       showSuccess(
         "Client account created",
-        `${name} can sign in now. Ask them to change the password from Account in their portal.`
+        completed.passwordUnchanged ? "Sign-in setup is complete. Use the original password or password recovery; the retry did not change it." : `${name} can sign in now. Ask them to change the password from Account in their portal.`
       );
       reload?.();
     } catch (err) {
-      if (createdId) {
-        await supabase.from("clients").delete().eq("id", createdId);
-      }
-      showError("Account not created", err?.message || "Please try again.");
+      showError("Sign-in setup incomplete", `${err?.message || "Please try again."}${createdId ? " The profile is saved; retry the same email." : ""}`);
     } finally {
       setSaving(false);
     }
