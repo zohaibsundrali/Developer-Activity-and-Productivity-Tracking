@@ -43,12 +43,16 @@ function getOrigin(request) {
   } catch { return null; }
 }
 
+const reply = (body, options = {}) => NextResponse.json(body, {
+  ...options, headers: { 'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer' },
+});
+
 export async function POST(request) {
   try {
     // ── Authenticate the caller and derive their org from the JWT ──
     const auth = await getAuthedOrg(request);
     if (!auth) {
-      return NextResponse.json(
+      return reply(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
       );
@@ -57,19 +61,20 @@ export async function POST(request) {
     // inviter granting a role at or above their own, which is a comparison
     // between two roles and not a capability the catalogue can express.
     if (!authCan(auth, 'member.invite')) {
-      return NextResponse.json(
+      return reply(
         { success: false, error: 'Forbidden: you cannot send invitations.' },
         { status: 403 }
       );
     }
 
-    const body = await request.json();
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) return reply({ success: false, error: "Invalid JSON request" }, { status: 400 });
     const { role, teamId, departmentId, projectId } = body || {};
     const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
 
     // ── Validate required fields ─────────────────────────
     if (!isValidEmail(email) || !role) {
-      return NextResponse.json(
+      return reply(
         { success: false, error: 'A valid email and role are required' },
         { status: 400 }
       );
@@ -78,13 +83,13 @@ export async function POST(request) {
     // ── Validate the requested role (prevents privilege escalation) ──
     const isOwnerGrant = role === 'owner';
     if (isOwnerGrant && auth.role !== 'owner') {
-      return NextResponse.json(
+      return reply(
         { success: false, error: 'Only an owner can invite another owner.' },
         { status: 403 }
       );
     }
     if (!isOwnerGrant && !ASSIGNABLE_ROLES.includes(role)) {
-      return NextResponse.json(
+      return reply(
         { success: false, error: 'Invalid role.' },
         { status: 400 }
       );
@@ -98,7 +103,7 @@ export async function POST(request) {
     const wantedRank = rankOf(role);
     const callerRank = rankOf(auth.role);
     if (wantedRank === null || callerRank === null || wantedRank >= callerRank) {
-      return NextResponse.json(
+      return reply(
         { success: false, error: `You cannot invite someone as "${role}".` },
         { status: 403 }
       );
@@ -109,7 +114,7 @@ export async function POST(request) {
     const supabase = serviceClient();
 
     const scopeError = await validateInvitationScope(supabase, organizationId, { teamId, departmentId, projectId });
-    if (scopeError) return NextResponse.json({ success: false, ...scopeError }, { status: scopeError.status });
+    if (scopeError) return reply({ success: false, ...scopeError }, { status: scopeError.status });
 
     // A client invitation hands out a client-portal login, so it is gated by
     // the plan feature rather than by a seat meter — no seat count counts a
@@ -122,7 +127,7 @@ export async function POST(request) {
         'The client portal'
       );
       if (featureBlock) {
-        return NextResponse.json(
+        return reply(
           { success: false, ...featureBlock },
           { status: featureBlock.status }
         );
@@ -137,11 +142,11 @@ export async function POST(request) {
     // never counts it leaves that meter unenforced.
     const seatLimit = await checkSeatLimitForRole(supabase, organizationId, role);
     if (seatLimit) {
-      return NextResponse.json({ success: false, ...seatLimit }, { status: seatLimit.status });
+      return reply({ success: false, ...seatLimit }, { status: seatLimit.status });
     }
 
     const origin = getOrigin(request);
-    if (!origin) return NextResponse.json({ success: false, error: 'Invitation links are not configured. Contact the administrator.' }, { status: 503 });
+    if (!origin) return reply({ success: false, error: 'Invitation links are not configured. Contact the administrator.' }, { status: 503 });
 
     const token = crypto.randomUUID();
     const invitedBy = auth.appUserId || null;
@@ -166,10 +171,10 @@ export async function POST(request) {
       .single();
 
     if (insertError) {
-      if (insertError.message?.startsWith('INVITATION_EXISTS')) return NextResponse.json({ success: false, error: 'An unexpired invitation already exists for this email. Share its link or revoke it before creating another.' }, { status: 409 });
-      if (/^(BILLING_LOCKED|PLAN_FEATURE_REQUIRED)/.test(insertError.message || '')) return NextResponse.json({ success: false, error: 'The organization subscription cannot issue this invitation.' }, { status: 402 });
-      return NextResponse.json(
-        { success: false, error: 'Failed to create invitation', details: insertError.message },
+      if (insertError.message?.startsWith('INVITATION_EXISTS')) return reply({ success: false, error: 'An unexpired invitation already exists for this email. Share its link or revoke it before creating another.' }, { status: 409 });
+      if (/^(BILLING_LOCKED|PLAN_FEATURE_REQUIRED)/.test(insertError.message || '')) return reply({ success: false, error: 'The organization subscription cannot issue this invitation.' }, { status: 402 });
+      return reply(
+        { success: false, error: 'Failed to create invitation' },
         { status: 500 }
       );
     }
@@ -208,10 +213,10 @@ export async function POST(request) {
       emailed = false;
     }
 
-    return NextResponse.json({ success: true, invitation, emailed, emailMode });
+    return reply({ success: true, invitation, emailed, emailMode });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: 'Failed to process invitation', details: error.message },
+    return reply(
+      { success: false, error: 'Failed to process invitation' },
       { status: 500 }
     );
   }
@@ -222,7 +227,7 @@ export async function GET(request) {
     // ── Authenticate the caller and scope to their own org ──
     const auth = await getAuthedOrg(request);
     if (!auth) {
-      return NextResponse.json(
+      return reply(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
       );
@@ -231,7 +236,7 @@ export async function GET(request) {
     // inviter granting a role at or above their own, which is a comparison
     // between two roles and not a capability the catalogue can express.
     if (!authCan(auth, 'member.invite')) {
-      return NextResponse.json(
+      return reply(
         { success: false, error: 'Forbidden' },
         { status: 403 }
       );
@@ -250,16 +255,16 @@ export async function GET(request) {
       .order('created_at', { ascending: false });
 
     if (error) {
-      return NextResponse.json(
-        { success: false, error: 'Failed to fetch invitations', details: error.message },
+      return reply(
+        { success: false, error: 'Failed to fetch invitations' },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ success: true, invitations: data || [] });
+    return reply({ success: true, invitations: data || [] });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: 'Failed to fetch invitations', details: error.message },
+    return reply(
+      { success: false, error: 'Failed to fetch invitations' },
       { status: 500 }
     );
   }

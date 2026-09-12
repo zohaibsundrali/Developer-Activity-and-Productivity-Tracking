@@ -18,8 +18,8 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const token = searchParams.get("token");
-    if (!token) {
-      return reply({ error: "token required" }, 400);
+    if (!token || token.length > 512) {
+      return reply({ error: "valid token required" }, 400);
     }
 
     const svc = serviceClient();

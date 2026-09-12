@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { ROLES, rankOf } from "@/utils/roles";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
@@ -17,6 +17,7 @@ import { sectionTitle } from "@/components/shell/navConfig";
 import {
   Building2, Users, UserCog, Mail, Plus, Trash2, Copy, RefreshCw, Shield,
 } from "lucide-react";
+import { createInvitationRevoker, revokePendingInvitation } from "@/utils/invitationRevocation";
 import OrganizationSettings from "@/components/admin/OrganizationSettings";
 
 // The role list is IMPORTED, not retyped. This file held its own copy, ordered
@@ -644,6 +645,28 @@ function MembersTab({ teams, departments, members, reload, loading, loadError })
 
 /* ---------------- Invitations ---------------- */
 function InvitationsTab({ orgId, invitations, teams, departments, reload, loading, loadError }) {
+  const [revoking, setRevoking] = useState(null);
+  const revoker = useRef(null);
+  const latest = useRef({ reload, orgId });
+  latest.current = { reload, orgId };
+  useEffect(() => {
+    const controller = createInvitationRevoker({
+      confirm: inv => showConfirm("Revoke invitation?", `Revoke invite for ${inv.email}?`),
+      mutate: (organizationId, invitationId) => revokePendingInvitation(supabase, organizationId, invitationId),
+      identity: () => {
+        const ctx = getOrgContext();
+        return JSON.stringify([latest.current.orgId, ctx?.organizationId, ctx?.userId, ctx?.userType, ctx?.role]);
+      },
+      busy: setRevoking,
+      success: inv => showSuccess("Invitation revoked", `The invite for ${inv.email} can no longer be used.`),
+      error: message => showError("Revoke failed", message),
+      refreshError: message => showError("Refresh failed", message),
+      reload: () => latest.current.reload(),
+    });
+    revoker.current = controller;
+    return () => controller.dispose();
+  }, []);
+
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("developer");
   // Only offer roles the caller may actually grant — strictly below their own
@@ -699,17 +722,7 @@ function InvitationsTab({ orgId, invitations, teams, departments, reload, loadin
     await copyToClipboard(link);
   };
 
-  const revoke = async (inv) => {
-    const ok = await showConfirm("Revoke invitation?", `Revoke invite for ${inv.email}?`);
-    if (!ok) return;
-    const { error } = await supabase.from("invitations").update({ status: "revoked" }).eq("id", inv.id);
-    if (error) {
-      showError("Revoke failed", error.message || `Could not revoke the invitation for ${inv.email}.`);
-      return;
-    }
-    showSuccess("Invitation revoked", `The invite for ${inv.email} can no longer be used.`);
-    reload();
-  };
+  const revoke = inv => revoker.current?.run(orgId, inv);
 
   return (
     <div className="grid gap-5 lg:grid-cols-3">
@@ -789,7 +802,8 @@ function InvitationsTab({ orgId, invitations, teams, departments, reload, loadin
                           </Button>
                           {inv.status === "pending" && (
                             <Button type="button" variant="ghost" size="icon-sm" onClick={() => revoke(inv)}
-                              title="Revoke" aria-label={`Revoke invitation for ${inv.email}`}
+                              disabled={revoking !== null} aria-busy={revoking === inv.id}
+                              title={revoking === inv.id ? "Revoking…" : "Revoke"} aria-label={`${revoking === inv.id ? "Revoking" : "Revoke"} invitation for ${inv.email}`}
                               className={DANGER_ICON_BTN}>
                               <Trash2 aria-hidden="true" className="h-4 w-4" />
                             </Button>

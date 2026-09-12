@@ -42,8 +42,10 @@ function acceptanceIp(request) {
 export async function POST(request) {
   let claim = null;
   try {
-    const { token, fullName, password, termsAccepted } = await request.json();
-    if (typeof token !== "string" || !token || typeof password !== "string" || password.length < 6 ||
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "Invalid JSON request" }, { status: 400 });
+    const { token, fullName, password, termsAccepted } = body;
+    if (typeof token !== "string" || !token || token.length > 512 || typeof password !== "string" || password.length < 6 ||
         (fullName != null && (typeof fullName !== "string" || fullName.length > 120))) {
       return NextResponse.json({ error: "Invitation token and a password of at least 6 characters are required." }, { status: 400 });
     }
