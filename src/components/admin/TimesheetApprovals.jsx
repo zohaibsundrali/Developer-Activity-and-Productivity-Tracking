@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, Clock, RotateCcw, XCircle } from "lucide-react";
 
 import {
@@ -13,6 +13,9 @@ import {
   StatusPill,
   Tabs,
 } from "@/components/ui";
+import { createTimesheetPager } from "@/utils/timesheetPagination";
+import { supabase } from "@/utils/supabaseClient";
+import { deviceSessionFingerprint, deviceIdentityChanged } from "@/utils/devicePagination";
 import { authFetch } from "@/utils/authFetch";
 import { getOrgContext } from "@/utils/orgContext";
 import { formatDuration } from "@/utils/pmData";
@@ -53,57 +56,72 @@ const pct = (part, whole) => (whole > 0 ? Math.round((part / whole) * 100) : 0);
 
 export default function TimesheetApprovals() {
   const [tab, setTab] = useState("submitted");
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [page, setPage] = useState({ timesheets: [], loading: true, error: "", nextCursor: null });
+  const { timesheets: rows, loading, error, nextCursor } = page;
+  const pager = useRef(null);
+  const actionGeneration = useRef(0);
+  const actionPending = useRef(false);
   const [busyId, setBusyId] = useState(null);
 
   const identity = getOrgContext();
   const me = identity?.userId || null;
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const res = await authFetch(`/api/timesheets?status=${encodeURIComponent(tab)}`);
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json?.success) {
-        throw new Error(json?.error || "Could not load timesheets.");
-      }
-      setRows(json.timesheets || []);
-    } catch (e) {
-      setError(e?.message || "Could not load timesheets.");
-    } finally {
-      setLoading(false);
-    }
-  }, [tab]);
+  const load = useCallback(() => pager.current?.load(), []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    const controller = createTimesheetPager(async (cursor, signal) => {
+      const params = new URLSearchParams({ status: tab, limit: "50" });
+      if (cursor) params.set("cursor", cursor);
+      const res = await authFetch(`/api/timesheets?${params}`, { signal });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.success) throw new Error(json?.error || "Could not load timesheets.");
+      return json;
+    }, setPage);
+    pager.current = controller;
+    controller.clear();
+    let previousIdentity;
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (deviceIdentityChanged(event, previousIdentity, session)) {
+        previousIdentity = deviceSessionFingerprint(session);
+        ++actionGeneration.current;
+        actionPending.current = false;
+        setBusyId(null);
+        controller.clear();
+        // Broadcast payloads may come from another tab; authFetch resolves
+        // this tab's current session and the server rechecks its authority.
+        void controller.load();
+      }
+    });
+    void controller.load();
+    return () => { ++actionGeneration.current; actionPending.current = false; controller.dispose(); data?.subscription?.unsubscribe(); };
+  }, [tab]);
 
   const decide = async (row, decision) => {
-    const label =
-      decision === "approved" ? "Approve" : decision === "rejected" ? "Reject" : "Reopen";
-    const ok = await showConfirm(
-      `${label} the week of ${row.week_start}?`,
-      decision === "approved"
-        ? `${formatDuration(row.total_seconds)} logged, ${formatDuration(row.billable_seconds)} billable. Approving locks the hours — reopening is the only way to change them afterwards.`
-        : decision === "rejected"
-          ? "The week goes back to its author, who can correct it and submit again."
-          : "The hours become editable again and the week returns to draft.",
-      { confirmButtonText: label }
-    );
-    if (!ok) return;
-
-    setBusyId(row.id);
+    if (actionPending.current || loading) return;
+    actionPending.current = true;
+    const own = actionGeneration.current;
     try {
+      const label =
+        decision === "approved" ? "Approve" : decision === "rejected" ? "Reject" : "Reopen";
+      const ok = await showConfirm(
+        `${label} the week of ${row.week_start}?`,
+        decision === "approved"
+          ? `${formatDuration(row.total_seconds)} logged, ${formatDuration(row.billable_seconds)} billable. Approving locks the hours — reopening is the only way to change them afterwards.`
+          : decision === "rejected"
+            ? "The week goes back to its author, who can correct it and submit again."
+            : "The hours become editable again and the week returns to draft.",
+        { confirmButtonText: label }
+      );
+      if (!ok || own !== actionGeneration.current) return;
+
+      setBusyId(row.id);
       const res = await authFetch("/api/timesheets", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ timesheetId: row.id, decision }),
       });
       const json = await res.json().catch(() => ({}));
+      if (own !== actionGeneration.current) return;
       if (!res.ok || !json?.success) throw new Error(json?.error || "That did not go through.");
       showSuccess(
         decision === "approved"
@@ -114,9 +132,9 @@ export default function TimesheetApprovals() {
       );
       await load();
     } catch (e) {
-      showError(e?.message || "That did not go through.");
+      if (own === actionGeneration.current) showError(e?.message || "Could not confirm the action.");
     } finally {
-      setBusyId(null);
+      if (own === actionGeneration.current) { actionPending.current = false; setBusyId(null); }
     }
   };
 
@@ -126,7 +144,7 @@ export default function TimesheetApprovals() {
         title="Timesheet Approvals"
         description={
           tab === "submitted" && rows.length
-            ? `${rows.length} week${rows.length === 1 ? "" : "s"} waiting on you.`
+            ? `${rows.length}${nextCursor ? "+" : ""} week${rows.length === 1 && !nextCursor ? "" : "s"} waiting on you.`
             : "Weeks submitted across the organization."
         }
       />
@@ -134,13 +152,13 @@ export default function TimesheetApprovals() {
       <Tabs tabs={TABS} active={tab} onChange={setTab} aria-label="Timesheet status" />
 
       <Section>
-        {loading ? (
+        {loading && !rows.length ? (
           <div className="space-y-3">
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
           </div>
-        ) : error ? (
+        ) : error && !rows.length ? (
           <ErrorState title="Could not load" description={error} onRetry={load} />
         ) : rows.length === 0 ? (
           <EmptyState
@@ -191,7 +209,7 @@ export default function TimesheetApprovals() {
                           <div className="flex justify-end gap-2">
                             <Button
                               size="sm"
-                              disabled={busyId === r.id}
+                              disabled={busyId !== null || loading}
                               onClick={() => decide(r, "approved")}
                             >
                               <CheckCircle2 className="mr-1 h-4 w-4" aria-hidden="true" />
@@ -200,7 +218,7 @@ export default function TimesheetApprovals() {
                             <Button
                               size="sm"
                               variant="outline"
-                              disabled={busyId === r.id}
+                              disabled={busyId !== null || loading}
                               onClick={() => decide(r, "rejected")}
                             >
                               <XCircle className="mr-1 h-4 w-4" aria-hidden="true" />
@@ -211,7 +229,7 @@ export default function TimesheetApprovals() {
                           <Button
                             size="sm"
                             variant="ghost"
-                            disabled={busyId === r.id}
+                            disabled={busyId !== null || loading}
                             onClick={() => decide(r, "reopen")}
                           >
                             <RotateCcw className="mr-1 h-4 w-4" aria-hidden="true" />
@@ -226,6 +244,9 @@ export default function TimesheetApprovals() {
             </table>
           </div>
         )}
+        {rows.length > 0 && error && <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>}
+        {nextCursor && <Button className="mt-4" variant="outline" disabled={loading || busyId !== null} onClick={() => pager.current?.load(error ? page.retryMore : true)}>{loading ? "Loading…" : error ? "Retry loading weeks" : "Load more weeks"}</Button>}
+        {rows.length > 0 && error && !nextCursor && <Button variant="outline" onClick={load}>Refresh weeks</Button>}
       </Section>
     </div>
   );

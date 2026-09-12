@@ -7,6 +7,7 @@ import { notificationRecipientKey } from "@/utils/notificationIdentity";
 import { createNotificationRequestGuard } from "@/utils/notificationRequestGuard";
 import { fetchNotificationRecovery, rollbackNotificationRead, notificationReconnect } from "@/utils/notificationRecovery";
 import { getOrgContext } from "@/utils/orgContext";
+import { beginUnreadChange, rollbackUnreadChange, settleNotificationAction, claimNotificationAction, createNotificationActionScheduler } from "@/utils/notificationSingleAction";
 import { setVisibleInterval } from "@/hooks/useVisibleInterval";
 import {
   fetchNotifications,
@@ -169,6 +170,10 @@ export default function useNotifications({
   pageRef.current = page;
   const countRequestRef = useRef(0);
   const countRevisionRef = useRef(0);
+  const countEpochRef = useRef(0);
+  const pendingSingleActionsRef = useRef(new Set());
+  const actionSchedulerRef = useRef(null);
+  if (!actionSchedulerRef.current) actionSchedulerRef.current = createNotificationActionScheduler();
 
   // A dismissal has to put the row back where it was if the write fails, so it
   // needs the row and its position BEFORE removing it. Reading them out of a
@@ -179,17 +184,23 @@ export default function useNotifications({
     rowsRef.current = rows;
   }, [rows]);
 
+  const writeMutationRows = useCallback((update) => {
+    const next = update(rowsRef.current);
+    rowsRef.current = next;
+    setRows(next);
+  }, []);
+
   const refreshCount = useCallback(async () => {
     if (!hasIdentity || !isCurrentIdentity()) return;
     const ticket = ++countRequestRef.current;
     // Deliberately unscoped by category: this is the bell's badge, the count of
     // everything waiting. Narrowing it to the open chip would make picking a
     // filter appear to clear notifications that are still there.
-    const { count, error: countError } = await getUnreadCount({ userId, email, audience });
+    const { count, error: countError } = await settleNotificationAction(() => getUnreadCount({ userId, email, audience }));
     if (!isCurrentIdentity() || ticket !== countRequestRef.current) return;
     // A failed count keeps the last known number rather than flashing zero,
     // which reads as "all caught up" and is the one lie a badge must not tell.
-    if (!countError) { countRevisionRef.current += 1; setUnreadCount(count); }
+    if (!countError) { countRevisionRef.current += 1; countEpochRef.current += 1; unreadCountRef.current = count; setUnreadCount(count); }
   }, [hasIdentity, userId, isCurrentIdentity, email, audience]);
 
   // Fires once immediately, then at most once per window for as long as events
@@ -306,6 +317,9 @@ export default function useNotifications({
     requestRef.current += 1;
     pendingRequestRef.current = null;
     countRequestRef.current += 1;
+    countEpochRef.current += 1;
+    actionSchedulerRef.current = createNotificationActionScheduler();
+    unreadCountRef.current = 0;
     if (countTimerRef.current) clearTimeout(countTimerRef.current);
     countTimerRef.current = null;
     countAgainRef.current = false;
@@ -382,25 +396,41 @@ export default function useNotifications({
   const markOneRead = useCallback(
     async (id) => {
       if (!id || !isCurrentIdentity()) return;
+      const release = claimNotificationAction(pendingSingleActionsRef.current, `${identityVersion}:${id}`);
+      if (!release) return;
+      try {
+        await actionSchedulerRef.current.single(async () => {
+          if (!isCurrentIdentity()) return;
 
+      const previous = rowsRef.current.find(row => row.id === id);
       // Optimistic: opening a notification should feel instant. The count is
       // re-read from the server either way, so the badge cannot end up guessed.
-      setRows((prev) =>
+      writeMutationRows((prev) =>
         prev.map((row) => (row.id === id ? { ...row, read: true, read_at: new Date().toISOString() } : row))
       );
-      const previous = rowsRef.current.find(row => row.id === id);
-      if (previous && !previous.read) { countRevisionRef.current += 1; setUnreadCount((prev) => Math.max(0, prev - 1)); }
+      const countChange = beginUnreadChange(unreadCountRef.current, countEpochRef.current, previous && !previous.read);
+      if (countChange.delta) {
+        countRevisionRef.current += 1;
+        unreadCountRef.current = countChange.count;
+        setUnreadCount(countChange.count);
+      }
 
-      const { error: markError } = await markRead(id);
+      const { error: markError } = await settleNotificationAction(() => markRead(id));
       if (!isCurrentIdentity()) return;
       if (markError) {
         // Put it back rather than leaving a row that looks handled and is not.
         setError(markError);
-        if (previous) setRows((prev) => prev.map((row) => (row.id === id ? { ...row, read: previous.read, read_at: previous.read_at } : row)));
+        const restoredCount = rollbackUnreadChange(unreadCountRef.current, countEpochRef.current, countChange);
+        if (restoredCount !== null) {
+          countRevisionRef.current += 1; unreadCountRef.current = restoredCount; setUnreadCount(restoredCount);
+        }
+        if (previous) writeMutationRows((prev) => prev.map((row) => (row.id === id ? { ...row, read: previous.read, read_at: previous.read_at } : row)));
       }
       refreshCount();
+        });
+      } finally { release(); }
     },
-    [refreshCount, isCurrentIdentity]
+    [refreshCount, isCurrentIdentity, identityVersion, writeMutationRows]
   );
 
   /**
@@ -414,22 +444,36 @@ export default function useNotifications({
   const dismissOne = useCallback(
     async (id) => {
       if (!id || !isCurrentIdentity()) return;
+      const release = claimNotificationAction(pendingSingleActionsRef.current, `${identityVersion}:${id}`);
+      if (!release) return;
+      try {
+        await actionSchedulerRef.current.single(async () => {
+          if (!isCurrentIdentity()) return;
 
       const index = rowsRef.current.findIndex((row) => row.id === id);
       const removed = index === -1 ? null : rowsRef.current[index];
 
-      setRows((prev) => prev.filter((row) => row.id !== id));
-      if (removed && !removed.read) { countRevisionRef.current += 1; setUnreadCount((prev) => Math.max(0, prev - 1)); }
+      writeMutationRows((prev) => prev.filter((row) => row.id !== id));
+      const countChange = beginUnreadChange(unreadCountRef.current, countEpochRef.current, removed && !removed.read);
+      if (countChange.delta) {
+        countRevisionRef.current += 1;
+        unreadCountRef.current = countChange.count;
+        setUnreadCount(countChange.count);
+      }
 
-      const { error: dismissError } = await dismissNotification(id);
+      const { error: dismissError } = await settleNotificationAction(() => dismissNotification(id));
       if (!isCurrentIdentity()) return;
       if (dismissError) {
         setError(dismissError);
+        const restoredCount = rollbackUnreadChange(unreadCountRef.current, countEpochRef.current, countChange);
+        if (restoredCount !== null) {
+          countRevisionRef.current += 1; unreadCountRef.current = restoredCount; setUnreadCount(restoredCount);
+        }
         // Back to where it was, so the list still reflects the server. Guarded
         // on absence because a refetch may already have restored it, and two
         // copies of one notification is a worse failure than the first.
         if (removed) {
-          setRows((prev) => {
+          writeMutationRows((prev) => {
             if (prev.some((row) => row.id === id)) return prev;
             const next = prev.slice();
             next.splice(Math.min(index, next.length), 0, removed);
@@ -438,8 +482,10 @@ export default function useNotifications({
         }
       }
       refreshCount();
+        });
+      } finally { release(); }
     },
-    [refreshCount, isCurrentIdentity]
+    [refreshCount, isCurrentIdentity, identityVersion, writeMutationRows]
   );
 
   const markEveryRead = useCallback(async () => {
@@ -449,30 +495,33 @@ export default function useNotifications({
     // three mentions cleared every category in one press, with nothing to undo
     // it and no indication it had happened.
     const scope = categoryRef.current;
+    return actionSchedulerRef.current.bulk(async () => {
+      if (!isCurrentIdentity()) return;
 
     const snapshot = rowsRef.current.slice();
     const previousUnreadCount = unreadCountRef.current;
     const optimisticReadAt = new Date().toISOString();
-    setRows((prev) => prev.map((row) => (row.read || (scope && row.category !== scope) ? row : { ...row, read: true, read_at: optimisticReadAt })));
+    writeMutationRows((prev) => prev.map((row) => (row.read || (scope && row.category !== scope) ? row : { ...row, read: true, read_at: optimisticReadAt })));
     // Zero is only true when the whole inbox was the target. Under a filter the
     // badge still counts the other categories, so it is left to the server
     // rather than guessed at.
     const optimisticCountVersion = ++countRevisionRef.current;
-    if (!scope) setUnreadCount(0);
+    if (!scope) { countEpochRef.current += 1; unreadCountRef.current = 0; setUnreadCount(0); }
 
     const { error: markError } = await Promise.resolve().then(() => markAllRead({ userId, email, audience, category: scope })).catch(error => ({ error }));
     if (!isCurrentIdentity()) return;
     if (markError) {
       setError(markError);
-      setRows(previous => rollbackNotificationRead(previous, snapshot, optimisticReadAt));
-      if (!scope && countRevisionRef.current === optimisticCountVersion) { countRevisionRef.current += 1; setUnreadCount(previousUnreadCount); }
+      writeMutationRows(previous => rollbackNotificationRead(previous, snapshot, optimisticReadAt));
+      if (!scope && countRevisionRef.current === optimisticCountVersion) { countRevisionRef.current += 1; countEpochRef.current += 1; unreadCountRef.current = previousUnreadCount; setUnreadCount(previousUnreadCount); }
     }
 
     // Under "unread only" the list should now be empty; anywhere else the rows
     // stay put and just lose their emphasis.
     if (markError || unreadOnlyRef.current) loadPage(0, { append: false });
     refreshCount();
-  }, [userId, email, audience, isCurrentIdentity, loadPage, refreshCount]);
+    });
+  }, [userId, email, audience, isCurrentIdentity, loadPage, refreshCount, writeMutationRows]);
 
   // Rows belong to the filter they were fetched under, so clearing them here
   // means the panel shows its loading state instead of the previous category's
