@@ -29,6 +29,7 @@
  * bundle that touches this file.
  */
 
+import { fetchWithDeadline } from "@/utils/fetchDeadline";
 import { createClient } from "@supabase/supabase-js";
 import { sanitizeHeader } from "@/utils/emailTemplates";
 import { BRAND_NAME } from "@/components/brand/brand";
@@ -121,9 +122,14 @@ export function redactSecrets(value) {
  * Transient (retry):
  *   - rate limiting (429, SMTP 421/450/452),
  *   - any 5xx from the provider's own infrastructure,
- *   - connection/DNS/timeout errors, which are the common case.
+ *   - connection/DNS errors.
+ * Uncertain (no immediate retry): aborted or timed-out delivery.
  */
 export function classifyFailure(error) {
+  // A timeout cannot establish whether the provider already accepted the mail.
+  // Preserve the failed delivery for recovery; do not immediately send again.
+  if (error?.deliveryUncertain || ["ETIMEDOUT", "ETIMEOUT"].includes(String(error?.code || "").toUpperCase()) ||
+      ["TimeoutError", "AbortError"].includes(error?.name)) return "uncertain";
   if (!error) return "transient";
   if (error.permanent === true) return "permanent";
   if (error.permanent === false) return "transient";
@@ -193,6 +199,7 @@ export function emailLogEnabled() {
 function logClient() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: fetchWithDeadline(10_000) },
   });
 }
 
@@ -261,9 +268,13 @@ async function sendViaResend(message) {
   if (message.bcc.length) payload.bcc = message.bcc;
   if (message.replyTo) payload.replyTo = message.replyTo;
 
-  const { data, error } = await client.emails.send(payload);
+  // The installed Resend SDK forwards POST options to fetch, including signal.
+  // This also aborts a stalled response body, without a late Promise.race send.
+  const signal = AbortSignal.timeout(10_000);
+  const { data, error } = await client.emails.send(payload, { signal });
   if (error) {
     const err = new Error(redactSecrets(error.message || error.name || "resend send failed"));
+    err.deliveryUncertain = signal.aborted;
     err.name = error.name || "ResendError";
     err.statusCode = error.statusCode || error.status;
     throw err;
@@ -275,20 +286,29 @@ async function sendViaSmtp(message) {
   const nodemailer = (await import("nodemailer")).default;
   const transporter = nodemailer.createTransport({
     service: "gmail",
+    dnsTimeout: 10_000,
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 10_000,
     auth: { user: process.env.GMAIL_EMAIL, pass: process.env.GMAIL_APP_PASSWORD },
   });
-  const info = await transporter.sendMail({
-    from: { name: sanitizeHeader(process.env.EMAIL_FROM_NAME || DEFAULT_FROM_NAME, 80), address: process.env.GMAIL_EMAIL },
-    // A `to` is always required; BCC-only fan-outs address the sender so the
-    // recipients stay hidden from one another. This mirrors the old mailer.
-    to: message.to.length ? message.to.join(", ") : process.env.GMAIL_EMAIL,
-    bcc: message.bcc.length ? message.bcc.join(", ") : undefined,
-    subject: message.subject,
-    html: message.html,
-    text: message.text || undefined,
-    replyTo: message.replyTo || undefined,
-  });
-  return { messageId: info?.messageId || null };
+  try {
+    const info = await transporter.sendMail({
+      from: { name: sanitizeHeader(process.env.EMAIL_FROM_NAME || DEFAULT_FROM_NAME, 80), address: process.env.GMAIL_EMAIL },
+      // A `to` is always required; BCC-only fan-outs address the sender so the
+      // recipients stay hidden from one another. This mirrors the old mailer.
+      to: message.to.length ? message.to.join(", ") : process.env.GMAIL_EMAIL,
+      bcc: message.bcc.length ? message.bcc.join(", ") : undefined,
+      subject: message.subject,
+      html: message.html,
+      text: message.text || undefined,
+      replyTo: message.replyTo || undefined,
+    });
+    return { messageId: info?.messageId || null };
+  } finally {
+    // Cleanup must not turn a provider-confirmed send into a retry.
+    try { transporter.close(); } catch { /* transport is already finished */ }
+  }
 }
 
 async function sendViaMock(message, options) {

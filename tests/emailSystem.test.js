@@ -224,7 +224,7 @@ describe("classifyFailure", () => {
     expect(classifyFailure({ statusCode: 429 })).toBe("transient");
     expect(classifyFailure({ statusCode: 503 })).toBe("transient");
     expect(classifyFailure({ code: "ECONNRESET" })).toBe("transient");
-    expect(classifyFailure({ code: "ETIMEDOUT" })).toBe("transient");
+    expect(classifyFailure({ code: "ETIMEDOUT" })).toBe("uncertain");
     expect(classifyFailure({ responseCode: 421, message: "try again later" })).toBe("transient");
     expect(classifyFailure({ message: "socket hang up" })).toBe("transient");
   });
