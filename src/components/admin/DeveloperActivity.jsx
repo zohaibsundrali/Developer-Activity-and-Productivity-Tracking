@@ -1,4 +1,6 @@
 "use client";
+import MonitoringPresence from "@/components/shared/MonitoringPresence";
+import { useMonitoringPresence } from "@/hooks/useMonitoringPresence";
 import { useMonitoringScreenshots } from "@/hooks/useMonitoringScreenshots";
 import { useAuth } from "@/contexts/AuthContext";
 import { loadMonitoringLogins } from "@/utils/monitoringLogins";
@@ -194,7 +196,7 @@ export default function DeveloperActivity() {
 
   // Data states for each table
   const [sessions, setSessions] = useState([]);
-  const [activeSession, setActiveSession] = useState(null);
+  const [recordedSession, setRecordedSession] = useState(null);
   const [mouseData, setMouseData] = useState([]);
   const [mousePage, setMousePage] = useState(1);
   const [mouseTotalCount, setMouseTotalCount] = useState(0);
@@ -227,6 +229,11 @@ export default function DeveloperActivity() {
     enabled: canMonitor && !!dateWindow && developers.some(dev => dev.id === selectedDeveloper),
     makeGuard: makeMonitoringGuard,
   });
+  const presence = useMonitoringPresence({
+    client: supabase, organizationId: monitoringOrg, profileId: selectedDeveloper,
+    scope: activityScope, enabled: canMonitor && developers.some(dev => dev.id === selectedDeveloper),
+    makeGuard: makeMonitoringGuard,
+  });
   const screenshots = screenshotPage.rows;
   const refreshScreenshotPage = screenshotPage.refresh;
   const renewScreenshotImages = screenshotPage.retryImages;
@@ -242,7 +249,7 @@ export default function DeveloperActivity() {
   const clearActivity = useCallback(() => {
     setSessions([]); setMouseData([]); setKeyboardData([]); setKeyboardTruncated(false); setAppUsageData([]);
     setLoginRecords([]);
-    setActiveSession(null); setMouseTotalCount(0);
+    setRecordedSession(null); setMouseTotalCount(0);
   }, []);
   useEffect(() => {
     clearActivity(); setClearedScope(activityScope); setActivityError(''); setLoading(false); setMousePageLoading(false);
@@ -341,9 +348,9 @@ export default function DeveloperActivity() {
       const finalApp = appRes.data || [];
 
       if (!active()) return;
-      // Detect active session
-      const activeSessionRow = finalSessions.find(s => s.status === "active") || null;
-      setActiveSession(activeSessionRow);
+      // Historical session detail only; device presence is loaded separately.
+      const recordedSessionRow = finalSessions[0] || null;
+      setRecordedSession(recordedSessionRow);
 
       setSessions(finalSessions);
       setKeyboardData(finalKeyboard);
@@ -656,8 +663,8 @@ export default function DeveloperActivity() {
   const latestMouseStatus = mouseData.length > 0 ? (mouseData[0].activity_status || "Unknown") : "No Data";
 
   // Session-scoped mouse data
-  const sessionMouseData = activeSession
-    ? mouseData.filter(r => r.session_id === activeSession.session_id)
+  const sessionMouseData = recordedSession
+    ? mouseData.filter(r => r.session_id === recordedSession.session_id)
     : mouseData;
   const avgSessionMouseActive = sessionMouseData.length ? sessionMouseData.reduce((s, r) => s + (r.active_percentage || 0), 0) / sessionMouseData.length : 0;
   const avgSessionMouseIdle = sessionMouseData.length ? sessionMouseData.reduce((s, r) => s + (r.idle_percentage || 0), 0) / sessionMouseData.length : 0;
@@ -673,8 +680,8 @@ export default function DeveloperActivity() {
   const totalKbTime = keyboardData.reduce((s, r) => s + (Number(r.total_time_minutes) || 0), 0);
 
   // Session-scoped keyboard data
-  const sessionKeyboardData = activeSession
-    ? keyboardData.filter(r => r.session_id === activeSession.session_id)
+  const sessionKeyboardData = recordedSession
+    ? keyboardData.filter(r => r.session_id === recordedSession.session_id)
     : keyboardData;
   const sessionTotalKeys = sessionKeyboardData.reduce((s, r) => s + (Number(r.total_keys) || 0), 0);
   const sessionAvgWPM = sessionKeyboardData.length ? sessionKeyboardData.reduce((s, r) => s + (Number(r.words_per_minute) || 0), 0) / sessionKeyboardData.length : 0;
@@ -699,8 +706,8 @@ export default function DeveloperActivity() {
   const totalAppActiveMinutes = appUsageData.reduce((s, r) => s + (r.duration_minutes || 0), 0);
 
   // Session-scoped app data
-  const sessionAppData = activeSession
-    ? appUsageData.filter(r => r.session_id === activeSession.session_id)
+  const sessionAppData = recordedSession
+    ? appUsageData.filter(r => r.session_id === recordedSession.session_id)
     : appUsageData;
 
   // Currently active app (most recent record)
@@ -949,30 +956,7 @@ export default function DeveloperActivity() {
       </div>
 
       {!dateWindow ? <ErrorState title="Choose a valid date" description="Select a real calendar date and a valid time range to load activity." /> : clearedScope !== activityScope ? <Skeleton className="h-48 w-full" /> : <>
-      {/* Active Session Banner */}
-      {activeSession && !loading && (
-        <div className="mb-6 bg-success/10 border border-success/20 rounded-xl p-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-success"></span>
-            </span>
-            <div>
-              <p className="text-sm font-semibold text-success">Active Session Running</p>
-              <p className="text-xs text-success/80">
-                Session: {String(activeSession.session_id || "").slice(-8)} &bull; Started: {fmtDateTime(activeSession.start_time)}
-                &bull; Mouse: {sessionMouseData.length}
-                &bull; Keyboard: {sessionKeyboardData.length}
-                &bull; Apps: {sessionAppData.length}
-              </p>
-            </div>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-success/80">Current Mouse Status</p>
-            <span className={`inline-block px-3 py-1 rounded-full text-sm font-bold ${statusColor(latestMouseStatus)}`}>{latestMouseStatus}</span>
-          </div>
-        </div>
-      )}
+      <MonitoringPresence presence={presence} />
 
       {/* Loading — skeletons shaped like the view underneath (tiles, two
           panels, a table) rather than a spinner on a blank page. */}
@@ -1139,7 +1123,7 @@ export default function DeveloperActivity() {
                   <div className="flex items-center">
                     <div className={`p-3 rounded-lg mr-3 ${statusColor(latestMouseStatus)}`}><span className="text-xl">Status</span></div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Current Status</p>
+                      <p className="text-xs text-muted-foreground">Last Recorded Status</p>
                       <p className={`text-lg font-bold ${latestMouseStatus.toLowerCase() === "active" ? "text-success" : latestMouseStatus.toLowerCase() === "idle" ? "text-yellow-700" : "text-muted-foreground"}`}>
                         {latestMouseStatus}
                       </p>
@@ -1149,10 +1133,10 @@ export default function DeveloperActivity() {
               </div>
 
               {/* Active Session Mouse Summary */}
-              {activeSession && sessionMouseData.length > 0 && (
+              {recordedSession && sessionMouseData.length > 0 && (
                 <div className="rounded-xl border border-success/20 bg-success/10 p-6">
                   <h3 className="text-lg font-semibold mb-4 text-success">
-                    Active Session Mouse Activity
+                    Latest Recorded Session — Mouse Activity
                     <span className="text-sm font-normal text-success/80 ml-2">({sessionMouseData.length} records)</span>
                   </h3>
                   <div className="grid grid-cols-3 gap-4">
@@ -1430,10 +1414,10 @@ export default function DeveloperActivity() {
                   </div>
 
                   {/* Active Session Keyboard Summary */}
-                  {activeSession && sessionKeyboardData.length > 0 && (
+                  {recordedSession && sessionKeyboardData.length > 0 && (
                     <div className="rounded-xl border border-border bg-accent p-6">
                       <h3 className="text-lg font-semibold mb-4 text-accent-foreground">
-                        Active Session Keyboard Activity
+                        Latest Recorded Session — Keyboard Activity
                         <span className="text-sm font-normal ml-2 text-muted-foreground">({sessionKeyboardData.length} loaded records)</span>
                       </h3>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1624,10 +1608,10 @@ export default function DeveloperActivity() {
               )} */}
 
               {/* Active Session App Summary */}
-              {activeSession && sessionAppData.length > 0 && (
+              {recordedSession && sessionAppData.length > 0 && (
                 <div className="rounded-xl border border-info/20 bg-info/10 p-6">
                   <h3 className="text-lg font-semibold mb-4 text-info">
-                    Active Session Applications
+                    Latest Recorded Session — Applications
                     <span className="text-sm font-normal text-info/80 ml-2">({sessionAppData.length} records)</span>
                   </h3>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
