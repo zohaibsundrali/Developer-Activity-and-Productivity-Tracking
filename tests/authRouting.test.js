@@ -122,7 +122,8 @@ describe("ProtectedRoute", () => {
   it("makes 'allowed' sticky so it cannot flash at an authenticated user", () => {
     expect(code).toMatch(/allowedRef/);
     expect(code).toMatch(/allowedRef\.current\s*=\s*true/);
-    expect(code).toMatch(/allowedRef\.current\s*\?\s*"allowed"/);
+    expect(code).toMatch(/protectedGateStatus\(status, allowedRef\.current\)/);
+    expect(code).toMatch(/status === "denied"\) allowedRef\.current = false/);
   });
 
   it("resolves the shared check before paint, via a layout effect", () => {

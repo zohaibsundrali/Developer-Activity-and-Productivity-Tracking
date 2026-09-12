@@ -58,7 +58,8 @@ export default function TimesheetApprovals() {
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState(null);
 
-  const me = getOrgContext()?.userId || null;
+  const identity = getOrgContext();
+  const me = identity?.userId || null;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -165,7 +166,7 @@ export default function TimesheetApprovals() {
               </thead>
               <tbody>
                 {rows.map((r) => {
-                  const mine = me && String(r.user_id) === String(me);
+                  const mine = me && String(r.user_id) === String(me) && r.user_type === identity?.userType;
                   return (
                     <tr key={r.id} className="border-b border-border/60">
                       <td className="py-2 pr-4 tabular-nums text-foreground">{r.week_start}</td>

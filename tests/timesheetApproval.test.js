@@ -157,64 +157,9 @@ describe("the lock lives in the database, because nothing else can hold it", () 
   });
 });
 
-describe("the route computes the totals rather than believing them", () => {
-  const src = read(ROUTE);
-
-  it("never reads totals from the body", () => {
-    // A submission that took totalSeconds from the caller would let the browser
-    // claim any number it liked and have an approver sign it.
-    expect(src).not.toMatch(/body\?\.totalSeconds/);
-    expect(src).not.toMatch(/total_seconds:\s*body/);
-    expect(src).toMatch(/from\("task_time_logs"\)/);
-    expect(src).toMatch(/total \+= s/);
-  });
-
-  it("sums only the caller's own logs for the week", () => {
-    const post = src.slice(src.indexOf("export async function POST"), src.indexOf("export async function PATCH"));
-    expect(post).toMatch(/eq\("developer_id", auth\.appUserId\)/);
-    expect(post).toMatch(/eq\("organization_id", auth\.orgId\)/);
-  });
-
-  it("refuses a week that is not a Monday instead of rounding it", () => {
-    // Silently rounding to a Monday the caller did not choose is how two rows
-    // appear for one week and both look right.
-    expect(src).toMatch(/getUTCDay\(\) !== 1/);
-    expect(src).toMatch(/weekStart must be a Monday/);
-  });
-
-  it("refuses to let anybody decide their own week", () => {
-    const patch = src.slice(src.indexOf("export async function PATCH"));
-    expect(patch).toMatch(/String\(existing\.user_id\) === String\(auth\.appUserId\)/);
-    expect(patch).toContain("You cannot decide your own timesheet");
-  });
-
-  it("gates every decision on timesheet.approve, reopen included", () => {
-    const patch = src.slice(src.indexOf("export async function PATCH"));
-    expect(patch).toContain('requirePermission(auth, "timesheet.approve")');
-    expect(patch).toMatch(/"approved", "rejected", "reopen"/);
-    // the permission check must precede the row being touched
-    expect(patch.indexOf('requirePermission(auth, "timesheet.approve")')).toBeLessThan(
-      patch.indexOf('.from("timesheets")')
-    );
-  });
-
-  it("lets a rejected week be submitted again but not an approved one", () => {
-    const post = src.slice(src.indexOf("export async function POST"));
-    expect(post).toMatch(/existing\.status !== "draft" && existing\.status !== "rejected"/);
-  });
-
-  it("clears the old verdict when a week is resubmitted", () => {
-    // Otherwise the screen shows "rejected by X" beside a week now waiting on
-    // somebody else.
-    const post = src.slice(src.indexOf("export async function POST"));
-    expect(post).toMatch(/decided_by: null/);
-    expect(post).toMatch(/decided_at: null/);
-  });
-
-  it("asks the wide key before the narrow one when reading", () => {
-    expect(src.indexOf("timesheet.view_all")).toBeLessThan(src.indexOf("timesheet.view_own"));
-  });
-});
+// Transactional API behavior, typed identity and database conflict responses
+// are exercised in timesheetTransactionalApi.test.js. Database authority is
+// exercised by the current migration's PostgreSQL regression fixture.
 
 describe("buildWeek carries what the screen needs to act", () => {
   const log = (over) => ({
@@ -315,7 +260,7 @@ describe("My Timesheet can submit, and stops editing once it is locked", () => {
   it("disables the billable toggle on a locked week rather than hiding it", () => {
     // The state is worth seeing even when it cannot be changed, and a control
     // that vanishes reads as a bug.
-    expect(src).toMatch(/disabled=\{locked \|\| busy \|\| !row\.logIds\?\.length\}/);
+    expect(src).toMatch(/disabled=\{locked \|\| busy \|\| loading \|\| submitting \|\| !row\.logIds\?\.length\}/);
   });
 
   it("hides the submit button on a locked week, where it would do nothing", () => {
@@ -326,9 +271,11 @@ describe("My Timesheet can submit, and stops editing once it is locked", () => {
     expect(src).toMatch(/\.in\("id", row\.logIds\)/);
   });
 
-  it("does not take the timesheet down when the banner cannot load", () => {
-    // The hours are the screen's content; a missing banner is a smaller loss
-    // than a blank page.
-    expect(src).toMatch(/catch \{\s*setSheet\(null\);\s*\}/);
+  it("fails closed when the submission status cannot be confirmed", () => {
+    expect(src).toContain('!res.ok || !json?.success || !Array.isArray(json.timesheets)');
+    expect(src).toContain("Could not confirm this week's submission status.");
+    expect(src).toContain('<ErrorState description={error} onRetry={load} />');
+    expect(src).not.toMatch(/catch \{\s*setSheet\(null\);\s*\}/);
+    expect(src.indexOf('if (error) {')).toBeLessThan(src.indexOf('const submitWeek ='));
   });
 });

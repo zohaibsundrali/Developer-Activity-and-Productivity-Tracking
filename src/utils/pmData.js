@@ -877,15 +877,17 @@ export function formatDuration(seconds) {
 export async function getActiveTimer() {
   const ctx = getOrgContext();
   const orgId = getOrgId();
-  if (!ctx?.userId || !orgId) return null;
-  const { data } = await supabase
+  if (!ctx?.userId || !orgId || !["admin", "developer"].includes(ctx.userType)) return null;
+  const { data, error } = await supabase
     .from("task_time_logs")
     .select("*")
     .eq("organization_id", orgId)
     .eq("developer_id", ctx.userId)
+    .eq("user_type", ctx.userType)
     .is("ended_at", null)
     .order("started_at", { ascending: false })
     .limit(1);
+  if (error) throw new Error("Could not confirm the active timer. Refresh and try again.");
   return (data && data[0]) || null;
 }
 
@@ -900,12 +902,13 @@ export async function getActiveTimer() {
 export async function startTaskTimer(taskId, projectId) {
   const orgId = getOrgId();
   const ctx = getOrgContext();
-  if (!ctx?.userId) return { error: new Error("No signed-in user") };
+  if (!ctx?.userId || !orgId || !["admin", "developer"].includes(ctx.userType)) return { error: new Error("No signed-in staff identity") };
 
   const running = await getActiveTimer();
   if (running) {
     if (String(running.task_id) === String(taskId)) return { log: running, error: null };
-    await stopTaskTimer(running);
+    const stopped = await stopTaskTimer(running);
+    if (stopped.error) return stopped;
   }
 
   const { data, error } = await supabase
@@ -915,6 +918,7 @@ export async function startTaskTimer(taskId, projectId) {
       task_id: taskId,
       project_id: projectId || null,
       developer_id: ctx.userId,
+      user_type: ctx.userType,
       started_at: new Date().toISOString(),
       source: "web_timer",
     })
@@ -930,6 +934,7 @@ export async function startTaskTimer(taskId, projectId) {
     return { log: null, error };
   }
 
+  if (!data?.id || data.task_id !== taskId || data.developer_id !== ctx.userId || data.user_type !== ctx.userType) return { log: null, error: new Error("Timer start was not confirmed. Refresh and try again.") };
   await logActivity({ projectId, entityType: "task", entityId: taskId, action: "timer_started", meta: {} });
   return { log: data, error: null };
 }
@@ -937,16 +942,22 @@ export async function startTaskTimer(taskId, projectId) {
 // Stop a running timer and persist the elapsed seconds.
 export async function stopTaskTimer(log, note = null) {
   if (!log?.id) return { error: new Error("No timer to stop") };
+  const ctx = getOrgContext();
+  const orgId = getOrgId();
+  if (!ctx?.userId || !orgId || !["admin", "developer"].includes(ctx.userType)) return { error: new Error("No signed-in staff identity") };
   const endedAt = new Date();
   const startedAt = new Date(log.started_at);
   const seconds = Number.isNaN(startedAt.getTime())
     ? 0
     : Math.max(0, Math.round((endedAt.getTime() - startedAt.getTime()) / 1000));
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("task_time_logs")
     .update({ ended_at: endedAt.toISOString(), seconds, note: note || log.note || null })
-    .eq("id", log.id);
-  if (!error) {
+    .eq("id", log.id)
+    .eq("organization_id", orgId).eq("developer_id", ctx.userId).eq("user_type", ctx.userType)
+    .is("ended_at", null).select("id,seconds").maybeSingle();
+  const failure = error || (data?.id !== log.id ? new Error("Timer stop was not confirmed. Refresh and try again.") : null);
+  if (!failure) {
     await logActivity({
       projectId: log.project_id,
       entityType: "task",
@@ -955,15 +966,19 @@ export async function stopTaskTimer(log, note = null) {
       meta: { seconds },
     });
   }
-  return { seconds, error };
+  return { seconds: failure ? undefined : data.seconds, error: failure };
 }
 
 // Manually log time (no live timer) — seconds is required.
 export async function addManualTimeLog({ taskId, projectId, seconds, note }) {
   const orgId = getOrgId();
   const ctx = getOrgContext();
+  if (!ctx?.userId || !orgId || !["admin", "developer"].includes(ctx.userType)) return { log: null, error: new Error("No signed-in staff identity") };
+  const amount = Number(seconds);
+  if ((typeof seconds !== "number" && typeof seconds !== "string") || !Number.isInteger(amount) || amount <= 0 || amount > 2147483647) return { log: null, error: new Error("Enter a positive whole number of seconds.") };
+  if (typeof taskId !== "string" || !taskId.trim()) return { log: null, error: new Error("Pick a task first.") };
   const now = new Date();
-  const start = new Date(now.getTime() - (Number(seconds) || 0) * 1000);
+  const start = new Date(now.getTime() - amount * 1000);
   const { data, error } = await supabase
     .from("task_time_logs")
     .insert({
@@ -971,18 +986,20 @@ export async function addManualTimeLog({ taskId, projectId, seconds, note }) {
       task_id: taskId,
       project_id: projectId || null,
       developer_id: ctx?.userId || null,
+      user_type: ctx?.userType || null,
       started_at: start.toISOString(),
       ended_at: now.toISOString(),
-      seconds: Math.max(0, Number(seconds) || 0),
+      seconds: amount,
       source: "manual",
       note: note || null,
     })
     .select()
     .single();
-  return { log: data, error };
+  const failure = error || (!data?.id || data.task_id !== taskId || data.organization_id !== orgId || data.developer_id !== ctx.userId || data.user_type !== ctx.userType || data.seconds !== amount ? new Error("Time entry was not confirmed. Refresh before retrying.") : null);
+  return { log: failure ? null : data, error: failure };
 }
 
-export async function loadTimeLogs({ taskId, projectId, developerId, from, to } = {}) {
+export async function loadTimeLogs({ taskId, projectId, developerId, userType, from, to, toExclusive } = {}) {
   const orgId = getOrgId();
   const build = () => {
     let q = supabase
@@ -994,11 +1011,15 @@ export async function loadTimeLogs({ taskId, projectId, developerId, from, to } 
     if (taskId) q = q.eq("task_id", taskId);
     if (projectId) q = q.eq("project_id", projectId);
     if (developerId) q = q.eq("developer_id", developerId);
+    if (userType) q = q.eq("user_type", userType);
     if (from) q = q.gte("started_at", from);
     if (to) q = q.lte("started_at", to);
+    if (toExclusive) q = q.lt("started_at", toExclusive);
     return q;
   };
-  const { rows } = await fetchPaged(build, MAX_TIME_LOG_ROWS);
+  const { rows, error, truncated } = await fetchPaged(build, MAX_TIME_LOG_ROWS);
+  if (error) throw new Error("Time logs could not be loaded");
+  if (truncated) throw new Error("Too many time logs. Choose a shorter date range.");
   return rows;
 }
 

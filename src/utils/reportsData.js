@@ -146,7 +146,7 @@ export async function loadReportDataForClient(range, client = supabase, orgId = 
       () =>
         client
           .from("task_time_logs")
-          .select("id, task_id, project_id, developer_id, started_at, ended_at, seconds, source")
+          .select("id, task_id, project_id, developer_id, user_type, started_at, ended_at, seconds, source")
           .eq("organization_id", orgId)
           .gte("started_at", logFrom)
           .lte("started_at", logTo)
@@ -244,8 +244,9 @@ async function loadStatusCounts(orgId, client) {
  * Lookup failures reject the report rather than displaying misleading zero hours.
  */
 async function loadDesktopSessions(employees, fromIso, toIso, client) {
-  const ids = (employees || []).map((e) => e.userId).filter(Boolean);
-  const emails = (employees || []).map((e) => e.email).filter(Boolean);
+  const desktopEmployees = (employees || []).filter((e) => e.userType === "developer");
+  const ids = desktopEmployees.map((e) => e.userId).filter(Boolean);
+  const emails = desktopEmployees.map((e) => e.email).filter(Boolean);
   if (!ids.length && !emails.length) return { rows: [], truncated: false };
 
   const cols = "session_id, user_id, user_email, start_time, end_time, status, total_duration, productivity_score, created_at";
@@ -352,17 +353,20 @@ export function teamProductivity({ employees, tasks, timeLogs, sessions }) {
   });
 
   return (employees || []).map((e) => {
-    const list = (tasks || []).filter((t) => t.developer_id === e.userId);
+    const isDeveloper = e.userType === "developer";
+    const list = isDeveloper ? (tasks || []).filter((t) => t.developer_id === e.userId) : [];
     const total = list.length;
     const done = list.filter((t) => DONE.has(t.status)).length;
     const rated = list.filter((t) => DONE.has(t.status) && t.is_on_time !== null && t.is_on_time !== undefined);
     const onTime = rated.filter((t) => t.is_on_time).length;
     const points = list.reduce((s, t) => s + (Number(t.productivity_points) || 0), 0);
-    const loggedSeconds = sumSeconds((timeLogs || []).filter((l) => l.developer_id === e.userId));
-    const trackedSeconds = (byId.get(e.userId) || 0) + (byEmail.get(e.email) || 0);
-    const sc = scoreById.get(e.userId) || scoreById.get(e.email) || { sum: 0, n: 0 };
+    const loggedSeconds = sumSeconds((timeLogs || []).filter((l) =>
+      ["admin", "developer"].includes(e.userType) && l.user_type === e.userType && l.developer_id === e.userId));
+    const trackedSeconds = isDeveloper ? (byId.get(e.userId) || 0) + (byEmail.get(e.email) || 0) : 0;
+    const sc = (isDeveloper && (scoreById.get(e.userId) || scoreById.get(e.email))) || { sum: 0, n: 0 };
     return {
       userId: e.userId,
+      userType: e.userType,
       name: e.name,
       role: e.role,
       total,
@@ -391,12 +395,15 @@ export function statusDistribution(tasks) {
 export function timeTrackingRows({ timeLogs, tasks, projects, employees }) {
   const taskById = new Map((tasks || []).map((t) => [t.id, t]));
   const projById = new Map((projects || []).map((p) => [p.id, p]));
-  const empById = new Map((employees || []).map((e) => [e.userId, e]));
+  const empById = new Map((employees || []).filter((e) => ["admin", "developer"].includes(e.userType))
+    .map((e) => [`${e.userType}:${e.userId}`, e]));
   return (timeLogs || [])
     .filter((l) => l.ended_at) // only completed intervals
     .map((l) => ({
       date: ymd(l.started_at),
-      developer: empById.get(l.developer_id)?.name || "Unknown",
+      developer: ["admin", "developer"].includes(l.user_type)
+        ? empById.get(`${l.user_type}:${l.developer_id}`)?.name || "Unknown"
+        : "Unknown (identity unresolved)",
       project: projById.get(l.project_id)?.name || "—",
       task: taskById.get(l.task_id)?.task_title || "—",
       hours: +((Number(l.seconds) || 0) / 3600).toFixed(2),
@@ -408,7 +415,8 @@ export function timeTrackingRows({ timeLogs, tasks, projects, employees }) {
 export function deadlineDelays({ tasks, projects, employees }) {
   const today = ymd(new Date());
   const projById = new Map((projects || []).map((p) => [p.id, p]));
-  const empById = new Map((employees || []).map((e) => [e.userId, e]));
+  const empById = new Map((employees || []).filter((e) => e.userType === "developer")
+    .map((e) => [e.userId, e]));
   const rows = [];
   (tasks || []).forEach((t) => {
     const due = t.due_date || t.end_date;
