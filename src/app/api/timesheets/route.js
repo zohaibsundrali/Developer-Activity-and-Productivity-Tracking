@@ -1,28 +1,14 @@
 import { NextResponse } from "next/server";
-import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
+import { getAuthedOrg, serviceClient, orgScopedClient } from "@/utils/serverAuth";
 import { authCan, requirePermission } from "@/utils/serverPermissions";
 import { requireUnlocked } from "@/utils/entitlements";
 
 export const dynamic = "force-dynamic";
 
 /**
- * /api/timesheets — agreeing a week's hours.
- *
- *   GET    your own weeks, or the organization's for `timesheet.view_all`.
- *   POST   submit a week. Always your own; always from 'draft'.
- *   PATCH  approve, reject or reopen (`timesheet.approve`).
- *
- * THE TOTALS ARE COMPUTED HERE, NOT ACCEPTED. A submission that took
- * `totalSeconds` from the body would let the browser claim any number it liked
- * and have an approver sign it. The route sums `task_time_logs` for the week
- * with the service role and writes what it found; the body carries the week and
- * nothing else that matters.
- *
- * THE LOCK IS NOT IN THIS FILE. `task_time_logs` is written straight from the
- * browser through PostgREST — there is no route in front of it — so "you cannot
- * edit an approved week" is a trigger in migration 077. This route decides who
- * may change a timesheet's STATUS; the database decides what that status then
- * prevents. Neither is a restatement of the other.
+ * Typed timesheet reads and transactional submission/decisions. The database
+ * computes full totals and serializes status transitions with time-log writes.
+ * RPCs execute as the caller; direct database requests enforce the same rules.
  */
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -47,8 +33,41 @@ function isoMonday(value) {
   return value;
 }
 
-const weekEndExclusive = (monday) =>
-  new Date(Date.parse(`${monday}T00:00:00Z`) + 7 * 86400000).toISOString();
+const DATABASE_MESSAGES = {
+  TIMESHEET_FORBIDDEN: "You do not have permission to perform this timesheet action.",
+  TIMESHEET_SELF_DECISION: "You cannot decide your own timesheet",
+  TIMESHEET_UNSUPPORTED_IDENTITY: "This account cannot use timesheets.",
+  TIMESHEET_NOT_FOUND: "Timesheet not found.",
+  TIMESHEET_IDENTITY_REVIEW_REQUIRED: "Some legacy time logs have unresolved ownership. An administrator must review their identity before this week can change.",
+  TIMESHEET_WEEK_LOCKED: "That week is submitted or approved. An approver must reopen it before its hours can change.",
+  TIMESHEET_STATE_CONFLICT: "That week has already changed. Reload it before trying again.",
+  TIMESHEET_WEEK_INVALID: "weekStart must be a Monday, as YYYY-MM-DD",
+  TIMESHEET_EMPTY: "There are no hours logged in that week",
+  TIMESHEET_OPEN_LOGS: "Stop running timers for that week before submitting it.",
+  TIMESHEET_LOG_INVALID: "Some time logs need correction before this week can be submitted.",
+  TIMESHEET_DECISION_INVALID: "Invalid decision",
+  BILLING_LOCKED: "Your subscription requires attention before timesheets can change.",
+};
+
+function databaseFailure(error) {
+  const code = error?.code;
+  const token = String(error?.message || "").split(":")[0];
+  const status = token === "BILLING_LOCKED" ? 402
+    : code === "42501" ? 403 : code === "P0002" ? 404
+    : code === "22023" ? 400
+    : ["23514", "23505", "40001", "55000"].includes(code) ? 409 : 503;
+  const message = DATABASE_MESSAGES[token] || (status === 503
+    ? "Timesheets are temporarily unavailable. Please retry."
+    : "The timesheet could not be changed. Reload it and check your access.");
+  return NextResponse.json({ success: false, error: message }, { status });
+}
+
+function validSheet(data, auth, expected = {}) {
+  return data && typeof data === "object" && !Array.isArray(data)
+    && UUID_RE.test(String(data.id || "")) && data.organization_id === auth.orgId
+    && ["admin", "developer"].includes(data.user_type)
+    && Object.entries(expected).every(([key, value]) => data[key] === value);
+}
 
 export async function GET(request) {
   try {
@@ -57,6 +76,8 @@ export async function GET(request) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
+    if (!["admin", "developer"].includes(auth.userType)) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+
     // Wide key first, narrow second.
     const canReadAnyone = authCan(auth, "timesheet.view_all");
     if (!canReadAnyone && !authCan(auth, "timesheet.view_own")) {
@@ -64,7 +85,11 @@ export async function GET(request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const svc = serviceClient();
+    const requestedWeek = searchParams.get("weekStart");
+    if (requestedWeek !== null && !isoMonday(requestedWeek)) {
+      return NextResponse.json({ success: false, error: "weekStart must be a Monday, as YYYY-MM-DD" }, { status: 400 });
+    }
+    const svc = orgScopedClient(auth.token);
 
     let query = svc
       .from("timesheets")
@@ -74,8 +99,10 @@ export async function GET(request) {
       .limit(300);
 
     if (!canReadAnyone || searchParams.get("scope") === "me") {
-      query = query.eq("user_id", auth.appUserId);
+      query = query.eq("user_id", auth.appUserId).eq("user_type", auth.userType);
     }
+
+    if (requestedWeek !== null) query = query.eq("week_start", requestedWeek);
 
     const status = searchParams.get("status");
     if (status && ["draft", "submitted", "approved", "rejected"].includes(status)) {
@@ -84,12 +111,12 @@ export async function GET(request) {
 
     const { data, error } = await query;
     if (error) {
-      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+      return databaseFailure(error);
     }
     return NextResponse.json({ success: true, timesheets: data || [] });
   } catch (e) {
     return NextResponse.json(
-      { success: false, error: e?.message || "Could not load timesheets" },
+      { success: false, error: "Timesheets are temporarily unavailable. Please retry." },
       { status: 500 }
     );
   }
@@ -101,6 +128,8 @@ export async function POST(request) {
     if (!auth) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
+
+    if (!["admin", "developer"].includes(auth.userType)) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
     const denied = requirePermission(auth, "timesheet.submit_own");
     if (denied) return denied;
@@ -122,86 +151,17 @@ export async function POST(request) {
       );
     }
 
-    const svc = serviceClient();
-
-    const { data: existing } = await svc
-      .from("timesheets")
-      .select("*")
-      .eq("organization_id", auth.orgId)
-      .eq("user_id", auth.appUserId)
-      .eq("week_start", weekStart)
-      .maybeSingle();
-
-    if (existing && existing.status !== "draft" && existing.status !== "rejected") {
-      // A rejected week may be resubmitted — that is the point of rejecting it
-      // rather than deleting it. A submitted or approved one may not.
-      return NextResponse.json(
-        { success: false, error: `That week is already ${existing.status}` },
-        { status: 409 }
-      );
-    }
-
-    // COMPUTED, NEVER ACCEPTED. See the note at the top of this file.
-    const { data: logs, error: logErr } = await svc
-      .from("task_time_logs")
-      .select("seconds, is_billable")
-      .eq("organization_id", auth.orgId)
-      .eq("developer_id", auth.appUserId)
-      .gte("started_at", `${weekStart}T00:00:00.000Z`)
-      .lt("started_at", weekEndExclusive(weekStart));
-
-    if (logErr) {
-      return NextResponse.json({ success: false, error: logErr.message }, { status: 500 });
-    }
-
-    let total = 0;
-    let billable = 0;
-    for (const l of logs || []) {
-      const s = Math.max(0, Number(l.seconds) || 0);
-      total += s;
-      if (l.is_billable) billable += s;
-    }
-
-    if (total === 0) {
-      // Submitting an empty week is almost always a misclick, and an approver's
-      // queue full of empty weeks is a queue nobody reads.
-      return NextResponse.json(
-        { success: false, error: "There are no hours logged in that week" },
-        { status: 400 }
-      );
-    }
-
-    const now = new Date().toISOString();
-    const row = {
-      organization_id: auth.orgId,
-      user_id: auth.appUserId,
-      user_type: auth.userType === "admin" ? "admin" : "developer",
-      week_start: weekStart,
-      status: "submitted",
-      total_seconds: total,
-      billable_seconds: billable,
-      submitted_at: now,
-      // A resubmission clears the previous verdict — leaving it would show
-      // "rejected by X" beside a week now waiting on somebody.
-      decided_by: null,
-      decided_at: null,
-      decision_note: null,
-      updated_at: now,
-    };
-
-    const { data, error } = await svc
-      .from("timesheets")
-      .upsert(row, { onConflict: "organization_id,user_id,week_start" })
-      .select()
-      .single();
-
-    if (error) {
-      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    const { data, error } = await orgScopedClient(auth.token)
+      .rpc("submit_timesheet_week", { p_week_start: weekStart });
+    if (error) return databaseFailure(error);
+    if (!validSheet(data, auth, { user_id: auth.appUserId, user_type: auth.userType,
+      week_start: weekStart, status: "submitted" })) {
+      return NextResponse.json({ success: false, error: "Submission was not confirmed. Reload the week before retrying." }, { status: 503 });
     }
     return NextResponse.json({ success: true, timesheet: data });
   } catch (e) {
     return NextResponse.json(
-      { success: false, error: e?.message || "Could not submit the week" },
+      { success: false, error: "Submission was not confirmed. Reload the week before retrying." },
       { status: 500 }
     );
   }
@@ -214,10 +174,13 @@ export async function PATCH(request) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json().catch(() => ({}));
-    const { timesheetId, decision, note } = body || {};
+    if (!["admin", "developer"].includes(auth.userType)) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
-    if (!UUID_RE.test(String(timesheetId || ""))) {
+    const body = await request.json().catch(() => ({}));
+    const { timesheetId: requestedId, decision, note } = body || {};
+    const timesheetId = typeof requestedId === "string" ? requestedId.toLowerCase() : null;
+
+    if (!timesheetId || !UUID_RE.test(timesheetId)) {
       return NextResponse.json({ success: false, error: "Invalid timesheetId" }, { status: 400 });
     }
     // 'reopen' returns an approved or rejected week to draft so the hours can be
@@ -230,82 +193,25 @@ export async function PATCH(request) {
     const deniedDecide = requirePermission(auth, "timesheet.approve");
     if (deniedDecide) return deniedDecide;
 
-    const svc = serviceClient();
-    const { data: existing } = await svc
-      .from("timesheets")
-      .select("*")
-      .eq("organization_id", auth.orgId)
-      .eq("id", timesheetId)
-      .maybeSingle();
-
-    if (!existing) {
-      return NextResponse.json({ success: false, error: "Not found" }, { status: 404 });
-    }
-
-    // SELF-APPROVAL. A manager and a team lead book hours like everyone else, so
-    // without this the person reviewing the week is allowed to be its author.
-    // The same rule /api/leave and /api/task-plan/review already enforce.
-    if (String(existing.user_id) === String(auth.appUserId)) {
-      return NextResponse.json(
-        { success: false, error: "You cannot decide your own timesheet" },
-        { status: 403 }
-      );
-    }
-
-    if (decision === "reopen") {
-      if (existing.status === "draft") {
-        return NextResponse.json(
-          { success: false, error: "That week is already open" },
-          { status: 409 }
-        );
-      }
-    } else if (existing.status !== "submitted") {
-      return NextResponse.json(
-        { success: false, error: `That week is ${existing.status}, not awaiting a decision` },
-        { status: 409 }
-      );
-    }
-
-    const billingBlocked = await requireUnlocked(svc, auth.orgId);
+    const billingBlocked = await requireUnlocked(serviceClient(), auth.orgId);
     if (billingBlocked) {
-      return NextResponse.json(
-        { success: false, ...billingBlocked },
-        { status: billingBlocked.status }
-      );
+      return NextResponse.json({ success: false, ...billingBlocked }, { status: billingBlocked.status });
     }
 
-    const now = new Date().toISOString();
-    const patch =
-      decision === "reopen"
-        ? {
-            status: "draft",
-            decided_by: auth.appUserId,
-            decided_at: now,
-            decision_note: typeof note === "string" ? note.slice(0, 2000) : "Reopened for correction",
-            updated_at: now,
-          }
-        : {
-            status: decision,
-            decided_by: auth.appUserId,
-            decided_at: now,
-            decision_note: typeof note === "string" ? note.slice(0, 2000) : null,
-            updated_at: now,
-          };
-
-    const { data, error } = await svc
-      .from("timesheets")
-      .update(patch)
-      .eq("id", timesheetId)
-      .select()
-      .single();
-
-    if (error) {
-      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    const { data, error } = await orgScopedClient(auth.token).rpc("decide_timesheet", {
+      p_timesheet_id: timesheetId,
+      p_decision: decision,
+      p_note: typeof note === "string" ? note.slice(0, 2000) : null,
+    });
+    if (error) return databaseFailure(error);
+    if (!validSheet(data, auth, { id: timesheetId, status: decision === "reopen" ? "draft" : decision })
+      || (data.user_id === auth.appUserId && data.user_type === auth.userType)) {
+      return NextResponse.json({ success: false, error: "Decision was not confirmed. Reload the week before retrying." }, { status: 503 });
     }
     return NextResponse.json({ success: true, timesheet: data });
   } catch (e) {
     return NextResponse.json(
-      { success: false, error: e?.message || "Could not update the timesheet" },
+      { success: false, error: "Decision was not confirmed. Reload the week before retrying." },
       { status: 500 }
     );
   }

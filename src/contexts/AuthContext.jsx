@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
   isSessionExpired,
+  clearApplicationSessions,
   clearAdminSession,
   clearClientSession,
   clearDeveloperSession,
@@ -12,7 +13,9 @@ import {
   touchAdminSession,
   touchDeveloperSession
 } from '@/utils/sessionPolicy';
-import { clearBrowserAuthentication } from '@/utils/browserLogout';
+import { clearBrowserAuthentication, logoutAndRedirect } from '@/utils/browserLogout';
+import { supabase } from '@/utils/supabaseClient';
+import { observeTerminalAuthLoss } from '@/utils/terminalAuthLoss';
 import { dashboardHomeFor } from '@/utils/dashboardHome';
 
 // Storage keys
@@ -218,6 +221,21 @@ export function AuthProvider({ children }) {
       window.removeEventListener('auth-change', handleAuthStateChange);
     };
   }, [checkAuth]);
+
+  // SDK refresh-token revocation must also remove the separate application
+  // identity cache. Auth events are reconciled against this tab's local SDK
+  // session because other tabs broadcast through the same Supabase channel.
+  useEffect(() => observeTerminalAuthLoss(supabase.auth, async () => {
+    const hadIdentity = Boolean(getStoredAdminSession() || getStoredDeveloperSession()
+      || getStoredClientSession() || sessionStorage.getItem(STORAGE_KEYS.USER));
+    clearApplicationSessions();
+    setIsLoggedIn(false);
+    setUser(null);
+    setIsLoading(false);
+    if (!hadIdentity) return false;
+    await logoutAndRedirect();
+    return true;
+  }), []);
 
   // Global activity tracking: keeps session alive via sliding 7-day inactivity window.
   useEffect(() => {

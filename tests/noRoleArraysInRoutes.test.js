@@ -82,6 +82,8 @@ const hasRoleArray = (src) =>
  * one that stops being true fails rather than sitting as cover for the next.
  */
 const NOT_AUTHORIZATION = {
+  "src/app/api/timesheets/route.js":
+    "admin/developer arrays validate caller and RPC receipt profile types; effective timesheet view, submit and approve permissions authorize each action",
   "src/app/api/leave/route.js":
     "admin/developer arrays validate storage profile identity; leave.request_own, leave.approve and leave view keys authorize actions",
   "src/app/api/attendance/route.js":

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { CheckCircle2, ChevronLeft, ChevronRight, Clock, Lock, Plus, Send, Square } from "lucide-react";
 
 import {
@@ -77,23 +77,35 @@ export default function MyTimesheet() {
   // which is why nothing was backfilled.
   const [sheet, setSheet] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const loadGeneration = useRef(0);
+  const visibleWeek = useRef(start);
+  visibleWeek.current = start;
+  useEffect(() => () => { ++loadGeneration.current; }, []);
 
   const load = useCallback(async () => {
+    const own = ++loadGeneration.current;
+    const current = () => own === loadGeneration.current && visibleWeek.current === start;
     try {
       setLoading(true);
       setError(null);
       const ctx = getOrgContext();
       const developerId = ctx?.userId || ctx?.appUserId;
+      if (!developerId || !ctx?.organizationId || !["admin", "developer"].includes(ctx.userType)) throw new Error("Your staff identity could not be confirmed. Sign in again.");
       const from = `${start}T00:00:00.000Z`;
       const to = `${shiftWeek(start, 1)}T00:00:00.000Z`;
 
       const [rows, myTasks] = await Promise.all([
-        loadTimeLogs({ developerId, from, to }),
+        loadTimeLogs({ developerId, userType: ctx?.userType, from, toExclusive: to }),
         // For the manual-entry picker and to put a title on each row.
         // `task_time_logs` stores the id, not the name.
-        loadMyWork(ctx?.organizationId || ctx?.orgId, developerId).catch(() => []),
+        loadMyWork(ctx?.organizationId || ctx?.orgId, developerId),
       ]);
 
+      // Unknown status must never be presented as an editable draft.
+      const res = await authFetch(`/api/timesheets?scope=me&weekStart=${encodeURIComponent(start)}`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.success || !Array.isArray(json.timesheets)) throw new Error(json?.error || "Could not confirm this week's submission status.");
+      if (!current()) return;
       const byId = new Map((myTasks || []).map((t) => [String(t.id), t]));
       setLogs(
         (rows || []).map((l) => ({
@@ -104,21 +116,11 @@ export default function MyTimesheet() {
       );
       setTasks(myTasks || []);
 
-      // The week's submission state. Failing to read it must not take the
-      // timesheet down with it: the hours are the screen's real content and a
-      // missing banner is a smaller loss than a blank page.
-      try {
-        const res = await authFetch(`/api/timesheets?scope=me`);
-        const json = await res.json().catch(() => ({}));
-        const rows = res.ok && json?.success ? json.timesheets || [] : [];
-        setSheet(rows.find((t) => t.week_start === start) || null);
-      } catch {
-        setSheet(null);
-      }
+      setSheet(json.timesheets.find((t) => t.week_start === start) || null);
     } catch (e) {
-      setError(e?.message || "Could not load your timesheet.");
+      if (current()) setError(e?.message || "Could not load your timesheet.");
     } finally {
-      setLoading(false);
+      if (current()) setLoading(false);
     }
   }, [start]);
 
@@ -141,7 +143,8 @@ export default function MyTimesheet() {
     if (!running) return;
     setBusy(true);
     try {
-      await stopTaskTimer(running);
+      const result = await stopTaskTimer(running);
+      if (result.error) throw result.error;
       await load();
       showSuccess("Timer stopped");
     } catch (e) {
@@ -162,12 +165,13 @@ export default function MyTimesheet() {
       setBusy(true);
       try {
         const task = tasks.find((t) => String(t.id) === String(entryTask));
-        await addManualTimeLog({
+        const result = await addManualTimeLog({
           taskId: entryTask,
           projectId: task?.project_id || null,
           seconds,
           note: entryNote.trim() || null,
         });
+        if (result.error) throw result.error;
         setEntryAmount("");
         setEntryNote("");
         await load();
@@ -212,6 +216,7 @@ export default function MyTimesheet() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.success) throw new Error(json?.error || "Could not submit the week.");
+      if (!json.timesheet?.id || json.timesheet.week_start !== start || json.timesheet.status !== "submitted") throw new Error("Submission was not confirmed. Refresh before retrying.");
       setSheet(json.timesheet);
       showSuccess("Week submitted for approval.");
     } catch (e) {
@@ -235,11 +240,12 @@ export default function MyTimesheet() {
     if (!row.logIds?.length) return;
     setBusy(true);
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("task_time_logs")
         .update({ is_billable: value })
-        .in("id", row.logIds);
+        .in("id", row.logIds).select("id");
       if (error) throw new Error(error.message);
+      if (!Array.isArray(data) || new Set(data.map(item => item.id)).size !== new Set(row.logIds).size || row.logIds.some(id => !data.some(item => item.id === id))) throw new Error("Not all time logs were updated. Refresh before retrying.");
       await load();
     } catch (e) {
       showError(e?.message || "Could not change that.");
@@ -286,7 +292,7 @@ export default function MyTimesheet() {
           )}
         </div>
         {!locked && week.total > 0 && (
-          <Button size="sm" onClick={submitWeek} disabled={submitting}>
+          <Button size="sm" onClick={submitWeek} disabled={submitting || loading || busy}>
             <Send className="mr-2 h-4 w-4" aria-hidden="true" />
             {sheet?.status === "rejected" ? "Submit again" : "Submit week"}
           </Button>
@@ -295,7 +301,7 @@ export default function MyTimesheet() {
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1">
-          <Button variant="outline" size="sm" onClick={() => setStart(shiftWeek(start, -1))}>
+          <Button variant="outline" size="sm" disabled={loading || busy || submitting} onClick={() => setStart(shiftWeek(start, -1))}>
             <ChevronLeft className="h-4 w-4" />
             <span className="sr-only">Previous week</span>
           </Button>
@@ -306,14 +312,14 @@ export default function MyTimesheet() {
             variant="outline"
             size="sm"
             onClick={() => setStart(shiftWeek(start, 1))}
-            disabled={start >= thisWeek}
+            disabled={start >= thisWeek || loading || busy || submitting}
             title={start >= thisWeek ? "That week has not happened yet" : "Next week"}
           >
             <ChevronRight className="h-4 w-4" />
             <span className="sr-only">Next week</span>
           </Button>
           {start !== thisWeek && (
-            <Button variant="ghost" size="sm" onClick={() => setStart(thisWeek)}>
+            <Button variant="ghost" size="sm" disabled={loading || busy || submitting} onClick={() => setStart(thisWeek)}>
               This week
             </Button>
           )}
@@ -326,7 +332,7 @@ export default function MyTimesheet() {
               Running:{" "}
               <span className="font-medium tabular-nums">{formatDuration(logSeconds(running, now))}</span>
             </span>
-            <Button size="sm" variant="destructive" onClick={stop} disabled={busy}>
+            <Button size="sm" variant="destructive" onClick={stop} disabled={busy || loading || submitting}>
               <Square className="mr-1 h-3 w-3" />
               Stop
             </Button>
@@ -374,7 +380,7 @@ export default function MyTimesheet() {
                           <input
                             type="checkbox"
                             checked={row.billableSeconds > 0}
-                            disabled={locked || busy || !row.logIds?.length}
+                            disabled={locked || busy || loading || submitting || !row.logIds?.length}
                             onChange={(e) => setBillable(row, e.target.checked)}
                             aria-label={`Mark ${row.title} as billable`}
                           />
@@ -426,7 +432,7 @@ export default function MyTimesheet() {
               placeholder="Optional"
             />
           </Field>
-          <Button type="submit" disabled={busy}>
+          <Button type="submit" disabled={busy || loading || submitting}>
             <Plus className="mr-1 h-4 w-4" />
             Add
           </Button>

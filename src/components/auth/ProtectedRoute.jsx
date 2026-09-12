@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/contexts/AuthContext";
 import AuthLoadingScreen from "./AuthLoadingScreen";
+import { protectedGateStatus } from "@/utils/terminalAuthLoss";
 
 // useLayoutEffect has no meaning on the server and warns if called there.
 // Resolved once, at module scope, so the hook call below is unconditional.
@@ -28,12 +29,11 @@ const useIsomorphicLayoutEffect =
  *  denied   — the check settled negative. Show the branded screen, then
  *             client-side `router.replace` to `redirectTo`. The screen is what
  *             turns the old abrupt bounce into an explained one.
- *  allowed  — render children, and never show the screen again for this mount.
+ *  allowed  — render children while authentication remains valid.
  *
  *  `allowed` is sticky (see allowedRef): once the visitor is known to be
- *  authenticated, a later re-render can no longer flash the loading screen at
- *  them. That is the "must not flash for an already-authenticated user" rule —
- *  the screen appears only while the check is genuinely pending or has failed.
+ *  authenticated, a temporary pending recheck does not flash the loading
+ *  screen. An explicit denial always clears that allowance and hides children.
  *
  * AVOIDING THE FIRST-PAINT FLASH
  *  AuthProvider starts `isLoading: true` and settles in a passive effect, which
@@ -109,7 +109,8 @@ export default function ProtectedRoute({
 
   const allowedRef = useRef(false);
   if (status === "allowed") allowedRef.current = true;
-  const effective = allowedRef.current ? "allowed" : status;
+  if (status === "denied") allowedRef.current = false;
+  const effective = protectedGateStatus(status, allowedRef.current);
 
   useEffect(() => {
     if (effective !== "denied") return;
