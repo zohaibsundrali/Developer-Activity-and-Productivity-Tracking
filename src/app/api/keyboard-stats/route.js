@@ -87,30 +87,44 @@ export async function GET(request) {
     if (email) filterParts.push(`user_email.eq.${JSON.stringify(email)}`);
     const orFilter = filterParts.join(",");
 
-    // Query strictly within the requested date range
-    const query = supabase
-      .from("keyboard_stats")
-      .select(fields)
-      .eq("organization_id", auth.orgId)
-      .or(orFilter)
-      .gte("tracked_at", startDate.toISOString())
-      .lte("tracked_at", endDate.toISOString())
-      .order("tracked_at", { ascending: false });
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error("[keyboard-stats] Query error:", error);
-      return NextResponse.json({ data: [], error: "Could not load keyboard activity" }, { status: 500 });
+    // Bound report size while paging past the provider's per-request row cap.
+    // Advance by returned rows: deployments may cap responses below 500.
+    const data = [];
+    let availableCount = null;
+    let truncated = true;
+    for (let page = 0; page < 20 && data.length < 10000; page += 1) {
+      const { data: batch, count: total, error } = await supabase
+        .from("keyboard_stats")
+        .select(fields, { count: "exact" })
+        .eq("organization_id", auth.orgId)
+        .or(orFilter)
+        .gte("tracked_at", startDate.toISOString())
+        .lte("tracked_at", endDate.toISOString())
+        .order("tracked_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(data.length, Math.min(data.length + 499, 9999));
+      if (error || !Array.isArray(batch) || !Number.isSafeInteger(total) || total < 0) {
+        console.error("[keyboard-stats] Report page unavailable");
+        return NextResponse.json({ data: [], error: "Could not load keyboard activity" }, { status: 500 });
+      }
+      availableCount = total;
+      data.push(...batch);
+      if (data.length >= total) {
+        truncated = false;
+        break;
+      }
+      // Empty intermediate pages can occur when data changes during a read.
+      if (!batch.length) break;
     }
-
-    const count = data?.length || 0;
+    const count = data.length;
     return NextResponse.json({
       data: data || [],
       source: "primary-date-filtered",
       dateRange: { start: startDate.toISOString(), end: endDate.toISOString() },
       count,
-      ...(count === 0 ? { message: "No data for selected date range" } : {}),
+      availableCount,
+      truncated,
+      ...(count === 0 && !truncated ? { message: "No data for selected date range" } : {}),
     });
 
   } catch (err) {
