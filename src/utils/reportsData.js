@@ -1,7 +1,7 @@
+import { reportDay as ymd, reportDaysBetween as daysBetween, reportDefaultRange, reportRangeBounds, reportRangeDays } from "@/utils/reportDates";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
-import { loadEmployees } from "@/utils/employeesData";
 import { normalizeStatus, sumSeconds } from "@/utils/pmData";
 
 /**
@@ -41,17 +41,11 @@ const MAX_PROJECT_ROWS = 5000;
 const MAX_TASK_ROWS = 20000;
 const MAX_TIME_LOG_ROWS = 20000;
 const MAX_SESSION_ROWS = 10000;
+const MAX_EMPLOYEE_ROWS = 20000;
 
 // A very long `in.(…)` list becomes a URL longer than the gateway accepts, so
 // identity filters are issued in chunks.
 const IN_CHUNK = 100;
-
-// Status groups mirroring normalizeStatus()/STATUS_ALIAS in pmData.js. They let
-// the donut + KPI counts be answered by four HEAD requests instead of shipping
-// every task row to the browser just to bucket it.
-const IN_PROGRESS_STATUSES = ["in_progress", "doing"];
-const IN_REVIEW_STATUSES = ["awaiting_approval", "reviewed", "in_review"];
-const COMPLETED_STATUSES = ["completed", "done", "approved"];
 
 function chunked(arr, size) {
   const out = [];
@@ -64,43 +58,71 @@ function chunked(arr, size) {
  * `buildQuery` must apply a deterministic `.order()`, otherwise pages can
  * overlap or skip rows.
  */
-async function fetchPaged(buildQuery, maxRows) {
+async function fetchPaged(buildQuery, maxRows, identity = "id") {
   const rows = [];
-  for (let offset = 0; offset < maxRows; offset += PAGE_SIZE) {
+  const seen = new Set();
+  let expectedCount = null;
+  const verifyCount = count => {
+    if (!Number.isSafeInteger(count) || count < 0 || (expectedCount !== null && expectedCount !== count)) throw new Error("Report data changed while loading. Please retry.");
+    expectedCount = count;
+  };
+  while (rows.length < maxRows) {
+    const offset = rows.length;
     const size = Math.min(PAGE_SIZE, maxRows - offset);
-    const { data, error } = await buildQuery().range(offset, offset + size - 1);
-    if (error || !Array.isArray(data)) throw new Error("Report data lookup failed");
-    rows.push(...data);
-    if (data.length < size) return { rows, truncated: false, error: null };
+    const { data, error, count } = await buildQuery().range(offset, offset + size - 1);
+    if (error || !Array.isArray(data) || data.length > size) throw new Error("Report data lookup failed");
+    verifyCount(count);
+    if (!data.length) {
+      if (rows.length !== expectedCount) throw new Error("Report data changed while loading. Please retry.");
+      return { rows, truncated: false };
+    }
+    for (const row of data) {
+      const key = row?.[identity];
+      if (typeof key !== "string" || !key || seen.has(key)) throw new Error("Report data changed while loading. Please retry.");
+      seen.add(key);
+      rows.push(row);
+    }
+    if (rows.length > expectedCount) throw new Error("Report data changed while loading. Please retry.");
+    if (rows.length === expectedCount) return { rows, truncated: false };
+    // Hosted caps can be below PAGE_SIZE; advance by actual rows returned.
   }
-  return { rows, truncated: true, error: null };
+  return { rows, truncated: expectedCount > rows.length };
 }
 
-function ymd(d) {
-  const dt = d instanceof Date ? d : new Date(d);
-  return Number.isNaN(dt.getTime()) ? null : dt.toISOString().slice(0, 10);
+// Report consumers need display identities, not HR profiles or salary fields.
+async function loadReportEmployees(orgId, client) {
+  const read = (table, columns, nonClients = false) => fetchPaged(() => {
+    let q = client.from(table).select(columns, { count: "exact" }).eq("organization_id", orgId);
+    if (nonClients) q = q.neq("user_type", "client");
+    return q.order("id", { ascending: true });
+  }, MAX_EMPLOYEE_ROWS);
+  const [memberships, developers, admins] = await Promise.all([
+    read("memberships", "id, user_id, user_type, role, email, status", true),
+    read("developers", "id, name, email"),
+    read("admin_users", "id, full_name, email"),
+  ]);
+  const devById = new Map(developers.rows.map(p => [p.id, p]));
+  const adminById = new Map(admins.rows.map(p => [p.id, p]));
+  const employees = memberships.rows.map(m => {
+    const person = m.user_type === "admin" ? adminById.get(m.user_id) : devById.get(m.user_id);
+    return { membershipId: m.id, userId: m.user_id, userType: m.user_type,
+      name: person?.full_name || person?.name || (m.email ? m.email.split("@")[0] : "Member"),
+      email: person?.email || m.email || "", role: m.role || m.user_type || "developer", status: m.status || "active" };
+  });
+  return { employees, truncated: memberships.truncated || developers.truncated || admins.truncated };
 }
 
-function daysBetween(a, b) {
-  const d1 = new Date(a);
-  const d2 = new Date(b);
-  if (Number.isNaN(d1.getTime()) || Number.isNaN(d2.getTime())) return 0;
-  return Math.round((d2.getTime() - d1.getTime()) / 86400000);
-}
-
-/** Default range: last 30 days (inclusive), as ISO date strings. */
+/** Default range: last 30 UTC calendar days (inclusive). */
 export function defaultRange() {
-  const to = new Date();
-  const from = new Date(to.getTime() - 29 * 86400000);
-  return { from: ymd(from), to: ymd(to) };
+  return reportDefaultRange();
 }
 
 /**
  * Load everything the reports need in one pass.
  * range = { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' } (applied to time/session data;
  * tasks and projects are loaded whole so status totals stay meaningful — up to
- * the row ceilings above, past which the headline status totals come from the
- * database rather than from the rows we managed to fetch).
+ * the row ceilings above, past which truncation is explicit and the report
+ * API refuses partial aggregates).
  */
 export async function loadReportData(range = defaultRange()) {
   const query = new URLSearchParams({ from: range.from, to: range.to });
@@ -114,19 +136,18 @@ export async function loadReportDataForClient(range, client = supabase, orgId = 
   if (!orgId) return emptyBundle();
 
   const { from, to } = range || defaultRange();
-  const fromIso = from ? new Date(`${from}T00:00:00`).toISOString() : null;
-  const toIso = to ? new Date(`${to}T23:59:59`).toISOString() : null;
+  const { fromIso, toIso } = reportRangeBounds({ from, to });
 
   const logFrom = fromIso || "1970-01-01T00:00:00Z";
   const logTo = toIso || new Date().toISOString();
 
   // Projects + tasks + explicit time logs are all org-scoped and RLS-safe.
-  const [projRes, taskRes, logRes, empRes, statusCounts] = await Promise.all([
+  const [projRes, taskRes, logRes, empRes] = await Promise.all([
     fetchPaged(
       () =>
         client
           .from("projects")
-          .select("id, name, status, progress, deadline, start_date, end_date, archived, created_at")
+          .select("id, name, status, progress, deadline, start_date, end_date, archived, created_at", { count: "exact" })
           .eq("organization_id", orgId)
           .order("created_at", { ascending: false })
           .order("id", { ascending: true }),
@@ -137,7 +158,7 @@ export async function loadReportDataForClient(range, client = supabase, orgId = 
         client
           .from("developer_tasks")
           .select(
-            "id, project_id, developer_id, task_title, status, priority, task_type, story_points, due_date, start_date, end_date, actual_completion_date, is_on_time, productivity_points, reviewed_at, created_at, updated_at"
+            "id, project_id, developer_id, task_title, status, priority, task_type, story_points, due_date, start_date, end_date, actual_completion_date, is_on_time, productivity_points, reviewed_at, created_at, updated_at", { count: "exact" }
           )
           .eq("organization_id", orgId)
           .order("id", { ascending: true }),
@@ -147,16 +168,15 @@ export async function loadReportDataForClient(range, client = supabase, orgId = 
       () =>
         client
           .from("task_time_logs")
-          .select("id, task_id, project_id, developer_id, user_type, started_at, ended_at, seconds, source")
+          .select("id, task_id, project_id, developer_id, user_type, started_at, ended_at, seconds, source", { count: "exact" })
           .eq("organization_id", orgId)
           .gte("started_at", logFrom)
-          .lte("started_at", logTo)
+          .lt("started_at", logTo)
           .order("started_at", { ascending: true })
           .order("id", { ascending: true }),
       MAX_TIME_LOG_ROWS
     ),
-    loadEmployees(orgId, client),
-    loadStatusCounts(orgId, client),
+    loadReportEmployees(orgId, client),
   ]);
 
   const projects = projRes.rows;
@@ -172,12 +192,13 @@ export async function loadReportDataForClient(range, client = supabase, orgId = 
     timeLogs,
     employees,
     sessions: sessionRes.rows,
-    statusCounts,
+    statusCounts: taskRes.truncated ? null : { ...statusDistribution(tasks), total: tasks.length },
     truncated: {
       projects: projRes.truncated,
       tasks: taskRes.truncated,
       timeLogs: logRes.truncated,
       sessions: sessionRes.truncated,
+      employees: empRes.truncated,
     },
     range: { from, to },
     orgId,
@@ -192,48 +213,9 @@ function emptyBundle() {
     employees: [],
     sessions: [],
     statusCounts: null,
-    truncated: { projects: false, tasks: false, timeLogs: false, sessions: false },
+    truncated: { projects: false, tasks: false, timeLogs: false, sessions: false, employees: false },
     range: defaultRange(),
     orgId: null,
-  };
-}
-
-/**
- * Task status totals answered by the database. Four HEAD requests carry no row
- * payload at all, and — unlike counting a truncated page of tasks — they stay
- * correct for organizations larger than MAX_TASK_ROWS.
- * Returns null if the counts are unavailable, so callers can fall back to
- * bucketing the rows they already hold.
- */
-async function loadStatusCounts(orgId, client) {
-  const base = () =>
-    client.from("developer_tasks").select("id", { count: "exact", head: true }).eq("organization_id", orgId);
-  // These counts are an optimization, never a hard dependency — a failure here
-  // must not take the whole report down with it.
-  const countOf = async (query) => {
-    try {
-      const { count, error } = await query;
-      return error ? null : count || 0;
-    } catch {
-      return null;
-    }
-  };
-
-  const [total, inProgress, inReview, completed] = await Promise.all([
-    countOf(base()),
-    countOf(base().in("status", IN_PROGRESS_STATUSES)),
-    countOf(base().in("status", IN_REVIEW_STATUSES)),
-    countOf(base().in("status", COMPLETED_STATUSES)),
-  ]);
-  if (total === null || inProgress === null || inReview === null || completed === null) return null;
-
-  return {
-    // Everything else (pending, rejected, todo, open, null…) normalizes to "To Do".
-    pending: Math.max(0, total - inProgress - inReview - completed),
-    in_progress: inProgress,
-    awaiting_approval: inReview,
-    completed,
-    total,
   };
 }
 
@@ -246,47 +228,41 @@ async function loadStatusCounts(orgId, client) {
  */
 async function loadDesktopSessions(employees, fromIso, toIso, client) {
   const desktopEmployees = (employees || []).filter((e) => e.userType === "developer");
-  const ids = desktopEmployees.map((e) => e.userId).filter(Boolean);
-  const emails = desktopEmployees.map((e) => e.email).filter(Boolean);
+  const ids = [...new Set(desktopEmployees.map((e) => e.userId).filter(Boolean))];
+  const emails = [...new Set(desktopEmployees.map((e) => e.email).filter(Boolean))];
   if (!ids.length && !emails.length) return { rows: [], truncated: false };
 
   const cols = "session_id, user_id, user_email, start_time, end_time, status, total_duration, productivity_score, created_at";
   const base = () => {
-    let q = client.from("productivity_sessions").select(cols);
+    let q = client.from("productivity_sessions").select(cols, { count: "exact" });
     if (fromIso) q = q.gte("start_time", fromIso);
-    if (toIso) q = q.lte("start_time", toIso);
-    return q.order("start_time", { ascending: false });
+    if (toIso) q = q.lt("start_time", toIso);
+    return q.order("start_time", { ascending: false }).order("session_id", { ascending: true });
   };
 
-  // Split the budget across the identity chunks so a large team cannot make
-  // one chunk consume the whole allowance.
-  const idChunks = chunked(ids, IN_CHUNK);
-  const emailChunks = chunked(emails, IN_CHUNK);
-  const chunkCount = idChunks.length + emailChunks.length;
-  const perChunk = Math.max(PAGE_SIZE, Math.floor(MAX_SESSION_ROWS / chunkCount));
-
   const queries = [
-    ...idChunks.map((c) => () => fetchPaged(() => base().in("user_id", c), perChunk)),
-    ...emailChunks.map((c) => () => fetchPaged(() => base().in("user_email", c), perChunk)),
+    ...chunked(ids, IN_CHUNK).map(c => () => base().in("user_id", c)),
+    ...chunked(emails, IN_CHUNK).map(c => () => base().in("user_email", c)),
   ];
-
-  let rows = [];
+  const bySession = new Map();
   let truncated = false;
-  const results = await Promise.all(queries.map((run) => run()));
-  results.forEach((r) => {
-    rows = rows.concat(r.rows);
-    truncated = truncated || r.truncated;
-  });
-
-  // Dedupe: a session can match on both id and email.
-  const seen = new Set();
-  const deduped = rows.filter((r) => {
-    const key = r.session_id || `${r.user_id || r.user_email}-${r.start_time}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-  return { rows: deduped, truncated };
+  // Sequential chunks bound memory; overlapping ID/email queries never spend
+  // the returned-row budget twice on the same session.
+  for (const query of queries) {
+    const result = await fetchPaged(query, MAX_SESSION_ROWS, "session_id");
+    truncated ||= result.truncated;
+    for (const row of result.rows) {
+      const previous = bySession.get(row.session_id);
+      if (previous) {
+        if (JSON.stringify(previous) !== JSON.stringify(row)) throw new Error("Report sessions changed while loading. Please retry.");
+        continue;
+      }
+      if (bySession.size >= MAX_SESSION_ROWS) { truncated = true; break; }
+      bySession.set(row.session_id, row);
+    }
+    if (truncated && bySession.size >= MAX_SESSION_ROWS) break;
+  }
+  return { rows: [...bySession.values()], truncated };
 }
 
 /* ------------------------------------------------------------------ */
@@ -455,10 +431,7 @@ export function deadlineDelays({ tasks, projects, employees }) {
 /** 6. Daily trend — completed tasks and logged hours per day across the range. */
 export function dailyTrend({ tasks, timeLogs, sessions, range }) {
   const { from, to } = range || defaultRange();
-  const days = [];
-  const start = new Date(`${from}T00:00:00`);
-  const end = new Date(`${to}T00:00:00`);
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) days.push(ymd(d));
+  const days = reportRangeDays({ from, to });
 
   const completedBy = new Map();
   (tasks || []).forEach((t) => {
@@ -488,7 +461,7 @@ export function dailyTrend({ tasks, timeLogs, sessions, range }) {
 /** Headline numbers for the reports landing strip. */
 export function summaryKpis(bundle) {
   const { tasks, timeLogs, sessions, projects, statusCounts } = bundle;
-  // Prefer the database's own totals — they stay right past MAX_TASK_ROWS.
+  // Status totals share the exact task rows used by every report table.
   const dist = statusCounts || statusDistribution(tasks);
   const total = statusCounts ? statusCounts.total : (tasks || []).length;
   const done = dist.completed;

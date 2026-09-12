@@ -65,11 +65,12 @@ export function exportCsv({ columns, rows, filename = "report" }) {
  * `meta` is an optional array of "Label: value" strings printed under the title
  * (e.g. the active filters / date range), so an exported report is self-describing.
  */
-export async function exportPdf({ title, subtitle, columns, rows, filename = "report", meta = [] }) {
+export async function exportPdf({ title, subtitle, columns, rows, filename = "report", meta = [], shouldContinue = () => true }) {
   const [{ jsPDF }, autoTableMod] = await Promise.all([
     import("jspdf"),
     import("jspdf-autotable"),
   ]);
+  if (!shouldContinue()) return;
   const autoTable = autoTableMod.default || autoTableMod.autoTable;
 
   const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
@@ -128,5 +129,6 @@ export async function exportPdf({ title, subtitle, columns, rows, filename = "re
     doc.text("No data for the selected filters.", marginX, y + 24);
   }
 
+  if (!shouldContinue()) return;
   doc.save(`${safeName(filename)}_${stamp()}.pdf`);
 }
