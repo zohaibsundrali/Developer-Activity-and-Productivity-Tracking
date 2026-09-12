@@ -1,4 +1,5 @@
 "use client";
+import ScreenshotPolicySettings from "@/components/shared/ScreenshotPolicySettings";
 import TrackerDevices from "@/components/shared/TrackerDevices";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -519,6 +520,7 @@ export default function AdminAccount({ user }) {
           </form>
         </Section>
       </div>
+      <ScreenshotPolicySettings key={`screenshots:${user?.organization_id}:${user?.id}`} orgId={user?.organization_id} readOnly={false} />
       <TrackerDevices />
     </div>
   );

@@ -325,6 +325,18 @@ export async function POST(request) {
     if (previous && (previous.storage_path !== fileName || !sameMetadata(previous.capture_metadata, metadata))) {
       return NextResponse.json({ error: 'Capture ID already belongs to different screenshot metadata' }, { status: 409 });
     }
+    // Read the current organization policy before sending new private bytes.
+    // The database also enforces this against direct Storage / table requests.
+    // Existing receipts can still be acknowledged without creating a capture.
+    if (auth.client && !previous) {
+      let policy;
+      try { policy = await db.rpc('get_screenshot_policy'); }
+      catch { return NextResponse.json({ error: 'Screenshot policy unavailable' }, { status: 503 }); }
+      if (policy.error || policy.data?.organization_id !== orgPrefix || typeof policy.data?.enabled !== 'boolean') {
+        return NextResponse.json({ error: 'Screenshot policy unavailable' }, { status: 503 });
+      }
+      if (!policy.data.enabled) return NextResponse.json({ error: 'Screenshots are disabled by organization policy' }, { status: 403 });
+    }
     // Immutable upload only. A timeout/duplicate can mean this exact object was
     // already committed; verify bytes before finalizing instead of overwriting.
     let uploadError = previous ? new Error("Existing receipt requires object verification") : null;
