@@ -208,9 +208,9 @@ describe("C-4 · screenshot ingest is bounded and typed", () => {
   it("requires the decoded bytes to be a PNG", () => {
     // Buffer.from(_, 'base64') drops what it cannot decode and never throws, so
     // arbitrary bytes were stored under a hardcoded image/png content type.
-    expect(src).toContain("function isPng(");
-    expect(src).toMatch(/0x89[\s\S]{0,80}0x50[\s\S]{0,80}0x4e[\s\S]{0,80}0x47/);
-    expect(src).toMatch(/isPng\(buffer\)[\s\S]{0,200}status:\s*415/);
+    expect(src).toContain("function pngDimensions(");
+    expect(src).toContain("[137,80,78,71,13,10,26,10]");
+    expect(src).toMatch(/pngDimensions\(buffer\)[\s\S]{0,200}status:\s*415/);
   });
 
   it("decodes once and stores what it checked", () => {

@@ -75,7 +75,7 @@ function makeSupabase() {
           select: () => ({
             eq: () => ({
               maybeSingle: async () => ({
-                data: { id: DEV_ID, organization_id: ORG_ID },
+                data: { id: DEV_ID, organization_id: ORG_ID, email: 'developer@example.test' },
                 error: null,
               }),
             }),
