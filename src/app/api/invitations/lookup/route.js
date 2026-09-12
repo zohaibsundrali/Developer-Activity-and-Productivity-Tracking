@@ -3,6 +3,11 @@ import { serviceClient } from "@/utils/serverAuth";
 
 export const dynamic = "force-dynamic";
 
+const reply = (body, status = 200) => NextResponse.json(body, {
+  status,
+  headers: { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" },
+});
+
 // GET /api/invitations/lookup?token=...
 // Public token-based lookup for the /invite/[token] page. The invitee is NOT
 // authenticated, and `invitations` has RLS that only allows authenticated org
@@ -14,7 +19,7 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const token = searchParams.get("token");
     if (!token) {
-      return NextResponse.json({ error: "token required" }, { status: 400 });
+      return reply({ error: "token required" }, 400);
     }
 
     const svc = serviceClient();
@@ -24,23 +29,25 @@ export async function GET(request) {
       .eq("token", token)
       .maybeSingle();
 
-    if (error || !invite) {
-      return NextResponse.json({ error: "not_found" }, { status: 404 });
-    }
+    if (error) return reply({ error: "lookup_unavailable" }, 503);
+    if (!invite) return reply({ error: "not_found" }, 404);
 
     let orgName = null;
     if (invite.organization_id) {
-      const { data: org } = await svc
+      const { data: org, error: orgError } = await svc
         .from("organizations")
         .select("name")
         .eq("id", invite.organization_id)
         .maybeSingle();
-      orgName = org?.name || null;
+      if (orgError) return reply({ error: "lookup_unavailable" }, 503);
+      if (!org) return reply({ error: "not_found" }, 404);
+      orgName = org.name || null;
     }
 
-    const expired = !!(invite.expires_at && new Date(invite.expires_at) < new Date());
+    const expiration = Date.parse(invite.expires_at);
+    const expired = !invite.expires_at || !Number.isFinite(expiration) || expiration <= Date.now();
 
-    return NextResponse.json({
+    return reply({
       email: invite.email,
       role: invite.role,
       status: invite.status,
@@ -49,6 +56,6 @@ export async function GET(request) {
       hasProject: !!invite.project_id,
     });
   } catch (e) {
-    return NextResponse.json({ error: "lookup_failed" }, { status: 500 });
+    return reply({ error: "lookup_unavailable" }, 503);
   }
 }

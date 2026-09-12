@@ -85,6 +85,19 @@ function clearServerSession() {
   }
 }
 
+// Complete application identity cleanup for explicit logout. Server cookie
+// revocation is awaited separately by browserLogout; no unrelated storage is
+// cleared, including deletion receipts needed for recovery after account loss.
+export function clearApplicationSessions() {
+  try { clearPermissionSet(); } catch { /* fail closed locally */ }
+  for (const storageName of ['sessionStorage', 'localStorage']) {
+    let storage;
+    try { storage = typeof window === 'undefined' ? null : window[storageName]; } catch { continue; }
+    for (const key of ['adminUser', 'developerUser', 'clientUser', 'auth_token', 'user_data']) safeRemove(storage, key);
+  }
+  for (const name of ['admin_auth', 'admin_id', 'developer_auth', 'developer_id', 'client_auth', 'client_id']) expireCookie(name);
+}
+
 export function clearAdminSession() {
   // The next person to sign in on this browser must not inherit this one's
   // permission set — including their exceptions.

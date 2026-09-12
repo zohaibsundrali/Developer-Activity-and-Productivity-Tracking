@@ -99,6 +99,8 @@ export async function POST(request) {
       );
     }
     email = raw;
+    // Fail before provider calls if production link authority is missing.
+    const origin = appOrigin(request);
 
     const ip =
       request.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
@@ -127,7 +129,7 @@ export async function POST(request) {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const redirectTo = `${appOrigin(request)}${RESET_PASSWORD_PATH}`;
+    const redirectTo = `${origin}${RESET_PASSWORD_PATH}`;
 
     const { data, error } = await admin.auth.admin.generateLink({
       type: "recovery",
@@ -138,7 +140,7 @@ export async function POST(request) {
     // The overwhelmingly common cause is "no such user", which is exactly the
     // case we must not disclose. Log it server-side, answer as if we had sent.
     if (error || !data?.properties?.action_link) {
-      console.warn("[forgot-password] no recovery link minted:", error?.message || "no action_link");
+      console.warn("[forgot-password] recovery_link_unavailable");
       return accepted();
     }
 
@@ -172,11 +174,7 @@ export async function POST(request) {
     // asked for a link and no link left the building, so hand the job back to
     // Supabase, which has its own transport.
     if (!result.ok || !result.delivered) {
-      console.error(
-        "[forgot-password] branded send did not deliver (mode=%s, ok=%s) — falling back to Supabase delivery",
-        result.mode,
-        result.ok
-      );
+      console.error("[forgot-password] email_delivery_unconfirmed");
       await supabaseFallback(request, email);
     }
 
@@ -184,20 +182,21 @@ export async function POST(request) {
   } catch (e) {
     // Never surfaces the reason. A transport error from an SMTP client will
     // happily quote the credential it just tried inside its own message.
-    console.error("[forgot-password] unexpected failure:", e?.message || e);
+    console.error("[forgot-password] recovery_request_failed");
     return accepted();
   }
 }
 
-/** The deployment's own origin — env first, then the origin we were served on. */
+/** Production must explicitly configure a trusted HTTPS application origin. */
 function appOrigin(request) {
-  let requestOrigin = "";
-  try {
-    requestOrigin = new URL(request.url).origin;
-  } catch {
-    /* malformed request URL — the env var, or the relative path, will do */
-  }
-  return resolveAppOrigin(process.env.NEXT_PUBLIC_APP_URL, requestOrigin);
+  const configured = process.env.NEXT_PUBLIC_APP_URL;
+  const production = process.env.NODE_ENV === "production";
+  if (production && !configured) throw new Error("Recovery origin unavailable");
+  const candidate = configured || request.url;
+  const url = new URL(candidate);
+  if (!["https:", "http:"].includes(url.protocol) || url.username || url.password ||
+      (production && url.protocol !== "https:")) throw new Error("Recovery origin unavailable");
+  return resolveAppOrigin(url.origin, "");
 }
 
 /**
@@ -223,6 +222,6 @@ async function supabaseFallback(request, email) {
       redirectTo: `${appOrigin(request)}${RESET_PASSWORD_PATH}`,
     });
   } catch (e) {
-    console.error("[forgot-password] Supabase fallback also failed:", e?.message || e);
+    console.error("[forgot-password] fallback_delivery_failed");
   }
 }

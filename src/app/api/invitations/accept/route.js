@@ -82,10 +82,30 @@ export async function POST(request) {
     if (prior?.user) {
       const previous = prior.user;
       if (previous.app_metadata?.invitation_id !== invite.id || previous.app_metadata?.app_user_id !== reserved.profile_id ||
-          previous.app_metadata?.organization_id !== invite.organization_id || previous.email?.toLowerCase() !== invite.email.toLowerCase()) {
-        throw new Error("Reserved Auth account identity mismatch");
+          previous.app_metadata?.organization_id !== invite.organization_id || previous.email?.toLowerCase() !== invite.email.toLowerCase() ||
+          previous.id !== reserved.auth_user_id || previous.app_metadata?.role !== invite.role || previous.app_metadata?.user_type !== userType) {
+        return NextResponse.json({ error: "The reserved sign-in no longer matches this invitation. Contact your administrator to reconcile the account before retrying." }, { status: 409 });
       }
-      authResult = await admin.auth.admin.updateUserById(reserved.auth_user_id, { password, app_metadata: metadata });
+      // A delayed retry must never overwrite credentials after a newer
+      // lease has completed acceptance. Verify the original password using
+      // an isolated, non-persistent client; never sign in the service client.
+      const verifier = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+        { auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false } });
+      let verified;
+      try {
+        verified = await verifier.auth.signInWithPassword({ email: invite.email, password });
+      } finally {
+        // Revoke only this temporary verification session, not other logins.
+        try { await verifier.auth.signOut({ scope: "local" }); } catch { /* No session tokens are persisted or returned. */ }
+      }
+      if (verified.error || verified.data?.user?.id !== reserved.auth_user_id) {
+        const incorrect = verified.error?.code === "invalid_credentials";
+        return NextResponse.json({ error: incorrect
+          ? "Use the same password as your first acceptance attempt. If you forgot it, use Forgot password, then return to this invitation with your new password."
+          : "Could not verify your existing sign-in. Please retry shortly." }, { status: incorrect ? 409 : 503 });
+      }
+      authResult = { data: { user: previous }, error: null };
     } else {
       authResult = await admin.auth.admin.createUser({ id: reserved.auth_user_id, email: invite.email, password, email_confirm: true, app_metadata: metadata });
     }

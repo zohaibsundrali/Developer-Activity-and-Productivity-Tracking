@@ -1,5 +1,6 @@
 "use client";
 
+import { logoutAndRedirect } from '@/utils/browserLogout';
 import PermissionBoundary from "@/components/auth/PermissionBoundary";
 import { useEffect, useState, useRef, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
@@ -307,13 +308,7 @@ function DeveloperDashboardContent() {
     }
   };
 
-  const handleLogout = () => {
-    try { supabase.auth.signOut(); } catch {}
-    clearDeveloperSession();
-
-    // Redirect to login
-    router.push("/login");
-  };
+  const handleLogout = () => logoutAndRedirect();
 
   // ✅ FIXED: Handle project details navigation
   const handleViewProjectDetails = (project) => {

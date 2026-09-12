@@ -33,19 +33,20 @@ export const dynamic = "force-dynamic";
  *  - the body carries only { membershipId, role },
  *  - the authorisation matrix in ./authorize.js is applied (see it for the
  *    reasoning, including why nobody may change their own role),
- *  - BOTH stores are written, in the order that keeps any partial failure on
- *    the restrictive side,
+ *  - BOTH stores are written; authorization rejects mismatched roles until
+ *    the change is reconciled,
  *  - app_metadata is MERGED, never replaced: organization_id, user_type and
  *    app_user_id survive the update. A shallow overwrite would drop
  *    organization_id, auth_org() would return null, and the member would be
  *    locked out of their own organization by every RLS policy at once.
  *
- * REMAINING WINDOW (documented, not hidden)
- *  updateUserById changes the STORED claims. Access tokens already issued to
- *  the target still carry the old role until they are refreshed (Supabase
- *  default: up to one hour). So a demotion is effective at the next token
- *  refresh, not instantly. That is a bounded, self-healing window — unlike the
- *  defect above, which never healed at all.
+ * SESSION REFRESH
+ *  updateUserById changes stored metadata, not access tokens already issued.
+ *  The API and database require matching membership and Auth roles. An old JWT
+ *  cannot retain a previous role's permissions after membership changes; the
+ *  member must refresh their session before using direct database requests.
+ *  Numeric rank orders assignments but does not describe permission subsets:
+ *  HR has people permissions that a higher-ranked Manager does not have.
  */
 
 // A role change writes exactly this column plus the audit timestamp. Every
@@ -148,11 +149,8 @@ export async function POST(request) {
       return error ? { error } : { ok: true };
     };
 
-    // Lower privilege first — see writeClaimFirst() for why. A demotion drops
-    // the JWT claim before the app row advertises the lower role; a promotion
-    // records the app row before the claim grants anything. The intermediate
-    // state is always the MINIMUM of the two roles, never the maximum, so a
-    // failure between the writes is an annoyance and never an escalation.
+    // Preserve the established write order, but do not treat numeric rank as
+    // a permission intersection. API/database authorization rejects role drift.
     const claimFirst = writeClaimFirst(currentRole, newRole);
     const [first, second] = claimFirst ? [writeClaim, writeRow] : [writeRow, writeClaim];
     const firstName = claimFirst ? "auth_claim" : "membership_row";
@@ -184,16 +182,15 @@ export async function POST(request) {
 
     const secondResult = await second();
     if (secondResult.error) {
-      // The remaining window: one store moved, the other did not. By
-      // construction the effective privilege is the LOWER of the two roles, so
-      // this is a stale-restrictive state — never a stale-permissive one.
-      // /api/admin/members/sync-roles reports and repairs it.
+      // One store changed and the other did not. Requests with mismatched
+      // roles are rejected. Retry this requested change: blindly syncing from
+      // memberships could undo a demotion whose membership write failed.
       await recordEvent({
         orgId: auth.orgId,
         type: "auth.role_change_partial",
         severity: "error",
         source: "api",
-        message: `Role change applied to ${firstName} but ${secondName} failed; the member is left on the more restrictive of the two roles.`,
+        message: `Role change applied to ${firstName} but ${secondName} failed; mismatched role claims require reconciliation before access.`,
         context: {
           route: "/api/admin/members/role",
           userId: membership.user_id,
@@ -205,8 +202,9 @@ export async function POST(request) {
       return NextResponse.json(
         {
           error:
-            "The role change was only partly applied. The member has been left with the more restrictive of the two roles — run Sync roles to finish it.",
+            "The role change was only partly applied. Requests with mismatched roles are blocked. Retry this role change, then ask the member to refresh their session.",
           partial: true,
+          requestedRole: newRole,
           applied: firstName,
           failed: secondName,
           role: claimFirst ? currentRole : newRole,
@@ -243,6 +241,7 @@ export async function POST(request) {
       // claims will be stamped at account creation, so there is nothing stale to
       // repair — but the caller is told rather than left to assume.
       authUpdated,
+      sessionRefreshRequired: authUpdated && currentRole !== newRole,
       ...(authUpdated
         ? {}
         : {

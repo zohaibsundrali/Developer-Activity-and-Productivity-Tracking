@@ -12,6 +12,7 @@ import {
   touchAdminSession,
   touchDeveloperSession
 } from '@/utils/sessionPolicy';
+import { clearBrowserAuthentication } from '@/utils/browserLogout';
 import { dashboardHomeFor } from '@/utils/dashboardHome';
 
 // Storage keys
@@ -167,16 +168,10 @@ export function AuthProvider({ children }) {
   }, []);
 
   // Logout function
-  const logout = useCallback(() => {
-    sessionStorage.removeItem(STORAGE_KEYS.TOKEN);
-    sessionStorage.removeItem(STORAGE_KEYS.USER);
-    clearAdminSession();
-    clearDeveloperSession();
+  const logout = useCallback(async () => {
     setIsLoggedIn(false);
     setUser(null);
-    
-    // Dispatch event for all components to update
-    window.dispatchEvent(new Event('auth-state-changed'));
+    await clearBrowserAuthentication();
 
     // DELIBERATE HARD NAVIGATION — DO NOT CONVERT THIS TO router.push.
     //
@@ -236,13 +231,11 @@ export function AuthProvider({ children }) {
       if (updated) setUser(updated);
     };
 
-    const checkExpired = () => {
+    const checkExpired = async () => {
       if (isSessionExpired(user)) {
-        clearAdminSession();
-        clearDeveloperSession();
         setIsLoggedIn(false);
         setUser(null);
-        window.dispatchEvent(new Event('auth-state-changed'));
+        await clearBrowserAuthentication();
 
         try {
           const path = window.location?.pathname || '';

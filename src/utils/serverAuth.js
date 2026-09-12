@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { recordEvent } from "@/utils/systemEvents";
-import { isRole, rankOf } from "@/utils/roles";
+import { isRole, PROFILE_TABLE } from "@/utils/roles";
 import { loadOverrides } from "@/utils/permissionOverrides";
 
 // Server-side auth helpers for API routes.
@@ -54,6 +54,8 @@ export async function getAuthedOrg(request, { allowDeletion = false } = {}) {
     });
     return null;
   }
+
+  if (data.user.deleted_at || (data.user.banned_until && Date.parse(data.user.banned_until) > Date.now())) return null;
 
   const meta = data.user.app_metadata || {};
   const orgId = meta.organization_id || null;
@@ -118,8 +120,25 @@ export async function getAuthedOrg(request, { allowDeletion = false } = {}) {
     });
     return null;
   }
+  // Role permissions are not nested by numeric rank (for example HR and
+  // Manager). A partial two-store role change must not preserve either role's
+  // unique permissions. Refresh/repair must establish the exact current role.
+  if (meta.role !== membership.role) return null;
+
   // A client profile cannot become staff through an inconsistent role row.
   if ((userType === "client") !== (membership.role === "client")) return null;
+
+  // Auth metadata can outlive an account repair/relink. Service-role API
+  // queries must prove the current profile still belongs to this Auth user,
+  // independently of the typed membership and the browser JWT.
+  try {
+    const profile = await admin.from(PROFILE_TABLE[userType])
+      .select("auth_user_id")
+      .eq("id", appUserId)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (profile.error || profile.data?.auth_user_id !== data.user.id) return null;
+  } catch { return null; }
 
   // PER-PERSON OVERRIDES, read once and carried on `auth`.
   //
@@ -154,10 +173,7 @@ export async function getAuthedOrg(request, { allowDeletion = false } = {}) {
     userId: data.user.id,
     email: data.user.email || null,
     orgId,
-    // A partially applied role change must retain the lower privilege until
-    // both the membership and Auth metadata have been updated.
-    role: !isRole(meta.role) ? null
-      : rankOf(meta.role) < rankOf(membership.role) ? meta.role : membership.role,
+    role: membership.role,
     userType,
     appUserId,
     overrides,

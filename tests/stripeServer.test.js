@@ -103,6 +103,11 @@ describe("stripeMode", () => {
     expect(stripeMode()).toBe("live");
   });
 
+  it.each([["rk_test_restricted", "test"], ["rk_live_restricted", "live"]])("recognizes restricted key mode %s", (key, mode) => {
+    vi.stubEnv("STRIPE_SECRET_KEY", key);
+    expect(stripeMode()).toBe(mode);
+  });
+
   it("reports unconfigured when there is no key", () => {
     vi.stubEnv("STRIPE_SECRET_KEY", "");
     expect(stripeMode()).toBe("unconfigured");
@@ -110,12 +115,20 @@ describe("stripeMode", () => {
   });
 
   it("does not guess for a key of an unexpected shape", () => {
-    vi.stubEnv("STRIPE_SECRET_KEY", "rk_test_restricted");
+    vi.stubEnv("STRIPE_SECRET_KEY", "unknown_key");
     expect(stripeMode()).toBe("unconfigured");
   });
 });
 
 describe("appOrigin", () => {
+  it("does not trust a production request host when the return origin is missing", () => {
+    vi.stubEnv("NODE_ENV", "production"); vi.stubEnv("NEXT_PUBLIC_APP_URL", "");
+    expect(appOrigin({url:"https://attacker.test/api/billing"})).toBe("");
+  });
+  it.each(["javascript:alert(1)", "https://user:password@app.test", "https://app.test/path", "https://app.test?next=evil", "https://app.test#fragment", "http://app.test", "invalid"])("rejects unsafe production return configuration %s", url => {
+    vi.stubEnv("NODE_ENV", "production"); vi.stubEnv("NEXT_PUBLIC_APP_URL", url);
+    expect(appOrigin({url:"https://app.test/api/billing"})).toBe("");
+  });
   it("prefers the configured URL over the request", () => {
     // Deriving the return URL from the request Host would let a spoofed Host
     // send a paying customer somewhere else after checkout.

@@ -4,8 +4,11 @@ const state = vi.hoisted(() => ({ queries: {}, writes: [], stripe: {}, auth: nul
 vi.mock("@/utils/serverAuth", () => ({
   getAuthedOrg: async () => state.auth,
   serviceClient: () => ({ rpc: async () => ({data: state.deleting?.length ? state.deleting.shift() : false}), from(table) {
+    let updating = false;
     const q = {
-      select: () => q, eq: () => q,
+      select: () => updating ? Promise.resolve({ data: state.saveRace ? [] : [{ organization_id: 'org-a' }], error: state.saveError || null }) : q,
+      eq: (...args) => { state.filters.push(args); return q; },
+      update: value => { updating = true; state.writes.push(value); return q; },
       maybeSingle: async () => state.queries[table] || { data: null },
       upsert: async value => { state.writes.push(value); return { error: state.saveError || null }; },
     };
@@ -24,10 +27,10 @@ const request = () => new Request("https://app.test/api/billing/checkout", {
 });
 beforeEach(() => {
   state.auth = { orgId: "org-a", email: "owner@example.test" };
-  state.writes = []; state.saveError = null; state.deleting = [];
+  state.writes = []; state.filters = []; state.saveRace = false; state.saveError = null; state.deleting = [];
   state.queries = {
     billing_plans: { data: { code: "professional", name: "Professional", is_active: true, stripe_price_id: "price_pro", amount_cents: 4900 } },
-    organization_subscriptions: { data: { stripe_customer_id: "cus_a", stripe_subscription_id: "sub_a", status: "active" } },
+    organization_subscriptions: { data: { stripe_customer_id: "cus_a", stripe_subscription_id: "sub_a", status: "active", updated_at: "2026-01-01T00:00:00Z" } },
     organizations: { data: { name: "A" } },
   };
   state.stripe = {
@@ -64,6 +67,12 @@ describe("Checkout billing integrity", () => {
     expect((await POST(request())).status).toBe(503);
     expect(state.stripe.subscriptions.update).toHaveBeenCalledTimes(1);
     expect(state.stripe.checkout.sessions.create).not.toHaveBeenCalled();
+  });
+  it("does not overwrite a newer webhook or plan change", async () => {
+    state.saveRace = true;
+    expect((await POST(request())).status).toBe(503);
+    expect(state.filters).toContainEqual(["updated_at", "2026-01-01T00:00:00Z"]);
+    expect(state.stripe.subscriptions.update).toHaveBeenCalledOnce();
   });
   it("uses a stable customer idempotency key and stops if customer persistence fails", async () => {
     state.queries.organization_subscriptions = { data: null };

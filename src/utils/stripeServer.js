@@ -46,8 +46,8 @@ export function billingConfigured() {
  */
 export function stripeMode() {
   const key = process.env.STRIPE_SECRET_KEY || "";
-  if (key.startsWith("sk_test_")) return "test";
-  if (key.startsWith("sk_live_")) return "live";
+  if (/^(sk|rk)_test_/.test(key)) return "test";
+  if (/^(sk|rk)_live_/.test(key)) return "live";
   return "unconfigured";
 }
 
@@ -59,7 +59,16 @@ export function stripeMode() {
  */
 export function appOrigin(request) {
   const configured = process.env.NEXT_PUBLIC_APP_URL;
-  if (configured) return configured.replace(/\/+$/, "");
+  if (configured) {
+    try {
+      const url = new URL(configured);
+      if (!["https:", "http:"].includes(url.protocol) || url.username || url.password || url.search || url.hash || !/^\/*$/.test(url.pathname)) return "";
+      if (process.env.NODE_ENV === "production" && url.protocol !== "https:") return "";
+      return url.origin;
+    } catch { return ""; }
+  }
+  // Production must never trust a caller-controlled Host for payment returns.
+  if (process.env.NODE_ENV === "production") return "";
   try {
     return new URL(request.url).origin;
   } catch {
