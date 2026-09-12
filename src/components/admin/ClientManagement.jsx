@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
+import { updateInvoiceRecord, confirmInvoiceMutation } from "@/utils/invoiceMutationRequests";
 import { authFetch } from "@/utils/authFetch";
 import { showSuccess, showError, showConfirm } from "@/utils/alerts";
 import {
@@ -883,6 +884,7 @@ function ClientInvoicesTab({ orgId, admin, clients, projects, invoices, reload, 
   const [pdfFile, setPdfFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState(null);
+  const recipientPending = useRef(false);
 
   const clientName = (id) => {
     const c = clients.find((x) => x.id === id);
@@ -892,20 +894,24 @@ function ClientInvoicesTab({ orgId, admin, clients, projects, invoices, reload, 
 
   // Upload a PDF to the private `invoices` storage bucket and stamp pdf_path.
   // The client-side /api/client/invoices/[id]/pdf route signs this same path.
-  const uploadInvoicePdf = async (invoiceId, file) => {
+  const uploadInvoicePdf = async (invoice, file) => {
+    if (invoice.organization_id !== orgId || getOrgId() !== orgId) {
+      throw new Error("Your organization changed. Reload before attaching the PDF.");
+    }
+    const invoiceId = invoice.id;
     const clean = file.name.replace(/[^a-zA-Z0-9.\-]/g, "_");
     const path = `${orgId}/${invoiceId}/${Date.now()}_${clean}`;
     const { error: upErr } = await supabase.storage
       .from("invoices")
-      .upload(path, file, { upsert: true, contentType: file.type || "application/pdf" });
+      .upload(path, file, { upsert: false, contentType: file.type || "application/pdf" });
     if (upErr) {
       if (/bucket/i.test(upErr.message) && /not found/i.test(upErr.message)) {
         throw new Error("Create a PRIVATE storage bucket named 'invoices' in Supabase first.");
       }
       throw upErr;
     }
-    const { error: updErr } = await supabase.from("invoices").update({ pdf_path: path }).eq("id", invoiceId);
-    if (updErr) throw updErr;
+    if (getOrgId() !== orgId) throw new Error("The PDF upload finished, but your organization changed before attachment. Reload the invoice to check its PDF.");
+    await updateInvoiceRecord(supabase, orgId, invoice, { pdf_path: path });
     return path;
   };
 
@@ -929,14 +935,17 @@ function ClientInvoicesTab({ orgId, admin, clients, projects, invoices, reload, 
         issued_at: issuedAt ? new Date(issuedAt).toISOString() : null,
         due_at: dueAt ? new Date(dueAt).toISOString() : null,
         created_by: admin?.id || null,
-      }]).select("id").single();
+      }]).select("id, organization_id, client_id, status, pdf_path").single();
       if (error) throw error;
+      if (!inserted?.id) throw new Error("Invoice creation was not confirmed. Reload before retrying.");
+      confirmInvoiceMutation(inserted, orgId, { id: inserted.id, client_id: clientId || null }, { status });
+      let pdfError = null;
 
-      if (pdfFile && inserted?.id) {
+      if (pdfFile) {
         try {
-          await uploadInvoicePdf(inserted.id, pdfFile);
+          await uploadInvoicePdf(inserted, pdfFile);
         } catch (upErr) {
-          showError("PDF upload failed", `Invoice saved, but the PDF didn't attach: ${upErr.message}`);
+          pdfError = upErr;
         }
       }
 
@@ -953,34 +962,61 @@ function ClientInvoicesTab({ orgId, admin, clients, projects, invoices, reload, 
 
       setClientId(""); setProjectId(""); setNumber(""); setTitle(""); setAmount("");
       setCurrency("USD"); setStatus("draft"); setIssuedAt(""); setDueAt(""); setPdfFile(null);
-      showSuccess("Invoice created", `Invoice ${number.trim()} added.`);
+      if (pdfError) showError("Invoice created without PDF", `Invoice ${number.trim()} was saved, but PDF attachment was not confirmed. Reload its row before retrying the attachment: ${pdfError.message}`);
+      else showSuccess("Invoice created", `Invoice ${number.trim()} added.`);
       reload();
     } catch (err) {
       showError("Failed", err.message || "Could not create invoice.");
     } finally { setSaving(false); }
   };
 
-  const changeStatus = async (inv, next) => {
-    const { error } = await supabase.from("invoices").update({ status: next }).eq("id", inv.id);
-    if (error) { showError("Update failed", error.message || "Could not update invoice."); return; }
-    // Notify the client when an invoice moves out of draft (becomes visible).
-    if (inv.status === "draft" && next !== "draft") {
-      notifyClients({
-        kind: "invoice",
-        title: `Invoice ${inv.number}`,
-        message: `${inv.currency || "USD"} ${Number(inv.amount || 0).toFixed(2)}`,
-        clientId: inv.client_id || null,
-        projectId: inv.project_id || null,
-      });
+  const changeClient = async (inv, value) => {
+    const nextClient = value || null;
+    if (recipientPending.current || busyId !== null || nextClient === (inv.client_id ?? null)) return;
+    if (inv.status !== "draft" || getOrgId() !== orgId || (nextClient && !clients.some(c => c.id === nextClient))) {
+      showError("Update failed", "Reload and choose a client from this organization for a draft invoice.");
+      return;
     }
-    reload();
+    recipientPending.current = true;
+    setBusyId(inv.id);
+    try {
+      await updateInvoiceRecord(supabase, orgId, inv, { client_id: nextClient });
+      if (getOrgId() !== orgId) return;
+      await reload();
+    } catch (error) {
+      if (getOrgId() === orgId) showError("Client update failed", error.message || "Could not update the invoice client.");
+    } finally {
+      recipientPending.current = false;
+      setBusyId(null);
+    }
+  };
+
+  const changeStatus = async (inv, next) => {
+    if (recipientPending.current || next === inv.status || busyId === inv.id) return;
+    setBusyId(inv.id);
+    try {
+      await updateInvoiceRecord(supabase, orgId, inv, { status: next });
+      // Notify the client when an invoice moves out of draft (becomes visible).
+      if (inv.status === "draft" && next !== "draft") {
+        notifyClients({
+          kind: "invoice",
+          title: `Invoice ${inv.number}`,
+          message: `${inv.currency || "USD"} ${Number(inv.amount || 0).toFixed(2)}`,
+          clientId: inv.client_id || null,
+          projectId: inv.project_id || null,
+        });
+      }
+      await reload();
+    } catch (error) {
+      showError("Update failed", error.message || "Could not update invoice.");
+    } finally { setBusyId(null); }
   };
 
   const onRowUpload = async (inv, file) => {
-    if (!file) return;
+    if (!file || recipientPending.current) return;
     setBusyId(inv.id);
     try {
-      await uploadInvoicePdf(inv.id, file);
+      await uploadInvoicePdf(inv, file);
       showSuccess("PDF attached", `PDF added to invoice ${inv.number}.`);
       reload();
     } catch (err) {
@@ -1092,13 +1128,24 @@ function ClientInvoicesTab({ orgId, admin, clients, projects, invoices, reload, 
                         <p className="text-sm font-medium text-foreground">{inv.number}</p>
                         <p className="text-xs text-muted-foreground">{inv.title || projName(inv.project_id)}</p>
                       </td>
-                      <td className="px-4 text-sm text-muted-foreground">{inv.client_id ? clientName(inv.client_id) : "—"}</td>
+                      <td className="px-4 text-sm text-muted-foreground">
+                        {inv.status === "draft" ? (
+                          <select value={inv.client_id || ""} disabled={busyId !== null}
+                            onChange={(e) => changeClient(inv, e.target.value)}
+                            aria-label={`Client for draft invoice ${inv.number}`}
+                            className={`${CONTROL} min-w-[140px] text-xs`}>
+                            <option value="">— Unassigned —</option>
+                            {inv.client_id && !clients.some(c => c.id === inv.client_id) && <option value={inv.client_id}>Current client unavailable</option>}
+                            {clients.map(c => <option key={c.id} value={c.id}>{c.name || c.email}</option>)}
+                          </select>
+                        ) : (inv.client_id ? clientName(inv.client_id) : "—")}
+                      </td>
                       <td className="px-4 text-sm font-medium text-foreground">{money(inv)}</td>
                       <td className="px-4 text-sm text-muted-foreground">{fmtDate(inv.due_at)}</td>
                       <td className="px-4">
                         <div className="flex items-center gap-2">
                           <StatusPill status={pillStatus(inv.status)} label={inv.status} size="sm" className="capitalize" />
-                          <select value={inv.status} onChange={(e) => changeStatus(inv, e.target.value)}
+                          <select value={inv.status} disabled={busyId === inv.id} onChange={(e) => changeStatus(inv, e.target.value)}
                             aria-label={`Change status of invoice ${inv.number}`}
                             className={`rounded-lg border border-input bg-background px-2 py-1 text-xs capitalize text-foreground transition-colors duration-150 ${FOCUS_RING}`}>
                             {INVOICE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}

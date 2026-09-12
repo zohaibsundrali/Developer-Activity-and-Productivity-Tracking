@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { AlertTriangle, FileText, Receipt, TrendingUp } from "lucide-react";
 
 import {
@@ -14,6 +14,8 @@ import {
   Tabs,
 } from "@/components/ui";
 import StatCard from "@/components/shell/StatCard";
+import { getOrgContext } from "@/utils/orgContext";
+import { invoiceSelectionKey, isInvoiceProfileType, invoicePnlTotals, invoiceCurrencyBreakdown } from "@/utils/invoicingSelections";
 import { authFetch } from "@/utils/authFetch";
 import { showConfirm, showError, showSuccess } from "@/utils/alerts";
 
@@ -49,32 +51,47 @@ export default function Invoicing() {
   const [tab, setTab] = useState("billable");
   const [rows, setRows] = useState([]);
   const [pnl, setPnl] = useState([]);
+  const [clients, setClients] = useState([]);
+  const [clientId, setClientId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState(() => new Set());
   const [project, setProject] = useState("");
   const [busy, setBusy] = useState(false);
+  const context = getOrgContext();
+  const scope = `${context?.organizationId}:${context?.userType}:${context?.userId}:${tab}`;
+  const liveScope = useRef(scope); liveScope.current = scope;
+  const loadGeneration = useRef(0);
+  const currentScope = useCallback(() => {
+    const current = getOrgContext();
+    return liveScope.current === scope && `${current?.organizationId}:${current?.userType}:${current?.userId}:${tab}` === scope;
+  }, [scope, tab]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
+    setRows([]); setPnl([]); setClients([]); setClientId(""); setSelected(new Set()); setProject("");
+    const ticket = ++loadGeneration.current;
+    const active = () => ticket === loadGeneration.current && currentScope();
     try {
       const res = await authFetch(`/api/invoicing?view=${tab}`);
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.success) {
         throw new Error(json?.error || "Could not load this.");
       }
+      if (!active()) return;
       if (tab === "pnl") setPnl(json.projects || []);
       else {
         setRows(json.rows || []);
+        setClients(json.clients || []);
         setSelected(new Set());
       }
     } catch (e) {
-      setError(e?.message || "Could not load this.");
+      if (active()) setError(e?.message || "Could not load this.");
     } finally {
-      setLoading(false);
+      if (active()) setLoading(false);
     }
-  }, [tab]);
+  }, [tab, currentScope]);
 
   useEffect(() => {
     load();
@@ -90,10 +107,14 @@ export default function Invoicing() {
     return map;
   }, [rows]);
 
-  const keyOf = (r) => `${r.project_id}|${r.user_id}|${r.week_start}`;
+  const keyOf = invoiceSelectionKey;
 
   const toggle = (r) => {
-    if (r.rate == null) return;
+    if (r.rate == null || !isInvoiceProfileType(r.user_type) || busy) return;
+    if (!selected.has(keyOf(r)) && selected.size >= 200 && project === r.project_id) {
+      showError("Choose at most 200 weeks per invoice.");
+      return;
+    }
     setSelected((prev) => {
       const next = new Set(prev);
       const k = keyOf(r);
@@ -106,6 +127,7 @@ export default function Invoicing() {
       }
       return next;
     });
+    if (project !== r.project_id) setClientId("");
     setProject(r.project_id);
   };
 
@@ -121,13 +143,13 @@ export default function Invoicing() {
   const unpricedCount = rows.filter((r) => r.rate == null).length;
 
   const raise = async () => {
-    if (selectedRows.length === 0) return;
+    if (busy || selectedRows.length === 0 || !currentScope()) return;
     const ok = await showConfirm(
       `Raise a draft invoice for ${money(selectedTotal)}?`,
       `${selectedRows.length} week${selectedRows.length === 1 ? "" : "s"} of approved hours. It is created as a draft — nothing is sent to the client.`,
       { confirmButtonText: "Create draft" }
     );
-    if (!ok) return;
+    if (!ok || !currentScope()) return;
 
     setBusy(true);
     try {
@@ -136,37 +158,28 @@ export default function Invoicing() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectId: project,
+          clientId: clientId || null,
           // Deliberately NOT sending hours or rates. See the note at the top.
           selections: selectedRows.map((r) => ({
             userId: r.user_id,
+            userType: r.user_type,
             weekStart: r.week_start,
           })),
         }),
       });
       const json = await res.json().catch(() => ({}));
+      if (!currentScope()) return;
       if (!res.ok || !json?.success) throw new Error(json?.error || "Could not raise it.");
       showSuccess(`Draft ${json.invoice?.number || "invoice"} created.`);
       await load();
     } catch (e) {
-      showError(e?.message || "Could not raise it.");
+      if (currentScope()) showError(e?.message || "Could not raise it.");
     } finally {
       setBusy(false);
     }
   };
 
-  const totals = useMemo(() => {
-    let invoiced = 0;
-    let cost = 0;
-    let anyCost = false;
-    for (const p of pnl) {
-      invoiced += Number(p.invoiced) || 0;
-      if (p.cost != null) {
-        cost += Number(p.cost);
-        anyCost = true;
-      }
-    }
-    return { invoiced, cost: anyCost ? cost : null };
-  }, [pnl]);
+  const totals = useMemo(() => invoicePnlTotals(pnl), [pnl]);
 
   return (
     <div className="space-y-6">
@@ -188,18 +201,19 @@ export default function Invoicing() {
       ) : tab === "pnl" ? (
         <>
           <div className="grid gap-4 sm:grid-cols-3">
-            <StatCard title="Invoiced" value={money(totals.invoiced)} icon={Receipt} />
+            <StatCard title="Invoiced" value={money(totals.invoiced)} icon={Receipt}
+              hint={totals.invoiced == null ? "Separate currencies — see project amounts" : undefined} />
             <StatCard
               title="Cost"
               value={money(totals.cost)}
               icon={TrendingUp}
-              hint={totals.cost == null ? "No cost rates set" : "Approved hours × cost rate"}
+              hint={totals.cost == null ? "No cost rates set" : !totals.costComplete ? "Partial cost — some hours have no cost rate" : "Approved hours × cost rate"}
             />
             <StatCard
               title="Margin"
-              value={totals.cost == null ? "—" : money(totals.invoiced - totals.cost)}
+              value={money(totals.margin)}
               icon={TrendingUp}
-              hint={totals.cost == null ? "Needs cost rates" : undefined}
+              hint={totals.invoiced == null ? "Currencies cannot be combined without conversion" : totals.margin == null ? "Needs complete cost rates" : undefined}
             />
           </div>
 
@@ -230,7 +244,14 @@ export default function Invoicing() {
                       return (
                         <tr key={p.project_id} className="border-b border-border/60">
                           <td className="py-2 pr-4 text-foreground">{p.project_name}</td>
-                          <td className="py-2 pr-4 tabular-nums">{money(p.invoiced)}</td>
+                          <td className="py-2 pr-4 tabular-nums">
+                            {money(p.invoiced)}
+                            {p.invoiced == null && (
+                              <p className="text-xs text-muted-foreground">
+                                {invoiceCurrencyBreakdown(p.invoice_currency_totals) || "Currency totals unavailable"}
+                              </p>
+                            )}
+                          </td>
                           <td className="py-2 pr-4 tabular-nums text-muted-foreground">
                             {p.total_hours}
                           </td>
@@ -250,8 +271,8 @@ export default function Invoicing() {
                             )}
                           </td>
                           <td className="py-2 pr-4 tabular-nums">
-                            {p.margin == null ? (
-                              <span className="text-muted-foreground">— no cost rates</span>
+                            {p.margin == null || partial ? (
+                              <span className="text-muted-foreground">{p.invoiced == null ? "— separate currencies" : "— needs complete cost rates"}</span>
                             ) : (
                               <span className={Number(p.margin) < 0 ? "text-destructive" : ""}>
                                 {money(p.margin)}
@@ -310,9 +331,9 @@ export default function Invoicing() {
                                 <input
                                   type="checkbox"
                                   checked={selected.has(keyOf(r))}
-                                  disabled={!priced || busy}
+                                  disabled={!priced || !isInvoiceProfileType(r.user_type) || busy}
                                   onChange={() => toggle(r)}
-                                  aria-label={`Bill week of ${r.week_start}`}
+                                  aria-label={`Bill ${r.user_type || "unresolved"} week of ${r.week_start}`}
                                 />
                               </td>
                               <td className="py-2 pr-4 tabular-nums">{r.week_start}</td>
@@ -331,6 +352,21 @@ export default function Invoicing() {
                   </div>
                 </Section>
               ))}
+
+              <div className="space-y-2 rounded-lg border border-border bg-card px-3 py-3">
+                <label htmlFor="invoice-recipient" className="block text-sm font-medium">Invoice client</label>
+                <select id="invoice-recipient" value={clientId} onChange={event => setClientId(event.target.value)}
+                  disabled={busy || selectedRows.length === 0}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                  <option value="">Unassigned draft</option>
+                  {clients.map(client => <option key={client.id} value={client.id}>{client.name}</option>)}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  {clientId
+                    ? "The selected client can access this invoice after it leaves draft."
+                    : "Unassigned drafts are not visible to clients. Choose a client here if this invoice will be shared."}
+                </p>
+              </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2">
                 <span className="text-sm">

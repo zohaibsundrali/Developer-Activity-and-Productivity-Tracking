@@ -244,7 +244,7 @@ done
 python3 scripts/test-proposal-decision-concurrency.py "$audit_container" proposal_decision_transaction_test
 
 # Unattended jobs, destructive lifecycle recovery, and existing leave contract.
-for fixture in unattended_actor_automation tracking_retention_jobs typed_leave_authority organization_deletion_lifecycle leave_day_contract leave_contract_capacity automation_retention_deletion_integration current_profile_authority invitation_cleanup_confirmation profile_provisioning operator_identity_repair transactional_signup_recovery completed_signup_cleanup atomic_recurring_tasks idempotent_screenshot_capture organization_screenshot_policy tracking_work_context tracking_break_history organization_idle_reminder_policy activity_aggregate_receipts input_capture_receipts tracking_event_history_timestamps tracking_event_retention_cleanup transactional_timesheet_review typed_time_log_capacity; do
+for fixture in unattended_actor_automation tracking_retention_jobs typed_leave_authority organization_deletion_lifecycle leave_day_contract leave_contract_capacity automation_retention_deletion_integration current_profile_authority invitation_cleanup_confirmation profile_provisioning operator_identity_repair transactional_signup_recovery completed_signup_cleanup atomic_recurring_tasks idempotent_screenshot_capture organization_screenshot_policy tracking_work_context tracking_break_history organization_idle_reminder_policy activity_aggregate_receipts input_capture_receipts tracking_event_history_timestamps tracking_event_retention_cleanup transactional_timesheet_review typed_time_log_capacity transactional_typed_invoicing; do
   docker exec "$audit_container" createdb -U postgres "${fixture}_test"
   python3 scripts/expand-sql-fixture.py "database/tests/${fixture}.sql" | \
     docker exec -i "$audit_container" psql -U postgres -d "${fixture}_test" -v ON_ERROR_STOP=1
@@ -263,3 +263,8 @@ docker exec -i "$audit_container" psql -U postgres -d current_profile_authority_
 
 python3 scripts/test-timesheet-concurrency.py "$audit_container" transactional_timesheet_review_test
 docker exec -i "$audit_container" psql -U postgres -d transactional_timesheet_review_test -v ON_ERROR_STOP=1 < scripts/sql/timesheet-identity-preflight.sql
+
+python3 scripts/test-invoicing-concurrency.py "$audit_container" transactional_typed_invoicing_test
+docker exec -i "$audit_container" psql -U postgres -d transactional_typed_invoicing_test -v ON_ERROR_STOP=1 < scripts/sql/invoice-identity-preflight.sql
+
+python3 scripts/test-invoice-bucket-privacy.py "$audit_container"
