@@ -1,5 +1,6 @@
 "use client";
 import { useAuth } from "@/contexts/AuthContext";
+import { loadMonitoringLogins } from "@/utils/monitoringLogins";
 import { loadMonitoringSessions, sumMonitoringSessionDuration } from "@/utils/monitoringSessions";
 import { loadMonitoringMousePage } from "@/utils/monitoringMousePage";
 import { loadMonitoringAppUsage } from "@/utils/monitoringAppUsage";
@@ -120,7 +121,6 @@ const MOUSE_PAGE_SIZE = 50;
 // Legacy limits on the remaining monitoring sources; sessions, app usage
 // and mouse pages use verified pagination. These constants do not prove full coverage.
 const SCREENSHOT_LIMIT = 200;
-const LOGIN_LIMIT = 500;
 
 export default function DeveloperActivity() {
   const { user, authStatus } = useAuth();
@@ -194,37 +194,7 @@ export default function DeveloperActivity() {
     return Number.isNaN(t) ? Number.NaN : t;
   }, []);
 
-  // Normalize developer login timestamps across possible column names.
-  const loginRowTimeMs = useCallback((row) => {
-    if (!row) return Number.NaN;
-    const v =
-      row.login_time ??
-      row.login_at ??
-      row.logged_in_at ??
-      row.timestamp ??
-      row.created_at ??
-      row.createdAt ??
-      null;
-    return parseDbTimeMs(v);
-  }, [parseDbTimeMs]);
-
-  const loginRowStatus = useCallback((row) => {
-    if (!row) return "Allowed";
-
-    // Prefer explicit boolean columns when present.
-    if (typeof row.is_blocked === "boolean") return row.is_blocked ? "Blocked" : "Allowed";
-    if (typeof row.blocked === "boolean") return row.blocked ? "Blocked" : "Allowed";
-    if (typeof row.is_allowed === "boolean") return row.is_allowed ? "Allowed" : "Blocked";
-    if (typeof row.allowed === "boolean") return row.allowed ? "Allowed" : "Blocked";
-
-    const raw = row.login_status ?? row.status ?? row.result ?? null;
-    if (raw == null) return "Allowed";
-
-    const s = String(raw).trim().toLowerCase();
-    if (["blocked", "block", "deny", "denied", "not_allowed", "not allowed", "false", "0"].includes(s)) return "Blocked";
-    if (["allowed", "allow", "permitted", "true", "1"].includes(s)) return "Allowed";
-    return s.includes("block") || s.includes("deny") ? "Blocked" : "Allowed";
-  }, []);
+  const loginRowTimeMs = useCallback(row => parseDbTimeMs(row?.login_time), [parseDbTimeMs]);
 
   // Data states for each table
   const [sessions, setSessions] = useState([]);
@@ -321,7 +291,7 @@ export default function DeveloperActivity() {
 
     try {
       // Fetch monitoring sources through their existing caller-scoped access paths.
-      const [sessionsRes, keyboardApiRes, appRes, screenshotRes, screenshotCreatedAtRes] = await Promise.all([
+      const [sessionsRes, keyboardApiRes, appRes, screenshotRes, screenshotCreatedAtRes, loginRes] = await Promise.all([
         loadMonitoringSessions(supabase, { organizationId: monitoringOrg, profileId: devId, email: devEmail, start, end }, active).then(data => ({ data })),
         authFetch(`/api/keyboard-stats?developerId=${encodeURIComponent(devId || "")}&userId=${encodeURIComponent(dev.user_id || "")}&email=${encodeURIComponent(devEmail || "")}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`).then(async r => { const body = await r.json(); if (!r.ok) throw new Error(body?.error || 'Could not load keyboard activity.'); return body; }),
         loadMonitoringAppUsage(supabase, { organizationId: monitoringOrg, email: devEmail, start, end }, active).then(data => ({ data })),
@@ -339,70 +309,16 @@ export default function DeveloperActivity() {
           .lt("created_at", end)
           .order("created_at", { ascending: false })
           .limit(SCREENSHOT_LIMIT),
+        loadMonitoringLogins(supabase, { organizationId: monitoringOrg, profileId: devId, start, end }, active).then(data => ({ data })),
       ]);
 
-      // Fetch login records in a guarded way so login table issues never break productivity tracking.
-      const matchesDeveloperLoginRow = (row) => {
-        if (!row) return false;
-        if (devId && (row.developer_id === devId || row.developerId === devId || row.user_id === devId || row.userId === devId)) return true;
-        if (devEmail && (
-          row.developer_email === devEmail ||
-          row.user_email === devEmail ||
-          row.email === devEmail ||
-          row.userEmail === devEmail
-        )) return true;
-        return false;
-      };
-
-      const fetchLoginsSafe = async () => {
-        const startIso = start;
-        const endIso = end;
-        // developer_logins has exactly five columns: developer_id, id,
-        // login_date, login_time, organization_id. There is no email column
-        // of any spelling and no created_at. The six attempts that reached
-        // for those were unreachable dead weight — attempt 1 is valid, and
-        // the loop below returns on the first non-error — but had attempt 1
-        // ever been changed, every remaining fallback would have 400'd and
-        // the panel would have failed with a misleading "column does not
-        // exist" instead of falling back. What is left is what the table
-        // can actually answer.
-        const attempts = [
-          // Preferred: keyed by developer_id + login_time
-          () => supabase.from("developer_logins").select("*").eq("developer_id", devId).gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }).limit(LOGIN_LIMIT),
-          // Last resort: date-bounded fetch, then filtered client-side by
-          // matchesDeveloperLoginRow below.
-          () => supabase.from("developer_logins").select("*").gte("login_time", startIso).lt("login_time", endIso).order("login_time", { ascending: true }).limit(LOGIN_LIMIT),
-        ];
-
-        let lastError = null;
-        for (const run of attempts) {
-          try {
-            const res = await run();
-            if (!res?.error) return res;
-            lastError = res.error;
-          } catch (e) {
-            lastError = e;
-          }
-        }
-        return { data: [], error: lastError };
-      };
-
-      for (const result of [sessionsRes, appRes, screenshotRes, screenshotCreatedAtRes]) {
+      for (const result of [sessionsRes, appRes, screenshotRes, screenshotCreatedAtRes, loginRes]) {
         if (result?.error) throw result.error;
       }
-      const loginRes = await fetchLoginsSafe();
-      if (loginRes?.error) throw loginRes.error;
       if (!active()) return;
-      let finalLogins = Array.isArray(loginRes?.data) ? loginRes.data : [];
-      // Ensure scoped to the selected developer and selected date/time-range window.
-      const startMs = new Date(start).getTime();
-      const endMs = new Date(end).getTime();
-      finalLogins = finalLogins
-        .filter(matchesDeveloperLoginRow)
-        .map((r) => ({ row: r, ms: loginRowTimeMs(r) }))
-        .filter((x) => !Number.isNaN(x.ms) && x.ms >= startMs && x.ms < endMs)
-        .sort((a, b) => a.ms - b.ms)
-        .map((x) => x.row);
+      const finalLogins = loginRes.data || [];
+      const startMs = Date.parse(start);
+      const endMs = Date.parse(end);
 
       const finalSessions = sessionsRes.data || [];
       // Handle keyboard API response
@@ -478,7 +394,7 @@ export default function DeveloperActivity() {
       // A silent realtime refresh can supersede an initial visible request.
       if (active()) setLoading(false);
     }
-  }, [selectedDeveloper, developers, getDateFilter, loginRowTimeMs, clearActivity, parseDbTimeMs, makeMonitoringGuard, monitoringOrg]);
+  }, [selectedDeveloper, developers, getDateFilter, clearActivity, parseDbTimeMs, makeMonitoringGuard, monitoringOrg]);
 
   // ─── Mouse Activity (server-side pagination) ───
   const fetchMousePage = useCallback(async ({ page = 1, silent = false } = {}) => {
@@ -781,54 +697,24 @@ export default function DeveloperActivity() {
 
     const window = getDateFilter();
     if (!window) return;
-    const { start, end } = window;
     const guard = makeMonitoringGuard();
-    const startMs = new Date(start).getTime();
-    const endMs = new Date(end).getTime();
-
-    const matchesDeveloper = (row) => {
-      if (!row) return false;
-      if (row.developer_id) return row.developer_id === dev.id;
-      if (row.developer_email && row.developer_email === dev.email) return true;
-      if (row.user_email && row.user_email === dev.email) return true;
-      if (row.email && row.email === dev.email) return true;
-      if (row.user_login && row.user_login === dev.email) return true;
-      return false;
-    };
-
-    const inSelectedRange = (row) => {
-      const ms = loginRowTimeMs(row);
-      if (Number.isNaN(ms)) return false;
-      return ms >= startMs && ms < endMs;
-    };
-
-    const channel = supabase
-      .channel("admin-activity-logins")
-      .on("postgres_changes", {
-        event: "INSERT",
-        schema: "public",
-        table: "developer_logins",
-      }, (payload) => {
-        const row = payload?.new;
-        if (!guard.accepts(row) || !matchesDeveloper(row)) return;
-        if (!inSelectedRange(row)) return;
-        setLoginRecords((prev) => {
-          if (!guard.accepts(row) || (row?.id && prev.some((r) => r.id === row.id))) return prev;
-          const next = [row, ...prev];
-          // Keep chronological order for summary (first/second login).
-          return next
-            .map((r) => ({ row: r, ms: loginRowTimeMs(r) }))
-            .filter((x) => !Number.isNaN(x.ms))
-            .sort((a, b) => a.ms - b.ms)
-            .map((x) => x.row);
-        });
-        setLastUpdated(previous => guard.current() ? new Date() : previous);
-      })
-      .subscribe();
-
+    const refresh = createMonitoringAppRefresh({
+      guard: { current: guard.current, accepts: row => guard.accepts(row) && row.developer_id === dev.id },
+      refresh: () => fetchDeveloperActivity(true),
+    });
+    let channel = supabase.channel("admin-activity-logins");
+    for (const event of ["INSERT", "UPDATE"]) {
+      channel = channel.on("postgres_changes", {
+        event, schema: "public", table: "developer_logins", filter: `developer_id=eq.${dev.id}`,
+      }, payload => refresh.notify(payload?.new));
+    }
+    channel.subscribe();
     loginChannelRef.current = channel;
-    return () => { guard.dispose(); supabase.removeChannel(channel); if (loginChannelRef.current === channel) loginChannelRef.current = null; };
-  }, [selectedDeveloper, developers, selectedDate, timeRange, loginRowTimeMs, getDateFilter, monitoringOrg, canMonitor, makeMonitoringGuard]);
+    return () => {
+      guard.dispose(); refresh.dispose(); supabase.removeChannel(channel);
+      if (loginChannelRef.current === channel) loginChannelRef.current = null;
+    };
+  }, [selectedDeveloper, developers, getDateFilter, monitoringOrg, canMonitor, makeMonitoringGuard, fetchDeveloperActivity]);
 
   // ─── Computed Metrics ───
   const developer = developers.find(d => d.id === selectedDeveloper);
@@ -993,8 +879,7 @@ export default function DeveloperActivity() {
     }).format(new Date(t));
   };
 
-  const getLoginDisplayValue = (row) =>
-    row?.login_time ?? row?.login_at ?? row?.logged_in_at ?? row?.timestamp ?? row?.created_at ?? null;
+  const getLoginDisplayValue = row => row?.login_time;
 
   const loginChrono = loginRecords
     .map((r) => ({ row: r, ms: loginRowTimeMs(r) }))
@@ -1198,7 +1083,7 @@ export default function DeveloperActivity() {
       )}
 
       {/* Main Content */}
-      {developer && !loading && (hasData || viewMode === "logins") && (
+      {developer && !loading && !activityError && (hasData || viewMode === "logins") && (
         <div className="space-y-6">
 
           {/* ==================== OVERVIEW ==================== */}
@@ -1548,19 +1433,20 @@ export default function DeveloperActivity() {
           {viewMode === "logins" && (
             <div className="space-y-6">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <StatCard icon={<LockKeyhole className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Today's Login Count" value={todaysLoginCount} bg="bg-success/10" />
+                <StatCard icon={<LockKeyhole className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Logins in Selected Period" value={todaysLoginCount} bg="bg-success/10" />
                 <StatCard icon={<Clock1 className="h-5 w-5 text-foreground" aria-hidden="true" />} label="First Login" value={firstLoginTime} bg="bg-info/10" />
                 <StatCard icon={<Clock2 className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Second Login" value={secondLoginTime} bg="bg-primary/10" />
               </div>
 
               <div className="rounded-xl border border-border bg-card p-6 shadow-card">
                 <h3 className="text-lg font-semibold text-foreground mb-4">Developer Login Activity ({loginRecords.length})</h3>
+                <p className="text-xs text-muted-foreground mb-4">The selected period uses UTC dates. Login dates and times below are shown in Asia/Karachi.</p>
 
                 {loginRecords.length === 0 ? (
                   <EmptyState
                     icon={LockKeyhole}
                     title="No login activity recorded"
-                    description={`No login records found for this developer on ${selectedDate}.`}
+                    description="No login records found for this developer in the selected period."
                   />
                 ) : (
                   <div className="overflow-x-auto max-h-96 overflow-y-auto">
@@ -2407,7 +2293,7 @@ export default function DeveloperActivity() {
 
       {/* No Data State — the shared dashed-border EmptyState, like every other
           screen, instead of this file's own bare centred icon. */}
-      {!loading && selectedDeveloper && !hasData && viewMode !== "logins" && (
+      {!loading && !activityError && selectedDeveloper && !hasData && viewMode !== "logins" && (
         <EmptyState
           icon={Monitor}
           title="No activity data found for selected period"
