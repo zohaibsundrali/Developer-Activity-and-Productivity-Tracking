@@ -179,6 +179,9 @@ export async function resolveScreenshotUrls(rows, expiresIn = DEFAULT_EXPIRY_SEC
 
   return list.map((r) => ({
     ...r,
+    // Private rows must not retain aliases that consumers could use after a
+    // denied signature or once a signed URL expires. Legacy rows stay intact.
+    ...(isPrivateScreenshot(r) ? { image_url: null, thumbnail_url: null, publicUrl: null } : {}),
     public_url: isPrivateScreenshot(r) ? (signedByPath.get(r.storage_path) || null) : legacyPublicUrl(r),
   }));
 }

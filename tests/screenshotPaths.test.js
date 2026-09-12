@@ -268,6 +268,27 @@ describe('read path prefers a signed URL over public_url', () => {
     expect((await resolveScreenshotUrls(rows)).map(row => row.public_url)).toEqual([null, null]);
   });
 
+  it.each([true, false])('removes every legacy URL alias from private rows, signing succeeds=%s', async succeeds => {
+    const row = { storage_path: `${ORG}/${DEV}/shot.png`, public_url: PUBLIC_URL,
+      image_url: PUBLIC_URL, thumbnail_url: PUBLIC_URL, publicUrl: PUBLIC_URL };
+    createSignedUrls.mockResolvedValue(succeeds
+      ? { data: [{ path: row.storage_path, signedUrl: 'https://signed/private' }], error: null }
+      : { data: null, error: { message: 'denied' } });
+    const [resolved] = await resolveScreenshotUrls([row]);
+    expect(resolved).toMatchObject({ image_url: null, thumbnail_url: null, publicUrl: null,
+      public_url: succeeds ? 'https://signed/private' : null });
+    expect(resolved.public_url || resolved.image_url || resolved.thumbnail_url || resolved.publicUrl).toBe(succeeds ? 'https://signed/private' : null);
+    expect(row.image_url).toBe(PUBLIC_URL);
+  });
+
+  it('preserves legacy aliases and their existing resolver behavior', async () => {
+    const legacy = { storage_path: 'legacy/shot.png', image_url: PUBLIC_URL,
+      thumbnail_url: 'https://legacy/thumb', publicUrl: 'https://legacy/alias' };
+    const [resolved] = await resolveScreenshotUrls([legacy]);
+    expect(resolved).toEqual({ ...legacy, public_url: PUBLIC_URL });
+    expect(createSignedUrls).not.toHaveBeenCalled();
+  });
+
   it('handles empty and non-array input', async () => {
     expect(await resolveScreenshotUrls([])).toEqual([]);
     expect(await resolveScreenshotUrls(null)).toEqual([]);

@@ -1,5 +1,6 @@
 "use client";
 import { useAuth } from "@/contexts/AuthContext";
+import { loadMonitoringSessions, sumMonitoringSessionDuration } from "@/utils/monitoringSessions";
 import { loadMonitoringMousePage } from "@/utils/monitoringMousePage";
 import { loadMonitoringAppUsage } from "@/utils/monitoringAppUsage";
 import { createMonitoringAppRefresh } from "@/utils/monitoringAppRefresh";
@@ -116,9 +117,8 @@ const donutLegend = { ...baseLegend, bottom: 0, top: "auto", left: "center", rig
 const POLL_INTERVAL = 10_000; // 10 seconds
 const MOUSE_PAGE_SIZE = 50;
 
-// Legacy limits on the remaining monitoring sources; app usage and mouse
-// pages use verified pagination. These constants do not prove full coverage.
-const SESSION_LIMIT = 500;
+// Legacy limits on the remaining monitoring sources; sessions, app usage
+// and mouse pages use verified pagination. These constants do not prove full coverage.
 const SCREENSHOT_LIMIT = 200;
 const LOGIN_LIMIT = 500;
 
@@ -238,7 +238,6 @@ export default function DeveloperActivity() {
   const [appUsageData, setAppUsageData] = useState([]);
   const [screenshots, setScreenshots] = useState([]);
   const [selectedScreenshot, setSelectedScreenshot] = useState(null);
-  const [todayTotalSeconds, setTodayTotalSeconds] = useState(0);
   const [loginRecords, setLoginRecords] = useState([]);
 
   const monitoringOrg = getOrgId();
@@ -262,7 +261,7 @@ export default function DeveloperActivity() {
   const clearActivity = useCallback(() => {
     setSessions([]); setMouseData([]); setKeyboardData([]); setKeyboardTruncated(false); setAppUsageData([]);
     setScreenshots([]); setSelectedScreenshot(null); setLoginRecords([]);
-    setTodayTotalSeconds(0); setActiveSession(null); setMouseTotalCount(0);
+    setActiveSession(null); setMouseTotalCount(0);
   }, []);
   useEffect(() => {
     clearActivity(); setClearedScope(activityScope); setActivityError(''); setLoading(false); setMousePageLoading(false);
@@ -322,22 +321,8 @@ export default function DeveloperActivity() {
 
     try {
       // Fetch monitoring sources through their existing caller-scoped access paths.
-      const sessionFilters = [
-        devEmail ? `user_email.eq.${devEmail}` : null,
-        dev.user_id ? `user_id.eq.${dev.user_id}` : null,
-        // devId ? `developer_id.eq.${devId}` : null,
-      ].filter(Boolean).join(",");
-
-      const [sessionsRes, keyboardApiRes, appRes, screenshotRes, screenshotCreatedAtRes, todayTotalRes] = await Promise.all([
-        // Match sessions for this developer by email, user_id, or developer_id
-        supabase
-          .from("productivity_sessions")
-          .select("*")
-          .or(sessionFilters)
-          .gte("start_time", start)
-          .lt("start_time", end)
-          .order("start_time", { ascending: false })
-          .limit(SESSION_LIMIT),
+      const [sessionsRes, keyboardApiRes, appRes, screenshotRes, screenshotCreatedAtRes] = await Promise.all([
+        loadMonitoringSessions(supabase, { organizationId: monitoringOrg, profileId: devId, email: devEmail, start, end }, active).then(data => ({ data })),
         authFetch(`/api/keyboard-stats?developerId=${encodeURIComponent(devId || "")}&userId=${encodeURIComponent(dev.user_id || "")}&email=${encodeURIComponent(devEmail || "")}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`).then(async r => { const body = await r.json(); if (!r.ok) throw new Error(body?.error || 'Could not load keyboard activity.'); return body; }),
         loadMonitoringAppUsage(supabase, { organizationId: monitoringOrg, email: devEmail, start, end }, active).then(data => ({ data })),
         // Screenshots schema has varied; select '*' and normalize client-side.
@@ -354,15 +339,6 @@ export default function DeveloperActivity() {
           .lt("created_at", end)
           .order("created_at", { ascending: false })
           .limit(SCREENSHOT_LIMIT),
-        devEmail
-          ? supabase
-            .from("productivity_sessions")
-            .select("total_duration")
-            .eq("user_email", devEmail)
-            .gte("start_time", start)
-            .lt("start_time", end)
-            .limit(SESSION_LIMIT)
-          : Promise.resolve({ data: [], error: null }),
       ]);
 
       // Fetch login records in a guarded way so login table issues never break productivity tracking.
@@ -411,7 +387,7 @@ export default function DeveloperActivity() {
         return { data: [], error: lastError };
       };
 
-      for (const result of [sessionsRes, appRes, screenshotRes, screenshotCreatedAtRes, todayTotalRes]) {
+      for (const result of [sessionsRes, appRes, screenshotRes, screenshotCreatedAtRes]) {
         if (result?.error) throw result.error;
       }
       const loginRes = await fetchLoginsSafe();
@@ -428,7 +404,7 @@ export default function DeveloperActivity() {
         .sort((a, b) => a.ms - b.ms)
         .map((x) => x.row);
 
-      let finalSessions = sessionsRes.data || [];
+      const finalSessions = sessionsRes.data || [];
       // Handle keyboard API response
       let finalKeyboard = [];
       if (keyboardApiRes && keyboardApiRes.data) {
@@ -457,57 +433,6 @@ export default function DeveloperActivity() {
       let screenshotCreatedAtRows = screenshotCreatedAtRes.data || [];
       let finalScreenshots = [];
 
-      const todayTotal = (todayTotalRes?.data || []).reduce(
-        (sum, row) => sum + (Number(row.total_duration) || 0),
-        0
-      );
-      if (!active()) return;
-      setTodayTotalSeconds(todayTotal);
-
-      // Fallback to created_at for sessions if start_time is missing or not in range
-      if (!finalSessions.length && sessionFilters) {
-        const { data: sByCreatedAt, error: createdError } = await supabase
-          .from("productivity_sessions")
-          .select("*")
-          .or(sessionFilters)
-          .gte("created_at", start)
-          .lt("created_at", end)
-          .order("created_at", { ascending: false })
-          .limit(SESSION_LIMIT);
-        if (createdError) throw createdError;
-        if (sByCreatedAt?.length) finalSessions = sByCreatedAt;
-      }
-
-      // Fallback to email if sessions returned nothing
-      if (!finalSessions.length) {
-        const [s2, ss2, ss2CreatedAt] = await Promise.all([
-          supabase
-            .from("productivity_sessions")
-            .select("*")
-            .or(sessionFilters)
-            .gte("start_time", start)
-            .lt("start_time", end)
-            .order("start_time", { ascending: false })
-            .limit(SESSION_LIMIT),
-          supabase.from("screenshots").select("*")
-            .eq('developer_id', devId)
-            .gte("timestamp", start)
-            .lt("timestamp", end)
-            .order("timestamp", { ascending: false })
-            .limit(SCREENSHOT_LIMIT),
-          supabase.from("screenshots").select("*")
-            .eq('developer_id', devId)
-            .gte("created_at", start)
-            .lt("created_at", end)
-            .order("created_at", { ascending: false })
-            .limit(SCREENSHOT_LIMIT),
-        ]);
-        for (const result of [s2,ss2,ss2CreatedAt]) if (result.error) throw result.error;
-        finalSessions = s2.data || [];
-        screenshotRows = ss2.data || [];
-        screenshotCreatedAtRows = ss2CreatedAt.data || [];
-      }
-
       // Keyboard data already fetched via API route with all fallbacks built-in
 
       // Normalize + strictly filter screenshots to the selected range.
@@ -522,7 +447,7 @@ export default function DeveloperActivity() {
       const resolvedShots = await resolveScreenshotUrls(Array.from(merged.values()));
       finalScreenshots = resolvedShots
         .map((r) => {
-          const imageUrl = r?.public_url || r?.image_url || r?.thumbnail_url || r?.publicUrl || null;
+          const imageUrl = r?.public_url || null;
           const displayTs = r?.timestamp || r?.created_at || null;
           const displayMsRaw = parseDbTimeMs(displayTs);
           const displayMs = Number.isNaN(displayMsRaw) ? parseDbTimeMs(r?.created_at) : displayMsRaw;
@@ -788,7 +713,7 @@ export default function DeveloperActivity() {
     const endMs = new Date(end).getTime();
 
     const normalizeRow = (row) => {
-      const imageUrl = row?.public_url || row?.image_url || row?.thumbnail_url || row?.publicUrl || null;
+      const imageUrl = row?.public_url || null;
       const displayTs = row?.timestamp || row?.created_at || null;
       const displayMsRaw = parseDbTimeMs(displayTs);
       const displayMs = Number.isNaN(displayMsRaw) ? parseDbTimeMs(row?.created_at) : displayMsRaw;
@@ -819,7 +744,8 @@ export default function DeveloperActivity() {
         return;
       }
       if (!guard.accepts(incoming)) return;
-      const row = normalizeRow(signed || incoming);
+      if (!signed) return;
+      const row = normalizeRow(signed);
       if (!row.public_url) return;
       setScreenshots(prev => {
         if (!guard.accepts(incoming) || (row.id && prev.some(s => s.id === row.id))) return prev;
@@ -911,8 +837,9 @@ export default function DeveloperActivity() {
   const { start: rangeStart, end: rangeEnd } = dateWindow || {};
 
   // Aggregate durations from productivity_sessions for the selected date/range
-  const totalActiveTime = sessions.reduce((s, r) => s + (Number(r.active_duration) || 0), 0);
-  const totalIdleTime = sessions.reduce((s, r) => s + (Number(r.idle_duration) || 0), 0);
+  const totalActiveTime = sumMonitoringSessionDuration(sessions, "active_duration");
+  const totalIdleTime = sumMonitoringSessionDuration(sessions, "idle_duration");
+  const totalTrackedSeconds = sumMonitoringSessionDuration(sessions);
 
   // Sum of productivity_sessions.total_duration (in seconds) for the selected day (by start_time)
   const rangeStartTime = new Date(rangeStart).getTime();
@@ -920,6 +847,7 @@ export default function DeveloperActivity() {
 
   // Format seconds to HH:MM:SS
   const formatHHMMSS = (totalSeconds) => {
+    if (totalSeconds === null) return "Unavailable";
     const h = Math.floor(totalSeconds / 3600);
     const m = Math.floor((totalSeconds % 3600) / 60);
     const s = Math.floor(totalSeconds % 60);
@@ -1010,13 +938,14 @@ export default function DeveloperActivity() {
 
   const sessionChartData = sessions.slice().reverse().map((s, i) => ({
     session: `#${i + 1}`,
-    score: s.productivity_score || 0,
-    active: Math.round((s.active_duration || 0) / 60),
-    idle: Math.round((s.idle_duration || 0) / 60),
+    score: s.productivity_score,
+    active: s.active_duration === null ? null : Math.round(s.active_duration / 60),
+    idle: s.idle_duration === null ? null : Math.round(s.idle_duration / 60),
   }));
 
   // ─── Helpers ───
   const fmtDuration = (sec) => {
+    if (sec === null) return "Unavailable";
     if (!sec) return "0m";
     const h = Math.floor(sec / 3600);
     const m = Math.floor((sec % 3600) / 60);
@@ -1279,8 +1208,8 @@ export default function DeveloperActivity() {
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                 <StatCard
                   icon={<Hourglass className="h-5 w-5 text-foreground" aria-hidden="true" />}
-                  label="Today's Total Time"
-                  value={formatHHMMSS(todayTotalSeconds)}
+                  label="Tracked Time in Selected Period"
+                  value={formatHHMMSS(totalTrackedSeconds)}
                   bg="bg-primary/10"
                 />
                 {/* <StatCard icon={<Timer className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Today Active Time" value={fmtDuration(totalActiveTime)} bg="bg-success/10" /> */}
@@ -1289,6 +1218,8 @@ export default function DeveloperActivity() {
                 <StatCard icon={<Target className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Kb Activity %" value={`${avgKeyboardActivity.toFixed(1)}%`} bg="bg-primary/10" />
                 <StatCard icon={<Camera className="h-5 w-5 text-foreground" aria-hidden="true" />} label="Screenshots" value={screenshots.length} bg="bg-accent" />
               </div>
+
+              <p className="text-xs text-muted-foreground">Recorded session time is grouped by the date each session started.</p>
 
               {/* Productivity Chart */}
               {/* {sessionChartData.length > 0 && (
@@ -2406,7 +2337,7 @@ export default function DeveloperActivity() {
               <div className="space-y-4 max-h-[600px] overflow-y-auto">
                 {sessions.length > 0 ? (
                   sessions.map((session, index) => (
-                    <div key={index} className={`border-l-4 pl-4 py-4 bg-card rounded hover:shadow-md transition-shadow ${session.status === "active" ? "border-green-500" : "border-primary"}`}>
+                    <div key={session.session_id} className={`border-l-4 pl-4 py-4 bg-card rounded hover:shadow-md transition-shadow ${session.status === "active" ? "border-green-500" : "border-primary"}`}>
                       <div className="flex justify-between items-start">
                         <div>
                           <h4 className="font-semibold text-foreground">
@@ -2417,8 +2348,8 @@ export default function DeveloperActivity() {
                             {session.end_time && ` → ${fmtDateTime(session.end_time)}`}
                           </p>
                           <div className="flex flex-wrap gap-2 mt-2">
-                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${prodBg(session.productivity_score)} ${prodColor(session.productivity_score)}`}>
-                              Score: {(session.productivity_score || 0).toFixed(1)}%
+                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${session.productivity_score === null ? "bg-muted text-muted-foreground" : `${prodBg(session.productivity_score)} ${prodColor(session.productivity_score)}`}`}>
+                              Score: {session.productivity_score === null ? "Unavailable" : `${session.productivity_score.toFixed(1)}%`}
                             </span>
                             <span className="px-3 py-1 bg-info/10 text-info-on-tint rounded-full text-xs">
                               Active: {fmtDuration(session.active_duration)}
