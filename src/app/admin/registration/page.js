@@ -25,13 +25,7 @@ import {
   SegmentedControl,
   SubmitButton,
 } from "@/components/auth/AuthParts";
-import {
-  DemoCardFields,
-  PlanChoice,
-  emptyCard,
-  formatPrice,
-  validateCard,
-} from "@/components/billing/PlanChoice";
+import { PlanChoice } from "@/components/billing/PlanChoice";
 import { FREE_PLAN_CODE } from "@/utils/billingAccess";
 
 /**
@@ -56,10 +50,9 @@ const STEP_LABELS = {
   1: "your details",
   2: "verify your email",
   3: "choose a plan",
-  4: "payment details",
 };
 
-const OTP_LENGTH = 4;
+const OTP_LENGTH = 6;
 /** Must match `CODE_TTL_MINUTES` in src/app/api/send-verification/route.js —
  *  that is the number the email states, this is the one the page counts down. */
 const CODE_TTL_MINUTES = 10;
@@ -333,14 +326,9 @@ export default function AdminRegistration() {
   // resolves the code again anyway.
   const [plans, setPlans] = useState([]);
   const [plansLoading, setPlansLoading] = useState(true);
-  const [demoCheckout, setDemoCheckout] = useState(true);
   const [selectedPlan, setSelectedPlan] = useState(FREE_PLAN_CODE);
-  const [card, setCard] = useState(emptyCard);
-  const [cardErrors, setCardErrors] = useState({});
-  // NOTE: there is deliberately no `cardConfirmed` state. Whether the card step
-  // was completed is passed straight into `completeRegistration` as an
-  // argument — holding it in state meant the submit handler read the value
-  // from the render it was created in, which was always the previous one.
+  // This proof stays in memory only; it is never written to browser storage.
+  const [verificationGrant, setVerificationGrant] = useState(null);
 
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -581,6 +569,7 @@ export default function AdminRegistration() {
   };
 
   const sendVerificationCode = async (userEmail) => {
+    setVerificationGrant(null);
     // The CODE IS NO LONGER MADE HERE. /api/send-verification mints it, stores
     // a hash of it with an expiry, and emails it; this tab never learns what it
     // is. Generating it in the browser meant the check could be read out of
@@ -689,13 +678,13 @@ export default function AdminRegistration() {
    * Step 2 → step 3. Checks the code and moves on; it no longer registers.
    *
    * The account is created at the END of the flow, by `completeRegistration`,
-   * so that the plan and the card step happen BEFORE anything exists. Creating
+   * so that email verification and plan selection happen before workspace creation. Creating
    * the organization here and collecting billing afterwards would mean every
    * abandoned checkout left a real, half-configured tenant behind.
    */
   const verifyCodeAndContinue = async (e) => {
     // Called both by the form's submit and, with no event, by the effect that
-    // fires as soon as the fourth box is filled.
+    // fires as soon as all six boxes are filled.
     if (e) e.preventDefault();
     setVerificationLoading(true);
     setErrors({});
@@ -727,7 +716,7 @@ export default function AdminRegistration() {
       });
       const result = await res.json().catch(() => ({}));
 
-      if (!res.ok || !result?.success) {
+      if (!res.ok || !result?.success || !/^[a-f0-9]{64}$/.test(result.verificationGrant || "")) {
         const left = result?.attemptsRemaining;
         setErrors({
           code:
@@ -741,6 +730,7 @@ export default function AdminRegistration() {
         resetCodeBoxes();
         return;
       }
+      setVerificationGrant(result.verificationGrant);
     } catch {
       setErrors({ code: "Could not check the code just now. Please try again." });
       setVerificationLoading(false);
@@ -752,35 +742,12 @@ export default function AdminRegistration() {
     setStep(3);
   };
 
-  /**
-   * The end of the flow: create the account on the plan that was chosen.
-   *
-   * Reached from step 3 (Free — no card) or step 4 (a paid plan, after the card
-   * form validates). `paymentMethodProvided` is a boolean and the card values
-   * are not in this request — read the note at the top of
-   * src/components/billing/PlanChoice.jsx for why.
-   */
-  //
-  // `cardWasEntered` is an ARGUMENT, not read from state. It used to read the
-  // `cardConfirmed` state, which this closure captures from the render it was
-  // created in — so `setCardConfirmed(true); completeRegistration();` always
-  // saw the previous value, `false`. The request therefore always claimed no
-  // card step had happened, and the `demo_card_on_file` marker on the
-  // subscription row was dead code that could never be written.
-  const completeRegistration = async (cardWasEntered = false) => {
+  /** Create the selected free/trial workspace; payment happens in Billing. */
+  const completeRegistration = async () => {
     setVerificationLoading(true);
     setErrors({});
 
     try {
-      const { error: testError } = await supabase
-        .from('admin_users')
-        .select('count')
-        .limit(1);
-
-      if (testError) {
-        throw new Error(`Database connection failed: ${testError.message}`);
-      }
-
       // Server-side signup (service_role): creates the admin, organization,
       // owner membership and Supabase Auth account. Bypasses RLS so signup works
       // once RLS is enabled.
@@ -797,15 +764,23 @@ export default function AdminRegistration() {
           password: formData.password,
           timezone: (typeof Intl !== "undefined" && Intl.DateTimeFormat().resolvedOptions().timeZone) || "UTC",
           termsAccepted,
+          verificationGrant,
           // The server validates this against the catalogue and falls back to
           // free — it is a request, not a decision.
           planCode: selectedPlan,
-          // A boolean. Not the card. See PlanChoice.jsx.
-          paymentMethodProvided: selectedPlan !== FREE_PLAN_CODE && cardWasEntered,
         }),
       });
       const signupData = await signupRes.json().catch(() => ({}));
       if (!signupRes.ok || !signupData.success) {
+        if (["email_not_verified", "signup_setup_unconfirmed"].includes(signupData.code)) {
+          // Preserve the entered account details/password while allowing a
+          // fresh verification to resume the same server-side reservation.
+          setVerificationGrant(null);
+          resetCodeBoxes();
+          setCodeExpiry(Date.now() - 1);
+          setNowTs(Date.now());
+          setStep(2);
+        }
         throw new Error(signupData.error || "Registration failed. Please try again.");
       }
 
@@ -966,7 +941,6 @@ export default function AdminRegistration() {
         const data = await res.json().catch(() => ({}));
         if (cancelled) return;
         setPlans(Array.isArray(data.plans) ? data.plans : []);
-        setDemoCheckout(data.demo !== false);
       } catch {
         if (!cancelled) setPlans([]);
       } finally {
@@ -981,25 +955,9 @@ export default function AdminRegistration() {
   const chosenPlan = plans.find((p) => p.code === selectedPlan) || null;
   const planIsPaid = Boolean(chosenPlan) && Number(chosenPlan.amount_cents || 0) > 0;
 
-  /** Step 3 → step 4, or straight to the account when the plan is free. */
   const handlePlanContinue = (e) => {
     e.preventDefault();
-    if (!planIsPaid) {
-      completeRegistration(false);
-      return;
-    }
-    setCardErrors({});
-    setStep(4);
-  };
-
-  /** Step 4. Validates the card here, then sends a boolean and nothing else. */
-  const handleCardSubmit = (e) => {
-    e.preventDefault();
-    const problems = validateCard(card, { demo: demoCheckout });
-    setCardErrors(problems);
-    if (Object.keys(problems).length > 0) return;
-    // Passed as an argument rather than set-then-read: see completeRegistration.
-    completeRegistration(true);
+    completeRegistration();
   };
 
   const pwVal = validatePassword(formData.password);
@@ -1024,20 +982,15 @@ export default function AdminRegistration() {
       </div>
 
       <AuthCard>
-        {/* The total moves from 3 to 4 the moment a paid plan is chosen, which
-            is exactly when the card step becomes real. Showing "of 4" to
-            someone who picks Free would promise a step they never see. */}
         {mode === "create" && (
           <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Step {step} of {planIsPaid ? 4 : 3} — {STEP_LABELS[step] || "your details"}
+            Step {step} of 3 — {STEP_LABELS[step] || "your details"}
           </p>
         )}
 
         <AuthHeading
           title={
-            step === 4
-              ? "Payment details"
-              : step === 3
+            step === 3
               ? "Choose your plan"
               : step === 2
               ? "Verify your email"
@@ -1046,12 +999,10 @@ export default function AdminRegistration() {
               : "Create your workspace"
           }
           description={
-            step === 4
-              ? `Start your ${chosenPlan?.trial_days || 7}-day free trial of ${chosenPlan?.name || "this plan"}. You won't be charged today.`
-              : step === 3
-              ? "Every paid plan starts with a free trial. You can change plan at any time from Billing."
+            step === 3
+              ? "Choose Free or an available trial. Manage paid subscriptions securely from Billing after signup."
               : step === 2
-              ? "We sent a 4-digit verification code to your inbox."
+              ? "We sent a 6-digit verification code to your inbox."
               : mode === "join"
               ? "Enter the invite code your organization sent you."
               : "Set up admin access to the tracking dashboard for your company."
@@ -1334,11 +1285,11 @@ export default function AdminRegistration() {
 
             <SubmitButton
               loading={verificationLoading}
-              loadingLabel={planIsPaid ? "Continuing…" : "Creating your workspace…"}
+              loadingLabel="Creating your workspace…"
               status={errors.general ? "error" : "idle"}
               disabled={verificationLoading || plansLoading}
             >
-              {planIsPaid ? "Continue to payment" : "Create workspace on Free"}
+              {planIsPaid ? "Start free trial" : "Create workspace on Free"}
             </SubmitButton>
 
             <button
@@ -1348,44 +1299,6 @@ export default function AdminRegistration() {
               className="mx-auto block rounded text-sm font-medium text-muted-foreground underline-offset-4 transition-colors duration-150 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed"
             >
               Back
-            </button>
-          </form>
-        ) : step === 4 ? (
-          /* ── Step 4 — payment details (paid plans only) ─────────── */
-          <form onSubmit={handleCardSubmit} className="mt-6 space-y-5">
-            <div className="flex items-baseline justify-between rounded-lg border border-border bg-muted/40 px-4 py-3">
-              <span className="text-sm font-medium text-foreground">{chosenPlan?.name}</span>
-              <span className="text-sm text-muted-foreground">
-                {chosenPlan?.trial_days || 7} days free, then{" "}
-                {formatPrice(chosenPlan?.amount_cents, chosenPlan?.currency)}/
-                {chosenPlan?.billing_interval || "month"}
-              </span>
-            </div>
-
-            <DemoCardFields
-              card={card}
-              onChange={setCard}
-              errors={cardErrors}
-              disabled={verificationLoading}
-              demo={demoCheckout}
-            />
-
-            <SubmitButton
-              loading={verificationLoading}
-              loadingLabel="Creating your workspace…"
-              status={errors.general ? "error" : "idle"}
-              disabled={verificationLoading}
-            >
-              Start {chosenPlan?.trial_days || 7}-day free trial
-            </SubmitButton>
-
-            <button
-              type="button"
-              onClick={() => setStep(3)}
-              disabled={verificationLoading}
-              className="mx-auto block rounded text-sm font-medium text-muted-foreground underline-offset-4 transition-colors duration-150 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed"
-            >
-              Choose a different plan
             </button>
           </form>
         ) : (

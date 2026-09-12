@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { recordEvent } from "@/utils/systemEvents";
 import { isRole, PROFILE_TABLE } from "@/utils/roles";
 import { loadOverrides } from "@/utils/permissionOverrides";
+import { fetchWithDeadline } from "@/utils/fetchDeadline";
 
 // Server-side auth helpers for API routes.
 //
@@ -219,8 +220,9 @@ export function orgScopedClient(token) {
 
 // A privileged service-role client (bypasses RLS). Use only for writes that
 // must succeed regardless of RLS, after the caller's org has been verified.
-export function serviceClient() {
+export function serviceClient({ requestTimeoutMs = 0 } = {}) {
   return createClient(SUPABASE_URL, SERVICE_KEY || ANON_KEY, {
+    ...(requestTimeoutMs ? { global: { fetch: fetchWithDeadline(requestTimeoutMs) } } : {}),
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }

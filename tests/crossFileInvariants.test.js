@@ -146,7 +146,7 @@ describe("service-role routes re-apply the scope RLS would have", () => {
   };
 
   const routes = FILES.filter(
-    (f) => f.path.includes("app/api/") && f.path.endsWith("route.js") && f.body.includes("serviceClient()")
+    (f) => f.path.includes("app/api/") && f.path.endsWith("route.js") && /\bserviceClient\s*\(/.test(f.body)
   );
 
   it("finds the service-role routes", () => {

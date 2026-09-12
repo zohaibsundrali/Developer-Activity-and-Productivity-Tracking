@@ -141,7 +141,7 @@ describe("the terms box stops the submit in the browser", () => {
 
 describe("the verification code is four separate boxes", () => {
   it("renders one input per digit, and no single combined field", () => {
-    expect(REGISTRATION_CODE).toMatch(/const OTP_LENGTH = 4/);
+    expect(REGISTRATION_CODE).toMatch(/const OTP_LENGTH = 6/);
     expect(REGISTRATION).toContain("digits.map((digit, index) =>");
     expect(REGISTRATION).toContain("maxLength={1}");
     // The old single field is gone.
@@ -478,12 +478,9 @@ describe("registration signs the browser in before opening the dashboard", () =>
     expect(REGISTRATION).toMatch(/Workspace created — please sign in/);
   });
 
-  it("passes the card flag as an argument rather than reading it from state", () => {
-    // `setCardConfirmed(true); completeRegistration();` read the value from the
-    // render the closure was created in, so it was always the previous one —
-    // and the request always claimed no card step had happened.
-    expect(REGISTRATION_CODE).toMatch(/completeRegistration\(true\)/);
-    expect(REGISTRATION_CODE).toMatch(/completeRegistration = async \(cardWasEntered = false\)/);
-    expect(REGISTRATION_CODE).not.toMatch(/setCardConfirmed/);
+  it("does not collect demo payment details during trial signup", () => {
+    expect(REGISTRATION_CODE).not.toContain("DemoCardFields");
+    expect(REGISTRATION_CODE).not.toContain("paymentMethodProvided");
+    expect(REGISTRATION_CODE).toContain("verificationGrant");
   });
 });

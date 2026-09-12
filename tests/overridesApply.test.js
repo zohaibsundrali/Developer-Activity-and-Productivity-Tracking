@@ -215,10 +215,11 @@ describe("the browser is told what it may do, so it stops offering what it may n
     expect(perms).toMatch(/export function can\(action\) \{[\s\S]{0,120}return allowed\(key\)/);
   });
 
-  it("loads at sign-in and never blocks it", () => {
+  it("requires confirmed permissions before entering the dashboard", () => {
     const login = read("src/app/login/page.js");
     expect(login).toMatch(/loadPermissionSet\(authFetch\)/);
-    expect(login).toMatch(/try \{\s*await loadPermissionSet/);
+    expect(login).toMatch(/if \(!\(await loadPermissionSet\(authFetch\)\)\)/);
+    expect(login).toContain("Could not load your workspace permissions");
   });
 
   it("clears on sign-out, so nobody inherits the last person's set", () => {

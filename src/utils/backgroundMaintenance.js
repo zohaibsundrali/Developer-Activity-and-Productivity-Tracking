@@ -1,6 +1,8 @@
 import { processUnattendedAutomations } from '@/utils/unattendedAutomations';
 import { runTrackingRetention } from '@/utils/trackingRetention';
 import { processOrganizationDeletion } from '@/utils/organizationDeletion';
+import { recoverSignups } from '@/utils/signupRecovery';
+import { recoverProfileProvisions } from '@/utils/profileProvisioningRecovery';
 
 // Independent durable queues: one unavailable provider must not prevent another
 // queue from progressing. Each worker bounds work and checkpoints its own lease.
@@ -8,9 +10,13 @@ export async function runBackgroundMaintenance(svc, {
   automation = processUnattendedAutomations,
   retention = runTrackingRetention,
   deletion = processOrganizationDeletion,
+  signup = recoverSignups,
+  provisioning = recoverProfileProvisions,
 } = {}) {
   const summary = { errors: [] };
   const jobs = [
+    ['signup_recovery', signup, { limit: 10 }],
+    ['profile_provisioning', provisioning, { limit: 10 }],
     ['organization_cleanup', deletion, { maxSteps: 4, timeBudgetMs: 15000 }],
     ['actor_automation', automation, { maxActors: 5, maxJobsPerActor: 2 }],
     ['tracking_retention', retention, { maxOrganizations: 2, maxFiles: 5, batchSize: 100 }],

@@ -65,8 +65,9 @@ function likeMatch(value, pattern) {
   return rx.test(String(value));
 }
 
-function makeDb({ memberships = [], adminUsers = [], developers = [], authUsers = [], failUpdate = false } = {}) {
-  const tables = { memberships, admin_users: adminUsers, developers };
+function makeDb({ memberships = [], adminUsers = [], developers = [], clients = [], authUsers = [], failUpdate = false, failTable = null } = {}) {
+  const scopedProfiles = rows => rows.map(row => ({ organization_id: ORG, ...row }));
+  const tables = { memberships, admin_users: scopedProfiles(adminUsers), developers: scopedProfiles(developers), clients: scopedProfiles(clients) };
   const updates = [];
 
   const builder = (table) => {
@@ -99,7 +100,7 @@ function makeDb({ memberships = [], adminUsers = [], developers = [], authUsers 
         return b;
       },
       maybeSingle: async () => ({ data: rows()[0] || null, error: null }),
-      then: (resolve, reject) => Promise.resolve({ data: rows(), error: null }).then(resolve, reject),
+      then: (resolve, reject) => Promise.resolve(failTable === table ? { data: null, error: { code: "57014" } } : { data: rows(), error: null }).then(resolve, reject),
     };
     return b;
   };
@@ -210,7 +211,7 @@ describe('POST /api/auth/repair-claims — the way out of the chicken-and-egg', 
       developers: [{ id: 'app-1', auth_user_id: 'auth-1', organization_id: ORG }],
       authUsers: [
         authUser({
-          app_metadata: { provider: 'email', organization_id: OTHER_ORG, app_user_id: 'stale-app-id', user_type: 'admin', role: 'admin' },
+          app_metadata: { provider: 'email', organization_id: OTHER_ORG, app_user_id: 'stale-app-id', user_type: 'admin', role: null },
         }),
       ],
     });
@@ -349,7 +350,7 @@ describe('POST /api/auth/repair-claims — the way out of the chicken-and-egg', 
     expect(db.updates).toEqual([]);
   });
 
-  it('still resolves an unlinked profile row by confirmed address alone (052’s rule)', async () => {
+  it('requires operator repair for an unlinked profile despite confirmed email', async () => {
     const db = makeDb({
       memberships: [membership()],
       developers: [{ id: 'app-1', auth_user_id: null }],
@@ -358,8 +359,9 @@ describe('POST /api/auth/repair-claims — the way out of the chicken-and-egg', 
     serviceClient.mockReturnValue(db.svc);
 
     const res = await repair.POST(req('tok:auth-1'));
-    expect(res.status).toBe(200);
-    expect(db.updates[0].attrs.app_metadata.organization_id).toBe(ORG);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: "profile_link_requires_operator", repairable: false });
+    expect(db.updates).toEqual([]);
   });
 
   it('resolves by the profile link even when the membership carries no address', async () => {
@@ -445,6 +447,51 @@ describe('POST /api/auth/repair-claims — the way out of the chicken-and-egg', 
 
     const res = await repair.POST(req('tok:auth-1'));
     expect(res.status).toBe(502);
+  });
+});
+
+describe('self-service repair requires current typed profile authority', () => {
+  it.each(['admin_users', 'developers', 'clients', 'memberships'])('refuses partial identity lookup failure in %s', async failTable => {
+    const db = makeDb({ memberships: [membership()],
+      developers: [{ id: 'app-1', auth_user_id: 'auth-1' }],
+      authUsers: [authUser({ app_metadata: {} })], failTable });
+    serviceClient.mockReturnValue(db.svc);
+    for (const handler of [repair.GET, repair.POST]) {
+      const response = await handler(req('tok:auth-1'));
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({ code: 'identity_lookup_unavailable', repairable: false });
+    }
+    expect(db.updates).toEqual([]);
+  });
+
+  it.each([
+    { auth_user_id: 'another-auth' },
+    { auth_user_id: 'auth-1', organization_id: OTHER_ORG },
+  ])('does not claim ownership of a conflicting profile %s', async profile => {
+    const db = makeDb({ memberships: [membership()], developers: [{ id: 'app-1', ...profile }],
+      authUsers: [authUser({ app_metadata: {} })] });
+    serviceClient.mockReturnValue(db.svc);
+    const response = await repair.POST(req('tok:auth-1'));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: 'profile_link_requires_operator' });
+    expect(db.updates).toEqual([]);
+  });
+
+  it('supports an existing linked client without converting it into staff', async () => {
+    const db = makeDb({ memberships: [membership({ user_type: 'client', role: 'client' })],
+      clients: [{ id: 'app-1', auth_user_id: 'auth-1' }],
+      authUsers: [authUser({ app_metadata: {} })] });
+    serviceClient.mockReturnValue(db.svc);
+    expect((await repair.POST(req('tok:auth-1'))).status).toBe(200);
+    expect(db.updates[0].attrs.app_metadata).toMatchObject({ user_type: 'client', role: 'client', organization_id: ORG });
+  });
+
+  it.each([{ status: null }, { deletion_blocked: true }])('does not restore blocked membership %s', async change => {
+    const db = makeDb({ memberships: [membership(change)],
+      developers: [{ id: 'app-1', auth_user_id: 'auth-1' }], authUsers: [authUser({ app_metadata: {} })] });
+    serviceClient.mockReturnValue(db.svc);
+    expect((await repair.POST(req('tok:auth-1'))).status).toBe(404);
+    expect(db.updates).toEqual([]);
   });
 });
 

@@ -6,43 +6,12 @@ import { LEGACY_HASH_PREFIX } from "@/app/api/developer/change-password/legacyPa
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/admin/legacy-auth-audit — how big is the legacy-password problem?
- *
- * READ ONLY. This route counts rows. It writes nothing, changes nothing and
- * returns no password material of any kind — only counts.
- *
- * WHY IT EXISTS
- *  Three tables (developers, admin_users, clients) carry a `password` column
- *  left over from the pre-Supabase-Auth login, and a `auth_user_id` link to the
- *  real credential. Two questions have to be answerable with a number before
- *  the column can ever be dropped, and today both are guesses:
- *
- *   1. HOW MANY ACCOUNTS HAVE NO SUPABASE AUTH USER (auth_user_id is null)?
- *      These are the accounts that cannot sign in through Supabase Auth at all.
- *      They are also the accounts that CANNOT be repaired by the user: they
- *      have no credential to reset. Every one of them needs an administrator to
- *      provision sign-in. This is the number the staged migration is blocked on.
- *
- *   2. HOW MANY ROWS STILL HOLD A CLEARTEXT PASSWORD?
- *      /api/developer/change-password now stores a PBKDF2 hash instead of
- *      cleartext, but five other writers still insert cleartext and no existing
- *      row has been rewritten. This count is the drain rate: it must reach zero
- *      before the cleartext branch of the login fallback can be deleted.
- *
- * SCOPE
- *  Counts are constrained to the organization on the caller's VERIFIED JWT,
- *  never an id from the request — the same rule as /api/admin/health. Reads run
- *  on the service role because a plain admin token cannot count clients rows it
- *  has no policy for. A PLATFORM-WIDE total spans tenants and is deliberately
- *  not exposed to a tenant here; the SQL for it is in the verification section
- *  of database/041_password_hardening.sql, to be run by the project owner.
- *
- * WHO MAY READ IT
- *  owner and admin only. The counts describe the security posture of every
- *  colleague's account, so a developer, manager or client has no business
- *  reading them.
+ * Organization-scoped, read-only counts for callers with system.audit.
+ * Null auth_user_id means the profile is unlinked; it does not prove an Auth
+ * account is absent. Operators must reconcile existing identities before
+ * provisioning anything. Password counts expose no credential material and
+ * help verify removal of legacy copies; they do not describe current grants.
  */
-
 
 // The three tables that carry a legacy password column and an auth link.
 const AUDITED_TABLES = ["developers", "admin_users", "clients"];
@@ -131,8 +100,8 @@ export async function GET(request) {
       totals,
       tables,
       notes: [
-        "legacyOnly = rows with auth_user_id null. Those accounts have no Supabase Auth credential; they cannot sign in through Supabase Auth and cannot reset their own password. Each one needs an administrator to provision sign-in before the legacy column can be dropped.",
-        "cleartextPasswords = rows whose password column is neither null nor a PBKDF2 hash. Any authenticated member of this organization can read those values through PostgREST.",
+        "legacyOnly = profiles with auth_user_id null. An Auth account may already exist but be unlinked. These profiles cannot authorize application access until an operator verifies and repairs the existing identity link, or provisions a new account when none exists. Do not infer account absence or recreate accounts from this count.",
+        "cleartextPasswords = rows whose legacy password column is neither null nor a recognized PBKDF2 hash. The audit returns counts only; remaining legacy credential copies require removal.",
         "Counts cover this organization only. The platform-wide figures are in the verification section of database/041_password_hardening.sql.",
       ],
     });

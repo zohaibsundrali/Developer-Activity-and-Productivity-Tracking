@@ -12,3 +12,11 @@ it('supports a read-only receipt after Auth deletion without returning internal 
 it('does not disclose status for invalid receipts',async()=>{expect((await GET(req({},'?receipt=wrong'))).status).toBe(404);expect(state.rpc).not.toHaveBeenCalled();});
 it('allows authenticated owner retry only for their recorded job',async()=>{expect((await PATCH(req())).status).toBe(404);state.rpc.mockResolvedValue({data:{id:'job',organizationName:'Acme'}});expect((await PATCH(req())).status).toBe(200);expect(state.process).toHaveBeenCalledWith(expect.anything(),{orgId:'org',retry:true});});
 it('sanitizes failed start without losing a recorded job or invoking providers',async()=>{state.rpc.mockResolvedValue({error:{code:'XX000',message:'private details'}});const res=await POST(req({confirmName:'Acme'}));expect(res.status).toBe(503);expect(JSON.stringify(await res.json())).not.toContain('private details');expect(state.process).not.toHaveBeenCalled();});
+it('explains pending provisioning without starting destructive cleanup',async()=>{
+  state.rpc.mockResolvedValue({error:{code:'55000',message:'PROVISIONING_PENDING: internal details'}});
+  const res=await POST(req({confirmName:'Acme'}));
+  expect(res.status).toBe(409);
+  expect(await res.json()).toMatchObject({code:'provisioning_pending',error:expect.stringContaining('original details')});
+  expect(state.process).not.toHaveBeenCalled();
+  expect(state.rpc).toHaveBeenCalledTimes(1);
+});

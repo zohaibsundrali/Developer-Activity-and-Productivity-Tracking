@@ -59,7 +59,10 @@ it('cancels verified subscriptions immediately without proration or refund',asyn
  state.stripe={checkout:{sessions:{list:vi.fn(async()=>({data:[],has_more:false})),expire:vi.fn()}},customers:{retrieve:vi.fn(async()=>({metadata:{organization_id:'org'}}))},subscriptions:{list:vi.fn(async()=>({data:[sub],has_more:false})),cancel:vi.fn(async()=>({status:'canceled'}))}};
  const svc=service({job:{...baseJob,stage:'billing',stripe_customer_id:'cus',stripe_subscription_id:'sub'}});
  expect((await processOrganizationDeletion(svc,{maxSteps:1})).retry).toBeUndefined();
- expect(state.stripe.subscriptions.cancel).toHaveBeenCalledWith('sub',{invoice_now:false,prorate:false});
+ expect(state.stripe.subscriptions.cancel).toHaveBeenCalledWith('sub',{invoice_now:false,prorate:false},{timeout:10000,maxNetworkRetries:0});
+ expect(state.stripe.customers.retrieve).toHaveBeenCalledWith('cus',{}, {timeout:10000,maxNetworkRetries:0});
+ expect(state.stripe.checkout.sessions.list).toHaveBeenCalledWith(expect.objectContaining({customer:'cus'}),{timeout:10000,maxNetworkRetries:0});
+ expect(state.stripe.subscriptions.list).toHaveBeenCalledWith(expect.objectContaining({customer:'cus'}),{timeout:10000,maxNetworkRetries:0});
 });
 it('refuses cancellation when tenant metadata belongs to another organization',async()=>{
  state.stripe={customers:{retrieve:vi.fn(async()=>({metadata:{organization_id:'foreign'}}))},subscriptions:{cancel:vi.fn()}};
@@ -69,4 +72,17 @@ it('refuses cancellation when tenant metadata belongs to another organization',a
 it('retains durable job for database failure and supports no-job polling',async()=>{
  expect((await processOrganizationDeletion(service({job:{...baseJob,stage:'database'},finalError:{}}))).retry).toBe(true);
  expect(await processOrganizationDeletion(service({job:null}))).toMatchObject({processed:false,steps:0});
+});
+
+it('bounds checkout expiration and records uncertain provider timeout for ledger retry',async()=>{
+ state.stripe={
+  customers:{retrieve:vi.fn(async()=>({metadata:{organization_id:'org'}}))},
+  checkout:{sessions:{list:vi.fn(async()=>({data:[{id:'session',customer:'cus',metadata:{organization_id:'org'}}],has_more:false})),expire:vi.fn(async()=>{throw new Error('provider timeout');})}},
+  subscriptions:{list:vi.fn(),cancel:vi.fn()},
+ };
+ const svc=service({job:{...baseJob,stage:'billing',stripe_customer_id:'cus'}});
+ expect((await processOrganizationDeletion(svc,{maxSteps:1})).retry).toBe(true);
+ expect(state.stripe.checkout.sessions.expire).toHaveBeenCalledWith('session',{}, {timeout:10000,maxNetworkRetries:0});
+ expect(state.stripe.subscriptions.cancel).not.toHaveBeenCalled();
+ expect(svc.rpc).toHaveBeenLastCalledWith('finish_organization_deletion_step',expect.objectContaining({p_error:true}));
 });

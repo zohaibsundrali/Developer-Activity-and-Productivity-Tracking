@@ -1,5 +1,5 @@
 -- ISOLATED test database only: deliberately minimal application schema.
-create role anon;
+do $$ begin if not exists(select 1 from pg_roles where rolname='anon') then create role anon; end if; end $$;
 -- authenticated role is created by the preceding isolation suite.
 create schema auth;
 create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb $$;

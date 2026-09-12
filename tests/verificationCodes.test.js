@@ -192,32 +192,19 @@ describe("the send route mints the code rather than relaying one", () => {
   });
 });
 
-describe("signup refuses an unverified address", () => {
+describe("signup delegates verification to its transaction", () => {
   const route = read("src/app/api/auth/signup/route.js");
-
-  it("checks email_verifications", () => {
-    expect(route).toContain("email_verifications");
+  it("uses the claim RPC covered by database transaction and concurrency tests", () => {
+    expect(route).toContain('admin.rpc("claim_signup"');
+    expect(route).not.toContain('.from("email_verifications")');
   });
-
-  it("consumes the verification in the same statement that checks it", () => {
-    // Read-then-write would let two concurrent signups both pass.
-    const idx = route.indexOf("email_verifications");
-    const near = route.slice(idx - 400, idx + 600);
-    expect(near).toContain("consumed_at");
-    expect(near).toMatch(/\.update\(/);
-  });
-
-  it("returns a distinguishable refusal", () => {
+  it("retains a distinguishable re-verification response", () => {
     expect(route).toContain("email_not_verified");
   });
-
-  it("gates before anything is created", () => {
-    const gate = route.indexOf("email_not_verified");
-    const firstInsert = route.indexOf('.from("admin_users")');
-    expect(gate).toBeGreaterThan(-1);
-    expect(firstInsert).toBeGreaterThan(-1);
-    expect(gate).toBeLessThan(firstInsert);
-  });
+  // Behavior (no Auth creation for unverified email) is covered by
+  // signupIdentityLinking.test.js. Atomic verification consumption and two
+  // simultaneous claims are exercised in transactional_signup_recovery.sql
+  // and test-signup-recovery-concurrency.py against actual PostgreSQL.
 });
 
 describe("the verify route does not leak signup state", () => {
@@ -231,22 +218,13 @@ describe("the verify route does not leak signup state", () => {
     expect(distinct.size).toBe(1);
   });
 
-  it("counts a wrong guess before answering", () => {
-    // Anchored on the COMPARISON, not on the import of the same name — the
-    // import is the first occurrence in the file and a window measured from
-    // there would pass without the increment existing at all.
-    const wrongIdx = route.indexOf("if (!digestsEqual(");
-    expect(wrongIdx, "expected an `if (!digestsEqual(` branch").toBeGreaterThan(-1);
-    const branch = route.slice(wrongIdx, wrongIdx + 500);
-    expect(branch).toMatch(/attempts:\s*row\.attempts\s*\+\s*1/);
-    // And the increment must be awaited before the response is returned, so a
-    // client that abandons the connection still pays for the guess.
-    expect(branch.indexOf("await")).toBeLessThan(branch.indexOf("return"));
+  it("delegates proof and attempt accounting to the serialized database function", () => {
+    expect(route).toContain('.rpc("verify_signup_code"');
+    expect(route).not.toContain("row.verified_at");
   });
+  // Wrong-code caps, newest-row selection, and verified-at bypass rejection
+  // are covered in transactional_signup_recovery.sql against PostgreSQL.
 
-  it("orders the lookup, so a resend cannot return the retired row", () => {
-    expect(route).toMatch(/\.order\(\s*["']created_at["']/);
-  });
 });
 
 describe("migration 056 locks the table to the server", () => {

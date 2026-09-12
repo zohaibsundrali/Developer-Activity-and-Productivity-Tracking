@@ -37,10 +37,8 @@ describe("C-1 · self-repair cannot raise a role", () => {
     expect(wouldEscalateRole(claims("manager"), membership("admin"))).toBe(true);
   });
 
-  it("allows a demotion, so losing a role still propagates", () => {
-    // The dangerous direction is the only one refused. A demotion that could
-    // not be repaired would be a way to KEEP a role after being removed from it.
-    expect(wouldEscalateRole(claims("admin"), membership("developer"))).toBe(false);
+  it("allows a demotion that adds no capabilities", () => {
+    expect(wouldEscalateRole(claims("owner"), membership("admin"))).toBe(false);
     expect(wouldEscalateRole(claims("owner"), membership("hr"))).toBe(false);
   });
 
@@ -65,6 +63,13 @@ describe("C-1 · self-repair cannot raise a role", () => {
     expect(wouldEscalateRole(claims("developer"), membership("superuser"))).toBe(true);
     expect(wouldEscalateRole(claims("nonsense"), membership("developer"))).toBe(true);
     expect(wouldEscalateRole({ role: "" }, membership("nope"))).toBe(true);
+    expect(wouldEscalateRole(claims("nope"), membership("nope"))).toBe(true);
+  });
+
+  it("refuses lower-ranked roles that introduce new capabilities", () => {
+    expect(wouldEscalateRole(claims("admin"), membership("developer"))).toBe(true);
+    expect(wouldEscalateRole(claims("manager"), membership("hr"))).toBe(true);
+    expect(wouldEscalateRole(claims("hr"), membership("finance"))).toBe(true);
   });
 
   it("treats the developer/designer/devops tie as not a promotion", () => {
