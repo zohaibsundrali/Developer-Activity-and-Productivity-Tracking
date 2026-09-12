@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { resolveSessionWorkContext, sessionWorkLabel } from "@/utils/sessionWorkContext";
+import SessionBreakHistory from "@/components/developer/SessionBreakHistory";
 import { useParams, useRouter } from "next/navigation";
 import { Camera, Keyboard, LogIn, MousePointer2, Monitor } from "lucide-react";
 import { useAuth } from "../../../contexts/AuthContext.jsx";
@@ -209,6 +210,8 @@ export default function SessionDetailPage() {
             </p>
           )}
         </div>
+
+        {session && !sessionLoading && <SessionBreakHistory session={session} />}
 
         {/* Metric tiles */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

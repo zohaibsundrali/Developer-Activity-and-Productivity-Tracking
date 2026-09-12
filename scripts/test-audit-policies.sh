@@ -244,7 +244,7 @@ done
 python3 scripts/test-proposal-decision-concurrency.py "$audit_container" proposal_decision_transaction_test
 
 # Unattended jobs, destructive lifecycle recovery, and existing leave contract.
-for fixture in unattended_actor_automation tracking_retention_jobs typed_leave_authority organization_deletion_lifecycle leave_day_contract leave_contract_capacity automation_retention_deletion_integration current_profile_authority invitation_cleanup_confirmation profile_provisioning operator_identity_repair transactional_signup_recovery completed_signup_cleanup atomic_recurring_tasks idempotent_screenshot_capture organization_screenshot_policy tracking_work_context; do
+for fixture in unattended_actor_automation tracking_retention_jobs typed_leave_authority organization_deletion_lifecycle leave_day_contract leave_contract_capacity automation_retention_deletion_integration current_profile_authority invitation_cleanup_confirmation profile_provisioning operator_identity_repair transactional_signup_recovery completed_signup_cleanup atomic_recurring_tasks idempotent_screenshot_capture organization_screenshot_policy tracking_work_context tracking_break_history; do
   docker exec "$audit_container" createdb -U postgres "${fixture}_test"
   python3 scripts/expand-sql-fixture.py "database/tests/${fixture}.sql" | \
     docker exec -i "$audit_container" psql -U postgres -d "${fixture}_test" -v ON_ERROR_STOP=1
