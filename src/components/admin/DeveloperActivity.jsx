@@ -1,4 +1,8 @@
 "use client";
+import { useAuth } from "@/contexts/AuthContext";
+import { loadMonitoringMousePage } from "@/utils/monitoringMousePage";
+import { loadMonitoringRoster } from "@/utils/monitoringRoster";
+import { monitoringDateWindow, createMonitoringEventGuard } from "@/utils/monitoringViewGuard";
 import KeyboardCoverageNotice from "@/components/shared/KeyboardCoverageNotice";
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -119,6 +123,7 @@ const SCREENSHOT_LIMIT = 200;
 const LOGIN_LIMIT = 500;
 
 export default function DeveloperActivity() {
+  const { user, authStatus } = useAuth();
   const router = useRouter();
   const [currentAdmin, setCurrentAdmin] = useState(null);
   const [developers, setDevelopers] = useState([]);
@@ -131,10 +136,8 @@ export default function DeveloperActivity() {
 
   // Avoid hydration mismatches by setting any time-based defaults after mount.
   useEffect(() => {
-    if (!selectedDate) {
-      setSelectedDate(new Date().toLocaleDateString("en-CA"));
-    }
-  }, [selectedDate]);
+    setSelectedDate(new Date().toLocaleDateString("en-CA"));
+  }, []);
 
   // Parse DB timestamps safely.
   // Supabase can return `timestamp` (without timezone) which JS treats as local time.
@@ -239,13 +242,22 @@ export default function DeveloperActivity() {
   const [todayTotalSeconds, setTodayTotalSeconds] = useState(0);
   const [loginRecords, setLoginRecords] = useState([]);
 
-  const canMonitor = allowed('monitoring.view');
   const monitoringOrg = getOrgId();
+  const monitoringIdentity = authStatus === 'authenticated' && user ? reportIdentity(getOrgContext()) : null;
+  const liveMonitoringIdentity = useRef(monitoringIdentity); liveMonitoringIdentity.current = monitoringIdentity;
+  const canMonitor = !!monitoringIdentity && allowed('monitoring.view');
+  const dateWindow = monitoringDateWindow(selectedDate, timeRange);
   const rosterGeneration = useRef(0);
   const [activityError, setActivityError] = useState('');
   const [developerError, setDeveloperError] = useState('');
-  const activityScope = `${monitoringOrg}:${selectedDeveloper}:${selectedDate}:${timeRange}:${canMonitor}`;
+  const activityScope = `${monitoringIdentity}:${monitoringOrg}:${selectedDeveloper}:${selectedDate}:${timeRange}:${canMonitor}`;
   const liveScope = useRef(activityScope); liveScope.current = activityScope;
+  const makeMonitoringGuard = useCallback(() => createMonitoringEventGuard({
+    organizationId: monitoringOrg, identity: monitoringIdentity, scope: activityScope,
+    getOrganizationId: getOrgId, getIdentity: () => reportIdentity(getOrgContext()),
+    getScope: () => liveScope.current, canMonitor: () => allowed('monitoring.view'),
+  }), [monitoringOrg, monitoringIdentity, activityScope]);
+  const [clearedScope, setClearedScope] = useState(null);
   const activityGeneration = useRef(0);
   const mouseGeneration = useRef(0);
   const clearActivity = useCallback(() => {
@@ -254,7 +266,7 @@ export default function DeveloperActivity() {
     setTodayTotalSeconds(0); setActiveSession(null); setMouseTotalCount(0);
   }, []);
   useEffect(() => {
-    clearActivity(); setActivityError('');
+    clearActivity(); setClearedScope(activityScope); setActivityError(''); setLoading(false); setMousePageLoading(false);
     return () => { activityGeneration.current += 1; mouseGeneration.current += 1; };
   }, [activityScope, clearActivity]);
 
@@ -282,47 +294,28 @@ export default function DeveloperActivity() {
 
   // ─── Fetch Developers ───
   const fetchAdminDevelopers = useCallback(async () => {
-    setFetchingDevelopers(true); setDeveloperError('');
+    setFetchingDevelopers(true); setDeveloperError(''); setDevelopers([]);
     const orgId = monitoringOrg;
     const ticket = ++rosterGeneration.current;
-    if (!canMonitor || !orgId) { setDevelopers([]); setSelectedDeveloper(''); setFetchingDevelopers(false); return; }
+    const current = () => ticket === rosterGeneration.current && !!monitoringIdentity
+      && liveMonitoringIdentity.current === monitoringIdentity && allowed('monitoring.view')
+      && getOrgId() === orgId && reportIdentity(getOrgContext()) === monitoringIdentity;
+    if (!canMonitor || !orgId) { setSelectedDeveloper(''); setFetchingDevelopers(false); return; }
     try {
-      const { data, error } = await supabase.from('developers').select('*').eq('organization_id', orgId).order('name');
-      if (error) throw error;
-      if (ticket !== rosterGeneration.current || !allowed('monitoring.view') || getOrgId() !== orgId) return;
-      setDevelopers(data || []);
-      setSelectedDeveloper(selected => (data || []).some(dev => dev.id === selected) ? selected : '');
+      const data = await loadMonitoringRoster(supabase, orgId, current);
+      if (!current() || !data) return;
+      setDevelopers(data);
+      setSelectedDeveloper(selected => data.some(dev => dev.id === selected) ? selected : '');
     } catch {
-      if (ticket !== rosterGeneration.current || getOrgId() !== orgId) return;
+      if (!current()) return;
       setDevelopers([]); setSelectedDeveloper(''); setDeveloperError('Could not load developers. Check your monitoring access and retry.');
-    } finally { if (ticket === rosterGeneration.current) setFetchingDevelopers(false); }
-  }, [canMonitor, monitoringOrg]);
+    } finally { if (current()) setFetchingDevelopers(false); }
+  }, [canMonitor, monitoringOrg, monitoringIdentity]);
 
   useEffect(() => { fetchAdminDevelopers(); return () => { rosterGeneration.current += 1; }; }, [fetchAdminDevelopers]);
 
   // ─── Date Filter ───
-  const getDateFilter = useCallback(() => {
-    const [yy, mm, dd] = String(selectedDate).split("-").map(Number);
-
-    // Use UTC boundaries so "YYYY-MM-DD" matches tracked_at::date in DB (typically UTC).
-    // Treat the window as: [startInclusive, endExclusive)
-    const selectedDayStartUtc = new Date(Date.UTC(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0));
-    const baseStartUtc = new Date(selectedDayStartUtc);
-    const endExclusiveUtc = new Date(selectedDayStartUtc);
-    endExclusiveUtc.setUTCDate(endExclusiveUtc.getUTCDate() + 1);
-
-    if (timeRange === "week") {
-      baseStartUtc.setUTCDate(baseStartUtc.getUTCDate() - 6);
-    }
-    if (timeRange === "month") {
-      baseStartUtc.setUTCDate(baseStartUtc.getUTCDate() - 29);
-    }
-
-    const startISO = baseStartUtc.toISOString();
-    const endISO = endExclusiveUtc.toISOString();
-
-    return { start: startISO, end: endISO };
-  }, [selectedDate, timeRange]);
+  const getDateFilter = useCallback(() => monitoringDateWindow(selectedDate, timeRange), [selectedDate, timeRange]);
 
   // ─── Fetch All Activity Data (with active session detection) ───
   const fetchDeveloperActivity = useCallback(async (silent = false) => {
@@ -331,11 +324,15 @@ export default function DeveloperActivity() {
     if (!dev || !allowed('monitoring.view')) return;
     const requestedScope = liveScope.current;
     const ticket = ++activityGeneration.current;
-    const active = () => liveScope.current === requestedScope && ticket === activityGeneration.current && allowed('monitoring.view');
+    const guard = makeMonitoringGuard();
+    if (!guard.current()) return;
+    const active = () => guard.current() && liveScope.current === requestedScope && ticket === activityGeneration.current;
     setActivityError('');
-    if (!silent) setLoading(true);
 
-    const { start, end } = getDateFilter();
+    const window = getDateFilter();
+    if (!window) { setLoading(false); setMousePageLoading(false); return; }
+    const { start, end } = window;
+    if (!silent) setLoading(true);
     const devId = dev.id;
     const devEmail = dev.email;
 
@@ -573,7 +570,7 @@ export default function DeveloperActivity() {
     } finally {
       if (active() && !silent) setLoading(false);
     }
-  }, [selectedDeveloper, developers, getDateFilter, loginRowTimeMs, clearActivity, parseDbTimeMs]);
+  }, [selectedDeveloper, developers, getDateFilter, loginRowTimeMs, clearActivity, parseDbTimeMs, makeMonitoringGuard]);
 
   // ─── Mouse Activity (server-side pagination) ───
   const fetchMousePage = useCallback(async ({ page = 1, silent = false } = {}) => {
@@ -581,41 +578,36 @@ export default function DeveloperActivity() {
     if (!dev || !allowed('monitoring.view')) return;
     const requestedScope = liveScope.current;
     const ticket = ++mouseGeneration.current;
-    const active = () => requestedScope === liveScope.current && ticket === mouseGeneration.current && allowed('monitoring.view');
+    const guard = makeMonitoringGuard();
+    if (!guard.current()) return;
+    const active = () => guard.current() && requestedScope === liveScope.current && ticket === mouseGeneration.current;
 
-    const { start, end } = getDateFilter();
-    const from = (page - 1) * MOUSE_PAGE_SIZE;
-    const to = from + MOUSE_PAGE_SIZE - 1;
+    const window = getDateFilter();
+    if (!window) { setLoading(false); setMousePageLoading(false); return; }
+    const { start, end } = window;
 
     if (!silent) setMousePageLoading(true);
     try {
-      const baseSelect = "id, session_id, developer_id, developer_name, timestamp, activity_status, active_percentage, idle_percentage, created_at";
-
-      const mouseDeveloperFilters = [`developer_id.eq.${dev.id}`];
-      if (dev.user_id) mouseDeveloperFilters.push(`developer_id.eq.${dev.user_id}`);
-
-      let res = await supabase
-        .from("mouse_activities")
-        .select(baseSelect, { count: "exact" })
-        .or(mouseDeveloperFilters.join(","))
-        .gte("timestamp", start)
-        .lt("timestamp", end)
-        .order("timestamp", { ascending: false })
-        .range(from, to);
-
-      if (res?.error) throw res.error;
-      let rows = Array.isArray(res?.data) ? res.data : [];
-      let total = typeof res?.count === "number" ? res.count : rows.length;
-
-      // There is no email fallback to make: mouse_activities has no email
-      // column at all (only developer_name). The query that used to sit here
-      // ran on every empty result and 400'd every time, silently. The
-      // developer_id filter above already tries both id spellings.
-
-      if (!active()) return;
-      setMouseData(rows);
-      setMouseTotalCount(total);
-      setMousePage(page);
+      let requestedPage = page;
+      const readPage = value => loadMonitoringMousePage(supabase, {
+        organizationId: monitoringOrg, developerIds: [dev.id, dev.user_id].filter(Boolean),
+        start, end, page: value, pageSize: MOUSE_PAGE_SIZE,
+      }, active);
+      let receipt = await readPage(requestedPage);
+      if (!receipt || !active()) return;
+      // Retention/deletion may remove the last page while the view is open.
+      const lastPage = Math.max(1, Math.ceil(receipt.total / MOUSE_PAGE_SIZE));
+      if (requestedPage > lastPage) {
+        requestedPage = lastPage;
+        receipt = await readPage(requestedPage);
+        if (!receipt || !active()) return;
+        if (requestedPage > Math.max(1, Math.ceil(receipt.total / MOUSE_PAGE_SIZE))) {
+          throw new Error('Mouse activity changed while loading. Please retry.');
+        }
+      }
+      setMouseData(receipt.rows);
+      setMouseTotalCount(receipt.total);
+      setMousePage(requestedPage);
     } catch (e) {
       if (!active()) return;
       setActivityError("Could not load mouse activity. Check your access and retry.");
@@ -625,7 +617,7 @@ export default function DeveloperActivity() {
     } finally {
       if (active() && !silent) setMousePageLoading(false);
     }
-  }, [developers, selectedDeveloper, getDateFilter]);
+  }, [developers, selectedDeveloper, getDateFilter, makeMonitoringGuard, monitoringOrg]);
 
   // Reset mouse pagination when filters change.
   useEffect(() => {
@@ -662,17 +654,21 @@ export default function DeveloperActivity() {
     }
 
     const dev = developers.find(d => d.id === selectedDeveloper);
-    if (!dev) return;
+    if (!dev || !monitoringOrg || !canMonitor || !allowed('monitoring.view')) return;
 
-    const { start, end } = getDateFilter();
+    const window = getDateFilter();
+    if (!window) return;
+    const { start, end } = window;
+    const guard = makeMonitoringGuard();
     const startMs = new Date(start).getTime();
     const endMs = new Date(end).getTime();
     const inRange = (row) => {
-      const t = parseDbTimeMs(row?.created_at ?? row?.timestamp ?? null);
+      const t = parseDbTimeMs(row?.timestamp ?? row?.created_at ?? null);
       if (Number.isNaN(t)) return false;
       return t >= startMs && t < endMs;
     };
 
+    let refreshTimer = null;
     let channel = supabase.channel("admin-activity-mouse");
     const mouseFilters = [`developer_id=eq.${dev.id}`];
     if (dev.user_id) mouseFilters.push(`developer_id=eq.${dev.user_id}`);
@@ -684,24 +680,27 @@ export default function DeveloperActivity() {
         table: "mouse_activities",
         filter: f,
       }, (payload) => {
-        if (!inRange(payload?.new)) return;
-        setMouseTotalCount((c) => (typeof c === "number" ? c + 1 : c));
-        if (mousePage === 1) {
-          setMouseData(prev => {
-            if (prev.some(m => m.id === payload.new.id)) return prev;
-            return [payload.new, ...prev].slice(0, MOUSE_PAGE_SIZE);
-          });
-        }
-        setLastUpdated(new Date());
+        const row = payload?.new;
+        if (!guard.accepts(row) || !inRange(row) || ![dev.id, dev.user_id].filter(Boolean).includes(row.developer_id)) return;
+        // An INSERT can already be included in an in-flight exact-count read.
+        // Refresh authoritative rows/count instead of incrementing heuristically.
+        if (refreshTimer !== null) return;
+        refreshTimer = setTimeout(() => {
+          refreshTimer = null;
+          if (guard.current()) fetchMousePage({ page: mousePage, silent: true });
+        }, 200);
       });
     });
     channel.subscribe();
 
     realtimeChannelRef.current = channel;
     return () => {
+      guard.dispose();
+      if (refreshTimer !== null) clearTimeout(refreshTimer);
       supabase.removeChannel(channel);
+      if (realtimeChannelRef.current === channel) realtimeChannelRef.current = null;
     };
-  }, [selectedDeveloper, developers, getDateFilter, parseDbTimeMs, mousePage]);
+  }, [selectedDeveloper, developers, getDateFilter, parseDbTimeMs, mousePage, monitoringOrg, canMonitor, makeMonitoringGuard, fetchMousePage]);
 
   // ─── Supabase Realtime for keyboard_stats ───
   const keyboardChannelRef = useRef(null);
@@ -713,7 +712,9 @@ export default function DeveloperActivity() {
     const dev = developers.find(d => d.id === selectedDeveloper);
     if (!dev || !monitoringOrg || !canMonitor || !allowed('monitoring.view')) return;
 
-    const { start, end } = getDateFilter();
+    const window = getDateFilter();
+    if (!window) return;
+    const { start, end } = window;
     const guard = createKeyboardRealtimeGuard({
       organizationId: monitoringOrg, identity: reportIdentity(getOrgContext()), scope: activityScope,
       developer: dev, start, end, getOrganizationId: getOrgId,
@@ -758,8 +759,11 @@ export default function DeveloperActivity() {
       appChannelRef.current = null;
     }
     const dev = developers.find(d => d.id === selectedDeveloper);
-    if (!dev) return;
-    const { start, end } = getDateFilter();
+    if (!dev || !monitoringOrg || !canMonitor || !allowed('monitoring.view')) return;
+    const window = getDateFilter();
+    if (!window) return;
+    const { start, end } = window;
+    const guard = makeMonitoringGuard();
     const startMs = new Date(start).getTime();
     const endMs = new Date(end).getTime();
     const inRange = (row) => {
@@ -775,14 +779,15 @@ export default function DeveloperActivity() {
         table: "app_usage",
         filter: `user_email=eq.${dev.email}`,
       }, (payload) => {
-        if (!inRange(payload?.new)) return;
-        setAppUsageData(prev => [payload.new, ...prev]);
-        setLastUpdated(new Date());
+        const row = payload?.new;
+        if (!guard.accepts(row) || row.user_email !== dev.email || !inRange(row)) return;
+        setAppUsageData(prev => !guard.accepts(row) || prev.some(item => item.id === row.id) ? prev : [row, ...prev]);
+        setLastUpdated(previous => guard.current() ? new Date() : previous);
       })
       .subscribe();
     appChannelRef.current = appChannel;
-    return () => { supabase.removeChannel(appChannel); };
-  }, [selectedDeveloper, developers, getDateFilter, parseDbTimeMs]);
+    return () => { guard.dispose(); supabase.removeChannel(appChannel); if (appChannelRef.current === appChannel) appChannelRef.current = null; };
+  }, [selectedDeveloper, developers, getDateFilter, parseDbTimeMs, monitoringOrg, canMonitor, makeMonitoringGuard]);
 
   // ─── Supabase Realtime for screenshots ───
   const screenshotChannelRef = useRef(null);
@@ -792,9 +797,12 @@ export default function DeveloperActivity() {
       screenshotChannelRef.current = null;
     }
     const dev = developers.find(d => d.id === selectedDeveloper);
-    if (!dev) return;
+    if (!dev || !monitoringOrg || !canMonitor || !allowed('monitoring.view')) return;
 
-    const { start, end } = getDateFilter();
+    const window = getDateFilter();
+    if (!window) return;
+    const { start, end } = window;
+    const guard = makeMonitoringGuard();
     const startMs = new Date(start).getTime();
     const endMs = new Date(end).getTime();
 
@@ -822,20 +830,24 @@ export default function DeveloperActivity() {
 
     // Sign (if private) then prepend. Shared by both realtime subscriptions.
     const ingest = async (incoming) => {
-      if (!allowed('monitoring.view') || incoming.developer_id !== dev.id || !shouldInclude(incoming)) return;
-      const requestedScope = liveScope.current;
-      const [signed] = await resolveScreenshotUrls([incoming]);
-      if (!allowed('monitoring.view') || liveScope.current !== requestedScope) return;
+      if (!guard.accepts(incoming) || incoming.developer_id !== dev.id || !shouldInclude(incoming)) return;
+      let signed;
+      try { [signed] = await resolveScreenshotUrls([incoming]); }
+      catch {
+        if (guard.current()) setActivityError('Could not load the new screenshot. Refresh activity to retry.');
+        return;
+      }
+      if (!guard.accepts(incoming)) return;
       const row = normalizeRow(signed || incoming);
       if (!row.public_url) return;
       setScreenshots(prev => {
-        if (row.id && prev.some(s => s.id === row.id)) return prev;
+        if (!guard.accepts(incoming) || (row.id && prev.some(s => s.id === row.id))) return prev;
         // Trim to the same ceiling the fetch uses. Without this an admin page
         // left open accumulated screenshots without limit — every other
         // realtime handler here caps its array, this one did not.
         return [row, ...prev].slice(0, SCREENSHOT_LIMIT);
       });
-      setLastUpdated(new Date());
+      setLastUpdated(previous => guard.current() ? new Date() : previous);
     };
 
     const ssChannel = supabase
@@ -848,8 +860,8 @@ export default function DeveloperActivity() {
       }, (payload) => { ingest(payload.new); })
       .subscribe();
     screenshotChannelRef.current = ssChannel;
-    return () => { supabase.removeChannel(ssChannel); };
-  }, [selectedDeveloper, developers, getDateFilter, parseDbTimeMs]);
+    return () => { guard.dispose(); supabase.removeChannel(ssChannel); if (screenshotChannelRef.current === ssChannel) screenshotChannelRef.current = null; };
+  }, [selectedDeveloper, developers, getDateFilter, parseDbTimeMs, monitoringOrg, canMonitor, makeMonitoringGuard]);
 
   // ─── Supabase Realtime for developer_logins ───
   useEffect(() => {
@@ -858,15 +870,18 @@ export default function DeveloperActivity() {
       loginChannelRef.current = null;
     }
     const dev = developers.find(d => d.id === selectedDeveloper);
-    if (!dev) return;
+    if (!dev || !monitoringOrg || !canMonitor || !allowed('monitoring.view')) return;
 
-    const { start, end } = getDateFilter();
+    const window = getDateFilter();
+    if (!window) return;
+    const { start, end } = window;
+    const guard = makeMonitoringGuard();
     const startMs = new Date(start).getTime();
     const endMs = new Date(end).getTime();
 
     const matchesDeveloper = (row) => {
       if (!row) return false;
-      if (row.developer_id && row.developer_id === dev.id) return true;
+      if (row.developer_id) return row.developer_id === dev.id;
       if (row.developer_email && row.developer_email === dev.email) return true;
       if (row.user_email && row.user_email === dev.email) return true;
       if (row.email && row.email === dev.email) return true;
@@ -888,10 +903,10 @@ export default function DeveloperActivity() {
         table: "developer_logins",
       }, (payload) => {
         const row = payload?.new;
-        if (!matchesDeveloper(row)) return;
+        if (!guard.accepts(row) || !matchesDeveloper(row)) return;
         if (!inSelectedRange(row)) return;
         setLoginRecords((prev) => {
-          if (row?.id && prev.some((r) => r.id === row.id)) return prev;
+          if (!guard.accepts(row) || (row?.id && prev.some((r) => r.id === row.id))) return prev;
           const next = [row, ...prev];
           // Keep chronological order for summary (first/second login).
           return next
@@ -900,19 +915,19 @@ export default function DeveloperActivity() {
             .sort((a, b) => a.ms - b.ms)
             .map((x) => x.row);
         });
-        setLastUpdated(new Date());
+        setLastUpdated(previous => guard.current() ? new Date() : previous);
       })
       .subscribe();
 
     loginChannelRef.current = channel;
-    return () => { supabase.removeChannel(channel); };
-  }, [selectedDeveloper, developers, selectedDate, timeRange, loginRowTimeMs, getDateFilter]);
+    return () => { guard.dispose(); supabase.removeChannel(channel); if (loginChannelRef.current === channel) loginChannelRef.current = null; };
+  }, [selectedDeveloper, developers, selectedDate, timeRange, loginRowTimeMs, getDateFilter, monitoringOrg, canMonitor, makeMonitoringGuard]);
 
   // ─── Computed Metrics ───
   const developer = developers.find(d => d.id === selectedDeveloper);
   const hasData = sessions.length || mouseData.length || keyboardData.length || appUsageData.length || screenshots.length || loginRecords.length;
 
-  const { start: rangeStart, end: rangeEnd } = getDateFilter();
+  const { start: rangeStart, end: rangeEnd } = dateWindow || {};
 
   // Aggregate durations from productivity_sessions for the selected date/range
   const totalActiveTime = sessions.reduce((s, r) => s + (Number(r.active_duration) || 0), 0);
@@ -1119,6 +1134,7 @@ export default function DeveloperActivity() {
   };
 
   // ─── Render ───
+  if (authStatus === "pending") return <Skeleton className="h-48 w-full" />;
   if (!canMonitor) return <ErrorState title="Monitoring access is not allowed" description="Your current permissions do not include developer monitoring." />;
   return (
     /* The screen is the page, not a card: it used to be wrapped in one so its
@@ -1139,7 +1155,7 @@ export default function DeveloperActivity() {
       {!canMonitor ? <ErrorState title="Monitoring access is not allowed" description="Your current permissions do not include developer monitoring." /> : null}
       {developerError ? <ErrorState title="Could not load developers" description={developerError} onRetry={fetchAdminDevelopers} /> : null}
       <KeyboardCoverageNotice truncated={keyboardTruncated} loadedCount={keyboardData.length} canNarrowRange />
-      {activityError ? <ErrorState title="Could not load activity" description={activityError} onRetry={() => fetchDeveloperActivity()} /> : null}
+      {activityError ? <ErrorState title="Could not load activity" description={activityError} onRetry={() => { fetchDeveloperActivity(); fetchMousePage({ page: mousePage }); }} /> : null}
       {/* Filters */}
       <div className="mb-6 bg-card rounded-xl p-5 border border-border shadow-card">
 
@@ -1251,6 +1267,7 @@ export default function DeveloperActivity() {
         </div>
       </div>
 
+      {!dateWindow ? <ErrorState title="Choose a valid date" description="Select a real calendar date and a valid time range to load activity." /> : clearedScope !== activityScope ? <Skeleton className="h-48 w-full" /> : <>
       {/* Active Session Banner */}
       {activeSession && !loading && (
         <div className="mb-6 bg-success/10 border border-success/20 rounded-xl p-4 flex items-center justify-between">
@@ -2554,6 +2571,7 @@ export default function DeveloperActivity() {
           />
         )
       )}
+      </>}
     </div>
   );
 }
