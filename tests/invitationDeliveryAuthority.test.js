@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-const state = vi.hoisted(() => ({ role: 'hr', overrides: {}, inserts: [], filters: [], send: vi.fn(), insertError: null }));
+const state = vi.hoisted(() => ({ role: 'hr', overrides: {}, inserts: [], filters: [], send: vi.fn(), insertError: null, listError: null }));
 vi.mock('@/utils/serverAuth', () => ({
   getAuthedOrg: async () => ({ orgId: 'org', appUserId: 'actor', role: state.role, userType: 'developer', overrides: state.overrides }),
   serviceClient: () => ({ from(table) {
@@ -10,7 +10,7 @@ vi.mock('@/utils/serverAuth', () => ({
       insert: value => { state.inserts.push(value); inserted = value; return q; },
       single: async () => ({ data: { id: 'invite', ...inserted }, error: state.insertError }),
       maybeSingle: async () => ({ data: table === 'organizations' ? { name: 'Test org' } : null, error: null }),
-      then: resolve => Promise.resolve({ data: [], error: null }).then(resolve),
+      then: resolve => Promise.resolve({ data: [], error: state.listError }).then(resolve),
     }; return q;
   } }),
 }));
@@ -18,7 +18,7 @@ vi.mock('@/utils/emailService', async original => ({ ...await original(), sendTe
 vi.mock('@/utils/entitlements', () => ({ checkSeatLimitForRole: async () => null, checkFeatureAccess: async () => null }));
 import { GET, POST } from '@/app/api/invitations/route';
 const req = body => new Request('https://request.test/api/invitations', { method: 'POST', headers: { origin: 'https://attacker.test', host: 'attacker.test' }, body: JSON.stringify({ email: 'Member@Example.Test', role: 'developer', ...body }) });
-beforeEach(() => { state.role = 'hr'; state.overrides = {}; state.inserts = []; state.filters = []; state.insertError = null; state.send.mockReset().mockResolvedValue({ delivered: true, mode: 'smtp' }); vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://configured.test'); });
+beforeEach(() => { state.role = 'hr'; state.overrides = {}; state.inserts = []; state.filters = []; state.insertError = null; state.listError = null; state.send.mockReset().mockResolvedValue({ delivered: true, mode: 'smtp' }); vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://configured.test'); });
 afterEach(() => vi.unstubAllEnvs());
 describe('invitation delivery and token authority', () => {
   it('builds email links from configuration instead of attacker-controlled headers', async () => {
@@ -60,4 +60,24 @@ describe('invitation delivery and token authority', () => {
     expect((await GET(new Request('https://app.test/api/invitations'))).status).toBe(403);
     expect(state.filters).toEqual([]);
   });
+});
+
+it('does not expose private database errors from creation or listing', async () => {
+ state.insertError={message:'private table and secret token'};
+ let response=await POST(req()); expect(response.status).toBe(500);
+ expect(JSON.stringify(await response.json())).not.toContain('private');
+ state.listError={message:'private query details'};
+ response=await GET(new Request('https://app.test/api/invitations'));
+ expect(response.status).toBe(500);expect(JSON.stringify(await response.json())).not.toContain('private');
+ expect(response.headers.get('cache-control')).toBe('private, no-store');
+});
+it('marks successful invitation token responses private and non-cacheable',async()=>{
+ for(const response of [await POST(req()),await GET(new Request('https://app.test/api/invitations'))]) {
+  expect(response.headers.get('cache-control')).toBe('private, no-store');
+  expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+ }
+});
+it.each(['{', 'null', '[]', '"text"'])('rejects malformed invitation body %s before writes',async body=>{
+ const response=await POST(new Request('https://app.test/api/invitations',{method:'POST',body}));
+ expect(response.status).toBe(400);expect(state.inserts).toEqual([]);expect(state.send).not.toHaveBeenCalled();
 });

@@ -56,3 +56,8 @@ describe('invitation acceptance credential recovery', () => {
   expect(state.update).not.toHaveBeenCalled();
  });
 });
+
+it.each(['{', 'null', '[]', '"text"', JSON.stringify({token:'x'.repeat(513),password:'original-password',termsAccepted:true})])('rejects malformed acceptance without reserving or mutating Auth: %s',async body=>{
+ const response=await POST(new Request('https://app.test/api/invitations/accept',{method:'POST',body}));
+ expect(response.status).toBe(400);expect(state.rpc).not.toHaveBeenCalled();expect(state.create).not.toHaveBeenCalled();expect(state.signIn).not.toHaveBeenCalled();
+});
