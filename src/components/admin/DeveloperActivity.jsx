@@ -1,6 +1,8 @@
 "use client";
 import { useAuth } from "@/contexts/AuthContext";
 import { loadMonitoringMousePage } from "@/utils/monitoringMousePage";
+import { loadMonitoringAppUsage } from "@/utils/monitoringAppUsage";
+import { createMonitoringAppRefresh } from "@/utils/monitoringAppRefresh";
 import { loadMonitoringRoster } from "@/utils/monitoringRoster";
 import { monitoringDateWindow, createMonitoringEventGuard } from "@/utils/monitoringViewGuard";
 import KeyboardCoverageNotice from "@/components/shared/KeyboardCoverageNotice";
@@ -114,11 +116,9 @@ const donutLegend = { ...baseLegend, bottom: 0, top: "auto", left: "center", rig
 const POLL_INTERVAL = 10_000; // 10 seconds
 const MOUSE_PAGE_SIZE = 50;
 
-// The tracker tables gain a row a minute per developer and this dashboard polls
-// every 10s, so every read is capped. The caps sit well above a realistic day
-// (or month, for the wider ranges) of activity for one developer.
+// Legacy limits on the remaining monitoring sources; app usage and mouse
+// pages use verified pagination. These constants do not prove full coverage.
 const SESSION_LIMIT = 500;
-const APP_USAGE_LIMIT = 1000;
 const SCREENSHOT_LIMIT = 200;
 const LOGIN_LIMIT = 500;
 
@@ -321,7 +321,7 @@ export default function DeveloperActivity() {
     const devEmail = dev.email;
 
     try {
-      // Fetch all 5 tables in parallel (keyboard via API route to bypass RLS)
+      // Fetch monitoring sources through their existing caller-scoped access paths.
       const sessionFilters = [
         devEmail ? `user_email.eq.${devEmail}` : null,
         dev.user_id ? `user_id.eq.${dev.user_id}` : null,
@@ -339,7 +339,7 @@ export default function DeveloperActivity() {
           .order("start_time", { ascending: false })
           .limit(SESSION_LIMIT),
         authFetch(`/api/keyboard-stats?developerId=${encodeURIComponent(devId || "")}&userId=${encodeURIComponent(dev.user_id || "")}&email=${encodeURIComponent(devEmail || "")}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`).then(async r => { const body = await r.json(); if (!r.ok) throw new Error(body?.error || 'Could not load keyboard activity.'); return body; }),
-        supabase.from("app_usage").select("id, session_id, user_email, app_name, app_name_raw, window_title, start_time, end_time, duration_seconds, duration_minutes, tracked_at, created_at, is_new_app, user_login").eq("user_email", devEmail).gte("tracked_at", start).lt("tracked_at", end).order("tracked_at", { ascending: false }).limit(APP_USAGE_LIMIT),
+        loadMonitoringAppUsage(supabase, { organizationId: monitoringOrg, email: devEmail, start, end }, active).then(data => ({ data })),
         // Screenshots schema has varied; select '*' and normalize client-side.
         supabase.from("screenshots").select("*")
           .eq('developer_id', devId)
@@ -451,7 +451,7 @@ export default function DeveloperActivity() {
         })
         .sort((a, b) => new Date(b.tracked_at).getTime() - new Date(a.tracked_at).getTime());
 
-      let finalApp = appRes.data || [];
+      const finalApp = appRes.data || [];
 
       let screenshotRows = screenshotRes.data || [];
       let screenshotCreatedAtRows = screenshotCreatedAtRes.data || [];
@@ -480,7 +480,7 @@ export default function DeveloperActivity() {
 
       // Fallback to email if sessions returned nothing
       if (!finalSessions.length) {
-        const [s2, a2, ss2, ss2CreatedAt] = await Promise.all([
+        const [s2, ss2, ss2CreatedAt] = await Promise.all([
           supabase
             .from("productivity_sessions")
             .select("*")
@@ -489,7 +489,6 @@ export default function DeveloperActivity() {
             .lt("start_time", end)
             .order("start_time", { ascending: false })
             .limit(SESSION_LIMIT),
-          supabase.from("app_usage").select("id, session_id, user_email, app_name, app_name_raw, window_title, start_time, end_time, duration_seconds, duration_minutes, tracked_at, created_at, is_new_app, user_login").eq("user_email", devEmail).gte("tracked_at", start).lt("tracked_at", end).order("tracked_at", { ascending: false }).limit(APP_USAGE_LIMIT),
           supabase.from("screenshots").select("*")
             .eq('developer_id', devId)
             .gte("timestamp", start)
@@ -503,9 +502,8 @@ export default function DeveloperActivity() {
             .order("created_at", { ascending: false })
             .limit(SCREENSHOT_LIMIT),
         ]);
-        for (const result of [s2,a2,ss2,ss2CreatedAt]) if (result.error) throw result.error;
+        for (const result of [s2,ss2,ss2CreatedAt]) if (result.error) throw result.error;
         finalSessions = s2.data || [];
-        finalApp = a2.data || [];
         screenshotRows = ss2.data || [];
         screenshotCreatedAtRows = ss2CreatedAt.data || [];
       }
@@ -552,9 +550,10 @@ export default function DeveloperActivity() {
     } catch (err) {
       if (active()) { clearActivity(); setActivityError('Could not load monitoring data. Check your access and retry.'); }
     } finally {
-      if (active() && !silent) setLoading(false);
+      // A silent realtime refresh can supersede an initial visible request.
+      if (active()) setLoading(false);
     }
-  }, [selectedDeveloper, developers, getDateFilter, loginRowTimeMs, clearActivity, parseDbTimeMs, makeMonitoringGuard]);
+  }, [selectedDeveloper, developers, getDateFilter, loginRowTimeMs, clearActivity, parseDbTimeMs, makeMonitoringGuard, monitoringOrg]);
 
   // ─── Mouse Activity (server-side pagination) ───
   const fetchMousePage = useCallback(async ({ page = 1, silent = false } = {}) => {
@@ -746,32 +745,30 @@ export default function DeveloperActivity() {
     if (!dev || !monitoringOrg || !canMonitor || !allowed('monitoring.view')) return;
     const window = getDateFilter();
     if (!window) return;
-    const { start, end } = window;
     const guard = makeMonitoringGuard();
-    const startMs = new Date(start).getTime();
-    const endMs = new Date(end).getTime();
-    const inRange = (row) => {
-      const t = parseDbTimeMs(row?.tracked_at ?? row?.created_at ?? null);
-      if (Number.isNaN(t)) return false;
-      return t >= startMs && t < endMs;
-    };
-    const appChannel = supabase
-      .channel("admin-activity-app-usage")
-      .on("postgres_changes", {
-        event: "INSERT",
-        schema: "public",
-        table: "app_usage",
-        filter: `user_email=eq.${dev.email}`,
-      }, (payload) => {
-        const row = payload?.new;
-        if (!guard.accepts(row) || row.user_email !== dev.email || !inRange(row)) return;
-        setAppUsageData(prev => !guard.accepts(row) || prev.some(item => item.id === row.id) ? prev : [row, ...prev]);
-        setLastUpdated(previous => guard.current() ? new Date() : previous);
-      })
-      .subscribe();
+    const refresh = createMonitoringAppRefresh({
+      guard: {
+        current: guard.current,
+        accepts: row => guard.accepts(row) && row.user_email === dev.email,
+      },
+      refresh: () => fetchDeveloperActivity(true),
+    });
+    let appChannel = supabase.channel("admin-activity-app-usage");
+    // Cumulative tracker uploads revise existing rows as well as inserting.
+    // Re-read the selected captured-date window so moved records disappear,
+    // duplicate notifications cannot add time, and stale payloads cannot win.
+    for (const event of ["INSERT", "UPDATE"]) {
+      appChannel = appChannel.on("postgres_changes", {
+        event, schema: "public", table: "app_usage", filter: `user_email=eq.${dev.email}`,
+      }, payload => refresh.notify(payload?.new));
+    }
+    appChannel.subscribe();
     appChannelRef.current = appChannel;
-    return () => { guard.dispose(); supabase.removeChannel(appChannel); if (appChannelRef.current === appChannel) appChannelRef.current = null; };
-  }, [selectedDeveloper, developers, getDateFilter, parseDbTimeMs, monitoringOrg, canMonitor, makeMonitoringGuard]);
+    return () => {
+      guard.dispose(); refresh.dispose(); supabase.removeChannel(appChannel);
+      if (appChannelRef.current === appChannel) appChannelRef.current = null;
+    };
+  }, [selectedDeveloper, developers, getDateFilter, monitoringOrg, canMonitor, makeMonitoringGuard, fetchDeveloperActivity]);
 
   // ─── Supabase Realtime for screenshots ───
   const screenshotChannelRef = useRef(null);
@@ -961,7 +958,7 @@ export default function DeveloperActivity() {
   const sessionAvgKbActivity = sessionKeyboardData.length ? sessionKeyboardData.reduce((s, r) => s + (Number(r.keyboard_activity_percentage) || 0), 0) / sessionKeyboardData.length : 0;
 
   // App usage aggregation using actual schema: app_name, duration_seconds, duration_minutes
-  const appMap = {};
+  const appMap = Object.create(null);
   appUsageData.forEach(row => {
     const name = row.app_name || "Unknown";
     if (!appMap[name]) appMap[name] = { app: name, totalSeconds: 0, totalMinutes: 0, count: 0 };
