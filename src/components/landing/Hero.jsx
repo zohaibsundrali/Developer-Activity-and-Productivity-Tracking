@@ -1,56 +1,8 @@
 "use client";
 
 /**
- * Hero — copy left, product visual right.
- *
- * Two columns from `lg`, one below it. The copy is left-aligned once the
- * columns exist and centred while they do not, because a centred column beside
- * a picture reads as neither.
- *
- * The background is a flat token-coloured wash behind an `aria-hidden` layer.
- *
- * A WebGL lattice used to sit here, loaded through `SceneLoader`. It was
- * removed at the owner's request: it did not read the way it was intended to,
- * and a hero effect that has to be explained is not doing its job. Removing it
- * also takes ~131KB of gzipped JavaScript, a canvas, a render loop and four
- * fallback paths out of the most performance-sensitive screen on the site — so
- * the page it leaves behind is faster and simpler, not merely emptier.
- *
- * Keep it that way. If a background is ever wanted again here, it should cost
- * nothing to load and nothing to fall back from. The same rule governs the new
- * right-hand column: `HeroVisual` is drawn in HTML and CSS, so it loads with
- * the markup, has no decode step and cannot fail to a blank box.
- *
- * The entrance is a hand-staggered fade-and-rise: eyebrow, headline, subhead,
- * actions, then the assurance line — 80ms apart, so the eye lands on the
- * headline first and the CTA arrives last. `Reveal` applies no inline style at
- * all under `prefers-reduced-motion: reduce`, so nothing here can be stranded
- * at `opacity: 0`.
- *
- * ── Fold budget ────────────────────────────────────────────────────────────
- * The visual must never push the primary CTA below the fold. Three things keep
- * that true rather than hoping for it:
- *
- *  1. The visual sits in its own grid column, so its height cannot add to the
- *     copy column's height. On a phone it is *below* the CTA entirely.
- *  2. The columns are `lg:items-center`, and the visual is capped at
- *     `lg:max-w-[36rem]` on a 16/11 box — about 425px tall at 1440px, against
- *     roughly 590px of copy. The shorter column is the one that gets centred,
- *     so the copy stays pinned at the top of the row and the CTA does not move.
- *  3. The type ramp tops out at 60px rather than 72px. A 72px headline in a
- *     half-width column wraps to four lines and spends the entire budget on
- *     itself.
- *
- * Measured at 1440×900 with the 80px sticky header: the copy starts at 160px,
- * and the bottom of the CTA row lands near 715px — comfortably above the fold,
- * with headroom for a fourth headline line.
- *
- * ── No layout shift ────────────────────────────────────────────────────────
- * The visual's box is reserved by an aspect ratio on the wrapper, not by the
- * content inside it. There is no image to decode and no font to swap inside
- * the mockup — it is all shapes — so the row is its final height on the first
- * paint, and it stays that height when a real screenshot replaces the
- * placeholder at the same aspect ratio.
+ * Hero copy and actions stay above the visual on mobile.
+ * The image keeps its original aspect ratio at every screen size.
  */
 
 import { Container, CtaButton, Reveal, stagger } from "@/components/landing/primitives";
@@ -170,16 +122,7 @@ export default function Hero() {
             ) : null}
           </div>
 
-          {/* ── Product visual ────────────────────────────────────────────
-              Decorative in full: `aria-hidden` here covers the ground panel,
-              the glow and the mockup, none of which carry information a screen
-              reader needs — every claim the visual gestures at is written out
-              in the copy beside it and in the sections below.
-
-              On a phone this follows the CTA in source order as well as
-              visually, and takes a squarer, smaller box: the visual is allowed
-              to be cropped, but the button is not allowed to be pushed off the
-              screen. */}
+          {/* Decorative illustration beside the hero copy. */}
           <Reveal
             aria-hidden="true"
             delay={stagger(3)}
@@ -187,17 +130,12 @@ export default function Hero() {
             className="w-full"
           >
             <div className="relative mx-auto w-full max-w-[32rem] lg:max-w-[36rem]">
-              {/* Soft ground, so the mockup reads as an object sitting on the
-                  page rather than floating on the wash. */}
               <div
                 aria-hidden="true"
                 className="pointer-events-none absolute -inset-3 -z-10 rounded-[1.75rem] bg-accent/50 blur-2xl sm:-inset-5"
               />
               <div className="rounded-2xl border border-border bg-card/70 p-2 shadow-elevated backdrop-blur-sm sm:p-3">
-                {/* The reserved box. Shorter and squarer on a phone, wider from
-                    `sm`. Nothing inside can change these dimensions, so nothing
-                    can shift as it paints. */}
-                <div className="aspect-[4/3] w-full sm:aspect-[16/10] lg:aspect-[16/11]">
+                <div className="aspect-[189/130] w-full">
                   <HeroVisual />
                 </div>
               </div>
