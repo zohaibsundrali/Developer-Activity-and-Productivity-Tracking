@@ -36,6 +36,7 @@ import Pricing from "@/components/landing/Pricing";
 import Faq from "@/components/landing/Faq";
 import FinalCta from "@/components/landing/FinalCta";
 import SiteFooter from "@/components/landing/SiteFooter";
+import styles from "./landing.module.css";
 
 import {
   extras,
@@ -95,7 +96,7 @@ export default function LandingPage() {
   const sections = presentSections();
 
   return (
-    <div className="min-h-screen bg-background font-sans text-foreground">
+    <div className={`${styles.page} min-h-screen bg-background font-sans text-foreground`}>
       
       {/*
         Skip link. Hidden until focused, then pinned over the nav — the first

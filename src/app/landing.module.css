@@ -1,0 +1,31 @@
+/* Keep the homepage's text palette local to the marketing page. */
+.page {
+  --landing-text: #000;
+  --landing-solid: 243 75% 88%;
+  --foreground: 0 0% 0%;
+  --muted-foreground: 0 0% 0%;
+  --sidebar: var(--muted);
+  --sidebar-accent: var(--accent);
+  --sidebar-border: var(--border);
+  color: var(--landing-text);
+}
+
+:global(.dark) .page {
+  --landing-text: #fff;
+  --landing-solid: 243 60% 35%;
+  --foreground: 0 0% 100%;
+  --muted-foreground: 0 0% 100%;
+}
+
+/* Include small print, navigation, badges and button labels, not just headings. */
+.page :is(h1, h2, h3, h4, h5, h6, p, a, button, span, li, dt, dd, summary, blockquote, figcaption, strong, em, small, label),
+.page :is(a, button):hover,
+.page :is(a, button):focus-visible {
+  color: var(--landing-text);
+}
+
+/* Solid brand surfaces must also support black/light and white/dark labels. */
+.page [class~="bg-primary"],
+.page [class~="bg-primary"]:hover {
+  background-color: hsl(var(--landing-solid));
+}
