@@ -33,6 +33,7 @@ real manager/employee accounts to create, publish, edit, cancel and revoke acces
 Test a second browser editing the same version and a staff member who becomes
 inactive. Verify cancelled/published visibility and hidden drafts independently.
 
-Recurring shifts, shift swaps, schedule notifications and schedule-based attendance
-exceptions are separate follow-up work. Audit snapshots are retained in
+Schedule-based attendance exceptions and review are now documented in
+[shift-attendance-exceptions.md](shift-attendance-exceptions.md). Recurring shifts,
+shift swaps and schedule notifications remain separate follow-up work. Audit snapshots are retained in
 `work_shift_events`; this screen does not yet include an audit-history browser.

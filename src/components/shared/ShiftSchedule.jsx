@@ -9,6 +9,7 @@ import { supabase } from '@/utils/supabaseClient';
 import { reportIdentity } from '@/utils/reportViewState';
 import { createWorkShiftPager } from '@/utils/workShiftPager';
 import { resolveLocalShiftTime, localShiftValue, validShiftRow, validateShiftInput, SHIFT_UUID } from '@/utils/workShifts';
+import ShiftAttendanceExceptions from '@/components/shared/ShiftAttendanceExceptions';
 import { Button, PageHeader, ErrorState } from '@/components/ui';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -160,5 +161,6 @@ export default function ShiftSchedule() {
       {canManage && row.status !== 'cancelled' && <div className="flex gap-3"><Button type="button" variant="outline" disabled={busy} onClick={() => edit(row)}>Edit shift</Button><Button type="button" variant="outline" disabled={busy} onClick={event => save(event, row)}>Cancel shift</Button></div>}
     </article>)}</div>
     {state.nextCursor && <Button type="button" variant="outline" disabled={state.loading || busy} onClick={() => pager.current?.load(true)}>Load more shifts</Button>}
+    <ShiftAttendanceExceptions />
   </div>;
 }

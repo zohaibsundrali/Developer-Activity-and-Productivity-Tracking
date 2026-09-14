@@ -9,7 +9,7 @@ No completion percentage or full Hubstaff parity is claimed.
 | 1 | Accurate homepage tracking controls and notices | Implemented in the web PR | Review rendered pages |
 | 2 | Website usage viewing and export | Implemented in the website-usage PR | Permission-scoped reads, complete date ranges, offline aggregate updates |
 | 3 | Shift scheduling | Implemented in the shift-scheduling PR | Hosted migration, real manager/employee journeys; local DST, overnight and concurrent overlap checks passed |
-| 3 | Schedule-based attendance exceptions | Pending | Grace periods, clock-event matching, leave coverage, correction workflow |
+| 3 | Schedule-based attendance exceptions | Implemented in the exception-review PR: configurable five-minute defaults, clock matching, leave coverage and audited review | Staging migration, real manager/employee journeys; direct clock correction and notification delivery remain separate |
 | 4 | Approved-time payroll CSV | Implemented in the approved-time-export PR | Staging migration, real finance access and correction reconciliation; monetary payroll remains separate |
 | 5 | GitHub repository linking and activity | Implemented in the GitHub integration PR | Staging migration, private-repository acceptance; public live two-page smoke passed |
 | 5 | GitHub task import and automated sync | Pending | Task mapping, conflict handling, installation/OAuth and webhook delivery |
