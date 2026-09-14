@@ -1,0 +1,11 @@
+import { expect,it } from 'vitest';
+import { githubIssueDescription,githubSyncFields } from '@/utils/githubIssueSync';
+const issue=()=>({title:'Original',body:'Description',url:'https://github.com/a/b/issues/1'});
+const snapshot=()=>({baseline:issue(),task:{title:'Original',description:githubIssueDescription(issue())}});
+it('renders the same description and newlines as the import SQL',()=>{expect(githubIssueDescription(issue())).toBe('Description\n\nGitHub issue: https://github.com/a/b/issues/1');});
+it('can apply a remote-only change',()=>{const fields=githubSyncFields(snapshot(),{...issue(),title:'Remote'});expect(fields[0]).toMatchObject({conflict:false,action:'update',suggested:'auto'});});
+it('preserves a local-only edit',()=>{const s=snapshot();s.task.title='Local';expect(githubSyncFields(s,issue())[0]).toMatchObject({conflict:false,action:'keep'});});
+it('requires a choice when both sides diverged',()=>{const s=snapshot();s.task.title='Local';expect(githubSyncFields(s,{...issue(),title:'Remote'})[0]).toMatchObject({conflict:true,suggested:''});});
+it('does not conflict when both sides converged',()=>{const s=snapshot();s.task.title='Same';expect(githubSyncFields(s,{...issue(),title:'Same'})[0].conflict).toBe(false);});
+it('does not repeat an acknowledged remote change after keeping local',()=>{const s=snapshot();s.task.title='Local';s.baseline.title='Remote';expect(githubSyncFields(s,{...issue(),title:'Remote'})[0]).toMatchObject({conflict:false,action:'keep'});});
+it('treats a cleared local description as a real local edit',()=>{const s=snapshot();s.task.description=null;expect(githubSyncFields(s,{...issue(),body:'Remote body'})[1].conflict).toBe(true);});

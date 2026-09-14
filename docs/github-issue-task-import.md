@@ -8,7 +8,7 @@ The mapping uses stable repository and issue IDs plus issue number within the pr
 
 Only the server-fetched issue is passed from the application endpoint to the database. GitHub credentials remain in the view's memory, travel in the app request body and GitHub Authorization header, and never enter the import RPC or persisted source metadata. Database callers with equivalent full task-management authority can create import metadata through the guarded RPC; this is a source reference, not a cryptographic provenance attestation.
 
-Limits: issue-only imports, title up to 255 characters, body up to 60,000 characters and a bounded encoded snapshot. Oversize content is rejected rather than silently truncated. Pull requests are rejected even when returned by the Issues endpoint. This phase creates one-way snapshots; automatic refresh, two-way task-status synchronization, GitHub App/OAuth installation and webhook delivery remain later work. No outbound GitHub write or new frontend task-created automation hook is added.
+Limits: issue-only imports, title up to 255 characters, body up to 60,000 characters and a bounded encoded snapshot. Oversize content is rejected rather than silently truncated. Pull requests are rejected even when returned by the Issues endpoint. Import creates a one-way snapshot. A separate [task refresh](github-issue-task-sync.md) supports explicit title/description comparison and conflict resolution; automatic refresh, two-way task-status synchronization, GitHub App/OAuth installation and webhook delivery remain later work. No outbound GitHub write or new frontend task-created automation hook is added.
 
 ## Validation and rollout
 
