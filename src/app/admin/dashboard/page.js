@@ -42,6 +42,7 @@ import AdminAccount from "@/components/admin/AdminAccount";
 import MyWork from "@/components/developer/MyWork";
 import MyTimesheet from "@/components/developer/MyTimesheet";
 import MyProjects from "@/components/developer/MyProjects";
+import ShiftSchedule from "@/components/shared/ShiftSchedule";
 import MyAttendance from "@/components/shared/MyAttendance";
 import MyLeave from "@/components/shared/MyLeave";
 import LeaveApprovals from "@/components/admin/LeaveApprovals";
@@ -462,6 +463,8 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
             onViewProjectDetails={openProjectDetails}
           />
         );
+      case "shifts":
+        return <ShiftSchedule />;
       case "my-attendance":
         return <MyAttendance />;
       case "my-leave":

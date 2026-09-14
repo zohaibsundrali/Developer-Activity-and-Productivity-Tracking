@@ -132,6 +132,7 @@ export const SECTION_PERMISSIONS = Object.freeze({
   // these exist: it had ten permissions and a delivery-shaped dashboard, so a
   // staff member with no delivery role opened it and found nothing.
   "my-attendance": "attendance.view_own",
+  shifts: "attendance.view_own",
   "my-leave": "leave.request_own",
   "my-reviews": "review.view_own",
   "my-activity": "productivity.view_own",
@@ -187,6 +188,7 @@ export const OWN_WORK_SECTIONS = Object.freeze([
   "timesheet",
   "projects",
   "my-attendance",
+  "shifts",
   "my-leave",
   "my-reviews",
   "my-activity",
