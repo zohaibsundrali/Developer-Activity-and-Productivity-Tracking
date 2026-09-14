@@ -57,6 +57,7 @@ export const ADMIN_NAV = [
   { id: "timesheet", label: "My Timesheet", icon: Clock },
   { id: "projects", label: "My Projects", icon: FolderKanban },
   { id: "my-attendance", label: "My Attendance", icon: CalendarCheck },
+  { id: "shifts", label: "Shift Schedule", icon: CalendarCheck },
   { id: "my-leave", label: "My Leave", icon: Plane },
   { id: "my-reviews", label: "My Reviews", icon: Award },
   { id: "my-activity", label: "My Activity", icon: Activity },
@@ -135,6 +136,7 @@ export const DEVELOPER_NAV = [
   // whose section titles are the only ones defined for them — so that is where
   // they now are. See CLIENT_NAV.
   { id: "my-attendance", label: "My Attendance", icon: CalendarCheck },
+  { id: "shifts", label: "Shift Schedule", icon: CalendarCheck },
   { id: "my-leave", label: "My Leave", icon: Plane },
   { id: "my-reviews", label: "My Reviews", icon: Award },
   { id: "my-activity", label: "My Activity", icon: Activity },
@@ -154,6 +156,7 @@ export const MANAGER_NAV = [
   { id: "projects", label: "My Projects", icon: FolderKanban },
   { id: "team", label: "Team", icon: Users },
   { id: "my-attendance", label: "My Attendance", icon: CalendarCheck },
+  { id: "shifts", label: "Shift Schedule", icon: CalendarCheck },
   { id: "my-leave", label: "My Leave", icon: Plane },
   { id: "my-reviews", label: "My Reviews", icon: Award },
   { id: "my-activity", label: "My Activity", icon: Activity },
@@ -168,6 +171,7 @@ export const EMPLOYEE_NAV = [
   { id: "timesheet", label: "My Timesheet", icon: Clock },
   { id: "projects", label: "My Projects", icon: FolderKanban },
   { id: "my-attendance", label: "My Attendance", icon: CalendarCheck },
+  { id: "shifts", label: "Shift Schedule", icon: CalendarCheck },
   { id: "my-leave", label: "My Leave", icon: Plane },
   { id: "my-reviews", label: "My Reviews", icon: Award },
   { id: "my-activity", label: "My Activity", icon: Activity },
