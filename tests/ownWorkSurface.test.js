@@ -231,6 +231,7 @@ describe("the two shells still say the same thing", () => {
       "projects",
       "my-attendance",
       "shifts",
+      "mobile-field",
       "my-leave",
       "my-reviews",
       "my-activity",

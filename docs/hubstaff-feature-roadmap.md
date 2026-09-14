@@ -14,7 +14,7 @@ No completion percentage or full Hubstaff parity is claimed.
 | 5 | GitHub repository linking and activity | Implemented in the GitHub integration PR | Staging migration, private-repository acceptance; public live two-page smoke passed |
 | 5 | GitHub task import and automated sync | Pending | Task mapping, conflict handling, installation/OAuth and webhook delivery |
 | 5 | Provider payouts | Provider not yet chosen | Provider sandbox, credentials, pay rules and reconciled results |
-| 6 | Mobile time tracking, GPS and geofencing | Android first confirmed; iPhone later | Mobile build, consent/permissions, background/offline behavior, device testing |
+| 6 | Mobile time tracking, GPS and geofencing | Android implementation in the field-tracking PR; iPhone later | Staging migration and real authenticated sync, physical-device permission/background/offline acceptance, release signing |
 | 7 | Desktop distribution improvements | Pending | Signed releases, update delivery, rollback, supported-OS matrix |
 | All | Production identity, migration and integration acceptance | Not re-certified | Current identity diagnostics; real role accounts; email/payment/cron/retention journeys |
 

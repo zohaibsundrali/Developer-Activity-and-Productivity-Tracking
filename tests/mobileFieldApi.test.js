@@ -1,0 +1,14 @@
+import { beforeEach,expect,it,vi } from 'vitest';
+const h=vi.hoisted(()=>({auth:null,result:null,rpc:vi.fn()}));
+vi.mock('@/utils/serverAuth',()=>({getAuthedOrg:async()=>h.auth,orgScopedClient:token=>({rpc:async(name,args)=>{h.rpc(token,name,args);return h.result;}})}));
+const {POST}=await import('@/app/api/mobile/sessions/route');
+const {GET:config}=await import('@/app/api/mobile/config/route');
+const org='99100000-0000-0000-0000-000000000001',id='99100000-0000-0000-0000-000000000011';
+const payload=()=>({id,recovered:false,segments:[{id,start:'2026-09-14T09:00:00Z',end:'2026-09-14T09:01:00Z'}],points:[]});
+const post=(body=payload())=>POST(new Request('https://app.test/api/mobile/sessions',{method:'POST',body:JSON.stringify(body)}));
+beforeEach(()=>{h.auth={orgId:org,appUserId:id,userType:'developer',role:'developer',token:'caller',overridesLoaded:true,overrides:{}};h.result={data:{id,organization_id:org,user_id:id,user_type:'developer',work_seconds:60,unchanged:false},error:null};h.rpc.mockClear();});
+it('uses caller credentials and confirms the committed session identity',async()=>{expect((await post()).status).toBe(200);expect(h.rpc).toHaveBeenCalledWith('caller','upload_mobile_work',{p_payload:expect.objectContaining({id})});h.result.data.user_type='admin';expect((await post()).status).toBe(503);});
+it.each(['timesheet.log_own','attendance.view_own'])('honors explicit %s denial',async key=>{h.auth.overrides[key]=false;expect((await post()).status).toBe(403);expect(h.rpc).not.toHaveBeenCalled();});
+it('refuses unauthenticated/client requests and malformed bodies',async()=>{h.auth=null;expect((await post()).status).toBe(401);h.auth={userType:'client'};expect((await post()).status).toBe(403);});
+it.each([['23P01',409],['55000',409],['40001',409],['42501',403],['22023',400],['XX000',503]])('maps %s without database internals',async(code,status)=>{h.result={error:{code,message:'private-database-details'}};const response=await post();expect(response.status).toBe(status);expect(await response.text()).not.toContain('private-database');});
+it('never publishes secret/service-role keys in Android configuration',async()=>{vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL','https://example.supabase.co');vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY','sb_secret_example');expect((await config()).status).toBe(503);vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY','eyJhbGciOiJIUzI1NiJ9.'+Buffer.from(JSON.stringify({role:'service_role'})).toString('base64url')+'.signature');expect((await config()).status).toBe(503);vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY','sb_publishable_example');expect((await config()).status).toBe(200);vi.unstubAllEnvs();});

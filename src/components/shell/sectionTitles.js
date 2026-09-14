@@ -19,6 +19,7 @@
  */
 
 export const SECTION_TITLES = {
+  "mobile-field": { admin: "Mobile Field Work", developer: "Mobile Field Work" },
   "payroll-preparation": { admin: "Payroll Preparation" },
   overview: { admin: "Dashboard Overview", developer: "Dashboard", client: "Overview" },
   "all-projects": { admin: "All Projects" },
