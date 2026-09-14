@@ -68,7 +68,6 @@ const isAsked = (p) =>
     .some((n) => HAYSTACK.includes(`'${n}'`) || HAYSTACK.includes(`"${n}"`));
 
 const COVERED_BY_SCREEN = {
-  "timesheet.log_own": "My Timesheet — logging hours is what the screen is for",
   "profile.manage_own": "Account, which predates the *_own family entirely",
 };
 

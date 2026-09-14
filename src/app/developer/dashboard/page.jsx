@@ -16,6 +16,7 @@ import MyProjects from "@/components/developer/MyProjects";
 import ProjectDetails from "@/components/developer/ProjectDetails";
 import Account from "@/components/developer/Account";
 import TeamPanel from "@/components/developer/TeamPanel";
+import MobileFieldHistory from "@/components/shared/MobileFieldHistory";
 import ShiftSchedule from "@/components/shared/ShiftSchedule";
 import MyAttendance from "@/components/shared/MyAttendance";
 import MyLeave from "@/components/shared/MyLeave";
@@ -353,6 +354,8 @@ function DeveloperDashboardContent() {
           : <MyProjects {...contentProps} />;
       case "team":
         return <TeamPanel />;
+      case "mobile-field":
+        return <MobileFieldHistory />;
       case "shifts":
         return <ShiftSchedule />;
       case "my-attendance":

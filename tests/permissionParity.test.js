@@ -296,6 +296,7 @@ describe("the catalogue agrees with the section table it replaced", () => {
    * DELIBERATE_DIVERGENCES: enumerated, argued for, never blanket.
    */
   const NEW_GATES = [
+    { section: "mobile-field", key: "attendance.view_own", reason: "new own mobile session history; wide GPS history needs monitoring plus attendance permissions" },
     { section: "payroll-preparation", key: "timesheet.view_all", reason: "new approved-time export for existing organization timesheet viewers" },
     { section: "shifts", key: "attendance.view_own", reason: "new shared shift schedule; management requires attendance.manage and attendance.view_all separately" },
     {
