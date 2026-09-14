@@ -53,7 +53,7 @@ const sections = [
     blocks: [
       {
         type: "paragraph",
-        text: "While the software is running on your work computer, it records five things.",
+        text: "While tracking is active on your work computer, the agent records the following activity, including website labels or domains and usage time on supported Windows browsers. A signed-in agent can also report connected, paused or idle device status.",
       },
       {
         type: "definitions",
@@ -114,9 +114,8 @@ const sections = [
       {
         type: "list",
         items: [
-          "The websites you visit. Web addresses are never recorded. A browser shows up the same way " +
-            "any other program does — by its name. (Window titles can still show the title of a page " +
-            "you have open, so it is not total invisibility.)",
+          "A full-URL browsing-history feed. The Windows tracker can record website labels or domains " +
+            "and observed usage time. Window titles and screenshots may reveal visible page information.",
           "What you type. Only how many keys you pressed and how fast.",
           "Your mouse clicks, or where your cursor was.",
           "Your camera, your microphone, or any audio or video.",
@@ -209,14 +208,15 @@ const sections = [
       {
         type: "paragraph",
         text:
-          "Not from inside the app. There is no pause button and no per-person opt-out. The software " +
-          "records whenever it is running on that computer, and stops when it is not.",
+          "The desktop tracker has Pause, Resume and Stop controls. Pause stops the timer and new " +
+          "activity capture and records a break. Earlier queued records may still sync, and a " +
+          "signed-in device can continue reporting connected or paused status. There is no separate per-person opt-out policy.",
       },
       {
         type: "paragraph",
         text:
-          "In practice this means: [set out your own rules — for example, whether staff may close " +
-          "the agent during breaks, whether it should be closed before doing anything personal, and " +
+          "In practice this means: [set out your own rules — for example, when staff should pause or stop " +
+          "tracking during breaks or before personal activity, and " +
           "whether it runs outside working hours. If it runs during unpaid breaks, say so; people " +
           "will find out either way, and finding out on their own is much worse.]",
       },

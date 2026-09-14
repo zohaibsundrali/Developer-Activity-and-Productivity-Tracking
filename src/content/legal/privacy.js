@@ -219,7 +219,7 @@ export const sections = [
           "The image is the whole screen as it was. It is not blurred, cropped, redacted or filtered, and there is no way to exclude an application from capture.",
           "Whatever was on screen is in the image — a document, a chat window, a personal email, a bank page left open in another window.",
           "Images are limited to 10 MB and are stored as PNG, JPEG or WebP.",
-          "How often a capture is taken is a setting inside the desktop agent, which is built and distributed outside this codebase. It is not configurable from the web application and we cannot state the interval here — your employer can.",
+          "Organization administrators can enable or disable screenshot collection and choose an interval from 60 to 3600 seconds in the web application. The default is enabled at 60 seconds. The desktop must successfully read this policy before new screenshots are captured. Employees can pause the timer and new capture; earlier queued records may still sync and connected device status can continue.",
         ],
       },
       {

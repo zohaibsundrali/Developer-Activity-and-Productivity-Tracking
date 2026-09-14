@@ -24,7 +24,7 @@
  *                                src/app/api/auth/provision/route.js
  *   feature gates .............. checkFeatureAccess call sites (automation,
  *                                client_portal only)
- *   the eight roles ............ src/utils/permissions.js
+ *   the twelve roles ............ src/utils/permissions.js
  *   what the agent captures .... src/content/landing.js `monitoring`
  *   signed URL lifetime ........ src/app/api/admin-review/route.js:542 (600s)
  *   invite expiry .............. src/app/api/invitations/route.js:115 (7 days)
@@ -177,7 +177,7 @@ export const sections = [
           { term: "Desktop Agent", definition: "The Verisade application you install on a computer to record activity on that computer. It is the only part of the Service that captures screenshots or application usage, and it captures nothing on a machine where it is not installed." },
           { term: "Organization", definition: "A single tenant on Verisade: your workspace, its members, its projects and its data. Every record in the Service belongs to exactly one Organization, and Organizations are isolated from one another in the database itself." },
           { term: "Owner", definition: "The role held by the person who creates the Organization, and by anyone they later grant it to. The Owner is the only role that can change organization settings, buy or cancel a plan, or grant ownership to someone else." },
-          { term: "Authorized User", definition: "Anyone you invite to your Organization and who accepts — in any of the eight roles described in Section 5, including clients in the client portal." },
+          { term: "Authorized User", definition: "Anyone you invite to your Organization and who accepts — in any of the twelve roles described in Section 5, including clients in the client portal." },
           { term: "Monitored Individual", definition: "Any person whose activity is captured because you installed the Desktop Agent on a machine they use. Usually one of your employees or contractors, but it is anyone whose work — or screen — the agent records." },
           { term: "Customer Data", definition: "Everything you and your Authorized Users put into or generate in the Service: organizations, projects, tasks, files, comments, employee records, invoices, and Tracking Data." },
           { term: "Tracking Data", definition: "The subset of Customer Data captured by the Desktop Agent: screenshots, application and window-title usage, keystroke and unique-key counts with words per minute, active and idle time, and login times. Section 3.1 lists it in full." },
@@ -229,7 +229,7 @@ export const sections = [
       {
         type: "list",
         items: [
-          "The websites or URLs anyone visits. Browsers appear only as applications by name, like any other program.",
+          "A full-URL browsing-history feed. On supported Windows browsers, the agent can record website labels or domains and their observed usage time. Screenshots and window titles may still reveal visible page information.",
           "The content of what is typed. Only counts and rates leave the machine — there is no keylogging.",
           "Anything at all on a machine where the Desktop Agent is not installed. Nothing is captured from the browser.",
         ],
@@ -247,10 +247,10 @@ export const sections = [
         tone: "warning",
         title: "Know these limits before you promise anything to your team",
         items: [
-          "There is no pause button and no per-person opt-out inside the application today. Tracking runs whenever the Desktop Agent is running on that machine, and stops when it is not. The practical control is which machines it is installed on.",
+          "The Desktop Agent provides Start, Pause, Resume and Stop. Pausing stops tracked time and new activity capture and records a break. Queued activity may still sync, and signed-in devices may still report connection or paused status. There is no separate per-person opt-out policy.",
           "Screenshots are not blurred, redacted or filtered. Whatever was on the screen is captured, including anything personal, anything belonging to a third party, and anything visible from an adjacent window.",
-          "The Service does not distinguish working hours from personal time. If the agent is running, it is capturing.",
-          "Do not tell your staff that they can pause monitoring, that private moments are excluded, or that they can opt out in the app. None of those things is true today.",
+          "The Service does not automatically distinguish personal activity from work while the timer is running. Pause or stop tracking before personal activity.",
+          "Explain the Pause and Stop controls to staff. Do not promise automatic exclusion of private content, screenshot blurring or a separate per-person opt-out policy.",
         ],
       },
 
@@ -373,19 +373,23 @@ export const sections = [
     blocks: [
       {
         type: "p",
-        text: "The Service has eight roles. They matter contractually because they decide who inside your Organization can commit you to a charge, and who can see your team's Tracking Data.",
+        text: "The Service has twelve roles. They matter contractually because they decide who inside your Organization can commit you to a charge, and who can see your team's Tracking Data.",
       },
       {
         type: "table",
-        caption: "The eight roles, highest to lowest",
+        caption: "The twelve roles and their starting responsibilities",
         head: ["Role", "What it can do that matters here"],
         rows: [
           ["Owner", "Organization settings, and the only role that can start, change or cancel a paid plan or grant ownership to someone else."],
           ["Admin", "Runs projects, boards and automation; can see the billing page but cannot buy, change or cancel a plan."],
-          ["Manager", "Reviews tasks, plans sprints, and can see tracking and reports for people in the Organization."],
+          ["Manager", "Authorized project planning, task review and reports. Wider monitoring requires an effective monitoring grant."],
           ["HR", "Manages employees, teams, departments and invitations, without touching projects."],
-          ["Team lead", "Task and team oversight, including tracking and reports."],
+          ["Finance", "Financial workflows such as authorized billing and invoicing; the role alone does not grant monitoring access."],
+          ["Team lead", "Authorized task/team oversight and reports. Wider monitoring requires an effective monitoring grant."],
+          ["QA", "Authorized quality review and assigned project work."],
           ["Developer", "Own work and own session history only."],
+          ["Designer", "Assigned project work and permitted own activity."],
+          ["DevOps", "Assigned project work and permitted own activity."],
           ["Employee", "Own work and own session history only."],
           ["Client", "The client portal only. Blocked from every tracking table at the database level."],
         ],
@@ -395,7 +399,7 @@ export const sections = [
         tone: "note",
         items: [
           "Only the Owner can commit your Organization to a recurring charge, and only the Owner can cancel one. Requests from any other role are refused by the server, not merely hidden in the interface.",
-          "Owners and admins can see the full activity dashboard for everyone in the Organization. Grant those two roles with that in mind — it is the access decision with the biggest privacy consequence you will make.",
+          "Monitoring access depends on effective permissions, current membership and organization scope. Review grants and denials before giving anyone access to employee activity.",
         ],
       },
     ],
@@ -775,7 +779,7 @@ export const sections = [
         type: "callout",
         tone: "warning",
         items: [
-          "Activity metrics are samples and counts, not a complete or authoritative record of what a person did. Active and idle percentages are sampled from mouse and keyboard use; keystroke figures are volumes, not content; screenshots are moments, not context. The agent captures nothing while it is not running, while a machine is offline, or on any machine where it is not installed.",
+          "Activity metrics are samples and counts, not a complete or authoritative record of what a person did. Active and idle percentages are sampled from mouse and keyboard use; keystroke figures are volumes, not content; screenshots are moments, not context. The agent captures nothing while it is not running or on machines where it is not installed. Active tracking can continue offline and queue records for later synchronization; the upload time can differ from the capture time.",
           "Thoughtful work often produces low keyboard activity. Busy work often produces high activity. The numbers do not know the difference.",
           "We give no warranty that Tracking Data is complete or accurate, and you should not treat it as the sole basis for any disciplinary, performance, pay or termination decision. If you use it in such a decision, apply human judgement, give the person the chance to respond, and comply with the employment law that applies to them. That decision is yours alone.",
         ],
