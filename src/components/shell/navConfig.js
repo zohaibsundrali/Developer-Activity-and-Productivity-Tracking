@@ -57,6 +57,8 @@ export const ADMIN_NAV = [
   { id: "timesheet", label: "My Timesheet", icon: Clock },
   { id: "projects", label: "My Projects", icon: FolderKanban },
   { id: "my-attendance", label: "My Attendance", icon: CalendarCheck },
+  { id: "shifts", label: "Shift Schedule", icon: CalendarCheck },
+  { id: "mobile-field", label: "Mobile Field Work", icon: CalendarCheck },
   { id: "my-leave", label: "My Leave", icon: Plane },
   { id: "my-reviews", label: "My Reviews", icon: Award },
   { id: "my-activity", label: "My Activity", icon: Activity },
@@ -74,6 +76,7 @@ export const ADMIN_NAV = [
   // Beside Task Reviews: both are a queue of somebody else's work waiting on
   // a decision, and a lead works through them in the same sitting.
   { id: "timesheet-approvals", label: "Timesheet Approvals", icon: Clock },
+  { id: "payroll-preparation", label: "Payroll Preparation", icon: FileText },
   // Directly above Bugs: a defect is what comes OUT of a test run, and the
   // two screens are read in that order.
   { id: "quality", label: "Quality", icon: ClipboardList },
@@ -135,6 +138,8 @@ export const DEVELOPER_NAV = [
   // whose section titles are the only ones defined for them — so that is where
   // they now are. See CLIENT_NAV.
   { id: "my-attendance", label: "My Attendance", icon: CalendarCheck },
+  { id: "shifts", label: "Shift Schedule", icon: CalendarCheck },
+  { id: "mobile-field", label: "Mobile Field Work", icon: CalendarCheck },
   { id: "my-leave", label: "My Leave", icon: Plane },
   { id: "my-reviews", label: "My Reviews", icon: Award },
   { id: "my-activity", label: "My Activity", icon: Activity },
@@ -154,6 +159,8 @@ export const MANAGER_NAV = [
   { id: "projects", label: "My Projects", icon: FolderKanban },
   { id: "team", label: "Team", icon: Users },
   { id: "my-attendance", label: "My Attendance", icon: CalendarCheck },
+  { id: "shifts", label: "Shift Schedule", icon: CalendarCheck },
+  { id: "mobile-field", label: "Mobile Field Work", icon: CalendarCheck },
   { id: "my-leave", label: "My Leave", icon: Plane },
   { id: "my-reviews", label: "My Reviews", icon: Award },
   { id: "my-activity", label: "My Activity", icon: Activity },
@@ -168,6 +175,8 @@ export const EMPLOYEE_NAV = [
   { id: "timesheet", label: "My Timesheet", icon: Clock },
   { id: "projects", label: "My Projects", icon: FolderKanban },
   { id: "my-attendance", label: "My Attendance", icon: CalendarCheck },
+  { id: "shifts", label: "Shift Schedule", icon: CalendarCheck },
+  { id: "mobile-field", label: "Mobile Field Work", icon: CalendarCheck },
   { id: "my-leave", label: "My Leave", icon: Plane },
   { id: "my-reviews", label: "My Reviews", icon: Award },
   { id: "my-activity", label: "My Activity", icon: Activity },

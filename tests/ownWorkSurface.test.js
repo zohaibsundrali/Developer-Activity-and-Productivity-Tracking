@@ -222,14 +222,16 @@ describe("the two shells still say the same thing", () => {
     }
   });
 
-  it("leaves the staff dashboard's own sections alone", () => {
-    // A contributor's sidebar is unchanged by any of this.
+  it("keeps staff work sections and exposes the own shift schedule", () => {
+    // Scheduling adds an own-work entry without admitting staff to /admin.
     expect(staffNav("developer").map((i) => i.id)).toEqual([
       "overview",
       "my-work",
       "timesheet",
       "projects",
       "my-attendance",
+      "shifts",
+      "mobile-field",
       "my-leave",
       "my-reviews",
       "my-activity",

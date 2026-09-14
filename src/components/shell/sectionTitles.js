@@ -19,6 +19,8 @@
  */
 
 export const SECTION_TITLES = {
+  "mobile-field": { admin: "Mobile Field Work", developer: "Mobile Field Work" },
+  "payroll-preparation": { admin: "Payroll Preparation" },
   overview: { admin: "Dashboard Overview", developer: "Dashboard", client: "Overview" },
   "all-projects": { admin: "All Projects" },
   requests: { admin: "Requests" },
@@ -31,6 +33,7 @@ export const SECTION_TITLES = {
   "task-reviews": { admin: "Task Reviews" },
   permissions: { admin: "Permissions" },
   "my-work": { admin: "My Work", developer: "My Work" },
+  shifts: { admin: "Shift Schedule", developer: "Shift Schedule" },
   "my-attendance": { admin: "My Attendance", developer: "My Attendance" },
   "my-leave": { admin: "My Leave", developer: "My Leave" },
   "my-reviews": { admin: "My Reviews", developer: "My Reviews" },
