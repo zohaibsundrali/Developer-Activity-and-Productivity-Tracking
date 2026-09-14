@@ -19,6 +19,7 @@
  */
 
 export const SECTION_TITLES = {
+  "payroll-preparation": { admin: "Payroll Preparation" },
   overview: { admin: "Dashboard Overview", developer: "Dashboard", client: "Overview" },
   "all-projects": { admin: "All Projects" },
   requests: { admin: "Requests" },
