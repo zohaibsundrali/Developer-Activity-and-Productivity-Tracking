@@ -1,0 +1,17 @@
+import { beforeEach, expect, it, vi } from 'vitest';
+const h=vi.hoisted(()=>({values:[],refs:[],effects:[],cursor:0,refCursor:0,identity:'first',denied:[],fetch:vi.fn(),authChanged:null}));
+vi.mock('react',async()=>({...await vi.importActual('react'),useState:initial=>{const i=h.cursor++;if(!(i in h.values))h.values[i]=typeof initial==='function'?initial():initial;return[h.values[i],value=>{h.values[i]=typeof value==='function'?value(h.values[i]):value;}];},useRef:initial=>{const i=h.refCursor++;return h.refs[i]||={current:initial};},useEffect:callback=>{h.effects.push(callback);}}));
+vi.mock('@/contexts/AuthContext',()=>({useAuth:()=>({authStatus:'authenticated'})}));
+vi.mock('@/utils/orgContext',()=>({getOrgContext:()=>({organizationId:'org',identity:h.identity})}));vi.mock('@/utils/reportViewState',()=>({reportIdentity:value=>value.identity}));vi.mock('@/utils/permissions',()=>({allowed:key=>!h.denied.includes(key)}));
+vi.mock('@/utils/supabaseClient',()=>({supabase:{auth:{onAuthStateChange:callback=>{h.authChanged=callback;return{data:{subscription:{unsubscribe(){}}}};}}}}));
+vi.mock('@/utils/authFetch',()=>({authFetch:h.fetch}));vi.mock('@/components/ui',()=>({Button:'button'}));
+globalThis.React=await vi.importActual('react');const {default:View}=await import('@/components/shared/GithubIssueImport');
+const props={projectId:'project',link:{repository_id:123,version:1},number:1,token:'github_pat_fixture',onClose:vi.fn()};
+function nodes(node,predicate){if(!node||typeof node!=='object')return[];return[...(predicate(node)?[node]:[]),...[].concat(node.props?.children||[]).flat(Infinity).flatMap(child=>nodes(child,predicate))];}
+function render(){h.cursor=0;h.refCursor=0;return View(props);}
+async function preview(){let tree=render();h.effects[0]();h.effects[1]();tree=render();await nodes(tree,n=>n.type==='button'&&n.props.children==='Preview issue import')[0].props.onClick();return render();}
+beforeEach(()=>{Object.assign(h,{values:[],refs:[],effects:[],identity:'first',denied:[]});h.fetch.mockReset();h.fetch.mockResolvedValue(Response.json({success:true,project_id:'project',organization_id:'org',version:1,issue:{repository_id:123,number:1,title:'Issue',body:'<script>plain</script>',state:'closed'},fingerprint:'a'.repeat(64),existing:null}));});
+it('requires explicit dates and renders issue source as plain text',async()=>{const tree=await preview();expect(nodes(tree,n=>n.type==='pre')[0].props.children).toBe('<script>plain</script>');const dates=nodes(tree,n=>n.type==='input'&&n.props.type==='date');expect(dates).toHaveLength(2);expect(dates.every(n=>n.props.required&&n.props.value==='')).toBe(true);const [url,options]=h.fetch.mock.calls[0];expect(url).not.toContain('github_pat_fixture');expect(JSON.parse(options.body).githubToken).toBe('github_pat_fixture');});
+it('hides source content immediately on identity change',async()=>{await preview();h.identity='second';expect(nodes(render(),n=>n.type==='pre')).toHaveLength(0);});
+it('clears preview when task read permissions are revoked',async()=>{await preview();h.denied=['task.view_all','task.review'];expect(render()).toBeNull();});
+it('does not offer another import for a deleted imported task',async()=>{h.fetch.mockResolvedValue(Response.json({success:true,project_id:'project',organization_id:'org',version:1,issue:{repository_id:123,number:1,title:'Issue',body:'Body'},fingerprint:'a'.repeat(64),existing:{task_id:null}}));expect(nodes(await preview(),n=>n.type==='form')).toHaveLength(0);});
