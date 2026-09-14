@@ -674,7 +674,7 @@ const sections = [
           {
             term: "Access control",
             text:
-              "Eight roles, from owner to client. Nobody can change their own role or invite someone " +
+              "Twelve roles, from owner to client, with effective permission grants and denials. Nobody can change their own role or invite someone " +
               "above their own level, and only an owner can grant ownership. Client-portal users are " +
               "denied every monitoring table by database rule. Employee profile records are readable " +
               "only by people-operations roles and by the employee themselves. Suspension or " +

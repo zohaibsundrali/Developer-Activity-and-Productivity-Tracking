@@ -1,3 +1,4 @@
+import { ROLES } from "@/utils/roles";
 import { BRAND_NAME } from "@/components/brand/brand";
 
 /**
@@ -53,14 +54,14 @@ export const hero = {
 // Trust strip — the numbers are counts of things listed elsewhere in this file
 // ---------------------------------------------------------------------------
 //
-//   8 roles ......... the eight in the FAQ answer on roles, and in database/018
+//   Roles ........... derived from the shared role catalogue in utils/roles.js
 //   6 board views ... Kanban, List, Table, Calendar, Timeline, Workload
 //   5 signals ....... the five entries in `monitoring.records` below
 //   $0 .............. billing_plans "free" row; signup creates no subscription
 
 export const socialProof = {
   stats: [
-    { value: "8", label: "roles, from owner to client" },
+    { value: String(ROLES.length), label: "roles, from owner to client" },
     { value: "6", label: "views over the same board" },
     { value: "5", label: "signals the desktop agent records" },
     { value: "$0", label: "to start, no card required" },
@@ -77,7 +78,7 @@ export const twoHalves = {
   eyebrow: "One system, not two",
   title: "Two halves, one permission model",
   description:
-    "Most teams run a project tool and a tracker side by side, then reconcile them by hand. Here the board and the agent read the same tasks, the same organization and the same eight roles.",
+    "Most teams run a project tool and a tracker side by side, then reconcile them by hand. Here the board and the agent read the same tasks, the same organization and the same role and permission system.",
   columns: [
     {
       title: "Project management",
@@ -183,30 +184,20 @@ export const monitoring = {
     { label: "Login times", detail: "When each person's first and subsequent logins of the day happened." },
   ],
   notRecorded: [
-    "Websites or URLs visited. Browsers show up only as applications by name, like any other program.",
+    "Full browser URLs, query strings or page contents as a browsing-history feed. The Windows tracker can record website labels or domains and time spent on them; screenshots and window titles can still reveal visible page information.",
     "The content of what is typed. Only counts and rates leave the machine.",
     "Anything on a machine where the desktop agent is not installed. Nothing is captured from the browser.",
   ],
-  // ACCURACY NOTE — checked against the migrations, not against the UI:
-  //   database/014_client_portal.sql `track_read`  -> using (organization_id =
-  //     auth_org() and not auth_is_client())
-  //   database/019_storage_hardening.sql `monitoring_read` -> same shape on the
-  //     screenshot bucket
-  // Both are ORGANIZATION-WIDE for every non-client role. There is no per-user
-  // narrowing in the database. "A developer sees only their own record" was
-  // true of the interface and false of the data, so it is not claimed here.
-  // What IS enforced in the database: the organization boundary, the client
-  // block on all eight tracking tables and on the bucket, and owner/admin-only
-  // update and delete of screenshots.
+  // Current monitoring reads use effective permissions and typed identity.
   whoSeesIt: [
-    "Owners and admins get the full activity dashboard for anyone in the organization.",
-    "Everyone else sees their own sessions and screenshots in the interface — but that limit is the interface's, not the database's. The row-level policy admits any non-client member of your organization, so treat monitoring data as visible to your staff rather than private between one person and their manager. Tightening that is a change to the policy, not to a setting.",
-    "Clients are the hard boundary, and it is a database one: blocked from all eight tracking tables and unable to read a screenshot from the bucket at all — not a hidden menu item. Only owners and admins can modify or delete a screenshot.",
+    "Monitoring viewers need an effective monitoring permission and access to the selected organization and staff records.",
+    "Own-activity access and wider monitoring access are separate. Grants and denials can change what a staff member may see; administrators should review these settings.",
+    "Clients cannot access employee monitoring data. Screenshots use private storage and expiring signed links.",
   ],
   // Retoned: the same three facts, stated as the shape of the control rather
   // than as an apology, and closed with the mitigation that actually exists.
   honesty:
-    "The control is the install. Tracking exists only on machines running the desktop agent — there is no in-app pause button, no per-person opt-out and no screenshot blurring, so which machines carry the agent is the decision that matters. Skip it entirely and the project management half is untouched: the board, sprints, reviews, reports and the client portal never depended on it. Tell your team what is on this list before you deploy it.",
+    "Employees can pause and resume the desktop tracker. Pause stops the work timer and new activity capture; connected device status can continue, and previously queued records may still sync. Organization administrators can disable screenshots and set their interval from 60 to 3600 seconds. Screenshots are not blurred. Install the tracker only on the machines you choose, and explain its controls to your team.",
 };
 
 // ---------------------------------------------------------------------------
@@ -219,7 +210,7 @@ export const roleSections = [
     role: "Owners and admins",
     icon: "ShieldCheck",
     headline: "One console for the work, the people and the plan",
-    body: "The admin dashboard is eighteen sections, filtered by your role. The organization boundary and the client block are enforced by the database on every query; the narrowing by role inside your own organization is the application's.",
+    body: "The admin dashboard exposes sections according to effective permissions. Database and API checks enforce current identity, organization scope and authorized monitoring access.",
     highlights: [
       "Every project, every board, every sprint, and a Gantt view per project with on-time and late markers.",
       "The task review queue: download what was submitted, approve or reject with a reason, and see whether the client has already pushed back on it.",
@@ -461,22 +452,22 @@ export const faq = {
     {
       question: "What does the desktop agent actually capture?",
       answer:
-        "Screenshots with the application that was active, the applications and window titles used and for how long, keystroke and unique-key counts with words per minute, and active-versus-idle minutes. It does not capture the websites or URLs anyone visits, and it does not record what is typed — only how much. It captures nothing on a machine where it is not installed.",
+        "Screenshots with the application that was active, the applications and window titles used and for how long, keystroke and unique-key counts with words per minute, and active-versus-idle minutes. On supported Windows browsers it also records website labels or domains and their observed usage time. It does not store a full-URL browsing-history feed or the text typed into applications. It captures nothing on a machine where it is not installed.",
     },
     {
       question: "Can someone pause tracking, or opt out?",
       answer:
-        "Not from inside the app. There is no pause button and no per-person opt-out today. Tracking runs while the desktop agent is running on that machine and stops when it is not, so the practical control is which machines you install it on. If you need per-person consent, get it before you deploy the agent.",
+        "Yes. The desktop tracker has Start, Pause, Resume and Stop controls. Pause stops the timer and new capture, and records a break; it does not erase earlier activity or necessarily stop queued uploads. A signed-in tracker can continue reporting its connected or paused device status. There is no separate per-person opt-out policy. Agree monitoring arrangements with your team before installation.",
     },
     {
       question: "Who can see my team's screenshots?",
       answer:
-        "Owners and admins, for anyone in the organization. Other staff see their own sessions in the interface — but that limit lives in the interface, not the database: the row-level policy admits any non-client member of your organization, so monitoring data is not private between colleagues. Clients are the boundary the database does enforce: blocked from all eight tracking tables and from reading the screenshot bucket at all. Screenshots sit in a private bucket, are served only through URLs that expire ten minutes after they are minted, and only owners and admins can modify or delete them.",
+        "Access follows effective monitoring permissions and organization scope. Authorized monitoring viewers can inspect the staff records available to them; other staff need own-activity access for their own records. Clients cannot access employee monitoring data. Screenshot files use private storage and expiring signed links. Administrators should review permission grants before inviting monitoring viewers.",
     },
     {
       question: "How is my organization's data kept separate from other customers'?",
       answer:
-        "Every table carries an organization id, and Postgres row-level security compares it against a claim baked into your signed session token — so isolation is enforced by the database on every query, not by the application remembering to filter. Cross-organization and client-versus-staff isolation are covered by end-to-end tests that run against real logins for each of the eight roles.",
+        "Every table carries an organization id, and Postgres row-level security compares it against a claim baked into your signed session token — so isolation is enforced by the database on every query, not by the application remembering to filter. Database and API checks enforce organization scope and current account permissions. A deployment still needs verification with its own role accounts and installed policies.",
     },
     {
       question: "Do I have to use the tracking to use the project management?",
@@ -489,9 +480,9 @@ export const faq = {
         "Only the projects they have been linked to, and within those, only tasks you have explicitly marked client-visible — new tasks are private by default. They see team members as a name and job title, never an email. Internal comments, employee records, salaries, productivity data and activity tracking never reach the portal. Clients cannot register themselves; they are invited to specific projects by your team.",
     },
     {
-      question: "How do the eight roles differ?",
+      question: "Which roles are available?",
       answer:
-        "Owner alone manages organization settings and billing. Admin runs projects, boards and automation. Manager and team lead review tasks, plan sprints and see tracking and reports for their people. HR manages employees, teams, departments and invitations without touching projects. Developer and employee see their own work. Client sees the portal. Nobody can change their own role, nobody can invite or promote above their own level, and only an owner can grant ownership.",
+        "The twelve roles are Owner, Admin, Manager, HR, Finance, Team Lead, QA, Developer, Designer, DevOps, Employee and Client. They provide different starting permissions for administration, project work, finance, review and client access. Effective permission grants, denials and project scope determine the actions and records each person can access; role names alone do not grant every monitoring capability.",
     },
     {
       question: "What happens when I hit a plan limit?",
