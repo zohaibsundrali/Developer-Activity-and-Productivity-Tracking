@@ -45,3 +45,5 @@ References: [GitHub repository issues](https://docs.github.com/en/rest/issues/is
 [rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
 
 Explicit issue-to-task import is now documented in [github-issue-task-import.md](github-issue-task-import.md). Automatic synchronization and GitHub writes remain separate.
+
+Imported issue titles and descriptions can now be refreshed through a separate [explicit comparison and conflict resolution flow](github-issue-task-sync.md). Background synchronization remains pending.

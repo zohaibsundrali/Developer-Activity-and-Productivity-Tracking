@@ -7,6 +7,7 @@ import { reportIdentity } from '@/utils/reportViewState';
 import { supabase } from '@/utils/supabaseClient';
 import { allowed } from '@/utils/permissions';
 import { Button } from '@/components/ui';
+import GithubIssueSync from '@/components/shared/GithubIssueSync';
 export default function GithubIssueImport({projectId,link,number,token,onClose}) {
   const {authStatus}=useAuth(), identity=reportIdentity(getOrgContext()), org=getOrgContext()?.organizationId;
   const [preview,setPreview]=useState(null),[result,setResult]=useState(null),[start,setStart]=useState(''),[end,setEnd]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[revision,setRevision]=useState(0);
@@ -34,6 +35,7 @@ export default function GithubIssueImport({projectId,link,number,token,onClose})
     {visible&&<><h4 className="font-semibold">{visible.issue.title}</h4><p className="text-sm">GitHub: {visible.issue.state} · Updated {visible.issue.updated_at}</p><pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-3 text-sm">{visible.issue.body||'No issue description.'}</pre>
     {visible.existing?<p role="status">{visible.existing.task_id?'This issue was already imported. Its local task and edits are preserved.':'The imported task was deleted. Import will not recreate it automatically.'}</p>:!receipt&&<form onSubmit={e=>{e.preventDefault();run('import');}} className="space-y-3"><div className="flex flex-wrap gap-3"><label className="text-sm">Planned start<input required disabled={busy} type="date" value={start} onChange={e=>setStart(e.target.value)} className="block rounded border border-input bg-background p-2"/></label><label className="text-sm">Planned end<input required disabled={busy} type="date" min={start||undefined} value={end} onChange={e=>setEnd(e.target.value)} className="block rounded border border-input bg-background p-2"/></label></div><Button type="submit" disabled={busy}>Import as pending task</Button></form>}</>}
     {receipt&&<p role="status">{receipt.deleted?'The previously imported task was deleted; no replacement was created.':receipt.unchanged?'This issue was already imported. The existing task was kept.':`Task created: ${receipt.task.title}. Refresh the project task list to see it.`}</p>}
-    <p className="text-xs text-muted-foreground">Imports are one-way snapshots. Re-importing never changes an existing task. Automatic synchronization and pull-request imports are not enabled.</p>
+    {(visible?.existing?.task_id||(receipt&&!receipt.deleted))&&<GithubIssueSync projectId={projectId} link={link} number={number} token={token}/>}
+    <p className="text-xs text-muted-foreground">Imports are one-way snapshots. Re-importing never changes an existing task. Use the separate preview above to refresh title/description explicitly. Background synchronization and pull-request imports are not enabled.</p>
   </section>;
 }
