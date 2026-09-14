@@ -1,4 +1,5 @@
 "use client";
+import WebsiteUsagePanel from "@/components/shared/WebsiteUsagePanel";
 import MonitoringPresence from "@/components/shared/MonitoringPresence";
 import { useMonitoringPresence } from "@/hooks/useMonitoringPresence";
 import { useMonitoringScreenshots } from "@/hooks/useMonitoringScreenshots";
@@ -858,8 +859,8 @@ export default function DeveloperActivity() {
       {!canMonitor ? <ErrorState title="Monitoring access is not allowed" description="Your current permissions do not include developer monitoring." /> : null}
       {developerError ? <ErrorState title="Could not load developers" description={developerError} onRetry={fetchAdminDevelopers} /> : null}
       <KeyboardCoverageNotice truncated={keyboardTruncated} loadedCount={keyboardData.length} canNarrowRange />
-      {activityError ? <ErrorState title="Could not load activity" description={activityError} onRetry={() => { fetchDeveloperActivity(); fetchMousePage({ page: mousePage }); }} /> : null}
-      {viewMode !== "screenshots" && screenshotPage.error && <ErrorState title="Could not load screenshots" description={screenshotPage.error} onRetry={refreshScreenshotPage} />}
+      {viewMode !== "websites" && activityError ? <ErrorState title="Could not load activity" description={activityError} onRetry={() => { fetchDeveloperActivity(); fetchMousePage({ page: mousePage }); }} /> : null}
+      {viewMode !== "screenshots" && viewMode !== "websites" && screenshotPage.error && <ErrorState title="Could not load screenshots" description={screenshotPage.error} onRetry={refreshScreenshotPage} />}
       {/* Filters */}
       <div className="mb-6 bg-card rounded-xl p-5 border border-border shadow-card">
 
@@ -947,6 +948,7 @@ export default function DeveloperActivity() {
               <option value="mouse">Mouse Activity</option>
               <option value="keyboard">Keyboard Activity</option>
               <option value="apps">App Usage</option>
+              <option value="websites">Website Usage</option>
               <option value="screenshots">Screenshots</option>
               <option value="logins">Login Activity</option>
               {/* <option value="timeline">Session Timeline</option> */}
@@ -960,7 +962,7 @@ export default function DeveloperActivity() {
 
       {/* Loading — skeletons shaped like the view underneath (tiles, two
           panels, a table) rather than a spinner on a blank page. */}
-      {viewMode !== "screenshots" && (loading || (!hasData && screenshotPage.loading)) && (
+      {viewMode !== "screenshots" && viewMode !== "websites" && (loading || (!hasData && screenshotPage.loading)) && (
         <div className="space-y-6" aria-busy="true">
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6">
             {[0, 1, 2, 3, 4, 5].map((i) => (
@@ -976,6 +978,12 @@ export default function DeveloperActivity() {
           </div>
         </div>
       )}
+
+      {viewMode === "websites" && developer?.email && <WebsiteUsagePanel
+        key={activityScope} client={supabase} organizationId={monitoringOrg}
+        email={developer.email} start={dateWindow.start} end={dateWindow.end}
+        makeGuard={makeMonitoringGuard}
+      />}
 
       {/* Main Content */}
       {developer && (viewMode === "screenshots" || (!loading && !activityError && (hasData || viewMode === "logins"))) && (
@@ -2164,7 +2172,7 @@ export default function DeveloperActivity() {
 
       {/* No Data State — the shared dashed-border EmptyState, like every other
           screen, instead of this file's own bare centred icon. */}
-      {!loading && !activityError && !screenshotPage.loading && !screenshotPage.error && screenshotPage.total === 0 && selectedDeveloper && !hasData && viewMode !== "logins" && viewMode !== "screenshots" && (
+      {!loading && !activityError && !screenshotPage.loading && !screenshotPage.error && screenshotPage.total === 0 && selectedDeveloper && !hasData && viewMode !== "logins" && viewMode !== "screenshots" && viewMode !== "websites" && (
         <EmptyState
           icon={Monitor}
           title="No activity data found for selected period"
