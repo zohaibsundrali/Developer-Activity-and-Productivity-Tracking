@@ -1,0 +1,12 @@
+import { afterEach, expect, it, vi } from 'vitest';
+import { readGithubIssue } from '@/utils/githubProvider';
+const link={repository_id:123,owner:'octocat',repository:'Hello-World'};
+const repo={id:123,owner:{login:'octocat'},name:'Hello-World'};
+const issue=()=>({id:456,number:1,title:'Issue title',body:'<script>literal source</script>',state:'closed',updated_at:'2026-09-14T09:00:00Z',url:'https://api.github.com/repos/octocat/Hello-World/issues/1',repository_url:'https://api.github.com/repos/octocat/Hello-World'});
+const setup=(row=issue(),repository=repo)=>{const fetch=vi.fn().mockResolvedValueOnce(Response.json(repository)).mockResolvedValueOnce(Response.json(row));vi.stubGlobal('fetch',fetch);return fetch;};
+afterEach(()=>vi.unstubAllGlobals());
+it('reads a verified issue without rendering or changing its content',async()=>{const fetch=setup();expect(await readGithubIssue(link,1,'github_pat_fixture')).toMatchObject({id:456,number:1,state:'closed',body:'<script>literal source</script>',url:'https://github.com/octocat/Hello-World/issues/1'});expect(fetch.mock.calls[1][0]).not.toContain('github_pat_fixture');expect(fetch.mock.calls[1][1]).toMatchObject({method:'GET',redirect:'error',headers:{Authorization:'Bearer github_pat_fixture'}});});
+it('rejects pull requests returned by the issues endpoint',async()=>{setup({...issue(),pull_request:{}});await expect(readGithubIssue(link,1)).rejects.toThrow('Only GitHub issues');});
+it.each([{id:0},{number:2},{repository_url:'https://api.github.com/repos/other/private'},{url:'https://api.github.com/repos/other/private/issues/1'},{title:'x'.repeat(256)},{body:'x'.repeat(60001)},{updated_at:'invalid'}])('rejects unexpected provider fields %j',async patch=>{setup({...issue(),...patch});await expect(readGithubIssue(link,1)).rejects.toThrow();});
+it('refuses a replaced repository before reading issue content',async()=>{const fetch=setup(issue(),{...repo,id:999});await expect(readGithubIssue(link,1)).rejects.toThrow('identity changed');expect(fetch).toHaveBeenCalledTimes(1);});
+it('normalizes an absent body without inventing a description',async()=>{setup({...issue(),body:null});expect((await readGithubIssue(link,1)).body).toBe('');});

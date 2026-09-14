@@ -56,3 +56,21 @@ export async function readGithubActivity(link, page, token, after = null) {
   }
   return { items, nextPage, nextAfter };
 }
+
+export async function readGithubIssue(link, number, token) {
+  if (!Number.isSafeInteger(number) || number < 1) throw new GithubFailure('Invalid issue number.', 400);
+  const repo = await readGithubRepository(link.owner, link.repository, token);
+  if (repo.repository_id !== link.repository_id) throw new GithubFailure('The linked repository identity changed. Refresh its link.', 409);
+  const path = `/repos/${repo.owner}/${repo.repository}/issues/${number}`;
+  const { data } = await githubRead(path, token);
+  if (!data || typeof data !== 'object' || 'pull_request' in data) throw new GithubFailure('Only GitHub issues can be imported in this phase.', 400);
+  if (!Number.isSafeInteger(data.id) || data.id < 1 || data.number !== number || !['open','closed'].includes(data.state)
+      || typeof data.title !== 'string' || !data.title.trim() || data.title.length > 255
+      || (data.body !== null && typeof data.body !== 'string') || (data.body || '').length > 60000
+      || !Number.isFinite(Date.parse(data.updated_at)) || data.url?.toLowerCase() !== `https://api.github.com${path}`.toLowerCase()
+      || data.repository_url?.toLowerCase() !== `https://api.github.com/repos/${repo.owner}/${repo.repository}`.toLowerCase()) throw new GithubFailure('The issue could not be imported. Check its identity and title/body size (255 / 60,000 characters).', 400);
+  const issue = { repository_id: repo.repository_id, id: data.id, number, title: data.title, body: data.body || '', state: data.state,
+    updated_at: new Date(data.updated_at).toISOString(), url: `https://github.com/${repo.owner}/${repo.repository}/issues/${number}` };
+  if (new TextEncoder().encode(JSON.stringify(issue)).length > 95000) throw new GithubFailure('The issue is too large to import safely.', 400);
+  return issue;
+}

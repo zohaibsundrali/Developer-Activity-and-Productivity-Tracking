@@ -4,8 +4,9 @@ Project detail pages now show a GitHub repository panel. Authorized project team
 managers can link or disconnect one repository; project viewers can load issues
 and pull requests and page through older activity. External titles are plain text
 and links are generated for github.com. Closed pull requests are shown as closed,
-not assumed merged. This is a read-only activity integration: task import, status
-mapping, comments, webhooks and automatic synchronization are follow-up work.
+not assumed merged. Activity reads remain read-only. Explicit issue-to-task import is available as a
+separate confirmed action; status mapping, comments, webhooks and automatic
+synchronization remain follow-up work.
 
 Public repositories work without a token, subject to GitHub's unauthenticated
 rate limits. For private repositories, each viewer supplies their own GitHub read
@@ -42,3 +43,5 @@ handling and account changes. A credential-free live check against
 References: [GitHub repository issues](https://docs.github.com/en/rest/issues/issues#list-repository-issues),
 [API versions](https://docs.github.com/en/rest/about-the-rest-api/api-versions),
 [rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
+
+Explicit issue-to-task import is now documented in [github-issue-task-import.md](github-issue-task-import.md). Automatic synchronization and GitHub writes remain separate.

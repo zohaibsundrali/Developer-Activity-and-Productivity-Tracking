@@ -7,6 +7,7 @@ import { reportIdentity } from '@/utils/reportViewState';
 import { supabase } from '@/utils/supabaseClient';
 import { validGithubLink, githubUrl } from '@/utils/githubRepository';
 import { Button } from '@/components/ui';
+import GithubIssueImport from '@/components/shared/GithubIssueImport';
 export default function ProjectGithub({ projectId }) {
   const { authStatus } = useAuth();
   const identity = reportIdentity(getOrgContext()), org = getOrgContext()?.organizationId;
@@ -15,19 +16,20 @@ export default function ProjectGithub({ projectId }) {
   const [repository, setRepository] = useState(''), [token, setToken] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState('');
   const [refresh, setRefresh] = useState(0);
+  const [importNumber, setImportNumber] = useState(null);
   const binding = `${authStatus}:${identity}:${projectId}:${refresh}`;
   const live = useRef(binding); live.current = binding;
   const generation = useRef(0), abort = useRef(null), pending = useRef(false);
   const visible = context?.binding === binding ? context.data : null;
   const current = (captured, ticket) => live.current === captured && generation.current === ticket && reportIdentity(getOrgContext()) === identity;
   useEffect(() => {
-    const { data } = supabase.auth.onAuthStateChange(() => { ++generation.current; abort.current?.abort(); setToken(''); setContext(null); setItems([]); setRefresh(value => value + 1); });
+    const { data } = supabase.auth.onAuthStateChange(() => { ++generation.current; abort.current?.abort(); setToken(''); setImportNumber(null); setContext(null); setItems([]); setRefresh(value => value + 1); });
     return () => data?.subscription?.unsubscribe();
   }, []);
   useEffect(() => {
     const versions = generation, requests = abort;
     ++versions.current; requests.current?.abort(); pending.current = false;
-    setContext(null); setItems([]); setNextPage(null); setNextAfter(null); setToken(''); setRepository(''); setError(''); setMessage(''); setBusy(false);
+    setImportNumber(null); setContext(null); setItems([]); setNextPage(null); setNextAfter(null); setToken(''); setRepository(''); setError(''); setMessage(''); setBusy(false);
     if (authStatus === 'authenticated' && projectId) void run();
     return () => { ++versions.current; requests.current?.abort(); };
     // Each request captures this render's identity; auth callbacks invalidate it.
@@ -51,7 +53,7 @@ export default function ProjectGithub({ projectId }) {
         if (new Set(rows.map(row => row.number)).size !== rows.length) throw new Error('GitHub activity changed between pages. Refresh the activity list.');
         setItems(rows); setNextPage(json.nextPage); setNextAfter(json.nextAfter);
         if (!rows.length) setMessage('No issues or pull requests found.');
-      } else { setItems([]); setNextPage(null); setNextAfter(null); if (action) setMessage(action === 'unlink' ? 'Repository disconnected.' : 'Repository linked. Load its activity below.'); }
+      } else { setImportNumber(null); setItems([]); setNextPage(null); setNextAfter(null); if (action) setMessage(action === 'unlink' ? 'Repository disconnected.' : 'Repository linked. Load its activity below.'); }
       setContext({ binding, data: json });
       if (json.link?.repository_id) setRepository(`${json.link.owner}/${json.link.repository}`);
     } catch (e) { if (current(captured, ticket)) { setError(e.name === 'AbortError' ? 'Request timed out. Refresh the integration before retrying a link change.' : e.message); if (action === 'activity') { setItems([]); setNextPage(null); setNextAfter(null); } } }
@@ -68,8 +70,9 @@ export default function ProjectGithub({ projectId }) {
     {busy && <p role="status" className="text-sm">Loading GitHub integration…</p>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     {message && <p role="status" className="text-sm">{message}</p>}
-    {visible && <ul className="space-y-2">{items.map(row => <li key={row.number} className="rounded-lg border border-border p-3"><a href={githubUrl(visible.link.owner, visible.link.repository, row.number, row.kind)} target="_blank" rel="noopener noreferrer" className="text-sm underline">#{row.number} {row.title}</a><p className="mt-1 text-xs text-muted-foreground">{row.kind === 'pull' ? 'Pull request' : 'Issue'} · {row.state} · Updated {row.updated_at.replace('T', ' ').replace('.000Z', ' UTC')}</p></li>)}</ul>}
+    {visible && <ul className="space-y-2">{items.map(row => <li key={row.number} className="rounded-lg border border-border p-3"><a href={githubUrl(visible.link.owner, visible.link.repository, row.number, row.kind)} target="_blank" rel="noopener noreferrer" className="text-sm underline">#{row.number} {row.title}</a><p className="mt-1 text-xs text-muted-foreground">{row.kind === 'pull' ? 'Pull request' : 'Issue'} · {row.state} · Updated {row.updated_at.replace('T', ' ').replace('.000Z', ' UTC')}</p>{visible.can_import&&row.kind==='issue'&&<Button type="button" variant="outline" disabled={busy} onClick={()=>setImportNumber(row.number)}>Import issue as task</Button>}</li>)}</ul>}
+    {visible?.can_import&&visible.link?.repository_id&&importNumber&&<GithubIssueImport key={`${projectId}:${visible.link.version}:${importNumber}`} projectId={projectId} link={visible.link} number={importNumber} token={token} onClose={()=>setImportNumber(null)}/> }
     {visible && nextPage && <Button type="button" variant="outline" disabled={busy} onClick={() => run('activity', nextPage, nextAfter)}>More GitHub activity</Button>}
-    <p className="text-xs text-muted-foreground">GitHub status is shown as reported by GitHub. This view does not change local task status or post changes to the repository.</p>
+    <p className="text-xs text-muted-foreground">GitHub status is shown as reported by GitHub. Import an issue explicitly to create a pending local task. Existing task status is never synchronized automatically and nothing is posted to GitHub.</p>
   </section>;
 }
