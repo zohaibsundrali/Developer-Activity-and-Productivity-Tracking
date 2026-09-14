@@ -52,6 +52,7 @@ export const SECTION_PERMISSIONS = Object.freeze({
   bugs: "bug.triage",
   "developer-activity": "monitoring.view",
   reports: "report.view",
+  "payroll-preparation": "timesheet.view_all",
   automation: "automation.manage",
   employees: "member.view",
   hierarchy: "hierarchy.view",

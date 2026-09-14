@@ -42,6 +42,7 @@ import AdminAccount from "@/components/admin/AdminAccount";
 import MyWork from "@/components/developer/MyWork";
 import MyTimesheet from "@/components/developer/MyTimesheet";
 import MyProjects from "@/components/developer/MyProjects";
+import PayrollPreparation from "@/components/admin/PayrollPreparation";
 import ShiftSchedule from "@/components/shared/ShiftSchedule";
 import MyAttendance from "@/components/shared/MyAttendance";
 import MyLeave from "@/components/shared/MyLeave";
@@ -463,6 +464,8 @@ function AdminDashboardContent({ onLogout: parentLogout }) {
             onViewProjectDetails={openProjectDetails}
           />
         );
+      case "payroll-preparation":
+        return <PayrollPreparation />;
       case "shifts":
         return <ShiftSchedule />;
       case "my-attendance":

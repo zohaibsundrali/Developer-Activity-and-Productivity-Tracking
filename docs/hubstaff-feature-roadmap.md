@@ -10,9 +10,10 @@ No completion percentage or full Hubstaff parity is claimed.
 | 2 | Website usage viewing and export | Implemented in the website-usage PR | Permission-scoped reads, complete date ranges, offline aggregate updates |
 | 3 | Shift scheduling | Implemented in the shift-scheduling PR | Hosted migration, real manager/employee journeys; local DST, overnight and concurrent overlap checks passed |
 | 3 | Schedule-based attendance exceptions | Pending | Grace periods, clock-event matching, leave coverage, correction workflow |
-| 4 | Payroll preparation/export from approved time | Pending | Approved-only data, currencies/rates, corrections, duplicate exports and provider mapping |
-| 5 | Provider payouts and external project integrations | Awaiting provider choice | Provider sandbox, credentials, webhook/retry/idempotency and reconciled results |
-| 6 | Mobile time tracking, GPS and geofencing | Awaiting platform choice | Mobile build, consent/permissions, background/offline behavior, device testing |
+| 4 | Approved-time payroll CSV | Implemented in the approved-time-export PR | Staging migration, real finance access and correction reconciliation; monetary payroll remains separate |
+| 5 | GitHub project integration | Selected; next | Repository access, scoped linking/import, retries and project permissions |
+| 5 | Provider payouts | Provider not yet chosen | Provider sandbox, credentials, pay rules and reconciled results |
+| 6 | Mobile time tracking, GPS and geofencing | Android first confirmed; iPhone later | Mobile build, consent/permissions, background/offline behavior, device testing |
 | 7 | Desktop distribution improvements | Pending | Signed releases, update delivery, rollback, supported-OS matrix |
 | All | Production identity, migration and integration acceptance | Not re-certified | Current identity diagnostics; real role accounts; email/payment/cron/retention journeys |
 

@@ -75,6 +75,7 @@ export const ADMIN_NAV = [
   // Beside Task Reviews: both are a queue of somebody else's work waiting on
   // a decision, and a lead works through them in the same sitting.
   { id: "timesheet-approvals", label: "Timesheet Approvals", icon: Clock },
+  { id: "payroll-preparation", label: "Payroll Preparation", icon: FileText },
   // Directly above Bugs: a defect is what comes OUT of a test run, and the
   // two screens are read in that order.
   { id: "quality", label: "Quality", icon: ClipboardList },
