@@ -11,7 +11,8 @@ No completion percentage or full Hubstaff parity is claimed.
 | 3 | Shift scheduling | Implemented in the shift-scheduling PR | Hosted migration, real manager/employee journeys; local DST, overnight and concurrent overlap checks passed |
 | 3 | Schedule-based attendance exceptions | Pending | Grace periods, clock-event matching, leave coverage, correction workflow |
 | 4 | Approved-time payroll CSV | Implemented in the approved-time-export PR | Staging migration, real finance access and correction reconciliation; monetary payroll remains separate |
-| 5 | GitHub project integration | Selected; next | Repository access, scoped linking/import, retries and project permissions |
+| 5 | GitHub repository linking and activity | Implemented in the GitHub integration PR | Staging migration, private-repository acceptance; public live two-page smoke passed |
+| 5 | GitHub task import and automated sync | Pending | Task mapping, conflict handling, installation/OAuth and webhook delivery |
 | 5 | Provider payouts | Provider not yet chosen | Provider sandbox, credentials, pay rules and reconciled results |
 | 6 | Mobile time tracking, GPS and geofencing | Android first confirmed; iPhone later | Mobile build, consent/permissions, background/offline behavior, device testing |
 | 7 | Desktop distribution improvements | Pending | Signed releases, update delivery, rollback, supported-OS matrix |

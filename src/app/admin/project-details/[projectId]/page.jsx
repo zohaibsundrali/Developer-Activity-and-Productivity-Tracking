@@ -17,6 +17,7 @@ import {
   StatusPill,
 } from "@/components/ui";
 import { ArrowLeft, Check, ClipboardList, X } from "lucide-react";
+import ProjectGithub from "@/components/shared/ProjectGithub";
 import ProjectTeam from "@/components/admin/ProjectTeam";
 
 // The plan/task status vocabulary here is wider than the board's. It maps onto
@@ -439,6 +440,7 @@ export default function AdminProjectDetailsPage() {
               Until migration 071 the database could not tell them apart:
               assigned_to holds one developer and manager_id one manager. */}
           <ProjectTeam key={projectId} projectId={projectId} />
+          <ProjectGithub key={`github:${projectId}`} projectId={projectId} />
 
           <Section
             title="Task plan review"

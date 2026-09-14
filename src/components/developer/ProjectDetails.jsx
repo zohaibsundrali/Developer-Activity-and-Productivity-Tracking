@@ -1,4 +1,5 @@
 "use client";
+import ProjectGithub from "@/components/shared/ProjectGithub";
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/utils/supabaseClient'; // Correct path
@@ -513,6 +514,7 @@ export default function ProjectDetails() {
             />
           )}
         </Section>
+        {dataSource === "supabase" && projectData?.id && <ProjectGithub key={projectData.id} projectId={projectData.id} />}
 
         {/* Actions — one primary per screen. */}
         <div className="flex flex-col gap-3 border-t border-border pt-6 sm:flex-row sm:justify-between">
