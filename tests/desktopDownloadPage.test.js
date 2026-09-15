@@ -1,0 +1,13 @@
+import React from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {beforeEach, expect, it, vi} from 'vitest';
+const h=vi.hoisted(()=>({release:null}));
+vi.mock('@/utils/desktopRelease',()=>({getDesktopRelease:()=>h.release}));
+vi.mock('next/link',()=>({default:props=>React.createElement('a',props,props.children)}));
+vi.mock('@/components/brand/Logo',()=>({default:()=>React.createElement('span',null,'Brand')}));
+globalThis.React=React;
+const {default:Page}=await import('@/app/download/page');
+beforeEach(()=>{h.release=null;});
+it('shows honest availability without an executable link',()=>{const html=renderToStaticMarkup(React.createElement(Page));expect(html).toContain('Download not available yet');expect(html).not.toContain('href="/api/desktop/download"');expect(html).toContain('active employee account');expect(html).toContain('not your Google password');});
+it('shows the approved installer version and checksum without exposing raw source URL',()=>{h.release={version:'1.1.0',bytes:36000000,sha256:'a'.repeat(64),publisher:'Example publisher',published_at:'2026-09-01T00:00:00Z',url:'https://downloads.example.com/setup.exe'};const html=renderToStaticMarkup(React.createElement(Page));expect(html).toContain('href="/api/desktop/download"');expect(html).toContain('Version 1.1.0');expect(html).toContain('a'.repeat(64));expect(html).not.toContain(h.release.url);});
+it('keeps login, privacy and OS guidance available before release',()=>{const html=renderToStaticMarkup(React.createElement(Page));expect(html).toContain('href="/login"');expect(html).toContain('href="/privacy"');expect(html).toContain('Windows 10 or 11');expect(html).toContain('Client-portal access alone');});
