@@ -546,6 +546,7 @@ export const footer = {
         { label: "Create an organization", href: "/admin/registration" },
         { label: "Join with an invite", href: "/join" },
         { label: "Sign in", href: "/login" },
+        { label: "Download for Windows", href: "/download" },
       ],
     },
     {

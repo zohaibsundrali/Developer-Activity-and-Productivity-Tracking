@@ -1,0 +1,60 @@
+{
+  "checked_at": "2026-09-15T04:54:51.629329+00:00",
+  "scope": "read_only_schema_presence_not_live_role_acceptance",
+  "tables": [
+    {
+      "table": "developers",
+      "status": 200,
+      "columns_present": true
+    },
+    {
+      "table": "tracker_devices",
+      "status": 200,
+      "columns_present": true
+    },
+    {
+      "table": "productivity_sessions",
+      "status": 200,
+      "columns_present": true
+    },
+    {
+      "table": "screenshots",
+      "status": 200,
+      "columns_present": true
+    },
+    {
+      "table": "organization_screenshot_policies",
+      "status": 200,
+      "columns_present": true
+    },
+    {
+      "table": "organization_idle_reminder_policies",
+      "status": 200,
+      "columns_present": true
+    },
+    {
+      "table": "keyboard_stats",
+      "status": 400,
+      "code": "42703",
+      "columns_present": false
+    },
+    {
+      "table": "mouse_activities",
+      "status": 400,
+      "code": "42703",
+      "columns_present": false
+    }
+  ],
+  "rpc_presence": {
+    "enroll_tracker_device": true,
+    "get_tracking_work_options": true,
+    "get_screenshot_policy": true,
+    "get_idle_reminder_policy": true,
+    "finalize_screenshot_capture": true,
+    "ingest_input_capture": false,
+    "ingest_activity_aggregate": true,
+    "get_tracker_presence_epoch": true,
+    "start_tracker_presence_stream": true,
+    "heartbeat_tracker_presence": true
+  }
+}

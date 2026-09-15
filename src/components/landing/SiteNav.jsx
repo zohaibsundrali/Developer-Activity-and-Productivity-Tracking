@@ -212,7 +212,7 @@ export default function SiteNav({ sections }) {
   const { isLoading: authLoading, isLoggedIn, home } = useAuth();
   const signedIn = !authLoading && isLoggedIn && Boolean(home);
 
-  const links = (contentLinks() ?? DEFAULT_LINKS).filter(
+  const links = [...(contentLinks() ?? DEFAULT_LINKS), { label: "Download", href: "/download" }].filter(
     (link) => !link.href.startsWith("#") || !sections || sections.has(link.href.slice(1)),
   );
 
