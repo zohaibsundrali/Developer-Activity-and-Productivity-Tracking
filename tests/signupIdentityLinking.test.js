@@ -9,8 +9,8 @@ const body = { email: 'owner@example.test', password: 'original-password', fullN
 const request = (extra = {}) => new Request('https://app.test/api/auth/signup', { method: 'POST', body: JSON.stringify({ ...body, ...extra }) });
 const metadata = { signup_id: 'signup', app_user_id: 'profile', organization_id: 'org', role: 'owner', user_type: 'admin' };
 beforeEach(() => {
- vi.clearAllMocks(); state.prior = null; state.priorError = { status: 404 }; state.reserveError = null; state.finishError = null;
- state.rpc.mockImplementation(async name => name === 'claim_signup' ? { data: { id: 'signup', profile_id: 'profile', organization_id: 'org', auth_user_id: 'auth' }, error: state.reserveError } : name === 'finish_signup' ? { data: { success: true, organizationId: 'org', admin: { id: 'profile', organization_id: 'org', auth_user_id: 'auth' }, plan: { code: 'free', status: 'active', trialEndsAt: null } }, error: state.finishError } : {});
+ vi.clearAllMocks(); state.prior = null; state.priorError = { status: 404 }; state.reserveError = null; state.finishError = null; state.emailStatus = 'admin_exists';
+ state.rpc.mockImplementation(async name => name === 'signup_email_status' ? { data: state.emailStatus, error: null } : name === 'claim_signup' ? { data: { id: 'signup', profile_id: 'profile', organization_id: 'org', auth_user_id: 'auth' }, error: state.reserveError } : name === 'finish_signup' ? { data: { success: true, organizationId: 'org', admin: { id: 'profile', organization_id: 'org', auth_user_id: 'auth' }, plan: { code: 'free', status: 'active', trialEndsAt: null } }, error: state.finishError } : {});
  state.create.mockResolvedValue({ data: { user: { id: 'auth' } } });
  state.signIn.mockResolvedValue({ data: { user: { id: 'auth' } }, error: null }); state.signOut.mockResolvedValue({});
 });
@@ -42,6 +42,16 @@ describe('transactional signup orchestration', () => {
  it.each([['SIGNUP_EMAIL_NOT_VERIFIED',403],['SIGNUP_BUSY',409],['SIGNUP_ACCOUNT_EXISTS',409],['database unavailable',503]])('classifies reservation failure %s', async (message,status) => {
   state.reserveError = { message }; expect((await POST(request())).status).toBe(status);
   expect(state.create).not.toHaveBeenCalled(); expect(state.remove).not.toHaveBeenCalled();
+ });
+ it.each([['admin_exists','account_exists'],['identity_exists','email_in_use']])('classifies a late %s conflict without creating or modifying accounts', async (emailStatus, code) => {
+  state.emailStatus = emailStatus;
+  state.reserveError = { message: 'SIGNUP_ACCOUNT_EXISTS' };
+  const response = await POST(request());
+  expect(response.status).toBe(409);
+  expect((await response.json()).code).toBe(code);
+  expect(state.create).not.toHaveBeenCalled();
+  expect(state.update).not.toHaveBeenCalled();
+  expect(state.remove).not.toHaveBeenCalled();
  });
  it.each([undefined, '', 'guessed', 'a'.repeat(63)])('requires an unguessable verification grant before reserving: %j', async verificationGrant => {
   expect((await POST(request({ verificationGrant }))).status).toBe(403);

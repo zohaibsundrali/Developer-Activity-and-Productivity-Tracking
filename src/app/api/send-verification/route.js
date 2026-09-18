@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { sendEmail } from '@/utils/emailService';
 import { renderTemplate } from '@/utils/emailTemplates';
 import { serviceClient } from '@/utils/serverAuth';
+import { signupEmailConflict } from '@/utils/signupEmailAvailability';
 import {
   normalizeEmail,
   hashCode,
@@ -93,27 +94,16 @@ export async function POST(request) {
     const svc = serviceClient();
     const normalized = normalizeEmail(email);
 
-    // Check the admin identity server-side: anonymous browser reads are subject
-    // to RLS. Anchor and escape the case-insensitive pattern so email punctuation
-    // (including PostgREST LIKE aliases such as *) can never act as a wildcard.
-    const literalEmail = '^' + normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$';
-    const { data: admins, error: adminError } = await svc
-      .from('admin_users')
-      .select('id')
-      .filter('email', 'imatch', literalEmail)
-      .limit(1);
-    if (adminError) {
+    let conflict;
+    try {
+      conflict = await signupEmailConflict(svc, normalized);
+    } catch {
       return NextResponse.json(
         { success: false, error: 'Could not check your account. Please try again.' },
         { status: 503 }
       );
     }
-    if (admins?.length) {
-      return NextResponse.json(
-        { success: false, code: 'account_exists', error: 'This email is already registered. Please sign in or reset your password.' },
-        { status: 409 }
-      );
-    }
+    if (conflict) return NextResponse.json({ success: false, ...conflict }, { status: 409 });
     const expiresAt = new Date(Date.now() + CODE_TTL_MINUTES * 60_000).toISOString();
 
     // Any earlier live code for this address is retired first. Without this,

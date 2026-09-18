@@ -568,6 +568,16 @@ export default function AdminRegistration() {
     }
   };
 
+  const showEmailConflict = (result) => {
+    setStep(1);
+    setVerificationGrant(null);
+    resetCodeBoxes();
+    setErrors({ email: result.error });
+    showInfo(result.code === 'account_exists' ? 'Already registered' : 'Email already in use', result.error);
+    // The details step may be mounting after a last-step race/conflict.
+    requestAnimationFrame(() => document.getElementById('reg-email')?.focus());
+  };
+
   const sendVerificationCode = async (userEmail) => {
     setVerificationGrant(null);
     // The CODE IS NO LONGER MADE HERE. /api/send-verification mints it, stores
@@ -598,10 +608,8 @@ export default function AdminRegistration() {
 
       const result = await response.json();
 
-      if (response.status === 409 && result.code === 'account_exists') {
-        setStep(1);
-        setErrors({ email: 'This email is already registered. Please sign in.' });
-        showInfo('Already registered', 'An admin account with this email already exists. Please sign in or reset your password.');
+      if (response.status === 409 && ['account_exists', 'email_in_use'].includes(result.code)) {
+        showEmailConflict(result);
         return { success: false };
       }
 
@@ -766,6 +774,10 @@ export default function AdminRegistration() {
       });
       const signupData = await signupRes.json().catch(() => ({}));
       if (!signupRes.ok || !signupData.success) {
+        if (['account_exists', 'email_in_use'].includes(signupData.code)) {
+          showEmailConflict(signupData);
+          return;
+        }
         if (["email_not_verified", "signup_setup_unconfirmed"].includes(signupData.code)) {
           // Preserve the entered account details/password while allowing a
           // fresh verification to resume the same server-side reservation.

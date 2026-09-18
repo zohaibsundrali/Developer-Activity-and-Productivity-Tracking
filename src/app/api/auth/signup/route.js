@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createHash, randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { meta as termsMeta } from "@/content/legal/terms";
+import { signupEmailConflict } from "@/utils/signupEmailAvailability";
 import { normalizeEmail } from "@/utils/verificationCodes";
 
 const TERMS_VERSION = termsMeta.version || termsMeta.lastUpdated;
@@ -57,7 +58,10 @@ export async function POST(request) {
       const reason = reserveError?.message || "";
       if (reason.startsWith("SIGNUP_EMAIL_NOT_VERIFIED")) return NextResponse.json({ error: "Please verify your email again, then retry. Any reserved setup will be resumed.", code: "email_not_verified" }, { status: 403 });
       if (reason.startsWith("SIGNUP_BUSY")) return NextResponse.json({ error: "Account setup is already in progress. Please retry shortly.", code: "signup_busy" }, { status: 409 });
-      if (reason.startsWith("SIGNUP_ACCOUNT_EXISTS")) return NextResponse.json({ error: "This email is already registered. Sign in or use Forgot password.", code: "account_exists" }, { status: 409 });
+      if (reason.startsWith("SIGNUP_ACCOUNT_EXISTS")) {
+        const conflict = await signupEmailConflict(admin, email);
+        return NextResponse.json(conflict || { error: "This email became unavailable. Please return to your details and try again.", code: "email_in_use" }, { status: 409 });
+      }
       throw new Error("Signup reservation unavailable");
     }
     claim = { p_id: attempt.id, p_claim: claimId };
