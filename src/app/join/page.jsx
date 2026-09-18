@@ -234,7 +234,7 @@ function JoinForm() {
       setInvite(data);
     } catch (err) {
       // Previously this class of failure would have been console-only. Route it
-      // through the shared sweetalert2 helpers like every other surface.
+      // through the shared notification helpers like every other surface.
       showError(
         "Couldn't check that invite code",
         "We couldn't reach the server to confirm your code. Check your connection and try again."

@@ -236,10 +236,10 @@
   box-shadow: 0 1px 2px hsl(200 25% 12% / 0.04), 0 1px 3px hsl(200 25% 12% / 0.06);
 }
 
-.swal2-pre {
-  margin: 0;
-  text-align: left;
-  white-space: pre-wrap;
-  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  line-height: 1.4;
+/* Native select popups need explicit surfaces as well as themed text. */
+.registration-select,
+.registration-select option {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
 }
+.dark .registration-select { color-scheme: dark; }

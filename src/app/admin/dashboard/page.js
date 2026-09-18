@@ -59,7 +59,7 @@ import MyReviews from "@/components/shared/MyReviews";
 import MyActivity from "@/components/shared/MyActivity";
 import { isSessionExpired, clearAdminSession, clearDeveloperSession } from "@/utils/sessionPolicy";
 import { Skeleton } from "@/components/ui";
-// The app's one dialog pattern (sweetalert2, wrapped). No second toast library.
+// Shared notifications and confirmation dialogs.
 import { showSuccess } from "@/utils/alerts";
 
 // Written by src/app/admin/registration/page.js the moment an organization is
