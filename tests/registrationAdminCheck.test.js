@@ -5,18 +5,17 @@ vi.mock('@/utils/emailService', () => ({ sendEmail: mocks.send }));
 import { POST } from '@/app/api/send-verification/route';
 let serial = 0;
 let from;
-let admin;
+let rpc;
 let verification;
 beforeEach(() => {
   vi.clearAllMocks();
-  admin = { select: vi.fn().mockReturnThis(), filter: vi.fn().mockReturnThis(), limit: vi.fn().mockResolvedValue({ data: [], error: null }) };
+  rpc = vi.fn().mockResolvedValue({ data: 'available', error: null });
   verification = { update: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), is: vi.fn().mockReturnThis(), gt: vi.fn().mockResolvedValue({ error: null }), insert: vi.fn().mockResolvedValue({ error: null }) };
   from = vi.fn((table) => {
-    if (table === 'admin_users') return admin;
     if (table === 'email_verifications') return verification;
     throw new Error(`Unexpected table ${table}`);
   });
-  mocks.service.mockReturnValue({ from });
+  mocks.service.mockReturnValue({ from, rpc });
   mocks.send.mockResolvedValue({ ok: true, messageId: 'mock' });
 });
 const request = (email) => new Request('http://localhost/api/send-verification', {
@@ -24,16 +23,16 @@ const request = (email) => new Request('http://localhost/api/send-verification',
   body: JSON.stringify({ email, userName: 'Test', company: 'Example' }),
 });
 it('rejects an existing admin before retiring/storing codes or sending email', async () => {
-  admin.limit.mockResolvedValue({ data: [{ id: 'admin-id' }], error: null });
+  rpc.mockResolvedValue({ data: 'admin_exists', error: null });
   const response = await POST(request('  OWNER@Example.com  '));
   expect(response.status).toBe(409);
   expect(await response.json()).toMatchObject({ success: false, code: 'account_exists' });
-  expect(admin.filter).toHaveBeenCalledWith('email', 'imatch', '^owner@example\\.com$');
-  expect(from.mock.calls).toEqual([['admin_users']]);
+  expect(rpc).toHaveBeenCalledWith('signup_email_status', { p_email: 'owner@example.com' });
+  expect(from).not.toHaveBeenCalled();
   expect(mocks.send).not.toHaveBeenCalled();
 });
 it('fails closed when the admin lookup fails', async () => {
-  admin.limit.mockResolvedValue({ data: null, error: { message: 'private database detail' } });
+  rpc.mockResolvedValue({ data: null, error: { message: 'private database detail' } });
   const response = await POST(request('lookup@example.com'));
   expect(response.status).toBe(503);
   expect(JSON.stringify(await response.json())).not.toContain('private database detail');
@@ -47,14 +46,25 @@ it('sends verification for a new admin without querying developers', async () =>
   expect(mocks.send).toHaveBeenCalledTimes(1);
   expect(from).not.toHaveBeenCalledWith('developers');
 });
-it.each(['A_B%Test@example.com', 'A*B+tag@example.com', 'Name.$test@example.com'])('matches email punctuation literally: %s', async (email) => {
-  await POST(request(email));
-  const [column, operator, pattern] = admin.filter.mock.calls[0];
-  expect([column, operator]).toEqual(['email', 'imatch']);
-  const matcher = new RegExp(pattern, 'i');
-  expect(matcher.test(email)).toBe(true);
-  expect(matcher.test('prefix' + email)).toBe(false);
-  expect(matcher.test(email.replace(/[*+%_$]/g, 'x'))).toBe(false);
+it('rejects an Auth/profile collision early without calling it an admin registration', async () => {
+  rpc.mockResolvedValue({ data: 'identity_exists', error: null });
+  const response = await POST(request('existing-login@example.com'));
+  expect(response.status).toBe(409);
+  const result = await response.json();
+  expect(result.code).toBe('email_in_use');
+  expect(result.error).not.toContain('admin account');
+  expect(from).not.toHaveBeenCalled();
+  expect(mocks.send).not.toHaveBeenCalled();
+});
+it('allows verification to resume an incomplete signup with its own Auth identity', async () => {
+  rpc.mockResolvedValue({ data: 'resumable', error: null });
+  expect((await POST(request('resume@example.com'))).status).toBe(200);
+  expect(mocks.send).toHaveBeenCalledTimes(1);
+});
+it('fails closed on missing or unknown database status', async () => {
+  rpc.mockResolvedValue({ data: null, error: null });
+  expect((await POST(request('unknown@example.com'))).status).toBe(503);
+  expect(mocks.send).not.toHaveBeenCalled();
 });
 it('does not query the database for invalid addresses', async () => {
   expect((await POST(request('invalid'))).status).toBe(400);
