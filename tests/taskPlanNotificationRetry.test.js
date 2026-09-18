@@ -25,6 +25,9 @@ it('preserves recipient-resolution warnings for the retry UI',async()=>{
 
 it('shows plan confirmation names as text rather than HTML',()=>{
  const source=readFileSync(new URL('../src/app/developer/project-details/page.jsx',import.meta.url),'utf8');
- expect(source).toContain('text: confirmText');
+ expect(source).toContain('showConfirm("Confirm Submission", confirmText');
+ const viewport=readFileSync(new URL('../src/components/AlertsViewport.jsx',import.meta.url),'utf8');
+ expect(viewport).toContain('{confirmation.text}');
+ expect(viewport).not.toContain('dangerouslySetInnerHTML');
  expect(source).not.toContain('html: confirmHtml');
 });

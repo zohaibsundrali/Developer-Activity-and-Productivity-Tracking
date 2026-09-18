@@ -91,7 +91,7 @@ export default function ForgotPasswordPage() {
       const message =
         err?.message || "We couldn't send the reset email. Please try again.";
       setError(message);
-      // The shared sweetalert2 helper, not a bare alert() and not a
+      // The shared notification helper, not a bare alert() and not a
       // console-only failure.
       showError("Couldn't send the reset link", message);
     } finally {

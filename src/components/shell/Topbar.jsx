@@ -45,7 +45,6 @@ function ThemeToggle() {
       document.documentElement.classList.toggle("dark", event.matches);
       document.documentElement.style.colorScheme = event.matches ? "dark" : "light";
       // SweetAlert2 reads this, not our class — see layout.js.
-      document.documentElement.setAttribute("data-swal2-theme", event.matches ? "dark" : "light");
       setIsDark(event.matches);
     };
     query.addEventListener("change", onChange);
@@ -55,7 +54,6 @@ function ThemeToggle() {
   const toggle = () => {
     const next = !document.documentElement.classList.contains("dark");
     document.documentElement.classList.toggle("dark", next);
-    document.documentElement.setAttribute("data-swal2-theme", next ? "dark" : "light");
     // Keeps form controls, scrollbars and the caret in step with the palette.
     document.documentElement.style.colorScheme = next ? "dark" : "light";
     setIsDark(next);

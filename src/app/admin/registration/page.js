@@ -598,6 +598,13 @@ export default function AdminRegistration() {
 
       const result = await response.json();
 
+      if (response.status === 409 && result.code === 'account_exists') {
+        setStep(1);
+        setErrors({ email: 'This email is already registered. Please sign in.' });
+        showInfo('Already registered', 'An admin account with this email already exists. Please sign in or reset your password.');
+        return { success: false };
+      }
+
       if (response.ok && result.success) {
         setStep(2);
         return { success: true };
@@ -639,19 +646,6 @@ export default function AdminRegistration() {
     }
 
     try {
-      const { data: existing, error: fetchError } = await supabase
-        .from("admin_users")
-        .select("*")
-        .eq("email", formData.email);
-
-      if (fetchError) throw fetchError;
-
-      if (existing && existing.length > 0) {
-        setErrors({ email: "Email already registered!" });
-        setLoading(false);
-        return;
-      }
-
       await sendVerificationCode(formData.email);
 
     } catch (error) {
@@ -665,8 +659,8 @@ export default function AdminRegistration() {
     setLoading(true);
     setErrors({});
     try {
-      await sendVerificationCode(formData.email);
-      showInfo("Verification sent", "Verification code has been resent to your email.");
+      const result = await sendVerificationCode(formData.email);
+      if (result.success) showInfo("Verification sent", "Verification code has been resent to your email.");
     } catch (error) {
       setErrors({ general: error.message });
     } finally {
@@ -1066,7 +1060,7 @@ export default function AdminRegistration() {
                       id="reg-industry"
                       value={formData.industry}
                       onChange={(e) => handleInputChange('industry', e.target.value)}
-                      className="h-11 w-full rounded-lg border border-input bg-transparent px-3 text-base text-foreground outline-none transition-colors duration-150 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:text-sm"
+                      className="registration-select h-11 w-full rounded-lg border border-input bg-background px-3 text-base text-foreground outline-none transition-colors duration-150 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:text-sm"
                     >
                       <option value="">Select industry</option>
                       {["Technology","Finance","Healthcare","Education","Retail","Manufacturing","Consulting","Marketing","Other"].map((i) => (
@@ -1080,7 +1074,7 @@ export default function AdminRegistration() {
                       id="reg-size"
                       value={formData.companySize}
                       onChange={(e) => handleInputChange('companySize', e.target.value)}
-                      className="h-11 w-full rounded-lg border border-input bg-transparent px-3 text-base text-foreground outline-none transition-colors duration-150 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:text-sm"
+                      className="registration-select h-11 w-full rounded-lg border border-input bg-background px-3 text-base text-foreground outline-none transition-colors duration-150 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:text-sm"
                     >
                       <option value="">Select size</option>
                       {["1-10","11-50","51-200","201-500","500+"].map((s) => (

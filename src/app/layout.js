@@ -4,7 +4,7 @@ import { AuthProvider } from '@/contexts/AuthContext';
 // client module receives opaque client references, not strings.
 import { BRAND_NAME, SITE_URL } from '@/components/brand/brand';
 import './globals.css';
-import 'sweetalert2/dist/sweetalert2.min.css';
+import AlertsViewport from "@/components/AlertsViewport";
 
 /**
  * Typography is self-hosted through next/font: the files are downloaded at
@@ -134,17 +134,11 @@ export const viewport = {
  * `prefers-color-scheme`. `colorScheme` is set alongside so native widgets
  * (scrollbars, date pickers, the caret) match the palette.
  *
- * `data-swal2-theme` is stamped alongside. SweetAlert2's bundled CSS gates its
- * dark palette on `@media (prefers-color-scheme: dark) [data-swal2-theme=auto]`
- * — the OS, not our class — so an OS-light machine with the app in dark mode
- * got a white dialog on a dark page. Setting the attribute explicitly uses
- * SweetAlert's own theming rather than overriding its stylesheet.
- *
  * Keep `devtrack.theme` in step with THEME_KEY in components/shell/Topbar.jsx.
  * Kept to one statement with no optional chaining so it parses and runs on old
  * engines too — a syntax error here would take the theme down silently.
  */
-const THEME_INIT_SCRIPT = `(function(){try{var e=document.documentElement,s=null;try{s=localStorage.getItem("devtrack.theme")}catch(_){}var d=s==="dark"||(s!=="light"&&window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches);e.classList.toggle("dark",d);e.style.colorScheme=d?"dark":"light";e.setAttribute("data-swal2-theme",d?"dark":"light")}catch(_){}})();`;
+const THEME_INIT_SCRIPT = `(function(){try{var e=document.documentElement,s=null;try{s=localStorage.getItem("devtrack.theme")}catch(_){}var d=s==="dark"||(s!=="light"&&window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches);e.classList.toggle("dark",d);e.style.colorScheme=d?"dark":"light"}catch(_){}})();`;
 
 export default function RootLayout({ children }) {
   return (
@@ -181,6 +175,7 @@ export default function RootLayout({ children }) {
       <body className="min-h-screen font-sans">
         <AuthProvider>
           {children}
+          <AlertsViewport />
         </AuthProvider>
       </body>
     </html>

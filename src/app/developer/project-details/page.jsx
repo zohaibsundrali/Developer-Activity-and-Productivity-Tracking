@@ -9,9 +9,6 @@ import { can } from '@/utils/permissions';
 import { taskPlanPayload, requireTaskMutation, persistedPlanTaskId } from '@/utils/developerPlanMutations';
 import TaskCompletionModal from "@/components/developer/TaskCompletionModal";
 import { GanttChartSquare } from "lucide-react";
-// The only sanctioned source of concrete colour values — SweetAlert styles its
-// buttons through inline colour, so it cannot read the CSS tokens.
-import { PRIMARY, SEMANTIC } from "@/components/charts/chartTheme";
 import { Button, EmptyState, ErrorState, Field, Modal, Skeleton } from "@/components/ui";
 
 // Gantt bar colours, on tokens. Status is also spelled out in the legend and
@@ -23,8 +20,7 @@ const GANTT_BAR_CLASS = {
   rejected: "bg-destructive",
   pending: "bg-muted-foreground",
 };
-import { showError, showInfo, showWarning } from "@/utils/alerts";
-import Swal from 'sweetalert2';
+import { showConfirm, showError, showInfo, showWarning } from "@/utils/alerts";
 import { isSessionExpired, clearDeveloperSession } from '@/utils/sessionPolicy';
 // Scheme check for anything this page is about to hand to fetch(), an anchor's
 // href or window.open. See the download handler for what went wrong without it.
@@ -382,18 +378,11 @@ function ProjectDetailsContent() {
         `Developer: ${developerName}\nProject: ${project.name}\nTotal Tasks: ${tasks.length}\n\n` +
         `This action cannot be undone.`;
       
-      const confirmResult = await Swal.fire({
-        title: "Confirm Submission",
-        text: confirmText,
-        icon: "warning",
-        showCancelButton: true,
+      const confirmResult = await showConfirm("Confirm Submission", confirmText, {
         confirmButtonText: "Yes, submit tasks",
-        cancelButtonText: "Cancel",
-        confirmButtonColor: PRIMARY,
-        cancelButtonColor: SEMANTIC.muted
       });
-      
-      if (!confirmResult.isConfirmed) {
+
+      if (!confirmResult) {
         return;
       }
       
@@ -914,18 +903,12 @@ function ProjectDetailsContent() {
   const handleDeleteTask = async (taskId) => {
     if (!canEditTasks) return;
     
-    const confirmResult = await Swal.fire({
-      title: "Delete Task?",
-      text: "Are you sure you want to delete this task?",
-      icon: "warning",
-      showCancelButton: true,
+    const confirmResult = await showConfirm("Delete Task?", "Are you sure you want to delete this task?", {
       confirmButtonText: "Yes, delete it",
-      cancelButtonText: "Cancel",
-      confirmButtonColor: SEMANTIC.danger,
-      cancelButtonColor: SEMANTIC.muted
+      destructive: true,
     });
 
-    if (confirmResult.isConfirmed) {
+    if (confirmResult) {
       const taskToRemove = tasks.find(task => task.id === taskId);
       const persistedId = persistedPlanTaskId(taskToRemove);
       if (persistedId) {
