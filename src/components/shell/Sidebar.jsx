@@ -156,18 +156,7 @@ export default function Sidebar({
             isRail && "justify-center px-0"
           )}
         >
-          {/* The mark is its own tile — no wrapper box. `text-sidebar-primary`
-              is the indigo lightened for dark ground, and the check is a true
-              knockout, with a white backing in dark mode.
-
-              This one deliberately does NOT move to the exact brand indigo.
-              It is a graphic drawn IN indigo on the navy ground rather than a
-              fill with text on top, so the contrast that matters is mark
-              against sidebar: #7670eb on #0d1a21 measures 4.46:1, while
-              #4840dd on the same navy is 2.57:1 — under the 3:1 that
-              non-text graphics need. The brand fill belongs on the selected
-              nav row, where white/near-black ink sits on top of it; the logo
-              stays on the lightened step. */}
+          {/* Favicon indigo tile with a white inner mark in dark mode. */}
           <LogoMark className="h-9 w-9 shrink-0 text-sidebar-primary" />
           {!isRail && (
             <div className="min-w-0">
@@ -241,12 +230,7 @@ export default function Sidebar({
                                 // not depend on colour perception alone.
                                 //
                                 // `bg-primary`, not `bg-sidebar-primary`: the
-                                // selected row is the one place in the rail that
-                                // carries the brand fill, and it must be the
-                                // exact brand indigo (#4840DD) rather than the
-                                // lightened step the navy-ground GRAPHICS use.
-                                // It is also the accessible choice — see the
-                                // measurements on the logo mark below.
+                                // Match the favicon fill with white selected text.
                                 "bg-primary font-semibold text-primary-foreground dark:text-white shadow-card"
                               : "font-medium text-sidebar-foreground dark:text-white hover:bg-sidebar-accent hover:text-sidebar-primary-foreground dark:hover:text-white"
                           )}
