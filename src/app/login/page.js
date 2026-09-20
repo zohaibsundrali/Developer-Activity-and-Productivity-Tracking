@@ -1,4 +1,5 @@
 "use client";
+import { platformOwnerHome } from "@/utils/platformOwnerHome";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/utils/supabaseClient";
@@ -89,6 +90,10 @@ export default function LoginPage() {
         throw new Error(authError.status >= 500 || authError.name === "AuthRetryableFetchError"
           ? "Sign-in is temporarily unavailable. Please try again."
           : "Invalid email or password.");
+      }
+      if (await platformOwnerHome()) {
+        router.push("/admin");
+        return;
       }
       if (role === "admin") {
         const response = await authFetch("/api/organizations", { cache: "no-store" });

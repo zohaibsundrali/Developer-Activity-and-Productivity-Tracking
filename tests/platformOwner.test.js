@@ -1,0 +1,32 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+const mocks=vi.hoisted(()=>({identity:vi.fn(),rpc:vi.fn(),from:vi.fn(),worker:vi.fn()}));
+vi.mock('@/utils/workspaceIdentity',()=>({workspaceIdentity:mocks.identity,isUuid:v=>typeof v==='string'&&/^[0-9a-f-]{36}$/.test(v)}));
+vi.mock('@/utils/organizationDeletion',()=>({processOrganizationDeletion:mocks.worker}));
+const access=await import('@/app/api/platform/access/route');
+const overview=await import('@/app/api/platform/overview/route');
+const list=await import('@/app/api/platform/organizations/route');
+const detail=await import('@/app/api/platform/organizations/[id]/route');
+const billing=await import('@/app/api/platform/billing/route');
+const UID='11111111-1111-4111-8111-111111111111',SID='22222222-2222-4222-8222-222222222222',ORG='33333333-3333-4333-8333-333333333333',ANCHOR='44444444-4444-4444-8444-444444444444';
+const context={params:Promise.resolve({id:ORG})};
+const request=(path='',body,method='GET')=>new Request(`http://localhost/api/platform/${path}`,{method,headers:{'content-type':'application/json'},...(body && method !== 'GET'?{body:JSON.stringify(body)}:{})});
+beforeEach(()=>{vi.clearAllMocks();mocks.identity.mockResolvedValue({svc:{rpc:mocks.rpc,from:mocks.from},user:{id:UID,email:'owner@example.test',app_metadata:{role:'owner'}},sessionId:SID});mocks.rpc.mockImplementation(name=>Promise.resolve({data:name==='platform_owner_access'?true:{},error:null}));});
+describe('platform owner authorization',()=>{
+ it.each([access.GET,overview.GET,list.GET,billing.GET])('refuses unauthenticated reads',async handler=>{mocks.identity.mockResolvedValue(null);expect((await handler(request())).status).toBe(401);expect(mocks.rpc).not.toHaveBeenCalled();});
+ it.each(['GET','DELETE','PATCH'])('refuses unauthenticated organization %s',async method=>{mocks.identity.mockResolvedValue(null);expect((await detail[method](request('',{},method),context)).status).toBe(401);expect(mocks.worker).not.toHaveBeenCalled();});
+ it('does not accept organization-owner metadata as platform authority',async()=>{mocks.rpc.mockResolvedValue({data:false});expect((await overview.GET(request())).status).toBe(403);expect(mocks.rpc).toHaveBeenCalledExactlyOnceWith('platform_owner_access',{p_auth:UID,p_session:SID});});
+ it('fails closed on registry/session query failure',async()=>{mocks.rpc.mockResolvedValue({error:{message:'secret internal error'}});const response=await access.GET(request());expect(response.status).toBe(503);expect(JSON.stringify(await response.json())).not.toContain('secret internal');});
+ it('does not cache the platform capability response',async()=>{const response=await access.GET(request());expect(response.headers.get('cache-control')).toBe('no-store');expect(await response.json()).toMatchObject({platformOwner:true});});
+ it('passes only the verified actor and live session to aggregate RPCs',async()=>{await overview.GET(request('?p_auth=forged'));expect(mocks.rpc).toHaveBeenLastCalledWith('platform_overview',{p_auth:UID,p_session:SID});});
+ it('rejects permission revocation between the API guard and RPC',async()=>{mocks.rpc.mockImplementation(name=>Promise.resolve(name==='platform_owner_access'?{data:true}:{error:{code:'42501'}}));expect((await overview.GET(request())).status).toBe(403);});
+});
+describe('organization management',()=>{
+ it.each(['0','-1','1.5','NaN','100001'])('rejects invalid page %s',async page=>expect((await list.GET(request(`?page=${page}`))).status).toBe(400));
+ it('bounds literal search input',async()=>{await list.GET(request(`?q=${'x'.repeat(120)}&page=2`));expect(mocks.rpc).toHaveBeenLastCalledWith('platform_organizations',{p_auth:UID,p_session:SID,p_search:'x'.repeat(100),p_page:2});});
+ it('does not queue malformed deletion requests',async()=>{expect((await detail.DELETE(request('',{confirmName:'Org',reason:'short'},'DELETE'),context)).status).toBe(400);expect(mocks.rpc).toHaveBeenCalledTimes(1);});
+ it('queues deletion with the real owner and never processes it before returning the receipt',async()=>{const response=await detail.DELETE(request('',{confirmName:'Org',reason:'Remove test workspace',p_auth:'forged',p_org:ANCHOR},'DELETE'),context);expect(response.status).toBe(202);expect(mocks.rpc).toHaveBeenLastCalledWith('platform_start_deletion',expect.objectContaining({p_auth:UID,p_session:SID,p_org:ORG,p_name:'Org',p_reason:'Remove test workspace',p_receipt_hash:expect.stringMatching(/^[a-f0-9]{64}$/)}));expect(mocks.worker).not.toHaveBeenCalled();});
+ it('retains shared-account anchor protection',async()=>{mocks.rpc.mockImplementation(name=>Promise.resolve(name==='platform_owner_access'?{data:true}:{error:{code:'23503',message:'SHARED_BILLING_ACCOUNT: private detail'}}));expect((await detail.DELETE(request('',{confirmName:'Org',reason:'Remove test workspace'},'DELETE'),context)).status).toBe(409);});
+ it('requires an existing job before dispatching retries',async()=>{mocks.rpc.mockImplementation(name=>Promise.resolve({data:name==='platform_owner_access'}));expect((await detail.PATCH(request('',{},'PATCH'),context)).status).toBe(404);expect(mocks.worker).not.toHaveBeenCalled();});
+ it('dispatches only the validated organization for a retry',async()=>{mocks.rpc.mockResolvedValue({data:true});expect((await detail.PATCH(request('',{},'PATCH'),context)).status).toBe(200);expect(mocks.worker).toHaveBeenCalledWith(expect.anything(),{orgId:ORG,retry:true});});
+ it('loads invoice pages from the effective billing account',async()=>{mocks.rpc.mockImplementation(name=>Promise.resolve({data:name==='platform_owner_access'?true:{billingOrganizationId:ANCHOR}}));const builder={select:vi.fn().mockReturnThis(),eq:vi.fn().mockReturnThis(),order:vi.fn().mockReturnThis(),range:vi.fn().mockResolvedValue({data:[],count:0})};mocks.from.mockReturnValue(builder);const response=await detail.GET(request('?tab=invoices&page=2'),context);expect(response.status).toBe(200);expect(builder.eq).toHaveBeenCalledWith('organization_id',ANCHOR);expect(builder.range).toHaveBeenCalledWith(20,39);});
+});
