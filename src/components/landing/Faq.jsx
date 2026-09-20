@@ -13,6 +13,7 @@
  * animations, and this page does not do those.
  */
 
+import { useEffect, useRef } from "react";
 import { ChevronDown } from "lucide-react";
 
 import { Container, Reveal, SectionHeading, stagger } from "@/components/landing/primitives";
@@ -30,6 +31,16 @@ function questionList() {
 }
 
 export default function Faq() {
+  const listRef = useRef(null);
+  useEffect(() => {
+    function closeOutside(event) {
+      listRef.current?.querySelectorAll('details[open]').forEach(detail => {
+        if (!detail.contains(event.target)) detail.open = false;
+      });
+    }
+    document.addEventListener('click', closeOutside);
+    return () => document.removeEventListener('click', closeOutside);
+  }, []);
   const questions = questionList();
   const { eyebrow, title, description } = heading(faq);
 
@@ -51,10 +62,10 @@ export default function Faq() {
         />
 
         <div className="mx-auto mt-14 max-w-3xl sm:mt-16">
-          <ul className="space-y-3">
+          <ul ref={listRef} className="space-y-3">
             {questions.map((entry, index) => (
               <Reveal as="li" key={entry.question} delay={stagger(index)}>
-                <details className="group rounded-2xl border border-border bg-card px-5 shadow-card transition-colors duration-300 ease-out open:border-primary/20 sm:px-6">
+                <details name="landing-faq" className="group rounded-2xl border border-border bg-card px-5 shadow-card transition-colors duration-300 ease-out open:border-primary/20 sm:px-6">
                   <summary
                     className="flex cursor-pointer list-none items-start justify-between gap-4 py-5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background [&::-webkit-details-marker]:hidden"
                   >

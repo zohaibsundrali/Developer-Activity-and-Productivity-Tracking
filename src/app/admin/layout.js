@@ -9,7 +9,7 @@ import BillingGate from "@/components/billing/BillingGate";
  */
 export default function AdminLayout({ children }) {
   return (
-    <div className="min-h-screen overflow-x-hidden font-sans">
+    <div className="min-h-screen overflow-x-clip font-sans">
       <BillingGate>{children}</BillingGate>
     </div>
   );

@@ -48,11 +48,11 @@ export function BrandLockup({ className = "" }) {
   );
 }
 
-export default function AuthShell({ children, highlights = DEFAULT_HIGHLIGHTS, panelTitle, wide = false }) {
+export default function AuthShell({ children, highlights = DEFAULT_HIGHLIGHTS, panelTitle, wide = false, fixedPanel = false }) {
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground lg:flex-row">
       {/* Brand column — decorative context, hidden where space is scarce */}
-      <aside className="relative hidden overflow-hidden border-r border-border bg-muted/30 lg:flex lg:w-[42%] lg:max-w-xl lg:flex-col lg:justify-between lg:p-12 xl:p-16">
+      <aside className={`${fixedPanel ? "lg:sticky lg:top-0 lg:h-dvh lg:shrink-0 lg:self-start lg:p-8 xl:p-12" : "lg:p-12 xl:p-16"} relative hidden overflow-hidden border-r border-border bg-muted/30 lg:flex lg:w-[42%] lg:max-w-xl lg:flex-col lg:justify-between`}>
         {/* The animated backdrop that used to sit here was removed at the
             owner's request. The pane keeps its flat `bg-muted/30` ground: the
             brand column is context, and a login screen someone visits every
@@ -61,7 +61,7 @@ export default function AuthShell({ children, highlights = DEFAULT_HIGHLIGHTS, p
           <BrandLockup />
         </div>
 
-        <div className="relative z-10 space-y-10 py-12">
+        <div className={`relative z-10 ${fixedPanel ? "space-y-8 py-6" : "space-y-10 py-12"}`}>
           <h2
             className="auth-enter max-w-sm text-3xl font-semibold leading-[1.15] tracking-tight text-foreground xl:text-4xl"
             style={enterDelay(60)}
@@ -90,7 +90,7 @@ export default function AuthShell({ children, highlights = DEFAULT_HIGHLIGHTS, p
           </ul>
         </div>
 
-        <p className="auth-enter relative z-10 text-xs text-muted-foreground" style={enterDelay(300)}>
+        <p className="auth-enter relative z-10 text-xs text-black dark:text-white" style={enterDelay(300)}>
           &copy; 2026 {BRAND_NAME}. Activity &amp; productivity tracking.
         </p>
       </aside>

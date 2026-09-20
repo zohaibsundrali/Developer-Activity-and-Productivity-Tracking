@@ -1,25 +1,39 @@
 'use client';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/utils/supabaseClient';
 import { authFetch } from '@/utils/authFetch';
+import { Loader2 } from 'lucide-react';
 
-export default function HomeAuthRedirect() {
+export default function HomeAuthRedirect({ children }) {
   const router = useRouter();
+  const [pending, setPending] = useState(true);
   useEffect(() => {
     let active = true;
     async function check() {
+      let redirecting = false;
       try {
         const { data } = await supabase.auth.getSession();
         if (!active || !data?.session) return;
         const response = await authFetch('/api/organizations', { cache: 'no-store' });
         const result = await response.json();
         // Server-authorized memberships, never a cached browser role/cookie.
-        if (active && response.ok && (result.ownerAccount || result.organizations?.some(org => ['owner', 'admin'].includes(org.role)))) router.replace('/organizations');
+        if (active && response.ok && (result.ownerAccount || result.organizations?.some(org => ['owner', 'admin'].includes(org.role)))) {
+          redirecting = true;
+          router.replace('/organizations');
+        }
       } catch { /* Preserve the public page when authentication is unavailable. */ }
+      finally { if (active && !redirecting) setPending(false); }
     }
     check();
     return () => { active = false; };
   }, [router]);
-  return null;
+  return <>
+    {pending && <div role="status" aria-live="polite" aria-busy="true" className="flex min-h-[100dvh] flex-col items-center justify-center gap-5 bg-background text-foreground">
+      <span className="font-display text-3xl font-bold tracking-tight">Verisade</span>
+      <Loader2 className="h-9 w-9 animate-spin text-primary motion-reduce:animate-none" aria-hidden="true" />
+      <span className="sr-only">Checking your session…</span>
+    </div>}
+    <div hidden={pending}>{children}</div>
+  </>;
 }

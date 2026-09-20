@@ -186,14 +186,8 @@ export default function Monitoring() {
 
         {honesty ? (
           <Reveal delay={stagger(1)}>
-            {/*
-              The banner stays the full width of the grid above it — it is the
-              caveat on that grid, and pulling it in would orphan it. The
-              sentence inside does not: on the 1400px measure an uncapped
-              paragraph here ran to 1352px, which is not a line anyone reads.
-            */}
             <div className="mt-6 rounded-2xl border border-warning/30 bg-warning/10 p-6 sm:p-7">
-              <p className="max-w-3xl text-sm leading-relaxed text-foreground sm:text-base">
+              <p className="w-full text-sm leading-relaxed text-foreground sm:text-base">
                 {honesty}
               </p>
             </div>
