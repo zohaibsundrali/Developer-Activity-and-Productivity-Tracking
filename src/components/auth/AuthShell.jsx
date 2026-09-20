@@ -42,15 +42,15 @@ const DEFAULT_HIGHLIGHTS = [
 export function BrandLockup({ className = "" }) {
   return (
     <span className={`inline-flex items-center gap-2.5 ${className}`}>
-      <LogoMark className="h-9 w-9 shrink-0 text-primary" />
+      <LogoMark className="h-9 w-9 shrink-0 rounded-[25%] text-primary dark:bg-white" />
       <span className="font-display text-base font-bold tracking-[-0.015em] text-foreground">{BRAND_NAME}</span>
     </span>
   );
 }
 
-export default function AuthShell({ children, highlights = DEFAULT_HIGHLIGHTS, panelTitle, wide = false, fixedPanel = false }) {
+export default function AuthShell({ children, highlights = DEFAULT_HIGHLIGHTS, panelTitle, wide = false, fixedPanel = false, viewport = false }) {
   return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground lg:flex-row">
+    <div className={`${viewport ? "auth-login-shell h-dvh overflow-hidden" : "min-h-screen"} flex flex-col bg-background text-foreground lg:flex-row`}>
       {/* Brand column — decorative context, hidden where space is scarce */}
       <aside className={`${fixedPanel ? "lg:sticky lg:top-0 lg:h-dvh lg:shrink-0 lg:self-start lg:p-8 xl:p-12" : "lg:p-12 xl:p-16"} relative hidden overflow-hidden border-r border-border bg-muted/30 lg:flex lg:w-[42%] lg:max-w-xl lg:flex-col lg:justify-between`}>
         {/* The animated backdrop that used to sit here was removed at the
@@ -80,8 +80,8 @@ export default function AuthShell({ children, highlights = DEFAULT_HIGHLIGHTS, p
                   <Icon className="h-4 w-4" aria-hidden="true" />
                 </span>
                 <span className="space-y-1">
-                  <span className="block text-sm font-medium text-foreground">{title}</span>
-                  <span className="block max-w-xs text-sm leading-relaxed text-muted-foreground">
+                  <span className="block text-sm font-medium text-foreground dark:text-white">{title}</span>
+                  <span className="block max-w-xs text-sm leading-relaxed text-muted-foreground dark:text-white">
                     {description}
                   </span>
                 </span>
@@ -96,7 +96,7 @@ export default function AuthShell({ children, highlights = DEFAULT_HIGHLIGHTS, p
       </aside>
 
       {/* Form column */}
-      <main className="flex flex-1 flex-col">
+      <main className={`flex flex-1 flex-col ${viewport ? "min-h-0 overflow-y-auto" : ""}`}>
         <div className="flex flex-1 items-start justify-center px-4 py-8 sm:px-6 sm:py-12 lg:items-center lg:px-8">
           <div className={`w-full ${wide ? "max-w-3xl" : "max-w-md"}`}>{children}</div>
         </div>

@@ -9,6 +9,7 @@ import { loadOrgContext, isMembershipActive } from "@/utils/orgContext";
 import { loadPermissionSet } from "@/utils/permissions";
 import { authFetch } from "@/utils/authFetch";
 import { dashboardHomeFor } from "@/utils/dashboardHome";
+import { loginAccountType } from "@/utils/loginAccountType";
 import { loadLoginProfile } from "@/utils/loginProfile";
 
 import { ArrowLeft, CheckCircle2 } from "lucide-react";
@@ -20,7 +21,6 @@ import {
   AuthError,
   AuthHeading,
   PasswordInput,
-  SegmentedControl,
   SubmitButton,
 } from "@/components/auth/AuthParts";
 
@@ -45,7 +45,6 @@ import {
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("developer");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -95,6 +94,7 @@ export default function LoginPage() {
         router.push("/admin");
         return;
       }
+      const role = loginAccountType(authData?.user);
       if (role === "admin") {
         const response = await authFetch("/api/organizations", { cache: "no-store" });
         const result = await response.json();
@@ -211,9 +211,9 @@ export default function LoginPage() {
   };
 
   return (
-    <AuthShell panelTitle="Sign in to the workspace your team already works in.">
+    <AuthShell viewport panelTitle="Sign in to the workspace your team already works in.">
       <div
-        className="auth-enter mb-8 flex items-center justify-between gap-4"
+        className="auth-enter mb-5 flex items-center justify-between gap-4"
         style={enterDelay(40)}
       >
         <BrandLockup className="lg:invisible" />
@@ -222,7 +222,7 @@ export default function LoginPage() {
           variant="ghost"
           size="sm"
           onClick={handleGoToHome}
-          className="h-9 gap-1.5 px-2.5 text-muted-foreground hover:text-foreground"
+          className="h-9 gap-1.5 px-2.5 text-muted-foreground hover:text-foreground dark:text-white dark:hover:text-white"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           Back to home
@@ -254,24 +254,6 @@ export default function LoginPage() {
             </p>
           </div>
         )}
-
-        <div className="mt-7 space-y-2">
-          <p className="text-sm font-medium text-foreground">I&apos;m signing in as</p>
-          <SegmentedControl
-            label="Account type"
-            value={role}
-            onChange={setRole}
-            options={[
-              {
-                value: "developer",
-                label: "Team Member",
-                title: "Developers, Managers and Employees sign in here",
-              },
-              { value: "admin", label: "Admin" },
-              { value: "client", label: "Client" },
-            ]}
-          />
-        </div>
 
         <form onSubmit={handleLogin} className="mt-6 space-y-5">
           <Field label="Email address" htmlFor="login-email" required>
@@ -324,8 +306,9 @@ export default function LoginPage() {
             loadingLabel="Signing in…"
             status={error ? "error" : "idle"}
             disabled={loading}
+            className="text-white dark:text-white"
           >
-            {`Sign in as ${role === "developer" ? "Team Member" : role.charAt(0).toUpperCase() + role.slice(1)}`}
+            Sign in
           </SubmitButton>
         </form>
 

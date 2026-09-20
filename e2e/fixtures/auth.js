@@ -19,13 +19,11 @@ export async function login(page, credentials) {
 
   await page.goto('/login');
 
-  // Pick the portal tab (Team Member / Admin / Client).
-  await page.getByRole('button', { name: credentials.tab, exact: true }).click();
-
+  // The verified account determines its portal automatically.
   await page.getByPlaceholder('you@example.com').fill(credentials.email);
   await page.getByPlaceholder('Enter your password').fill(credentials.password);
 
-  await page.getByRole('button', { name: /^Sign in as/ }).click();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
   try {
     if (credentials.tab === 'Admin') {

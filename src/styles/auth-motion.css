@@ -479,3 +479,17 @@
     transition: none !important;
   }
 }
+
+/* Login fills the viewport; short screens scroll the form without clipping it. */
+.auth-login-shell main > div { padding-top: 1.25rem; padding-bottom: 1.25rem; }
+@media (min-width: 1024px) {
+  .auth-login-shell aside { padding: 2rem; }
+  .auth-login-shell aside > div:nth-child(2) { padding-block: 1rem; }
+}
+@media (min-width: 1024px) and (max-height: 700px) {
+  .auth-login-shell aside { padding: 1.5rem; }
+  .auth-login-shell aside h2 { font-size: 1.75rem; }
+  .auth-login-shell aside ul { margin-top: 1.25rem; }
+  .auth-login-shell aside li + li { margin-top: 1rem; }
+  .auth-login-shell .auth-card { padding: 1.5rem; }
+}
