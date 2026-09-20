@@ -1,3 +1,4 @@
+import { workspaceTokenClaims, sameWorkspace } from "@/utils/workspaceClaims";
 import { createClient } from "@supabase/supabase-js";
 import { recordEvent } from "@/utils/systemEvents";
 import { isRole, PROFILE_TABLE } from "@/utils/roles";
@@ -58,7 +59,18 @@ export async function getAuthedOrg(request, { allowDeletion = false } = {}) {
 
   if (data.user.deleted_at || (data.user.banned_until && Date.parse(data.user.banned_until) > Date.now())) return null;
 
-  const meta = data.user.app_metadata || {};
+  let meta = data.user.app_metadata || {};
+  // getUser verifies this exact token, but returns global user metadata. The
+  // access-token hook issues session-specific workspace claims instead.
+  const claims = workspaceTokenClaims(token);
+  if (claims?.session_id) {
+    if (claims.sub !== data.user.id) return null;
+    try {
+      const context = await admin.rpc("workspace_context", { p_auth: data.user.id, p_session: claims.session_id, p_allow_deletion: allowDeletion });
+      if (context.error || !sameWorkspace(context.data, claims.app_metadata)) return null;
+      meta = context.data;
+    } catch { return null; }
+  }
   const orgId = meta.organization_id || null;
   if (!orgId) {
     // CLAIM DRIFT, detected at the point of failure (see

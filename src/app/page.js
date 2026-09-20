@@ -24,6 +24,7 @@
  * content edit can never leave an anchor pointing at nothing.
  */
 
+import HomeAuthRedirect from "@/components/auth/HomeAuthRedirect";
 import SiteNav from "@/components/landing/SiteNav";
 import Hero from "@/components/landing/Hero";
 import TrustStrip from "@/components/landing/TrustStrip";
@@ -109,6 +110,7 @@ export default function LandingPage() {
         Skip to content
       </a>
 
+      <HomeAuthRedirect />
       <SiteNav sections={sections} />
 
       <main id="main">

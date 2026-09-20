@@ -16,6 +16,7 @@ import {
 import { clearBrowserAuthentication, logoutAndRedirect } from '@/utils/browserLogout';
 import { supabase } from '@/utils/supabaseClient';
 import { observeTerminalAuthLoss } from '@/utils/terminalAuthLoss';
+import { observeWorkspaceSession } from '@/utils/workspaceSessionObserver';
 import { dashboardHomeFor } from '@/utils/dashboardHome';
 
 // Storage keys
@@ -191,6 +192,16 @@ export function AuthProvider({ children }) {
     // page. Destroying the document is what makes "log out" mean it.
     window.location.href = '/';
   }, []);
+
+  useEffect(() => observeWorkspaceSession(supabase.auth, () => {
+    const current = getStoredAdminSession() || getStoredDeveloperSession() || getStoredClientSession();
+    return current ? { organization_id: current.organization_id, app_user_id: current.id,
+      user_type: current.role, role: current.membership_role } : null;
+  }, () => {
+    clearApplicationSessions();
+    // A hard navigation discards old workspace queries and component state.
+    window.location.replace('/organizations');
+  }), []);
 
   // Initial auth check and event listeners
   useEffect(() => {

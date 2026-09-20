@@ -561,3 +561,13 @@ describe('POST /api/admin/members/role', () => {
     expect(calls.claimUpdates).toEqual([]);
   });
 });
+
+
+it('does not overwrite the primary workspace role when editing a secondary membership', async () => {
+  const { res, calls } = await post({ auth: actor('owner'), membership: member('developer'),
+    claims: { organization_id: 'another-org', app_user_id: 'another-profile', user_type: 'admin', role: 'owner' },
+    body: { membershipId: 'mem-1', role: 'manager' } });
+  expect(res.status).toBe(200);
+  expect(calls.claimUpdates).toEqual([]);
+  expect(calls.rowUpdates).toHaveLength(1);
+});

@@ -48,7 +48,7 @@ export function BrandLockup({ className = "" }) {
   );
 }
 
-export default function AuthShell({ children, highlights = DEFAULT_HIGHLIGHTS, panelTitle }) {
+export default function AuthShell({ children, highlights = DEFAULT_HIGHLIGHTS, panelTitle, wide = false }) {
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground lg:flex-row">
       {/* Brand column — decorative context, hidden where space is scarce */}
@@ -98,7 +98,7 @@ export default function AuthShell({ children, highlights = DEFAULT_HIGHLIGHTS, p
       {/* Form column */}
       <main className="flex flex-1 flex-col">
         <div className="flex flex-1 items-start justify-center px-4 py-8 sm:px-6 sm:py-12 lg:items-center lg:px-8">
-          <div className="w-full max-w-md">{children}</div>
+          <div className={`w-full ${wide ? "max-w-3xl" : "max-w-md"}`}>{children}</div>
         </div>
       </main>
     </div>

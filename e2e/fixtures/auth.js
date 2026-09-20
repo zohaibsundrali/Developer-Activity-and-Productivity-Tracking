@@ -28,6 +28,19 @@ export async function login(page, credentials) {
   await page.getByRole('button', { name: /^Sign in as/ }).click();
 
   try {
+    if (credentials.tab === 'Admin') {
+      await page.waitForURL(url => url.pathname === '/organizations' || url.pathname.startsWith(credentials.landing));
+      if (new URL(page.url()).pathname === '/organizations') {
+        const primaryOrg = await page.evaluate(() => {
+          const key = Object.keys(sessionStorage).find(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
+          return key ? JSON.parse(sessionStorage.getItem(key))?.user?.app_metadata?.organization_id : null;
+        });
+        const button = primaryOrg
+          ? page.locator(`button[data-organization-id="${primaryOrg}"]`).first()
+          : page.getByRole('button', { name: /^Open .* workspace$/ }).first();
+        await button.click();
+      }
+    }
     await page.waitForURL((url) => url.pathname.startsWith(credentials.landing), {
       timeout: 30_000,
     });

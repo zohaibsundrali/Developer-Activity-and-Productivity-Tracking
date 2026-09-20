@@ -26,6 +26,7 @@ import {
   SubmitButton,
 } from "@/components/auth/AuthParts";
 import { PlanChoice } from "@/components/billing/PlanChoice";
+import OrganizationSetup from "@/components/organizations/OrganizationSetup";
 import { FREE_PLAN_CODE } from "@/utils/billingAccess";
 
 /**
@@ -294,7 +295,21 @@ function TermsConsent({ id, checked, onChange, error, disabled }) {
   );
 }
 
-export default function AdminRegistration() {
+export default function RegistrationEntry() {
+  const [entry, setEntry] = useState('checking');
+  useEffect(() => {
+    let live = true;
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (live) setEntry(error ? 'error' : data?.session ? 'authenticated' : 'public');
+    }).catch(() => { if (live) setEntry('error'); });
+    return () => { live = false; };
+  }, []);
+  if (entry === 'authenticated') return <OrganizationSetup />;
+  if (entry === 'public') return <AdminRegistration />;
+  return <AuthShell><p role="status" className="text-sm text-muted-foreground">{entry === 'error' ? 'Your session could not be checked. Please reload to retry.' : 'Checking your session…'}</p></AuthShell>;
+}
+
+function AdminRegistration() {
   const [formData, setFormData] = useState({
     fullName: "",
     company: "",
@@ -969,7 +984,7 @@ export default function AdminRegistration() {
   const pwVal = validatePassword(formData.password);
 
   return (
-    <AuthShell panelTitle="Set up the workspace your team will actually use.">
+    <AuthShell wide={step === 3} panelTitle="Set up the workspace your team will actually use.">
       <div
         className="auth-enter mb-8 flex items-center justify-between gap-4"
         style={enterDelay(40)}
