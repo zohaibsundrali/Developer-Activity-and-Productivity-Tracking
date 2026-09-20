@@ -3,9 +3,8 @@ import { supabase } from "@/utils/supabaseClient";
 /**
  * Organization (multi-tenant) context helpers.
  *
- * Phase 1 uses APP-LAYER isolation: the logged-in session carries the user's
- * organization_id + role, and data queries filter by it. (DB-level RLS is a
- * later phase once auth moves to Supabase Auth.)
+ * Browser context scopes UI queries. Server authentication and database RLS
+ * independently enforce the selected Auth session's typed membership.
  */
 
 // Read the current org context from the logged-in session (client-side).
@@ -71,6 +70,7 @@ export async function loadOrgContext(userId, userType, fallbackOrgId = null) {
       .select("organization_id, role, status")
       .eq("user_id", userId)
       .eq("user_type", userType)
+      .eq("organization_id", fallbackOrgId)
       .maybeSingle();
 
     if (membership) {

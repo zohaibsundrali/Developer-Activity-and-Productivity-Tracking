@@ -65,7 +65,8 @@ The login screen has three tabs and each lands somewhere different. Defaults:
 
 | Role | Default portal | Lands on |
 | --- | --- | --- |
-| owner, hr, admin, org B owner | `admin` (Admin tab) | `/admin/dashboard` |
+| owner, admin, org B owner | `admin` (Admin tab) | `/organizations`, then the selected `/admin/dashboard` |
+| legacy HR in `admin_users` | `admin` (Admin tab) | `/admin/dashboard` |
 | manager, developer, employee, designer, devops | `team` (Team Member tab) | `/developer/dashboard` |
 | team_lead, finance, qa | `team-admin` (Team Member tab) | `/admin/dashboard` |
 | client | `client` (Client tab) | `/client` |

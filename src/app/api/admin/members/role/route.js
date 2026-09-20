@@ -134,6 +134,9 @@ export async function POST(request) {
         return { error: getError || new Error("Auth user not found") };
       }
       const existing = existingUser.user.app_metadata || {};
+      // A secondary workspace role must not rewrite the identity's primary
+      // workspace role. Selected-session tokens read this membership directly.
+      if (existing.organization_id && existing.organization_id !== auth.orgId) return { skipped: true };
       const { error } = await svc.auth.admin.updateUserById(authUserId, {
         app_metadata: { ...existing, role: newRole },
       });

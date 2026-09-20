@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Menu, ChevronDown, LogOut, Moon, Sun } from "lucide-react";
 
@@ -234,6 +235,7 @@ export default function Topbar({
                   <p className="mt-1 text-xs font-medium text-muted-foreground">{roleWord}</p>
                 )}
               </div>
+              <Link href="/organizations" role="menuitem" data-menu-item onClick={() => setMenuOpen(false)} className="flex min-h-11 items-center px-4 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">Organizations</Link>
               {onLogout && (
                 <button
                   type="button"

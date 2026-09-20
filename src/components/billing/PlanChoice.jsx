@@ -195,7 +195,7 @@ export function PlanChoice({ plans = [], value, onChange, disabled = false, load
   }
 
   return (
-    <div role="radiogroup" aria-label="Choose a plan" className="grid gap-3 sm:grid-cols-2">
+    <div role="radiogroup" aria-label="Choose a plan" className="grid items-stretch gap-5 sm:grid-cols-2">
       {plans.map((plan) => {
         const selected = value === plan.code;
         const free = Number(plan.amount_cents || 0) === 0;
@@ -205,9 +205,9 @@ export function PlanChoice({ plans = [], value, onChange, disabled = false, load
           <label
             key={plan.code}
             className={cn(
-              "relative flex cursor-pointer flex-col rounded-xl border p-4 transition-colors duration-150",
+              "relative flex cursor-pointer flex-col rounded-2xl border bg-card p-6 shadow-card transition-colors duration-150 focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background",
               selected
-                ? "border-primary bg-primary/5 ring-2 ring-primary/30"
+                ? "border-primary shadow-elevated ring-1 ring-primary"
                 : "border-border bg-card hover:border-primary/40",
               disabled && "cursor-not-allowed opacity-60"
             )}
@@ -222,29 +222,30 @@ export function PlanChoice({ plans = [], value, onChange, disabled = false, load
               className="sr-only"
             />
 
-            <span className="flex items-baseline justify-between gap-2">
-              <span className="font-semibold text-foreground">{plan.name}</span>
-              <span className="text-sm font-medium text-foreground">
+            <span aria-hidden="true" className={cn("absolute right-5 top-6 flex h-5 w-5 items-center justify-center rounded-full border", selected ? "border-primary bg-primary text-primary-foreground" : "border-border")}>{selected && <Check className="h-3 w-3" />}</span>
+            <span className="flex flex-col items-start gap-5">
+              <span className="font-display text-lg font-semibold tracking-tight text-foreground">{plan.name}</span>
+              <span className="font-display text-4xl font-semibold tracking-[-0.03em] text-foreground">
                 {free ? "Free" : (
                   <>
                     {formatPrice(plan.amount_cents, plan.currency)}
-                    <span className="text-muted-foreground">/{plan.billing_interval || "month"}</span>
+                    <span className="ml-1 font-sans text-sm font-normal tracking-normal text-muted-foreground">/{plan.billing_interval || "month"}</span>
                   </>
                 )}
               </span>
             </span>
 
             {plan.description && (
-              <span className="mt-1 text-sm text-muted-foreground">{plan.description}</span>
+              <span className="mt-3 text-sm leading-relaxed text-muted-foreground">{plan.description}</span>
             )}
 
-            <span className="mt-3 space-y-1">
+            <span className="mt-6 flex-1 space-y-3 border-t border-border pt-5">
               {HEADLINE_LIMITS.map(([key, label]) => {
                 const line = limitLine(plan.limits, key, label);
                 if (!line) return null;
                 return (
-                  <span key={key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Check className="h-3.5 w-3.5 shrink-0 text-success" aria-hidden="true" />
+                  <span key={key} className="flex items-center gap-2.5 text-sm text-foreground">
+                    <Check className="h-4 w-4 shrink-0 text-success" aria-hidden="true" />
                     {line}
                   </span>
                 );
