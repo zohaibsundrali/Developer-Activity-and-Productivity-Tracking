@@ -98,6 +98,9 @@ export async function getAuthedOrg(request, { allowDeletion = false } = {}) {
     return null;
   }
 
+  const organizationState = await admin.from('organizations').select('status').eq('id', orgId).maybeSingle();
+  if (organizationState.error || organizationState.data?.status !== 'active') return null;
+
   // Membership is the current authority. Missing rows, query failures and
   // pending invitations must never retain privileges from an old Auth claim.
   const appUserId = meta.app_user_id || null;
