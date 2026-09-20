@@ -67,7 +67,7 @@ function likeMatch(value, pattern) {
 
 function makeDb({ memberships = [], adminUsers = [], developers = [], clients = [], authUsers = [], failUpdate = false, failTable = null } = {}) {
   const scopedProfiles = rows => rows.map(row => ({ organization_id: ORG, ...row }));
-  const tables = { memberships, admin_users: scopedProfiles(adminUsers), developers: scopedProfiles(developers), clients: scopedProfiles(clients) };
+  const tables = { organizations: [{id:ORG,status:'active'},{id:OTHER_ORG,status:'active'}], memberships, admin_users: scopedProfiles(adminUsers), developers: scopedProfiles(developers), clients: scopedProfiles(clients) };
   const updates = [];
 
   const builder = (table) => {

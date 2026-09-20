@@ -56,8 +56,11 @@ function sourceFiles(dir, out = []) {
   return out;
 }
 
-/** Everything in src/ except the catalogue itself, concatenated once. */
+/** Tenant authorization only. Platform permissions use a separate private
+ * Auth-ID registry; identically named platform keys do not exercise tenant
+ * membership overrides or the tenant permission catalogue. */
 const HAYSTACK = sourceFiles(path.join(root, "src"))
+  .filter(f => !f.includes(`${path.sep}platform${path.sep}`) && !path.basename(f).startsWith('platform'))
   .map((f) => readFileSync(f, "utf8"))
   .join("\n");
 
@@ -82,7 +85,7 @@ const ENFORCED_BY_RLS = {
 };
 
 const NO_FEATURE_YET = {
-  "project.delete": "nothing in src/ deletes a project; the screens archive and close instead",
+  "project.delete": "tenant screens archive and close; platform project deletion uses a separate platform capability",
   "project.close": "closure runs through /api/projects/[id]/closure, which asks project.complete",
 };
 

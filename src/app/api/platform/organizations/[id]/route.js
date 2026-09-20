@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { requirePlatformOwner, platformJson, platformPage } from '@/utils/platformOwner';
+import { requirePlatformOwner, requirePlatformPermission, platformJson, platformPage } from '@/utils/platformOwner';
 import { isUuid } from '@/utils/workspaceIdentity';
 import { processOrganizationDeletion } from '@/utils/organizationDeletion';
 export const dynamic = 'force-dynamic';
@@ -8,8 +8,8 @@ const lists = {
   members: { table: 'memberships', columns: 'id,email,role,user_type,status,created_at' },
   invoices: { table: 'billing_invoices', columns: 'id,status,currency,amount_paid_cents,amount_due_cents,issued_at,created_at' },
 };
-async function accessFor(request, context) {
-  const access = await requirePlatformOwner(request);
+async function accessFor(request, context, permission) {
+  const access = permission ? await requirePlatformPermission(request, permission) : await requirePlatformOwner(request);
   if (access.error) return access;
   const { id } = await context.params;
   if (!isUuid(id)) return { error: platformJson({ error: 'Invalid organization.' }, 400) };
@@ -17,13 +17,18 @@ async function accessFor(request, context) {
 }
 export async function GET(request, context) {
   try {
-    const access = await accessFor(request, context); if (access.error) return access.error;
+    const access = await accessFor(request, context, 'organizations.read'); if (access.error) return access.error;
     const search = new URL(request.url).searchParams;
     const detail = await access.svc.rpc('platform_organization_detail', { ...access.args, p_org: access.id });
     if (detail.error) return platformJson({ error: 'Organization details unavailable.' }, detail.error.code === '42501' ? 403 : 503);
     if (!detail.data) return platformJson({ error: 'Organization not found.' }, 404);
     const tab = search.get('tab');
+    if (access.capabilities && !access.capabilities.permissions.includes('billing.read')) {
+      delete detail.data.subscription;
+      if (tab === 'invoices') return platformJson({ error: 'Billing permission required.' }, 403);
+    }
     if (!tab) return platformJson(detail.data);
+    if (['members','projects'].includes(tab) && !access.capabilities?.permissions.includes(tab === 'members' ? 'members.manage' : 'projects.read')) return platformJson({ error: 'Your platform role cannot inspect these records.' }, 403);
     const list = lists[tab], page = platformPage(search);
     if (!list || !page) return platformJson({ error: 'Invalid list or page.' }, 400);
     const result = await access.svc.from(list.table).select(list.columns, { count: 'exact' })

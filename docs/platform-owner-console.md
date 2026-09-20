@@ -2,6 +2,8 @@
 
 `/admin` is the platform console. `/admin/dashboard` remains the organization dashboard. The shell inherits Inter, Space Grotesk and the site's light/dark palette. Confirmed platform owners are directed here after login and when returning to `/`.
 
+The extended administration controls, delegated roles, MFA, exports and billing actions are documented in [Platform administration suite](platform-admin-suite.md). Apply its combined SQL upgrade before deploying the new application build. The sections below describe the original console foundation.
+
 ## Access and deployment
 
 Apply `20260920105039_platform_owner_console.sql` after the authenticated-workspaces and organization-deletion lifecycle migrations. The shared-account billing migration is optional; when present, detail and invoice views resolve the original billing organization.
@@ -20,7 +22,7 @@ Organization search is literal, bounded and paginated. Organization details incl
 
 Deleting an organization requires its exact name and a reason. The backend queues the existing leased cleanup lifecycle; it does not directly delete database, Auth or Storage rows. Audit history retains the real platform actor. The worker handles billing cancellation, storage, exclusive Auth identities and database cleanup. Shared-account anchor restrictions and ambiguous-storage checks remain in force. Platform-owner Auth identities are retained. Activity shows up to 100 pending jobs with their total and paginates the audit log; cron or Run cleanup step advances a job.
 
-Deletion does not reset the entire database. Individual people/project deletion and arbitrary billing plan/payment changes are not exposed by this platform console.
+Deletion does not reset the entire database. The administration suite adds individual project lifecycle controls, member access management and provider-scoped billing operations. It does not expose a full database reset.
 
 ## Verification
 

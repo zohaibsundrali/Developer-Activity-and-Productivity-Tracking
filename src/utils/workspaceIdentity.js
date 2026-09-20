@@ -13,6 +13,10 @@ export async function workspaceIdentity(request) {
       (user.banned_until && Date.parse(user.banned_until) > Date.now())) return null;
   const claims = workspaceTokenClaims(token);
   if (claims?.sub !== user.id || !isUuid(claims?.session_id)) return null;
+  try {
+    const session = await svc.rpc('platform_session_active', { p_auth: user.id, p_session: claims.session_id });
+    if (session.error || session.data !== true) return null;
+  } catch { return null; }
   return { svc, user, sessionId: claims.session_id, claims };
 }
 export function isUuid(value) {

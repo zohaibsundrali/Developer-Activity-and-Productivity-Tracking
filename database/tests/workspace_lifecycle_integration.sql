@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 \ir automation_retention_deletion_integration.sql
-create role supabase_auth_admin;
+do $$ begin if not exists(select 1 from pg_roles where rolname='supabase_auth_admin') then create role supabase_auth_admin; end if; end $$;
 create table auth.sessions(id uuid primary key,user_id uuid references auth.users(id));
 alter table auth.users add column email text,add column email_confirmed_at timestamptz;
 alter table admin_users add primary key(id),add column email text,add column full_name text,add column company text,add column role text,add column is_verified boolean;

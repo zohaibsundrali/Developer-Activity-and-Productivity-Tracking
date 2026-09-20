@@ -15,10 +15,10 @@ const request = (context = selected, subject = uid) => {
 beforeEach(() => {
   mocks.client = {
     auth: { getUser: vi.fn(async () => ({ data: { user: { id: uid, app_metadata: primary } } })) },
-    rpc: vi.fn(async () => ({ data: selected })),
+    rpc: vi.fn(async name => ({ data: name === 'platform_session_active' ? true : selected })),
     from: vi.fn(table => {
       const q = { select: () => q, eq: () => q, maybeSingle: async () => ({ data: table === 'memberships'
-        ? { status: 'active', role: 'owner', deletion_blocked: false } : { auth_user_id: uid } }) };
+        ? { status: 'active', role: 'owner', deletion_blocked: false } : table === 'organizations' ? { status: 'active' } : { auth_user_id: uid } }) };
       return q;
     }),
   };
@@ -55,4 +55,16 @@ it('does not authenticate malformed or anonymous chooser identities', async () =
   expect(await workspaceIdentity(new Request('http://localhost'))).toBeNull();
   mocks.client.auth.getUser.mockResolvedValue({ data: { user: { id: uid, is_anonymous: true } } });
   expect(await workspaceIdentity(request())).toBeNull();
+});
+
+it('rejects a suspended organization even with valid membership and JWT', async () => {
+  const original = mocks.client.from;
+  mocks.client.from = table => table === 'organizations' ? { select(){return this;},eq(){return this;},maybeSingle:async()=>({data:{status:'suspended'}}) } : original(table);
+  expect(await getAuthedOrg(request())).toBeNull();
+});
+
+it('rejects an application-revoked session before identity-only workspace actions', async () => {
+  mocks.client.rpc.mockResolvedValue({data:false});
+  expect(await workspaceIdentity(request())).toBeNull();
+  expect(mocks.client.rpc).toHaveBeenCalledWith('platform_session_active',{p_auth:uid,p_session:sid});
 });
