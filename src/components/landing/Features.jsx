@@ -103,7 +103,7 @@ export default function Features() {
                   CARD_LIFT,
                 ].join(" ")}
               >
-                <IconChip icon={card.icon} />
+                <IconChip icon={card.icon} className="self-center" />
 
                 <CardHeading
                   className={[

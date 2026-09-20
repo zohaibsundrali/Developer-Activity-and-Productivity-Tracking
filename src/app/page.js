@@ -4,8 +4,8 @@
  * A server component: the whole page — headline, features, pricing, FAQ — is in
  * the initial HTML. Only the pieces that genuinely need the client (the nav's
  * scroll state, the reveal observers, the 3D scene) carry `"use client"`, and
- * every one of them renders its finished state on the server first. Turn
- * JavaScript off and the page is complete, just still.
+ * the session gate shows a branded loader before revealing the public page
+ * or redirecting an authorized owner to their organizations.
  *
  * Section order: nav → hero → trust strip → two-halves → features → roles →
  * monitoring → how it works → pricing → FAQ → final CTA → footer.
@@ -97,6 +97,7 @@ export default function LandingPage() {
   const sections = presentSections();
 
   return (
+    <HomeAuthRedirect>
     <div className={`${styles.page} min-h-screen bg-background font-sans text-foreground`}>
       
       {/*
@@ -110,7 +111,6 @@ export default function LandingPage() {
         Skip to content
       </a>
 
-      <HomeAuthRedirect />
       <SiteNav sections={sections} />
 
       <main id="main">
@@ -128,5 +128,6 @@ export default function LandingPage() {
 
       <SiteFooter />
     </div>
+    </HomeAuthRedirect>
   );
 }

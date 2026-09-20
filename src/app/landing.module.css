@@ -29,3 +29,10 @@
 .page [class~="bg-primary"]:hover {
   background-color: hsl(var(--landing-solid));
 }
+
+/* Keep the dark header and footer on the same opaque surface at every scroll position. */
+:global(.dark) .page > header,
+:global(.dark) .page > footer {
+  background-color: hsl(var(--background));
+  backdrop-filter: none;
+}

@@ -8,7 +8,7 @@ import { openWorkspace } from '@/utils/openWorkspace';
 import { showError } from '@/utils/alerts';
 import OrganizationsShell from '@/components/organizations/OrganizationsShell';
 
-const action = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground shadow-card transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';
+const action = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-black dark:text-white shadow-card transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';
 export default function OrganizationsPage() {
   const router = useRouter();
   const [data, setData] = useState(null);
@@ -62,7 +62,7 @@ export default function OrganizationsPage() {
             </article>;
           })}
           <Link href="/create/organization" className="group flex min-h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/30 p-6 text-center transition-colors hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            <span className="mb-4 rounded-full border border-border bg-card p-3 text-primary"><Plus size={24} aria-hidden="true" /></span><span className="font-display text-lg font-semibold">New Organization</span><span className="mt-2 max-w-52 text-sm leading-relaxed text-muted-foreground">Create a workspace connected to your existing account.</span>
+            <span className="mb-4 rounded-full border border-border bg-card p-3 text-primary"><Plus size={24} aria-hidden="true" /></span><span className="font-display text-lg font-semibold text-black dark:text-white">New Organization</span><span className="mt-2 max-w-52 text-sm leading-relaxed text-muted-foreground">Create a workspace connected to your existing account.</span>
           </Link>
         </div>
       </>}

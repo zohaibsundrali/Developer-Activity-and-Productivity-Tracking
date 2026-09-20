@@ -985,7 +985,7 @@ function AdminRegistration() {
   const pwVal = validatePassword(formData.password);
 
   return (
-    <AuthShell wide={step === 3} panelTitle="Set up the workspace your team will actually use.">
+    <AuthShell fixedPanel wide={step === 3} panelTitle="Set up the workspace your team will actually use.">
       <div
         className="auth-enter mb-8 flex items-center justify-between gap-4"
         style={enterDelay(40)}
