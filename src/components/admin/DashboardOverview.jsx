@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 import StatCard from "@/components/shell/StatCard";
+import styles from "./DashboardOverview.module.css";
 import { Button, EmptyState, ErrorState, PageHeader, Skeleton } from "@/components/ui";
 import { canAccessAdminSection, sectionTitle } from "@/components/shell/navConfig";
 import { getOrgContext, getOrgId } from "@/utils/orgContext";
@@ -152,7 +153,7 @@ export default function DashboardOverview({ user }) {
   const showSkeleton = !hasLoaded;
 
   return (
-    <div className="space-y-6">
+    <div className={styles.dashboard}>
       <PageHeader
         title={sectionTitle("overview", "admin")}
         /* A subtitle was removed from this header once, for restating the word
@@ -173,7 +174,7 @@ export default function DashboardOverview({ user }) {
 
       {/* ABOVE the counters, deliberately. Everything below this line reports a
           number; this reads the numbers and says what needs doing. */}
-      <SignalsPanel />
+      <SignalsPanel className={styles.signals} />
 
       {error && !loading ? (
         <ErrorState title="Couldn't load the dashboard" description={error} onRetry={load} />
@@ -190,33 +191,16 @@ export default function DashboardOverview({ user }) {
               Notifications and Recent activity carry no `section`: the first
               is the reader's own inbox and the second is org context that
               writes nothing, so neither is gated. */}
-          <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
-            <div className="space-y-5 xl:col-span-2">
-              {can("all-projects") && (
-                <ProjectsPanel rows={view?.projects} loading={showSkeleton} can={can} />
-              )}
-              {can("views") && (
-                <TasksPanel buckets={view?.tasks} loading={showSkeleton} can={can} />
-              )}
-              {can("capacity") && (
-                <PeoplePanel rows={view?.people} loading={showSkeleton} can={can} />
-              )}
-              {can("hierarchy") && (
-                <HierarchyPanel view={view} loading={showSkeleton} can={can} />
-              )}
-            </div>
-
-            <div className="space-y-5">
-              {can("requests") && (
-                <ProposalsPanel proposals={view?.proposals} loading={showSkeleton} can={can} />
-              )}
-              {can("bugs") && <QaPanel summary={view?.bugs} loading={showSkeleton} can={can} />}
-              <NotificationsPanel rows={view?.notifications} loading={showSkeleton} />
-              <ActivityPanel rows={view?.activity} graph={view?.graph} loading={showSkeleton} />
-              {can("reports") && (
-                <ReportsPanel view={view} loading={showSkeleton} can={can} />
-              )}
-            </div>
+          <div className={styles.panelGrid}>
+            {can("all-projects") && <ProjectsPanel rows={view?.projects} loading={showSkeleton} can={can} className={styles.wide} />}
+            {can("requests") && <ProposalsPanel proposals={view?.proposals} loading={showSkeleton} can={can} />}
+            {can("views") && <TasksPanel buckets={view?.tasks} loading={showSkeleton} can={can} className={styles.wide} />}
+            {can("bugs") && <QaPanel summary={view?.bugs} loading={showSkeleton} can={can} />}
+            {can("capacity") && <PeoplePanel rows={view?.people} loading={showSkeleton} can={can} className={styles.half} />}
+            {can("hierarchy") && <HierarchyPanel view={view} loading={showSkeleton} can={can} className={styles.half} />}
+            <NotificationsPanel rows={view?.notifications} loading={showSkeleton} />
+            <ActivityPanel rows={view?.activity} graph={view?.graph} loading={showSkeleton} />
+            {can("reports") && <ReportsPanel view={view} loading={showSkeleton} can={can} />}
           </div>
         </>
       )}
@@ -339,10 +323,11 @@ function KpiRow({ kpis, loading, can }) {
     }));
 
   return (
-    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+    <div className={styles.kpis}>
       {tiles.map((t) => {
         const card = (
           <StatCard
+            compact
             title={t.title}
             value={t.value}
             icon={t.icon}
@@ -374,12 +359,12 @@ function KpiRow({ kpis, loading, can }) {
  * All projects
  * ------------------------------------------------------------------ */
 
-function ProjectsPanel({ rows, loading, can }) {
+function ProjectsPanel({ rows, loading, can, className }) {
   const list = (rows || []).slice(0, PREVIEW);
   return (
-    <Panel>
+    <Panel className={className}>
       <PanelHead
-        title="All projects"
+        icon={FolderKanban} title="All projects"
         hint="Riskiest first, then by how soon they are due."
         href="/admin/dashboard?section=all-projects"
         canOpen={can("all-projects")}
@@ -393,9 +378,9 @@ function ProjectsPanel({ rows, loading, can }) {
           description="Accept a client proposal or create a project to see it here."
         />
       ) : (
-        <ul className="divide-y divide-border">
+        <ul className={styles.projectList} aria-label="Projects" tabIndex={0}>
           {list.map((p) => (
-            <li key={p.id} className="py-3 first:pt-0 last:pb-0">
+            <li key={p.id} className="py-2.5 first:pt-0 last:pb-0">
               <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -444,12 +429,12 @@ function ProjectsPanel({ rows, loading, can }) {
  * Tasks & deadlines
  * ------------------------------------------------------------------ */
 
-function TasksPanel({ buckets, loading, can }) {
+function TasksPanel({ buckets, loading, can, className }) {
   const b = buckets || {};
   return (
-    <Panel>
+    <Panel className={className}>
       <PanelHead
-        title="Tasks & deadlines"
+        icon={ClipboardCheck} title="Tasks & deadlines"
         hint="Across every project."
         href="/admin/dashboard?section=views"
         canOpen={can("views")}
@@ -494,12 +479,12 @@ function TasksPanel({ buckets, loading, can }) {
  * Team & workload — ONE table, not two
  * ------------------------------------------------------------------ */
 
-function PeoplePanel({ rows, loading, can }) {
+function PeoplePanel({ rows, loading, can, className }) {
   const list = (rows || []).slice(0, PREVIEW);
   return (
-    <Panel>
+    <Panel className={className}>
       <PanelHead
-        title="Team & workload"
+        icon={Users} title="Team & workload"
         hint="Who is here, what they carry, and how much of it is late."
         href="/admin/dashboard?section=capacity"
         canOpen={can("capacity")}
@@ -581,7 +566,7 @@ const LEVEL_CHIP = {
  * The roles are grouped from the same `projectTeam` helper Team Structure uses,
  * so the two can never disagree about who is on a project.
  */
-function HierarchyPanel({ view, loading, can }) {
+function HierarchyPanel({ view, loading, can, className }) {
   const graph = view?.graph;
   const project = view?.projects?.[0];
   const source = project && graph ? graph.projectById?.get(String(project.id)) : null;
@@ -601,9 +586,9 @@ function HierarchyPanel({ view, loading, can }) {
   }, [team]);
 
   return (
-    <Panel>
+    <Panel className={className}>
       <PanelHead
-        title="Project hierarchy"
+        icon={Network} title="Project hierarchy"
         hint="Project → manager → team, by role."
         href="/admin/dashboard?section=hierarchy"
         canOpen={can("hierarchy")}
@@ -711,7 +696,7 @@ function ProposalsPanel({ proposals, loading, can }) {
   return (
     <Panel>
       <PanelHead
-        title="Proposals"
+        icon={Inbox} title="Proposals"
         hint="Grouped by whose move it is."
         href="/admin/dashboard?section=requests"
         canOpen={can("requests")}
@@ -764,7 +749,7 @@ function QaPanel({ summary, loading, can }) {
   return (
     <Panel>
       <PanelHead
-        title="QA & issues"
+        icon={Bug} title="QA & issues"
         hint="Bugs are tasks with a type, not a separate list."
         href="/admin/dashboard?section=bugs"
         canOpen={can("bugs")}
@@ -807,7 +792,7 @@ function NotificationsPanel({ rows, loading }) {
   const list = rows || [];
   return (
     <Panel>
-      <PanelHead title="Your notifications" hint="Unread, newest first." href="/notifications" />
+      <PanelHead icon={Bell} title="Your notifications" hint="Unread, newest first." href="/notifications" />
       {loading ? (
         <RowsSkeleton rows={3} />
       ) : list.length === 0 ? (
@@ -856,7 +841,7 @@ function ActivityPanel({ rows, graph, loading }) {
   const list = rows || [];
   return (
     <Panel>
-      <PanelHead title="Recent activity" hint="The last things that happened." />
+      <PanelHead icon={Activity} title="Recent activity" hint="The last things that happened." />
       {loading ? (
         <RowsSkeleton rows={4} />
       ) : list.length === 0 ? (
@@ -919,7 +904,7 @@ function ReportsPanel({ view, loading, can }) {
   return (
     <Panel>
       <PanelHead
-        title="Performance"
+        icon={Activity} title="Performance"
         hint="Headlines only."
         href="/admin/dashboard?section=reports"
         canOpen={can("reports")}

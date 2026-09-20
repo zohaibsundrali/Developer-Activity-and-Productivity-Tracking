@@ -83,6 +83,7 @@ export default function StatCard({
   // matches the meaning rather than the arrow direction.
   invertTrend = false,
   loading = false,
+  compact = false,
   className,
   ...props
 }) {
@@ -100,6 +101,22 @@ export default function StatCard({
     "transition-all duration-200 ease-out motion-reduce:transition-none hover:-translate-y-0.5 hover:shadow-elevated",
     className
   );
+
+  // Dense overview variant; other dashboards retain their existing layout.
+  if (compact) {
+    return (
+      <div className={cn("relative h-full min-w-0 rounded-xl border border-border bg-card p-4 shadow-sm transition-colors hover:border-primary/35 motion-reduce:transition-none", className)} aria-busy={loading || undefined} {...props}>
+        <div className="flex items-center justify-between gap-2">
+          <p className="min-w-0 text-xs font-medium leading-5 text-muted-foreground">{heading}</p>
+          <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg", toneClasses)}>
+            {Icon && <Icon aria-hidden="true" className="h-3.5 w-3.5" />}
+          </span>
+        </div>
+        {loading ? <Skeleton className="mt-1 h-8 w-16" /> : <p className="mt-1 break-words text-[1.75rem] font-semibold leading-8 tracking-tight text-foreground tabular-nums">{value}</p>}
+        {hint && <div className="mt-1 text-xs leading-4 text-muted-foreground">{loading ? <Skeleton className="h-4 w-3/4" /> : hint}</div>}
+      </div>
+    );
+  }
 
   if (loading) {
     return (
