@@ -154,6 +154,21 @@ begin
  update app_private.organization_deletions set status='pending',lease=null,lease_until=null where id=j.id;
  return j.id;
 end $$;
+-- Also protect platform accounts in jobs that were already queued before provisioning.
+create or replace function public.check_deletion_auth_identity(p_job uuid,p_lease uuid,p_item uuid)
+returns boolean language plpgsql security definer set search_path=pg_catalog,public,app_private as $$
+declare j app_private.organization_deletions%rowtype;i app_private.organization_deletion_items%rowtype;n int;begin
+ select * into j from app_private.organization_deletions where id=p_job and lease=p_lease and lease_until>now() and status='processing';
+ if not found then raise exception 'Deletion lease expired' using errcode='42501'; end if;
+ select * into i from app_private.organization_deletion_items where id=p_item and job_id=j.id and kind='auth' and status='pending';
+ if not found then return false; end if;
+ if exists(select 1 from app_private.platform_owners where auth_user_id::text=i.resource_id) then return false; end if;
+ select count(*) into n from (select id,organization_id,auth_user_id,'admin'::text kind from public.admin_users union all select id,organization_id,auth_user_id,'developer' from public.developers union all select id,organization_id,auth_user_id,'client' from public.clients) p
+ where auth_user_id::text=i.resource_id and (organization_id is distinct from j.organization_id or id is distinct from i.profile_id or kind is distinct from i.profile_type);
+ if n<>0 or exists(select 1 from public.memberships where user_id=i.profile_id and user_type=i.profile_type and organization_id<>j.organization_id) then return false; end if;
+ return exists(select 1 from auth.users where id::text=i.resource_id and raw_app_meta_data->>'organization_id'=j.organization_id::text and raw_app_meta_data->>'app_user_id'=i.profile_id::text and raw_app_meta_data->>'user_type'=i.profile_type and (i.invitation_id is null or raw_app_meta_data->>'invitation_id'=i.invitation_id::text));
+end $$;
+
 create function public.platform_start_deletion(p_auth uuid,p_session uuid,p_org uuid,p_name text,p_reason text,p_receipt_hash text)
 returns uuid language plpgsql security definer set search_path=pg_catalog,public,app_private as $$
 declare job uuid;

@@ -9,7 +9,7 @@ create table tracker_devices(id uuid primary key default gen_random_uuid(),organ
 \ir ../../supabase/migrations/20260920105039_platform_owner_console.sql
 
 do $$
-declare uid uuid:=gen_random_uuid(); sid uuid:=gen_random_uuid(); other uuid:=gen_random_uuid(); other_session uuid:=gen_random_uuid(); org uuid:=gen_random_uuid(); profile uuid:=gen_random_uuid(); job uuid; result jsonb;
+declare uid uuid:=gen_random_uuid(); sid uuid:=gen_random_uuid(); other uuid:=gen_random_uuid(); other_session uuid:=gen_random_uuid(); org uuid:=gen_random_uuid(); profile uuid:=gen_random_uuid(); job uuid; result jsonb; lease_id uuid:=gen_random_uuid(); item_id uuid;
 begin
  insert into auth.users(id,email,email_confirmed_at,raw_app_meta_data) values(uid,'platform@example.test',now(),'{}'),(other,'outsider@example.test',now(),'{"role":"owner"}');
  insert into auth.sessions(id,user_id) values(sid,uid),(other_session,other);
@@ -50,6 +50,12 @@ begin
  reset role;
  if not exists(select 1 from app_private.organization_deletions where id=job and actor_id=uid and actor_type='platform') then raise exception 'Real platform actor missing';end if;
  if not exists(select 1 from app_private.organization_deletion_items where job_id=job and kind='auth' and resource_id=uid::text and status='retained') then raise exception 'Platform login not retained';end if;
+ update auth.users set raw_app_meta_data=jsonb_build_object('organization_id',org,'app_user_id',profile,'user_type','admin') where id=uid;
+ update app_private.organization_deletions set status='processing',lease=lease_id,lease_until=now()+interval '10 minutes' where id=job;
+ update app_private.organization_deletion_items set status='pending' where job_id=job and resource_id=uid::text returning id into item_id;
+ if check_deletion_auth_identity(job,lease_id,item_id) then raise exception 'Previously queued platform identity could be deleted';end if;
+ update app_private.organization_deletion_items set status='retained' where id=item_id;
+ update app_private.organization_deletions set status='pending',lease=null,lease_until=null where id=job;
  if not exists(select 1 from app_private.platform_audit where actor_id=uid and organization_id=org) then raise exception 'Deletion audit missing';end if;
  if not platform_retry_deletion(uid,sid,org) then raise exception 'Pending cleanup cannot be retried';end if;
  delete from auth.sessions where id=sid;
