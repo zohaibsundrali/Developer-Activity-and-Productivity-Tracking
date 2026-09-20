@@ -25,3 +25,11 @@ Deletion does not reset the entire database. Individual people/project deletion 
 ## Verification
 
 Unit tests cover API authorization failures, server-derived actor/session, validation, pagination, shared billing scoping and cleanup dispatch. `database/tests/platform_owner_console.sql` runs the actual migration against the disposable lifecycle fixture and exercises owner/session isolation, permissions, totals and audited deletion. Browser checks should cover desktop/mobile, light/dark, denied access, search/detail tabs and exact-name deletion confirmation using mocked requests.
+
+Run browser checks with a local server running:
+
+```sh
+E2E_BASE_URL=http://127.0.0.1:3000 node scripts/test-platform-browser.cjs
+```
+
+The script mocks all platform endpoints, never runs real deletion requests, and saves theme/mobile screenshots under `test-results/platform-owner`.
