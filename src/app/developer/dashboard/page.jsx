@@ -326,6 +326,9 @@ function DeveloperDashboardContent() {
     const contentProps = {
       user,
       assignedProjects,
+      projectsLoading,
+      projectsError,
+      onRefreshProjects: () => fetchDeveloperData(user),
       onSectionChange: handleSectionChange,
       onViewProjectDetails: handleViewProjectDetails, // Add this prop
       supabase,

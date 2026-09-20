@@ -21,7 +21,7 @@ import {
  * "use client" boundary.
  *
  * Colour: the tile is painted with `currentColor` and the check is a true
- * knockout via an SVG mask, so whatever is behind the logo shows through it.
+ * knockout via an SVG mask, with a white backing in dark mode so the check stays white on every surface.
  * One asset therefore covers every context — set the colour with a text
  * utility on `className`:
  *
@@ -86,6 +86,7 @@ export function LogoMark({ className, title, ...props }) {
           strokeLinejoin="round"
         />
       </mask>
+      <rect width="32" height="32" rx={MARK_TILE_RADIUS} fill="white" className="hidden dark:block" />
       <rect
         width="32"
         height="32"
