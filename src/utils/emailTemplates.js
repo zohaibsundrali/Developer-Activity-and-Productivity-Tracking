@@ -73,16 +73,16 @@ function toText(value, maxLen = 2000) {
 // ── Shared layout ────────────────────────────────────────────────────
 
 // The brand indigo, not the teal these templates shipped with. `--primary` in
-// src/app/globals.css is `243 70% 56%`, which is exactly #4840DD; BRAND_DARK is
-// the same hue at 44% lightness, used for the pressed edge under the CTA.
+// src/app/globals.css is `243.076923 54.929577% 27.843137%`, which is exactly #24206E; BRAND_DARK is
+// a deeper shade, used for the pressed edge under the CTA.
 //
 // Written as literal hex on purpose: email clients do not evaluate CSS custom
 // properties, and Outlook does not support hsl() at all, so the token cannot be
 // referenced here — it has to be resolved. If `--primary` ever changes, this
 // pair changes with it. That is the whole coupling, and it is stated here so
 // the next person finds it.
-const BRAND = "#4840DD";
-const BRAND_DARK = "#2A22BF";
+const BRAND = "#24206E";
+const BRAND_DARK = "#1B1853";
 const TEXT = "#1f2933";
 const MUTED = "#6b7280";
 const BORDER = "#e5e7eb";

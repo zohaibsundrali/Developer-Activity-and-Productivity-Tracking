@@ -31,7 +31,7 @@ export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 const NAVY = "#0D1A21"; // --sidebar  200 45% 9%
-const INDIGO = "#4840DD"; // --primary 243 70% 56%
+const INDIGO = "#24206E"; // --primary 243.076923 54.929577% 27.843137%
 const MIST = "#9FB1BB"; // --sidebar-foreground
 const HAIRLINE = "#1C2E37"; // --sidebar-border
 

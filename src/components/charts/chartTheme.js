@@ -6,7 +6,7 @@
 // Every literal below is the exact hex of a token in src/app/globals.css; the
 // HSL it came from is written beside it so the two can be diffed by eye.
 //
-//   --primary          243 70% 56%   #4840dd
+//   --primary          243.076923 54.929577% 27.843137%   #24206e
 //   --success          142 71% 30%   #16833e
 //   --warning           38 92% 48%   #eb980a
 //   --destructive        0 72% 51%   #dc2828
@@ -46,8 +46,8 @@ const TRACK = "#dae0e7";
 /*  Brand                                                              */
 /* ------------------------------------------------------------------ */
 
-export const PRIMARY = "#4840dd"; // --primary 243 70% 56%
-export const PRIMARY_SOFT = "rgba(72, 64, 221, 0.10)";
+export const PRIMARY = "#24206e"; // --primary 243.076923 54.929577% 27.843137%
+export const PRIMARY_SOFT = "rgba(36, 32, 110, 0.10)";
 
 /* ------------------------------------------------------------------ */
 /*  Series palettes                                                    */
@@ -69,7 +69,7 @@ export const PRIMARY_SOFT = "rgba(72, 64, 221, 0.10)";
  * into "Other" or facet the chart — do not invent a seventh hue.
  */
 export const PALETTE = [
-  "#4840dd", // indigo  — --primary
+  "#24206e", // indigo  — --primary
   "#da2f68", // rose
   "#9854d4", // violet
   "#16833e", // green   — --success
@@ -126,7 +126,7 @@ export const GANTT_STATUS_COLORS = {
   completed: "#16833e", // --success            142 71% 30%
   reviewed: "#10602d", // --success, darker     142 71% 22%
   awaiting_approval: "#eb980a", // --warning     38 92% 48%
-  in_progress: "#4840dd", // --primary          243 70% 56%
+  in_progress: "#24206e", // --primary          243.076923 54.929577% 27.843137%
   pending: "#a6b2bf", // neutral                212 16% 70%
   rejected: "#dc2828", // --destructive           0 72% 51%
 };

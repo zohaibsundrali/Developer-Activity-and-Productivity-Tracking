@@ -467,7 +467,7 @@ describe("the reset email is ours, not Supabase's", () => {
   });
 
   it("uses the brand indigo, not the pre-rename teal", () => {
-    expect(templates).toMatch(/#4840DD/i);
+    expect(templates).toMatch(/#24206E/i);
     expect(templates).not.toMatch(/#009578/i);
   });
 

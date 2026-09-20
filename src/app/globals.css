@@ -19,8 +19,8 @@
     --popover: 0 0% 100%;
     --popover-foreground: 200 25% 12%;
 
-    /* Exact #4840DD from src/app/icon.svg, shared by both themes. */
-    --brand: 243.057325 69.777778% 55.882353%;
+    /* Exact #24206E from src/app/icon.svg, shared by both themes. */
+    --brand: 243.076923 54.929577% 27.843137%;
     --primary: var(--brand);
     --primary-foreground: 0 0% 100%;
 
