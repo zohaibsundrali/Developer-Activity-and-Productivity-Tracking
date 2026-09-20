@@ -26,7 +26,6 @@ import {
   SubmitButton,
 } from "@/components/auth/AuthParts";
 import { PlanChoice } from "@/components/billing/PlanChoice";
-import OrganizationSetup from "@/components/organizations/OrganizationSetup";
 import { FREE_PLAN_CODE } from "@/utils/billingAccess";
 
 /**
@@ -296,15 +295,17 @@ function TermsConsent({ id, checked, onChange, error, disabled }) {
 }
 
 export default function RegistrationEntry() {
+  const router = useRouter();
   const [entry, setEntry] = useState('checking');
   useEffect(() => {
     let live = true;
     supabase.auth.getSession().then(({ data, error }) => {
-      if (live) setEntry(error ? 'error' : data?.session ? 'authenticated' : 'public');
+      if (!live) return;
+      if (!error && data?.session) { router.replace('/create/organization'); return; }
+      setEntry(error ? 'error' : 'public');
     }).catch(() => { if (live) setEntry('error'); });
     return () => { live = false; };
-  }, []);
-  if (entry === 'authenticated') return <OrganizationSetup />;
+  }, [router]);
   if (entry === 'public') return <AdminRegistration />;
   return <AuthShell><p role="status" className="text-sm text-muted-foreground">{entry === 'error' ? 'Your session could not be checked. Please reload to retry.' : 'Checking your session…'}</p></AuthShell>;
 }

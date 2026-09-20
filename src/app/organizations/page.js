@@ -39,7 +39,7 @@ export default function OrganizationsPage() {
         <h1 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">Organizations</h1>
         <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">Choose a workspace to manage your team, projects and daily work.</p>
       </div>
-      <Link className={action} href="/admin/registration"><Plus size={18} aria-hidden="true" />New Organization</Link>
+      <Link className={action} href="/create/organization"><Plus size={18} aria-hidden="true" />New Organization</Link>
     </div>
     {loading ? <div role="status" className="flex items-center gap-3 rounded-2xl border border-border bg-card p-8 text-sm text-muted-foreground"><Loader2 size={18} className="animate-spin motion-reduce:animate-none" />Loading your organizations…</div>
       : error ? <div role="alert" className="rounded-2xl border border-border bg-card p-6"><p>{error}</p><button onClick={load} className={`${action} mt-4`}>Try again</button></div>
@@ -61,7 +61,7 @@ export default function OrganizationsPage() {
               </button>
             </article>;
           })}
-          <Link href="/admin/registration" className="group flex min-h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/30 p-6 text-center transition-colors hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Link href="/create/organization" className="group flex min-h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/30 p-6 text-center transition-colors hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <span className="mb-4 rounded-full border border-border bg-card p-3 text-primary"><Plus size={24} aria-hidden="true" /></span><span className="font-display text-lg font-semibold">New Organization</span><span className="mt-2 max-w-52 text-sm leading-relaxed text-muted-foreground">Create a workspace connected to your existing account.</span>
           </Link>
         </div>
