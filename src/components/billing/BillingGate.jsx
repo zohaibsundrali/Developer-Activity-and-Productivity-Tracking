@@ -51,7 +51,7 @@ export default function BillingGate({ children }) {
   // not a cosmetic flash: it is a full render of the surface the gate exists
   // to withhold.
   const [checked, setChecked] = useState(false);
-  const exempt = EXEMPT.some((p) => pathname.startsWith(p));
+  const exempt = pathname === "/admin" || EXEMPT.some((p) => pathname.startsWith(p));
 
   const load = useCallback(async () => {
     try {

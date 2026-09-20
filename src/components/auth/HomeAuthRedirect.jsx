@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/utils/supabaseClient';
 import { authFetch } from '@/utils/authFetch';
+import { platformOwnerHome } from '@/utils/platformOwnerHome';
 import { Loader2 } from 'lucide-react';
 
 export default function HomeAuthRedirect({ children }) {
@@ -15,6 +16,10 @@ export default function HomeAuthRedirect({ children }) {
       try {
         const { data } = await supabase.auth.getSession();
         if (!active || !data?.session) return;
+        if (await platformOwnerHome()) {
+          if (active) { redirecting = true; router.replace('/admin'); }
+          return;
+        }
         const response = await authFetch('/api/organizations', { cache: 'no-store' });
         const result = await response.json();
         // Server-authorized memberships, never a cached browser role/cookie.

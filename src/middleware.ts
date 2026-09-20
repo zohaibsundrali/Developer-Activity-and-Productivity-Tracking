@@ -93,6 +93,10 @@ const PUBLIC_PATHS = ['/admin/registration']
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
+  // Platform shell has its own live-session, database-backed owner gate.
+  // No tenant data is embedded in this shell; every platform API verifies access.
+  if (pathname === '/admin') return NextResponse.next()
+
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) return NextResponse.next()
 
   const rule = AREA_RULES.find((r) => pathname.startsWith(r.prefix))
