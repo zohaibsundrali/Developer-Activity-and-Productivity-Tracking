@@ -218,6 +218,7 @@ function SupportThread({ threadId, user, onBack }) {
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
         setMessages((m) => m.filter((x) => x.id !== optimistic.id));
+        setBody((draft) => draft || text);
         showError("Message not sent", payload?.error || "Please try again.");
         return;
       }
@@ -231,6 +232,7 @@ function SupportThread({ threadId, user, onBack }) {
       }
     } catch {
       setMessages((m) => m.filter((x) => x.id !== optimistic.id));
+      setBody((draft) => draft || text);
       showError("Message not sent", "Something went wrong. Please try again.");
     } finally {
       setSending(false);

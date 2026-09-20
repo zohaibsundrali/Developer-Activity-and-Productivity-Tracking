@@ -11,6 +11,9 @@ const fs = require('node:fs');
   await page.goto((process.env.E2E_BASE_URL||'http://127.0.0.1:3131')+'/login');
   await page.getByRole('heading',{name:'Welcome back'}).waitFor();
   await page.waitForTimeout(700);
+  await page.getByLabel(/^Email address/).fill('qa@example.test');
+  await page.getByLabel(/^Password/).fill('presentation-only-password');
+  assert(await page.getByRole('button',{name:'Sign in',exact:true}).isEnabled());
   for(const [width,height] of [[1440,900],[1366,768],[1280,720],[390,844],[375,667]]){
    await page.setViewportSize({width,height});
    assert(await page.evaluate(()=>document.documentElement.scrollHeight<=innerHeight+1),`Document overflow at ${width}x${height}`);

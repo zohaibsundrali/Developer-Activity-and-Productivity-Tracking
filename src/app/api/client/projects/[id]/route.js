@@ -6,6 +6,8 @@ import {
 } from "@/utils/serverAuth";
 import { buildProjectSummary } from "@/app/api/client/_lib/shapes";
 
+import { readClientRows, readClientRowsIn } from "@/app/api/client/_lib/pagination";
+
 export const dynamic = "force-dynamic";
 
 // GET /api/client/projects/[id]
@@ -50,14 +52,14 @@ export async function GET(request, { params }) {
       );
     }
 
-    const { data: milestoneRows, error: milestonesError } = await svc
+    const { data: milestoneRows, error: milestonesError } = await readClientRows(() => svc
       .from("milestones")
-      .select("id, title, due_date, status, sort_order, updated_at")
+      .select("id, title, due_date, status, sort_order, updated_at", { count: "exact" })
       .eq("organization_id", auth.orgId)
       .eq("project_id", projectId)
       .eq("client_visible", true)
       .order("sort_order", { ascending: true })
-      .order("due_date", { ascending: true });
+      .order("due_date", { ascending: true }).order("id"));
 
     if (milestonesError) {
       console.error("[client/projects/:id] Milestones error:", milestonesError);
@@ -77,15 +79,15 @@ export async function GET(request, { params }) {
       completed_at: m.status === "completed" ? m.updated_at || null : null,
     }));
 
-    const { data: taskRows, error: tasksError } = await svc
+    const { data: taskRows, error: tasksError } = await readClientRows(() => svc
       .from("developer_tasks")
       .select(
-        "id, task_title, status, priority, labels, due_date, end_date, developer_id, task_order"
+        "id, task_title, status, priority, labels, due_date, end_date, developer_id, task_order", { count: "exact" }
       )
       .eq("organization_id", auth.orgId)
       .eq("project_id", projectId)
       .eq("client_visible", true)
-      .order("task_order", { ascending: true });
+      .order("task_order", { ascending: true }).order("id"));
 
     if (tasksError) {
       console.error("[client/projects/:id] Tasks error:", tasksError);
@@ -100,11 +102,11 @@ export async function GET(request, { params }) {
     // Attachment counts for the visible tasks only — a count, never a path.
     let attachmentCounts = new Map();
     if (visibleTaskIds.length) {
-      const { data: attachmentRows, error: attachmentsError } = await svc
+      const { data: attachmentRows, error: attachmentsError } = await readClientRowsIn(visibleTaskIds, (ids) => svc
         .from("task_attachments")
-        .select("id, task_id")
+        .select("id, task_id", { count: "exact" })
         .eq("organization_id", auth.orgId)
-        .in("task_id", visibleTaskIds);
+        .in("task_id", ids).order("id"));
 
       if (attachmentsError) {
         console.error("[client/projects/:id] Attachments error:", attachmentsError);
@@ -141,23 +143,23 @@ export async function GET(request, { params }) {
     const people = new Map();
     const designationById = new Map();
     if (memberIds.length) {
-      const [{ data: developerRows, error: developersError }, { data: profileRows }] =
+      const [{ data: developerRows, error: developersError }, { data: profileRows, error: profilesError }] =
         await Promise.all([
-          svc
+          readClientRowsIn(memberIds, (ids) => svc
             .from("developers")
-            .select("id, name")
+            .select("id, name", { count: "exact" })
             .eq("organization_id", auth.orgId)
-            .in("id", memberIds),
-          svc
+            .in("id", ids).order("id")),
+          readClientRowsIn(memberIds, (ids) => svc
             .from("employee_profiles")
-            .select("user_id, designation")
+            .select("user_id, designation", { count: "exact" })
             .eq("organization_id", auth.orgId)
             .eq("user_type", "developer")
-            .in("user_id", memberIds),
+            .in("user_id", ids).order("user_id"), { key: "user_id" }),
         ]);
 
-      if (developersError) {
-        console.error("[client/projects/:id] Team error:", developersError);
+      if (developersError || profilesError) {
+        console.error("[client/projects/:id] Team error:", developersError || profilesError);
         return NextResponse.json(
           { success: false, error: "Failed to load project" },
           { status: 500 }
@@ -193,13 +195,13 @@ export async function GET(request, { params }) {
       attachment_count: attachmentCounts.get(t.id) || 0,
     }));
 
-    const { data: updates, error: updatesError } = await svc
+    const { data: updates, error: updatesError } = await readClientRows(() => svc
       .from("project_updates")
-      .select("id, title, body, author_name, created_at")
+      .select("id, title, body, author_name, created_at", { count: "exact" })
       .eq("organization_id", auth.orgId)
       .eq("project_id", projectId)
       .eq("client_visible", true)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false }).order("id"));
 
     if (updatesError) {
       console.error("[client/projects/:id] Updates error:", updatesError);
@@ -209,12 +211,12 @@ export async function GET(request, { params }) {
       );
     }
 
-    const { data: subRows, error: subsError } = await svc
+    const { data: subRows, error: subsError } = await readClientRows(() => svc
       .from("task_submissions")
-      .select("id, file_name, file_type, file_size, submitted_at")
+      .select("id, file_name, file_type, file_size, submitted_at", { count: "exact" })
       .eq("organization_id", auth.orgId)
       .eq("project_id", projectId)
-      .order("submitted_at", { ascending: false });
+      .order("submitted_at", { ascending: false }).order("id"));
 
     if (subsError) {
       console.error("[client/projects/:id] Deliverables error:", subsError);
@@ -241,7 +243,7 @@ export async function GET(request, { params }) {
       .eq("project_id", projectId)
       .eq("status", "pending");
 
-    if (approvalsError) {
+    if (approvalsError || !Number.isSafeInteger(pendingApprovals) || pendingApprovals < 0) {
       console.error("[client/projects/:id] Approvals error:", approvalsError);
       return NextResponse.json(
         { success: false, error: "Failed to load project" },

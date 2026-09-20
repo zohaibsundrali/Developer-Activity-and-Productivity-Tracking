@@ -14,6 +14,7 @@ export async function GET(request) {
     const filters = platformFilters(search);
     if (!filters) return platformJson({error:'Invalid export filters.'},400);
     const rows=[];
+    const seen = new Set();
     let total;
     // Fetch every matching page; do not silently export only the visible page
     // or Supabase's first 1,000 rows. Cap large exports with an explicit error.
@@ -22,10 +23,16 @@ export async function GET(request) {
       query = applyPlatformFilters(query,filters,config);
       const result = await query.order('created_at',{ascending:false}).order('id').range(offset,offset+499);
       if(result.error || !Array.isArray(result.data)) return platformJson({error:'Export data unavailable.'},503);
+      if (!Number.isSafeInteger(result.count) || result.count < 0 || (total !== undefined && result.count !== total)) return platformJson({error:'Export records changed or could not be counted. Please retry.'},503);
       total=result.count;
       if(total>MAX_ROWS || rows.length+result.data.length>MAX_ROWS) return platformJson({error:'This export exceeds 10,000 rows. Narrow the date range or organization filter.'},422);
+      for (const row of result.data) {
+        if (row?.id == null || seen.has(row.id)) return platformJson({error:'Export records changed. Please retry.'},503);
+        seen.add(row.id);
+      }
       rows.push(...result.data);
-      if(result.data.length<500 || rows.length>=total) break;
+      if (rows.length > total || (result.data.length < 500 && rows.length < total)) return platformJson({error:'Export data is incomplete. Please retry.'},503);
+      if(rows.length === total) break;
     }
     const columns=config.columns.split(',');
     let body, contentType;

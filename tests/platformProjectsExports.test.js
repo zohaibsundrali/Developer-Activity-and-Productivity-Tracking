@@ -32,6 +32,19 @@ describe('exports',()=>{
   const response=await exports.GET(request('?dataset=organizations'));
   expect(response.status).toBe(200);expect(query.range.mock.calls).toEqual([[0,499],[500,999]]);expect(await response.text()).toContain('last');expect(response.headers.get('content-disposition')).toContain('.csv');
  });
+ it.each([
+  {label:'missing count', pages:[{data:[],count:null}]},
+  {label:'short page', pages:[{data:[{id:1}],count:2}]},
+  {label:'duplicate records', pages:[{data:[{id:1},{id:1}],count:2}]},
+  {label:'changed count', pages:[{data:Array.from({length:500},(_,id)=>({id})),count:501},{data:[{id:500},{id:501}],count:502}]},
+ ])('rejects incomplete or unstable exports: $label',async({pages})=>{
+  const query={select:vi.fn().mockReturnThis(),order:vi.fn().mockReturnThis(),range:vi.fn()};
+  for(const page of pages)query.range.mockResolvedValueOnce(page);
+  mocks.from.mockReturnValue(query);
+  const response=await exports.GET(request('?dataset=organizations'));
+  expect(response.status).toBe(503);
+  expect(response.headers.get('content-disposition')).toBeNull();
+ });
  it('generates an actual PDF download',async()=>{const query={select:vi.fn().mockReturnThis(),order:vi.fn().mockReturnThis(),range:vi.fn().mockResolvedValue({data:[{id:'one',name:'Report fixture'}],count:1})};mocks.from.mockReturnValue(query);const response=await exports.GET(request('?dataset=organizations&format=pdf'));expect(response.status).toBe(200);expect(response.headers.get('content-type')).toBe('application/pdf');expect((await response.text()).slice(0,5)).toBe('%PDF-');});
  it('does not silently truncate oversized exports',async()=>{const query={select:vi.fn().mockReturnThis(),order:vi.fn().mockReturnThis(),range:vi.fn().mockResolvedValue({data:[],count:10001})};mocks.from.mockReturnValue(query);expect((await exports.GET(request('?dataset=organizations'))).status).toBe(422);});
 });

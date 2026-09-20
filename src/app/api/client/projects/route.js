@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getAuthedClient, serviceClient } from "@/utils/serverAuth";
 import { buildProjectSummary } from "@/app/api/client/_lib/shapes";
 
+import { readClientRowsIn } from "@/app/api/client/_lib/pagination";
+
 export const dynamic = "force-dynamic";
 
 // GET /api/client/projects
@@ -22,12 +24,12 @@ export async function GET(request) {
     }
 
     const svc = serviceClient();
-    const { data: projects, error } = await svc
+    const { data: projects, error } = await readClientRowsIn(auth.projectIds, (ids) => svc
       .from("projects")
-      .select("id, name, status, progress, deadline, created_at, description")
+      .select("id, name, status, progress, deadline, created_at, description", { count: "exact" })
       .eq("organization_id", auth.orgId)
-      .in("id", auth.projectIds)
-      .order("created_at", { ascending: false });
+      .in("id", ids)
+      .order("created_at", { ascending: false }).order("id"));
 
     if (error) {
       console.error("[client/projects] Query error:", error);
@@ -43,12 +45,12 @@ export async function GET(request) {
     }
 
     // Counts come from client-visible tasks only (migration 032).
-    const { data: taskRows, error: tasksError } = await svc
+    const { data: taskRows, error: tasksError } = await readClientRowsIn(projectIds, (ids) => svc
       .from("developer_tasks")
-      .select("id, project_id, status")
+      .select("id, project_id, status", { count: "exact" })
       .eq("organization_id", auth.orgId)
-      .in("project_id", projectIds)
-      .eq("client_visible", true);
+      .in("project_id", ids)
+      .eq("client_visible", true).order("id"));
 
     if (tasksError) {
       console.error("[client/projects] Tasks error:", tasksError);
@@ -58,12 +60,12 @@ export async function GET(request) {
       );
     }
 
-    const { data: approvalRows, error: approvalsError } = await svc
+    const { data: approvalRows, error: approvalsError } = await readClientRowsIn(projectIds, (ids) => svc
       .from("approvals")
-      .select("id, project_id")
+      .select("id, project_id", { count: "exact" })
       .eq("organization_id", auth.orgId)
-      .in("project_id", projectIds)
-      .eq("status", "pending");
+      .in("project_id", ids)
+      .eq("status", "pending").order("id"));
 
     if (approvalsError) {
       console.error("[client/projects] Approvals error:", approvalsError);
@@ -86,7 +88,7 @@ export async function GET(request) {
       pendingByProject.set(a.project_id, (pendingByProject.get(a.project_id) || 0) + 1);
     }
 
-    const summaries = (projects || []).map((project) =>
+    const summaries = (projects || []).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)) || String(a.id).localeCompare(String(b.id))).map((project) =>
       buildProjectSummary({
         project,
         tasks: tasksByProject.get(project.id) || [],

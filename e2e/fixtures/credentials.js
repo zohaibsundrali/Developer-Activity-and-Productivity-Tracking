@@ -11,42 +11,25 @@
 import { test } from '@playwright/test';
 import { envValue } from './env.js';
 
-/**
- * Which sign-in surface each role uses.
- *
- * The login screen has three role tabs and each drops the user in a different
- * area (see src/app/login/page.js). Staff — developer, manager, team lead,
- * employee — all share the "Team Member" tab and the /developer surface;
- * owner/admin/HR use the Admin tab when they exist in `admin_users`.
- */
+/** Expected destination after the app detects the verified account role. */
 export const PORTALS = {
-  admin: { tab: 'Admin', landing: '/admin/dashboard' },
-  team: { tab: 'Team Member', landing: '/developer/dashboard' },
-  // A staff-table member (created by Add employee, so in `developers`) whose
-  // ROLE enters the admin area: manager, team_lead, hr, finance, qa. They sign
-  // in on the Team Member tab and dashboardHomeFor() routes them to the console.
-  'team-admin': { tab: 'Team Member', landing: '/admin/dashboard' },
-  client: { tab: 'Client', landing: '/client' },
+  admin: { landing: '/admin/dashboard' },
+  team: { landing: '/developer/dashboard' },
+  'team-admin': { landing: '/admin/dashboard' },
+  client: { landing: '/client' },
 };
 
-/**
- * Role -> env prefix and default portal.
- *
- * The portal is overridable per role with `E2E_<PREFIX>_PORTAL=admin|team|client`
- * because HR (and sometimes manager) can legitimately be seeded either in
- * `admin_users` (admin console, sees Employees/Organization) or in `developers`
- * (staff dashboard, sees the Team panel). The suite should follow the seed, not
- * dictate it.
- */
+/** Role -> environment prefix and expected destination; PORTAL is an assertion,
+ * not an input to the login form or a way to override account permissions. */
 export const ROLES = {
   owner: { prefix: 'E2E_OWNER', portal: 'admin' },
-  manager: { prefix: 'E2E_MANAGER', portal: 'team' },
-  hr: { prefix: 'E2E_HR', portal: 'admin' },
+  manager: { prefix: 'E2E_MANAGER', portal: 'team-admin' },
+  hr: { prefix: 'E2E_HR', portal: 'team-admin' },
   developer: { prefix: 'E2E_DEVELOPER', portal: 'team' },
   employee: { prefix: 'E2E_EMPLOYEE', portal: 'team' },
   client: { prefix: 'E2E_CLIENT', portal: 'client' },
   // The rest of the staff roles. All created by Add employee, so all live in
-  // `developers` and sign in on the Team Member tab; the shell then routes
+  // `developers`; the shell automatically routes
   // team_lead, qa and finance wherever their role may go. `admin` arrives by
   // invitation and lives in `admin_users`.
   team_lead: { prefix: 'E2E_TEAM_LEAD', portal: 'team-admin' },
@@ -106,7 +89,7 @@ export function credentialsFor(role) {
     email,
     password,
     portalName,
-    tab: portal.tab,
+    organizationId: envValue(`${spec.prefix}_ORGANIZATION_ID`) || envValue(role === 'orgBOwner' ? 'E2E_QA_ORG_B_ID' : 'E2E_QA_ORG_A_ID'),
     landing: portal.landing,
     // Which SHELL answers after login — what a spec's assertions actually
     // depend on. Two portals land on the admin console (`admin` and

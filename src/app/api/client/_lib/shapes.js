@@ -11,9 +11,7 @@
 // a route has already fetched inside a verified org + project scope, and maps
 // them to the contract shape, dropping every field the contract does not name.
 
-const DONE_TASK_STATUSES = new Set(["completed"]);
-// A rejected task is closed, not open: it is not work the client is waiting on.
-const CLOSED_TASK_STATUSES = new Set(["completed", "rejected"]);
+import { isSettled, isUnsettled } from "@/utils/taskState";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const AT_RISK_WINDOW_DAYS = 7;
@@ -27,7 +25,7 @@ function clampPercent(value) {
 
 // Tasks still open, from the client-visible set the caller passed in.
 export function countOpenTasks(tasks) {
-  return (tasks || []).filter((t) => !CLOSED_TASK_STATUSES.has(t?.status)).length;
+  return (tasks || []).filter(isUnsettled).length;
 }
 
 // Contract: `progress` is 0-100 computed from client-visible tasks. When a
@@ -37,7 +35,7 @@ export function countOpenTasks(tasks) {
 export function computeProgress(tasks, storedProgress) {
   const list = tasks || [];
   if (!list.length) return clampPercent(storedProgress);
-  const done = list.filter((t) => DONE_TASK_STATUSES.has(t?.status)).length;
+  const done = list.filter(isSettled).length;
   return clampPercent((done / list.length) * 100);
 }
 
