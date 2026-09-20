@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowRight, TriangleAlert } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import styles from "./DashboardOverview.module.css";
 import { StatusPill } from "@/components/ui";
 
 /**
@@ -32,18 +33,18 @@ import { StatusPill } from "@/components/ui";
  * @param {string} [props.href]      where "View all" goes
  * @param {boolean} [props.canOpen]  false hides the link, keeps the panel
  */
-export function PanelHead({ title, hint, href, canOpen = true, action, children }) {
+export function PanelHead({ title, icon: Icon, hint, href, canOpen = true, action, children }) {
   return (
-    <div className="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+    <div className={styles.panelHead}>
       <div className="min-w-0">
-        <h3 className="text-base font-semibold tracking-[-0.01em] text-foreground">{title}</h3>
-        {hint && <p className="mt-0.5 text-sm text-muted-foreground">{hint}</p>}
+        <h3 className={styles.panelTitle}>{Icon && <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />}{title}</h3>
+        {hint && <p className="mt-1 text-xs leading-5 text-muted-foreground">{hint}</p>}
       </div>
       {action}
       {href && canOpen ? (
         <Link
           href={href}
-          className="group inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-sm font-semibold text-primary transition-colors duration-200 motion-reduce:transition-none hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          className="group inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-primary transition-colors duration-200 motion-reduce:transition-none hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           {children || "View all"}
           <ArrowRight
@@ -61,7 +62,7 @@ export function Panel({ className, children, ...rest }) {
   return (
     <section
       className={cn(
-        "rounded-xl border border-border bg-card p-4 shadow-card sm:p-5",
+        styles.panel,
         className
       )}
       {...rest}
@@ -226,12 +227,12 @@ export function BucketTile({ label, value, tone = "muted", href, canOpen = true 
   };
   const body = (
     <>
-      <span className="block text-2xl font-bold tabular-nums leading-none">{value}</span>
+      <span className="block text-xl font-semibold tabular-nums leading-none">{value}</span>
       <span className="mt-1.5 block text-xs font-medium">{label}</span>
     </>
   );
   const shell = cn(
-    "block rounded-lg px-3 py-3 text-center transition-colors duration-200 motion-reduce:transition-none",
+    "block rounded-lg border border-border/40 px-2.5 py-2.5 text-center transition-colors duration-200 motion-reduce:transition-none",
     tones[tone] || tones.muted
   );
 
