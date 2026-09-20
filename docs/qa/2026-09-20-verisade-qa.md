@@ -7,9 +7,10 @@ This audit uses three independent QA agents plus a coordinating agent. Baseline:
 | Check | Result | Boundary |
 | --- | --- | --- |
 | Baseline web suite | 270 files / 5,165 tests passed | Unit, API mocks and source/schema contracts |
-| Combined application fixes | 276 files / 5,231 tests passed | Includes new pagination, task-state, billing, export, support and auth regression cases |
-| QA environment-file isolation | 6 tests passed | Explicit private run file does not silently reuse stale default fixtures |
-| Production build | Passed | Existing lint warnings remain |
+| Combined application fixes, including pending Support activation | 276 files / 5,231 tests passed | Includes new pagination, task-state, billing, export, support and auth regression cases |
+| Final safe main release | 276 files / 5,229 tests passed | Excludes pending Support activation; includes later QA fixture environment/organization checks |
+| QA fixture isolation/routing | 21 tests passed | Explicit private run file, exact organization pin and automatic role destinations; included in final full-suite total |
+| Production build | Passed for combined fixes and final safe main release | Existing lint warnings remain |
 | Login production browser | Passed | Desktop/mobile height, accessible inputs, automatic-role form, dark colors; no real account creation |
 | Developer production browser | Passed | Mocked task/time data, refresh, unavailable/retry state, My Work navigation, dark sidebar/logo, mobile width |
 | Platform production browser scripts (2) | Passed | Mocked owner/limited-role/MFA/provider responses; management actions, exports, analytics, confirmations and mobile layout |
@@ -73,3 +74,7 @@ Before the local-only instruction, the isolated local application connected to t
 - Real role tests: use a dedicated `E2E_ENV_FILE`, set `E2E_ALLOW_WRITES=0`, and select the role/isolation specs. Do not blindly rerun the older seed script against stale credentials.
 
 Raw browser traces and environment files are private local artifacts; they are not committed because they may contain authentication material or account data.
+
+## Pending activation artifact
+
+The tested Support route switch is retained locally as commit `d8b6c2b` on `qa/support-transactions-pending-sql`, also exported to `/tmp/verisade-support-activation.patch`. It is deliberately not pushed to main. After SQL installation is confirmed, apply that isolated commit on top of the latest main and rerun its focused API tests before deployment. No other released fix depends on the new functions.
