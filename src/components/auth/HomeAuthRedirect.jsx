@@ -35,8 +35,8 @@ export default function HomeAuthRedirect({ children }) {
   }, [router]);
   return <>
     {pending && <div role="status" aria-live="polite" aria-busy="true" className="flex min-h-[100dvh] flex-col items-center justify-center gap-5 bg-background text-foreground">
-      <span className="font-display text-3xl font-bold tracking-tight">Verisade</span>
       <Loader2 className="h-9 w-9 animate-spin text-primary motion-reduce:animate-none" aria-hidden="true" />
+      <span className="font-display text-3xl font-bold tracking-tight">Verisade</span>
       <span className="sr-only">Checking your session…</span>
     </div>}
     <div hidden={pending}>{children}</div>
