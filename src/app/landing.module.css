@@ -80,8 +80,15 @@
   transition-property: transform, opacity !important;
 }
 
-/* Primary CTA backgrounds stay identical in both themes; only labels change. */
+/* Solid CTA backgrounds and white labels stay consistent in both themes. */
 .page :is(a, button)[class~="bg-primary"],
 .page :is(a, button)[class~="bg-primary"]:hover {
   background-color: hsl(243 60% 35%);
+}
+
+.page :is(a, button)[class~="bg-primary"],
+.page :is(a, button)[class~="bg-primary"]:hover,
+.page :is(a, button)[class~="bg-primary"]:focus-visible,
+.page :is(a, button)[class~="bg-primary"] :is(span, strong) {
+  color: #fff;
 }

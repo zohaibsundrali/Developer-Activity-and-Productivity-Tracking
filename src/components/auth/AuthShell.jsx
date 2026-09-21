@@ -97,9 +97,11 @@ export default function AuthShell({ children, highlights = DEFAULT_HIGHLIGHTS, p
 
       {/* Form column */}
       <main className={`flex flex-1 flex-col ${viewport ? "min-h-0 overflow-y-auto" : ""}`}>
-        {header ? <header className="auth-form-header shrink-0 px-4 sm:px-6 lg:px-8">{header}</header> : null}
         <div className="flex flex-1 items-start justify-center px-4 py-8 sm:px-6 sm:py-12 lg:items-center lg:px-8">
-          <div className={`w-full ${wide ? "max-w-3xl" : "max-w-md"}`}>{children}</div>
+          <div className={`w-full ${wide ? "max-w-3xl" : "max-w-md"}`}>
+            {header ? <header className="mb-5">{header}</header> : null}
+            {children}
+          </div>
         </div>
       </main>
     </div>

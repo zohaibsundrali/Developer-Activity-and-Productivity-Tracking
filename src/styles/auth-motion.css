@@ -494,15 +494,8 @@
   .auth-login-shell .auth-card { padding: 1.5rem; }
 }
 
-/* Login header follows the brand column's exact top inset at every height. */
+/* Login keeps readable text in both themes. */
 .auth-login-shell { --foreground: 0 0% 0%; --muted-foreground: 0 0% 0%; }
 .dark .auth-login-shell { --foreground: 0 0% 100%; --muted-foreground: 0 0% 100%; }
-.auth-login-shell .auth-form-header { padding-top: 1.25rem; }
-@media (min-width: 1024px) {
-  .auth-login-shell .auth-form-header { padding-top: 2rem; }
-}
-@media (min-width: 1024px) and (max-height: 700px) {
-  .auth-login-shell .auth-form-header { padding-top: 1.5rem; }
-}
 .auth-login-shell a { color: hsl(var(--foreground)); }
 .auth-login-shell .auth-card [data-slot="field"]:focus-within label { color: hsl(var(--foreground)); }
