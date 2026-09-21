@@ -79,3 +79,9 @@
 :global(.landing-theme-changing) .page *::after {
   transition-property: transform, opacity !important;
 }
+
+/* Primary CTA backgrounds stay identical in both themes; only labels change. */
+.page :is(a, button)[class~="bg-primary"],
+.page :is(a, button)[class~="bg-primary"]:hover {
+  background-color: hsl(243 60% 35%);
+}

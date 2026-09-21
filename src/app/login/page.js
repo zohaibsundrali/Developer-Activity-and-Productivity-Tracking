@@ -211,9 +211,9 @@ export default function LoginPage() {
   };
 
   return (
-    <AuthShell viewport panelTitle="Sign in to the workspace your team already works in.">
+    <AuthShell viewport panelTitle="Sign in to the workspace your team already works in." header={
       <div
-        className="auth-enter mb-5 flex items-center justify-between gap-4"
+        className="auth-enter flex items-center justify-between gap-4"
         style={enterDelay(40)}
       >
         <BrandLockup className="lg:invisible" />
@@ -222,13 +222,13 @@ export default function LoginPage() {
           variant="ghost"
           size="sm"
           onClick={handleGoToHome}
-          className="h-9 gap-1.5 px-2.5 text-muted-foreground hover:text-foreground dark:text-white dark:hover:text-white"
+          className="h-9 gap-1.5 px-2.5 text-black hover:text-black dark:text-white dark:hover:text-white"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           Back to home
         </Button>
       </div>
-
+      }>
       <AuthCard>
         <AuthHeading
           title="Welcome back"
