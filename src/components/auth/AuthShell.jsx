@@ -3,7 +3,7 @@
 import { BarChart3, Clock, ShieldCheck } from "lucide-react";
 
 import { BRAND_NAME } from "@/components/brand/brand";
-import { LogoMark } from "@/components/brand/Logo";
+import Logo, { LogoMark } from "@/components/brand/Logo";
 import "@/styles/auth-motion.css";
 
 /**
@@ -58,7 +58,7 @@ export default function AuthShell({ children, highlights = DEFAULT_HIGHLIGHTS, p
             brand column is context, and a login screen someone visits every
             morning is the last place that benefits from motion. */}
         <div className="auth-enter relative z-10">
-          <BrandLockup />
+          {viewport ? <Logo variant="full" className="text-lg text-foreground" /> : <BrandLockup />}
         </div>
 
         <div className={`relative z-10 ${fixedPanel ? "space-y-8 py-6" : "space-y-10 py-12"}`}>
