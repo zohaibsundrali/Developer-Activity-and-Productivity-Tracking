@@ -63,15 +63,19 @@
   outline-offset: 4px;
 }
 @media (prefers-reduced-motion: no-preference) {
-  :global(.landing-theme-changing) .page,
-  :global(.landing-theme-changing) .page * {
-    transition-property: color, background-color, border-color, box-shadow;
-    transition-duration: 200ms;
-    transition-timing-function: ease;
-  }
   .backToTop { transition: transform 180ms ease, box-shadow 180ms ease; }
   .backToTop:hover { transform: translateY(-3px); }
 }
 @media (min-width: 768px) {
   .backToTop { right: 1.5rem; bottom: 1.5rem; }
+}
+
+/* Commit the palette in one paint. Animating every descendant separately caused
+   inherited text, gradients and surfaces to change at different times. Keep
+   transform/opacity transitions (including section reveals) intact. */
+:global(.landing-theme-changing) .page,
+:global(.landing-theme-changing) .page *,
+:global(.landing-theme-changing) .page *::before,
+:global(.landing-theme-changing) .page *::after {
+  transition-property: transform, opacity !important;
 }

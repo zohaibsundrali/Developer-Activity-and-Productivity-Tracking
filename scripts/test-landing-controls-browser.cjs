@@ -17,6 +17,7 @@ const assert = require('node:assert/strict');
       });
       await page.goto(process.env.E2E_BASE_URL || 'http://127.0.0.1:3131', { timeout: 120000 });
       const toggle = page.getByRole('button', { name: 'Dark mode', exact: true });
+      await expect(toggle).toBeVisible({ timeout: 30000 });
       await expect(toggle).toHaveAttribute('aria-pressed', 'false');
       await expect(page.getByRole('button', { name: 'Back to top', exact: true })).toHaveCount(0);
       const light = await page.locator('main').evaluate(el => getComputedStyle(el.parentElement).backgroundColor);
@@ -52,9 +53,32 @@ const assert = require('node:assert/strict');
       }
       await toggle.click();
       await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+      // Rapid switching must commit text and surfaces together, without color
+      // transitions restarting on each descendant or leaving a guard behind.
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await page.waitForTimeout(350);
+      await page.evaluate(() => {
+        window.paletteTransitions = [];
+        document.addEventListener('transitionrun', event => {
+          if (event.target.closest('[class*="landing_page"]') && ['color', 'background-color', 'border-color', 'box-shadow'].includes(event.propertyName))
+            window.paletteTransitions.push(event.propertyName + ":" + event.target.outerHTML.slice(0, 250));
+        });
+      });
+      for (let i = 0; i < 6; i++) {
+        await toggle.click();
+        const palette = await page.locator('main').evaluate(el => ({
+          text: getComputedStyle(el.parentElement).color,
+          background: getComputedStyle(el.parentElement).backgroundColor,
+        }));
+        assert.equal(palette.text, i % 2 === 0 ? 'rgb(255, 255, 255)' : 'rgb(0, 0, 0)');
+        assert.equal(palette.background, i % 2 === 0 ? dark : light);
+      }
+      await page.waitForTimeout(300);
+      assert.deepEqual(await page.evaluate(() => window.paletteTransitions), []);
+      assert.equal(await page.evaluate(() => document.documentElement.classList.contains('landing-theme-changing')), false);
       assert.deepEqual(errors, [], 'Browser errors');
       await page.screenshot({ path: `/tmp/verisade-landing-${width}.png` });
-      console.log(`PASS ${width}px: theme, persistence, layout, keyboard return, reduced motion, navigation`);
+      console.log(`PASS ${width}px: theme, rapid switching without palette transitions, persistence, layout, keyboard return, reduced motion, navigation`);
       await context.close();
     }
   } finally { await browser.close(); }

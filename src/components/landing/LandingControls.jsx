@@ -45,12 +45,16 @@ export function LandingThemeToggle() {
     const root = document.documentElement;
     const next = !root.classList.contains("dark");
     root.classList.add("landing-theme-changing");
+    // Resolve the transition guard before changing any palette values.
+    void document.body.offsetHeight;
     root.classList.toggle("dark", next);
     root.style.colorScheme = next ? "dark" : "light";
+    // Flush the complete new palette before restoring normal hover transitions.
+    void document.body.offsetHeight;
     setDark(next);
     try { localStorage.setItem(THEME_KEY, next ? "dark" : "light"); } catch {}
     clearTimeout(transitionTimer.current);
-    transitionTimer.current = setTimeout(() => root.classList.remove("landing-theme-changing"), 250);
+    transitionTimer.current = setTimeout(() => root.classList.remove("landing-theme-changing"), 50);
   };
 
   return (
