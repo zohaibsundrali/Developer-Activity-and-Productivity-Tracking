@@ -19,7 +19,7 @@
  *
  *   [ logo ]   [ section links, left-of-centre ]   [ sign in · secondary · CTA ]
  *
- * The bar is 80px at `lg` rather than 64px, which is what makes it read as
+ * The bar is 80px at `xl` rather than 64px, which is what makes it read as
  * chrome rather than as a strip. 80px is also exactly the `scroll-mt-20` every
  * section carries, so an anchor still lands below the header and not under it.
  *
@@ -41,6 +41,7 @@ import Link from "next/link";
 import { LayoutDashboard, Menu, X } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
+import { LandingThemeToggle } from "@/components/landing/LandingControls";
 import Logo from "@/components/brand/Logo";
 import { Container, CtaButton } from "@/components/landing/primitives";
 import {
@@ -316,8 +317,9 @@ export default function SiteNav({ sections }) {
       ].join(" ")}
     >
       <Container as="nav" aria-label="Main">
-        <div className="flex h-16 items-center gap-4 lg:h-20 lg:gap-6">
+        <div className="flex h-16 items-center gap-3 xl:h-20 xl:gap-4">
           <a
+            id="landing-home-link"
             href="#top"
             onClick={(event) => scrollToSection(event, "#top")}
             className="inline-flex shrink-0 items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
@@ -333,13 +335,13 @@ export default function SiteNav({ sections }) {
             body copy — 14px against the page's 16px, on a 2px gap — so the row
             reads as navigation rather than as a sentence.
           */}
-          <ul className="hidden items-center gap-0.5 lg:flex lg:ml-2 xl:ml-8">
+          <ul className="hidden items-center gap-0.5 xl:flex xl:ml-2">
             {links.map((link) => (
               <li key={link.href}>
                 <a
                   href={link.href}
                   onClick={(event) => scrollToSection(event, link.href)}
-                  className="inline-flex h-9 items-center rounded-lg px-3 text-sm font-medium tracking-[-0.005em] text-muted-foreground transition-colors duration-200 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="inline-flex h-9 whitespace-nowrap items-center rounded-lg px-3 text-sm font-medium tracking-[-0.005em] text-muted-foreground transition-colors duration-200 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   {link.label}
                 </a>
@@ -349,13 +351,12 @@ export default function SiteNav({ sections }) {
 
           {/*
             Action hierarchy, quietest first: text → outline → solid. The
-            outlined middle step is held back to `xl`; between 1024 and 1279 the
-            five section links and three actions do not both fit on one row, and
-            a wrapping header is worse than a header with two actions.
+            outlined middle step is held back to `2xl` to leave room for the
+            theme control. Below `xl`, use the compact mobile navigation.
           */}
-          <div className="ml-auto hidden items-center gap-1 lg:flex xl:gap-2">
+          <div className="ml-auto hidden items-center gap-1 xl:flex xl:gap-2">
             {signedIn ? (
-              <CtaButton href={home} variant="primary" size="sm" className="shadow-card">
+              <CtaButton href={home} variant="primary" size="sm" className="whitespace-nowrap shadow-card">
                 <LayoutDashboard className="h-4 w-4 shrink-0" aria-hidden="true" />
                 Dashboard
               </CtaButton>
@@ -365,7 +366,7 @@ export default function SiteNav({ sections }) {
                   <NavAnchor
                     href={navSignIn.href}
                     onClick={(event) => scrollToSection(event, navSignIn.href)}
-                    className="inline-flex h-10 items-center rounded-lg px-3 text-sm font-semibold text-foreground transition-colors duration-200 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                    className="inline-flex h-10 whitespace-nowrap items-center rounded-lg px-3 text-sm font-semibold text-foreground transition-colors duration-200 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   >
                     {navSignIn.label}
                   </NavAnchor>
@@ -375,7 +376,7 @@ export default function SiteNav({ sections }) {
                     href={navSecondary.href}
                     variant="ghost"
                     size="sm"
-                    className="hidden xl:inline-flex"
+                    className="hidden 2xl:inline-flex"
                   >
                     {navSecondary.label}
                   </CtaButton>
@@ -385,7 +386,7 @@ export default function SiteNav({ sections }) {
                     href={navPrimary.href}
                     variant="primary"
                     size="sm"
-                    className="shadow-card"
+                    className="whitespace-nowrap shadow-card"
                   >
                     {navPrimary.label}
                   </CtaButton>
@@ -402,6 +403,7 @@ export default function SiteNav({ sections }) {
             state of the same control, rather than as a stray × parked in the
             corner of the screen.
           */}
+          <LandingThemeToggle />
           <button
             ref={toggleRef}
             type="button"
@@ -409,8 +411,8 @@ export default function SiteNav({ sections }) {
             aria-expanded={open}
             aria-controls="site-nav-panel"
             className={[
-              "ml-auto inline-flex h-11 w-11 items-center justify-center rounded-xl border transition-colors duration-200",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:hidden",
+              "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-colors duration-200",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background xl:hidden",
               open
                 ? "border-sidebar bg-sidebar text-sidebar-primary-foreground hover:bg-sidebar-accent"
                 : "border-border bg-card text-foreground hover:bg-muted",
@@ -433,15 +435,15 @@ export default function SiteNav({ sections }) {
         Full height, pinned below the 64px bar: a menu that stops two thirds of
         the way down the screen leaves a strip of the page showing underneath
         and reads as a dropdown that failed to finish. `top-16` is the mobile
-        bar height — the `lg:h-20` step never applies here, since the panel is
-        `lg:hidden`. `overflow-y-auto` is the safety net for a long link list on
+        bar height — the `xl:h-20` step never applies here, since the panel is
+        `xl:hidden`. `overflow-y-auto` is the safety net for a long link list on
         a short landscape phone; it is the panel that scrolls, not the page.
       */}
       {open ? (
         <div
           id="site-nav-panel"
           ref={panelRef}
-          className="fixed inset-x-0 bottom-0 top-16 flex flex-col overflow-y-auto bg-background lg:hidden"
+          className="fixed inset-x-0 bottom-0 top-16 flex flex-col overflow-y-auto bg-background xl:hidden"
         >
           {/*
             The link stack takes the free height and centres itself in it, so

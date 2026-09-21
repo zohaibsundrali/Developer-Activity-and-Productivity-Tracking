@@ -36,3 +36,42 @@
   background-color: hsl(var(--background));
   backdrop-filter: none;
 }
+
+/* A compact brand control, clear of device safe areas and below the menu. */
+.page .backToTop,
+.page .backToTop:hover,
+.page .backToTop:focus-visible {
+  color: #fff;
+  background-color: hsl(var(--primary));
+}
+.backToTop {
+  position: fixed;
+  z-index: 40;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border: 1px solid rgb(255 255 255 / 25%);
+  border-radius: 1rem;
+  box-shadow: 0 6px 24px rgb(36 32 110 / 25%);
+}
+.backToTop:focus-visible {
+  outline: 2px solid hsl(var(--foreground));
+  outline-offset: 4px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  :global(.landing-theme-changing) .page,
+  :global(.landing-theme-changing) .page * {
+    transition-property: color, background-color, border-color, box-shadow;
+    transition-duration: 200ms;
+    transition-timing-function: ease;
+  }
+  .backToTop { transition: transform 180ms ease, box-shadow 180ms ease; }
+  .backToTop:hover { transform: translateY(-3px); }
+}
+@media (min-width: 768px) {
+  .backToTop { right: 1.5rem; bottom: 1.5rem; }
+}
