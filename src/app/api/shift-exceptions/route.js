@@ -9,7 +9,7 @@ const fingerprint = value => typeof value === 'string' && /^[a-f0-9]{32}$/.test(
 const decisions = ['acknowledged','excused','reopened'];
 function failure(error) {
   const code = error?.code;
-  const status = code === '42501' ? 403 : code === 'P0002' ? 404 : code === '22023' ? 400 : ['40001','23505','54000'].includes(code) ? 409 : String(error?.message).startsWith('BILLING_LOCKED') ? 402 : 503;
+  const status = code === '42501' ? 403 : code === 'P0002' ? 404 : code === '22023' ? 400 : ['PT409', '40001','23505','54000'].includes(code) ? 409 : String(error?.message).startsWith('BILLING_LOCKED') ? 402 : 503;
   return mobileFail(code === '54000' ? 'This report exceeds the 500-shift or evidence-size limit. Select a shorter date range.' : status === 409 ? 'The evidence changed. Refresh before reviewing again.' : status === 403 ? 'Attendance exception access is not allowed.' : status === 400 ? 'Check the report dates, grace minutes and review fields.' : 'Attendance exceptions are temporarily unavailable.', status);
 }
 const validReview = (r, org, id) => r && SHIFT_UUID.test(r.id) && r.organization_id === org && r.shift_id === id && fingerprint(r.fingerprint) && exceptionGrace(r.late_grace) && exceptionGrace(r.early_grace) && decisions.includes(r.decision) && typeof r.reason === 'string' && r.reason.length <= 1000 && SHIFT_UUID.test(r.actor_id) && ['admin','developer'].includes(r.actor_type) && shiftInstant(r.created_at);

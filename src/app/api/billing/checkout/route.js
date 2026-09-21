@@ -1,3 +1,4 @@
+import { billingAuthority } from '@/utils/accountBilling';
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { requirePermission } from "@/utils/serverPermissions";
@@ -46,6 +47,9 @@ export async function POST(request) {
     }
 
     const svc = serviceClient();
+    const account = await billingAuthority(svc, auth, { purchase: true });
+    if (account.denied) return NextResponse.json({ error: 'Only the billing account owner can manage this shared plan. Open the original organization for delegated billing access.' }, { status: 403 });
+    const billingOrgId = account.scope.accountId;
 
     // The price is looked up from the catalogue by plan code. Accepting a price
     // id from the body would let a caller pay for the cheapest plan while
@@ -76,7 +80,7 @@ export async function POST(request) {
 
     // Org id comes from the verified JWT. Anything the body says about which
     // organization is being billed is ignored.
-    const organizationId = auth.orgId;
+    const organizationId = billingOrgId;
     if (await deletionStarted(svc, organizationId)) return deletionResponse();
 
     const { data: existing, error: subscriptionError } = await svc
@@ -316,6 +320,6 @@ export async function POST(request) {
       return NextResponse.json({ error: "Payment requires attention. Update your payment method in the billing portal and retry." }, { status: 402 });
     }
     console.error("[billing/checkout] Error:", err);
-    return NextResponse.json({ error: "Failed to start checkout" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to start checkout" }, { status: err.status === 503 ? 503 : 500 });
   }
 }

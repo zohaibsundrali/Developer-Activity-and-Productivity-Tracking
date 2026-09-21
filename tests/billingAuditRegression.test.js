@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { accessState } from '@/utils/billingAccess';
-const state = vi.hoisted(() => ({ event: null, writes: [], configured: false, auth: { role: 'owner', userType: 'admin', orgId: '00000000-0000-0000-0000-000000000001' } }));
+const state = vi.hoisted(() => ({ event: null, writes: [], configured: false, auth: { userId: 'payer', role: 'owner', userType: 'admin', orgId: '00000000-0000-0000-0000-000000000001' } }));
 function db() {
-  return { rpc: async () => ({data:false,error:null}), from(table) {
+  return { rpc: async (name) => name === 'billing_scope' ? {data:{accountId:state.auth.orgId,ownerAuthId:state.auth.userId,organizationIds:[state.auth.orgId]}} : ({data:false,error:null}), from(table) {
     let op = 'select', payload;
     const result = () => ({ error: null, data: op === 'select'
       ? table === 'billing_plans' ? [{ code: 'professional', name: 'Professional', amount_cents: 1000 }]

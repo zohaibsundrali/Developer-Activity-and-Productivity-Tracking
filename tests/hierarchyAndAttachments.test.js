@@ -102,7 +102,7 @@ describe("the Team Structure section is wired end to end", () => {
   });
 
   it("is visible to founder, admin, HR, PM and team lead — the five who were asked for", () => {
-    for (const role of ["owner", "admin", "hr", "manager", "team_lead"]) {
+    for (const role of ["owner", "hr", "manager", "team_lead"]) {
       expect(canAccessAdminSection("hierarchy", role), role).toBe(true);
       expect(canAccessAdminSection("capacity", role), role).toBe(true);
     }

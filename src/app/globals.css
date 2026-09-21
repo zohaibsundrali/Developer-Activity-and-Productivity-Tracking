@@ -99,8 +99,8 @@
     --card-foreground: 210 20% 96%;
     --popover: 200 28% 11%;
     --popover-foreground: 210 20% 96%;
-    --primary: 243 75% 68%;
-    --primary-foreground: 243 60% 12%;
+    --primary: 243 75% 60%;
+    --primary-foreground: 0 0% 100%;
     --secondary: 200 20% 18%;
     --secondary-foreground: 210 20% 96%;
     --muted: 200 20% 18%;
@@ -243,3 +243,10 @@
   color: hsl(var(--foreground));
 }
 .dark .registration-select { color-scheme: dark; }
+
+/* Keep action labels white across shared components, native buttons and
+   links styled as buttons. Disabled controls retain their existing opacity. */
+.dark :is(button, [role="button"], [data-slot="button"], a[class*="bg-primary"], a[class*="bg-secondary"]),
+.dark :is(button, [role="button"], [data-slot="button"], a[class*="bg-primary"], a[class*="bg-secondary"]) :is(span, strong) {
+  color: #fff !important;
+}

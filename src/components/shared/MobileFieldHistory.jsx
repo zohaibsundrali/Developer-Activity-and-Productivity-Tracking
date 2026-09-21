@@ -1,4 +1,5 @@
 'use client';
+import { SECTION_TITLES } from '@/components/shell/sectionTitles';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { authFetch } from '@/utils/authFetch';
@@ -35,7 +36,7 @@ export default function MobileFieldHistory(){
   catch(e){if(current(captured,generation))setError(e.name==='AbortError'?'Request timed out. Refresh before retrying.':e.message);}finally{clearTimeout(timer);if(current(captured,generation)){pending.current=false;setBusy(false);}}
  }
  if(authStatus!=='authenticated'||!allowed('attendance.view_own'))return <p>Mobile history access is not available.</p>;
- return <div className="space-y-6"><PageHeader title="Mobile field work" description="Completed Android work sessions, GPS history and work-site geofences." />
+ return <div className="space-y-6"><PageHeader title={SECTION_TITLES['mobile-field'].admin} description="Completed Android work sessions, GPS history and work-site geofences." />
  <p className="text-sm">Sessions appear after the employee stops and syncs. Work time enters their timesheet as non-billable, unallocated time and still requires normal approval.</p>
  <div className="flex flex-wrap items-end gap-3">{[['From UTC',from,setFrom],['To UTC',to,setTo]].map(([label,value,set])=><label className="text-sm" key={label}>{label}<input type="date" value={value} onChange={e=>set(e.target.value)} className="block rounded-lg border border-input bg-background p-2" /></label>)}{allowed('monitoring.view')&&allowed('attendance.view_all')&&<label className="text-sm">Show<select className="block rounded-lg border border-input bg-background p-2" value={scope} onChange={e=>setScope(e.target.value)}><option value="me">My sessions</option><option value="all">Organization sessions</option></select></label>}<Button disabled={busy} variant="outline" onClick={()=>load()}>Refresh mobile history</Button></div>
  {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}{busy&&<p role="status">Loading…</p>}

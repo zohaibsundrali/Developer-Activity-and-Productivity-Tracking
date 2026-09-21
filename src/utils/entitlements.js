@@ -1,3 +1,4 @@
+import { billingScope } from '@/utils/accountBilling';
 /**
  * Plan entitlements — what an organization is allowed to do, and how much of it
  * it has already used.
@@ -26,7 +27,7 @@ export const RESOURCES = {
       svc
         .from("memberships")
         .select("id", { count: "exact", head: true })
-        .eq("organization_id", orgId)
+        .in("organization_id", (await billingScope(svc, orgId)).organizationIds)
         .neq("user_type", "client"),
   },
   developers: {
@@ -35,7 +36,7 @@ export const RESOURCES = {
       svc
         .from("developers")
         .select("id", { count: "exact", head: true })
-        .eq("organization_id", orgId),
+        .in("organization_id", (await billingScope(svc, orgId)).organizationIds),
   },
   projects: {
     label: "Projects",
@@ -43,7 +44,7 @@ export const RESOURCES = {
       svc
         .from("projects")
         .select("id", { count: "exact", head: true })
-        .eq("organization_id", orgId),
+        .in("organization_id", (await billingScope(svc, orgId)).organizationIds),
   },
   active_tasks: {
     label: "Active tasks",
@@ -53,7 +54,7 @@ export const RESOURCES = {
       svc
         .from("developer_tasks")
         .select("id", { count: "exact", head: true })
-        .eq("organization_id", orgId)
+        .in("organization_id", (await billingScope(svc, orgId)).organizationIds)
         .in("status", ["pending", "in_progress", "awaiting_approval", "reviewed"]),
   },
   screenshots: {
@@ -62,7 +63,7 @@ export const RESOURCES = {
       svc
         .from("screenshots")
         .select("id", { count: "exact", head: true })
-        .eq("organization_id", orgId),
+        .in("organization_id", (await billingScope(svc, orgId)).organizationIds),
   },
 };
 
@@ -185,10 +186,11 @@ export function trialDaysRemaining(subscription, now = new Date()) {
  * falls back to free rather than keeping the paid limits.
  */
 export async function resolveEntitlement(svc, orgId, now = new Date()) {
+  const scope = await billingScope(svc, orgId);
   const { data: subscription, error: subscriptionError } = await svc
     .from("organization_subscriptions")
     .select("*")
-    .eq("organization_id", orgId)
+    .eq("organization_id", scope.accountId)
     .maybeSingle();
 
   if (subscriptionError) throw new Error("Subscription lookup unavailable");
@@ -211,6 +213,7 @@ export async function resolveEntitlement(svc, orgId, now = new Date()) {
   const access = accessState(subscription, now);
 
   return {
+    billingAccountId: scope.accountId,
     subscription: subscription || null,
     plan: plan || null,
     planCode: effectiveCode,

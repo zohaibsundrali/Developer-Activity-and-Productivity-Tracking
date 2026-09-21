@@ -114,7 +114,7 @@ const post = (body) =>
   POST(new Request("https://x.test/x", { method: "POST", body: JSON.stringify(body) }), { params });
 
 const OWNER = { orgId: "o1", role: "owner", userType: "admin", appUserId: "u-owner" };
-const ADMIN = { orgId: "o1", role: "admin", userType: "admin", appUserId: "u-admin" };
+const ADMIN = { orgId: "o1", role: "owner", userType: "admin", appUserId: "u-admin" };
 const MANAGER = { orgId: "o1", role: "manager", userType: "developer", appUserId: "pm" };
 const CLIENT = { orgId: "o1", role: "client", userType: "client", appUserId: "c1" };
 
@@ -226,7 +226,7 @@ describe("the screen", () => {
     // BE assigned, not who may assign. It had two copies, here and in the
     // route; utils/roles.js now holds the only one.
     expect(UI).toContain("MANAGEABLE_BY_ROLES.includes(e.role)");
-    expect([...MANAGEABLE_BY_ROLES]).toEqual(["owner", "admin", "manager", "team_lead"]);
+    expect([...MANAGEABLE_BY_ROLES]).toEqual(["owner", "manager", "team_lead"]);
   });
 
   it("gates the control on owner/admin and SAYS so rather than hiding it", () => {
@@ -234,7 +234,7 @@ describe("the screen", () => {
     expect(UI).toContain('allowed("project.assign_manager")');
     for (const role of ROLES) {
       expect(roleCan(role, "project.assign_manager"), role).toBe(
-        ["owner", "admin"].includes(role)
+        ["owner"].includes(role)
       );
     }
     expect(UI).toMatch(/Only an owner or admin can change this/);

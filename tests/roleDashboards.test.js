@@ -61,7 +61,7 @@ describe("the area gate agrees with the section table", () => {
   it("admits every role the section table grants something to", () => {
     // The exact set the bug excluded. If any of these falls out, that role is
     // back to a four-entry sidebar with none of its work on it.
-    for (const role of ["owner", "admin", ...STAFF_ADMIN_ROLES]) {
+    for (const role of ["owner", ...STAFF_ADMIN_ROLES]) {
       expect(canEnterAdminArea(role), role).toBe(true);
     }
   });

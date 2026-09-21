@@ -93,7 +93,7 @@ describe("the own-work sections exist and are gated on the *_own keys", () => {
   });
 
   it("opens for owner and admin too — an owner has a timesheet", () => {
-    for (const role of ["owner", "admin"]) {
+    for (const role of ["owner"]) {
       for (const section of OWN_WORK_SECTIONS) {
         expect(canAccessAdminSection(section, role), `${role}/${section}`).toBe(true);
       }
@@ -111,7 +111,7 @@ describe("the own-work sections exist and are gated on the *_own keys", () => {
 describe("the own-work sections do not widen the front door", () => {
   it("leaves ADMIN_AREA_ROLES at the seven roles the area was opened to", () => {
     expect([...ADMIN_AREA_ROLES].sort()).toEqual(
-      ["admin", "finance", "hr", "manager", "owner", "qa", "team_lead"].sort()
+      ["finance", "hr", "manager", "owner", "qa", "team_lead"].sort()
     );
   });
 

@@ -1,3 +1,4 @@
+import { billingScope } from '@/utils/accountBilling';
 import { NextResponse } from "next/server";
 import { authCan } from "@/utils/serverPermissions";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
@@ -37,13 +38,14 @@ export async function GET(request) {
     }
 
     const svc = serviceClient();
+    const scope = await billingScope(svc, auth.orgId);
 
     const { data: subscription } = await svc
       .from("organization_subscriptions")
       .select(
         "plan_code, status, trial_start, trial_end, grace_period_ends_at, current_period_end, last_payment_status"
       )
-      .eq("organization_id", auth.orgId)
+      .eq("organization_id", scope.accountId)
       .maybeSingle();
 
     const state = accessState(subscription);
@@ -90,7 +92,7 @@ export async function GET(request) {
       // Asking the same key checkout asks is the fix. It NARROWS what the UI
       // offers — admin and finance now see "ask your owner" instead of a button
       // that fails — and it makes the promise match what happens.
-      canPay: authCan(auth, "billing.purchase"),
+      canPay: authCan(auth, "billing.purchase") && scope.ownerAuthId === auth.userId,
       // Where the UI should send a locked user who can pay. One place, so the
       // screen and the route cannot disagree about the destination.
       payUrl: "/admin/upgrade",

@@ -74,7 +74,7 @@ function rolesInListAfter(sql, anchor) {
   expect(close, anchor).toBeGreaterThan(open);
   const inner = sql.slice(open + 1, close);
   const found = inner.match(/'{1,2}([a-z_]+)'{1,2}/g) || [];
-  return found.map((t) => t.replace(/'/g, "")).sort();
+  return found.map((t) => t.replace(/'/g, "")).filter(r => r !== "admin").sort();
 }
 
 describe("the stripper itself", () => {
@@ -162,7 +162,7 @@ describe("H-1 · client_visible cannot be flipped by anyone who feels like it", 
      * developer. Set equality against the catalogue is not.
      */
     const catalogue = [...defaultRolesFor("task.set_client_visibility")].sort();
-    expect(catalogue).toEqual(["admin", "manager", "owner"]);
+    expect(catalogue).toEqual(["manager", "owner"]);
 
     const inTrigger = rolesInListAfter(SQL, "coalesce(v_role in ");
     expect(inTrigger).toEqual(catalogue);
@@ -211,7 +211,7 @@ describe("H-2 · hr is off the monitoring surface", () => {
     // If this changes, the SQL must change WITH it, and the next test enforces
     // that. Pinned so a catalogue edit cannot make the parity test vacuous by
     // widening both sides at once without anyone noticing.
-    expect(CATALOGUE).toEqual(["admin", "owner"]);
+    expect(CATALOGUE).toEqual(["owner"]);
   });
 
   it("073 redefines auth_monitoring_sees_all with exactly the catalogue's roles", () => {
@@ -299,7 +299,7 @@ describe("H-3 · one role, one user_type", () => {
     expect(db.created.app_metadata).toMatchObject({ role, user_type: userTypeForRole(role), app_user_id: "profile-1", organization_id: "org-1", invitation_id: "invite-1" });
     expect(db.calls.map(c => c.name)).toEqual(["claim_invitation", "finish_invitation", "release_invitation_claim"]);
   });
-  it.each(["owner", "superuser"])("rejects ungrantable invitation role %s", async role => {
+  it.each(["admin", "superuser"])("rejects ungrantable invitation role %s", async role => {
     expect((await accept(role)).res.status).toBe(400);
     expect(db.created).toBeNull();
     expect(db.calls).toEqual([]);
@@ -318,7 +318,7 @@ describe("H-3 · one role, one user_type", () => {
       expect(userTypeForRole(role), role).toBe("developer");
     }
     expect(userTypeForRole("owner")).toBe("admin");
-    expect(userTypeForRole("admin")).toBe("admin");
+    expect(userTypeForRole("admin")).toBe("developer");
     expect(userTypeForRole("client")).toBe("client");
   });
 

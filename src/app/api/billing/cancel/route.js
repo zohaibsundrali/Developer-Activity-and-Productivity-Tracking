@@ -1,3 +1,4 @@
+import { billingAuthority } from '@/utils/accountBilling';
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { requirePermission } from "@/utils/serverPermissions";
@@ -38,10 +39,13 @@ export async function POST(request) {
     const cancelAtPeriodEnd = resume !== true;
 
     const svc = serviceClient();
+    const account = await billingAuthority(svc, auth, { purchase: true });
+    if (account.denied) return NextResponse.json({ error: 'Only the billing account owner can manage this shared plan. Open the original organization for delegated billing access.' }, { status: 403 });
+    const billingOrgId = account.scope.accountId;
     const { data: subscription, error: lookupError } = await svc
       .from("organization_subscriptions")
       .select("stripe_subscription_id, stripe_customer_id, status, updated_at")
-      .eq("organization_id", auth.orgId)
+      .eq("organization_id", billingOrgId)
       .maybeSingle();
 
     if (lookupError) return NextResponse.json({ error: "Subscription lookup unavailable. Please retry." }, { status: 503 });
@@ -52,19 +56,19 @@ export async function POST(request) {
       );
     }
 
-    const deletion = await svc.rpc("organization_deletion_active", { p_org: auth.orgId });
+    const deletion = await svc.rpc("organization_deletion_active", { p_org: billingOrgId });
     if (deletion.error || typeof deletion.data !== "boolean") return NextResponse.json({ error: "Organization state unavailable. Please retry." }, { status: 503 });
     if (deletion.data) return NextResponse.json({ error: "Organization deletion is in progress." }, { status: 409 });
     const current = await stripe.subscriptions.retrieve(subscription.stripe_subscription_id);
     const customerId = typeof current.customer === "string" ? current.customer : current.customer?.id;
-    if (!subscription.stripe_customer_id || customerId !== subscription.stripe_customer_id || current.metadata?.organization_id !== auth.orgId) {
+    if (!subscription.stripe_customer_id || customerId !== subscription.stripe_customer_id || current.metadata?.organization_id !== billingOrgId) {
       return NextResponse.json({ error: "Billing ownership needs review. Contact support." }, { status: 409 });
     }
     const updated = await stripe.subscriptions.update(subscription.stripe_subscription_id, {
       cancel_at_period_end: cancelAtPeriodEnd,
     });
 
-    const after = await svc.rpc("organization_deletion_active", { p_org: auth.orgId });
+    const after = await svc.rpc("organization_deletion_active", { p_org: billingOrgId });
     if (after.error || typeof after.data !== "boolean") return NextResponse.json({ error: "Stripe accepted the change; organization state could not be verified. Refresh shortly." }, { status: 503 });
     if (after.data) return NextResponse.json({ error: "Organization deletion is in progress; cleanup will reconcile billing." }, { status: 409 });
 
@@ -78,7 +82,7 @@ export async function POST(request) {
         canceled_at: toIso(updated.canceled_at),
         updated_at: new Date().toISOString(),
       })
-      .eq("organization_id", auth.orgId)
+      .eq("organization_id", billingOrgId)
       .eq("stripe_subscription_id", subscription.stripe_subscription_id)
       .eq("updated_at", subscription.updated_at)
       .select("organization_id");
@@ -92,6 +96,6 @@ export async function POST(request) {
     });
   } catch (err) {
     console.error("[billing/cancel] Error:", err);
-    return NextResponse.json({ error: "Failed to update subscription" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to update subscription" }, { status: err.status === 503 ? 503 : 500 });
   }
 }

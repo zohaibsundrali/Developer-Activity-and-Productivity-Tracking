@@ -60,7 +60,7 @@ it('restricts email fallback to missing developer identity when a UUID is reques
  expect(state.filters.or).toBe(`developer_id.eq.${other},and(developer_id.is.null,user_email.eq."reused@example.test")`);
 });
 it('preserves explicitly requested email-only monitoring queries',async()=>{
- state.auth.userType='admin';state.auth.role='admin';await call({developerId:'',email:'person@example.test'});
+ state.auth.userType='admin';state.auth.role='owner';await call({developerId:'',email:'person@example.test'});
  expect(state.filters.or).toBe('user_email.eq."person@example.test"');
 });
 it.each([200,401,403,400,500])('keeps response status %s private and uncached',async status=>{

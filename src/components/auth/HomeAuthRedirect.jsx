@@ -23,7 +23,7 @@ export default function HomeAuthRedirect({ children }) {
         const response = await authFetch('/api/organizations', { cache: 'no-store' });
         const result = await response.json();
         // Server-authorized memberships, never a cached browser role/cookie.
-        if (active && response.ok && (result.ownerAccount || result.organizations?.some(org => ['owner', 'admin'].includes(org.role)))) {
+        if (active && response.ok && (result.ownerAccount || result.organizations?.some(org => org.role === 'owner'))) {
           redirecting = true;
           router.replace('/organizations');
         }

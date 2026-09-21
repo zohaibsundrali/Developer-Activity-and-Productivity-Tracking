@@ -41,7 +41,7 @@ export const VALID_ROLES = Object.keys(ROLE_RANK);
 
 // Who may change anyone's role at all. Mirrors the memberships_update policy in
 // migration 018: auth_role() in ('owner','admin','hr').
-export const ROLE_CHANGERS = ["owner", "admin", "hr"];
+export const ROLE_CHANGERS = ["owner", "hr"];
 
 function rank(role) {
   // An UNKNOWN role must not read as the lowest one — that is how a role this
@@ -137,7 +137,7 @@ export function authorizeRoleChange({ actor, membership, newRole }) {
     return {
       ok: false,
       status: 403,
-      error: "You cannot change your own role. Ask another owner or admin.",
+      error: "You cannot change your own role. Ask another owner.",
     };
   }
 

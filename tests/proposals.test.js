@@ -109,7 +109,7 @@ describe("acceptance is one database transaction", () => {
     expect(ATOMIC).toContain("user_type=manager_type and status='active'");
     expect(ATOMIC).toContain("permission_key='proposal.decide'");
     expect(DECIDE).toContain("requirePermission(auth, 'proposal.decide')");
-    for (const role of ROLES) expect(roleCan(role,'proposal.decide')).toBe(['owner','admin','manager'].includes(role));
+    for (const role of ROLES) expect(roleCan(role,'proposal.decide')).toBe(['owner','manager'].includes(role));
   });
   it("records durable client delivery intent inside the decision and reports later delivery failure", () => {
     expect(ATOMIC).toContain('insert into public.proposal_decision_emails');
@@ -122,7 +122,7 @@ describe("acceptance is one database transaction", () => {
 describe("the screens are reachable by the right roles", () => {
   it("puts Requests in the admin sidebar for the deciders and team_lead", () => {
     // The rule itself, not a regex over whichever file currently holds it.
-    for (const role of ["owner", "admin", "manager", "team_lead"]) {
+    for (const role of ["owner", "manager", "team_lead"]) {
       expect(canAccessAdminSection("requests", role), role).toBe(true);
     }
     for (const role of ["developer", "designer", "qa", "hr"]) {

@@ -1,3 +1,4 @@
+import { billingAuthority } from '@/utils/accountBilling';
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { requirePermission } from "@/utils/serverPermissions";
@@ -37,6 +38,9 @@ export async function GET(request) {
     // counts span tables a plain admin token cannot fully count. The org id
     // still comes from the verified JWT, never from the request.
     const svc = serviceClient();
+    const account = await billingAuthority(svc, auth, { purchase: false });
+    if (account.denied) return NextResponse.json({ error: 'Only the billing account owner can manage this shared plan. Open the original organization for delegated billing access.' }, { status: 403 });
+    const billingOrgId = account.scope.accountId;
 
     const entitlement = await resolveEntitlement(svc, auth.orgId);
     const usage = await getUsage(svc, auth.orgId, entitlement.limits);
@@ -73,7 +77,7 @@ export async function GET(request) {
       .select(
         "stripe_invoice_id, status, amount_due_cents, amount_paid_cents, currency, hosted_invoice_url, invoice_pdf_url, period_start, period_end, issued_at, created_at"
       )
-      .eq("organization_id", auth.orgId)
+      .eq("organization_id", billingOrgId)
       .order("issued_at", { ascending: false, nullsFirst: false })
       .limit(20);
     if (invoicesError) throw new Error("Billing history unavailable");
@@ -91,6 +95,8 @@ export async function GET(request) {
       // The page treats a response without this flag as a failure, so every
       // successful payload has to carry it.
       success: true,
+      sharedAccount: true,
+      organizationCount: account.scope.organizationIds.length,
       // Stripe customer / subscription identifiers stay on the server. The page
       // only needs to know whether the links exist, to decide which buttons to
       // render.

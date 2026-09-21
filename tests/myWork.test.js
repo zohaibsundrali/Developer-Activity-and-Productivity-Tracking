@@ -229,7 +229,7 @@ describe("the last hand-typed role list on this dashboard", () => {
   });
 
   it("admits exactly the roles the old array named", () => {
-    for (const role of ["manager", "team_lead", "hr", "admin", "owner"]) {
+    for (const role of ["manager", "team_lead", "hr", "owner"]) {
       expect(roleCan(role, "hierarchy.view"), role).toBe(true);
     }
     for (const role of ["developer", "designer", "devops", "employee", "qa", "finance"]) {

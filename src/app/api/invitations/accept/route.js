@@ -57,7 +57,7 @@ export async function POST(request) {
     if (invite.status !== "pending" || !invite.expires_at || !Number.isFinite(Date.parse(invite.expires_at)) || Date.parse(invite.expires_at) <= Date.now()) {
       return NextResponse.json({ error: "This invitation has expired or was revoked." }, { status: 410 });
     }
-    if (!isRole(invite.role) || invite.role === "owner") return NextResponse.json({ error: "Invalid invitation role." }, { status: 400 });
+    if (!isRole(invite.role)) return NextResponse.json({ error: "Invalid invitation role." }, { status: 400 });
     const userType = userTypeForRole(invite.role);
     const scopeError = await validateInvitationScope(admin, invite.organization_id, {
       teamId: invite.team_id, departmentId: invite.department_id, projectId: invite.project_id,

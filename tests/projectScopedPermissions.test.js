@@ -115,7 +115,7 @@ describe("mayActOnProject is the half that RESTRICTS", () => {
 
   it("lets owner and admin act on any project", () => {
     // They see the whole company by definition; that is what those roles mean.
-    for (const role of ["owner", "admin"]) {
+    for (const role of ["owner"]) {
       expect(mayActOnProject({ role, userType: "admin" }, PID, {}), role).toBe(true);
       expect(mayActOnProject({ role, userType: "admin" }, OTHER, null), role).toBe(true);
     }
@@ -242,7 +242,7 @@ describe("the vocabulary is one vocabulary", () => {
   it("excludes the roles a project scope cannot mean", () => {
     // owner and admin are organization-wide by definition; a client's access to
     // a project is decided by project_clients, a different question.
-    for (const r of ["owner", "admin", "client"]) {
+    for (const r of ["owner", "client"]) {
       expect(PROJECT_ROLES, r).not.toContain(r);
     }
   });
@@ -262,7 +262,7 @@ describe("the new key, and the route that enforces it", () => {
 
   it("is a real catalogue key", () => {
     expect(isPermissionKey("project.manage_members")).toBe(true);
-    expect(defaultRolesFor("project.manage_members")).toEqual(["owner", "admin", "manager"]);
+    expect(defaultRolesFor("project.manage_members")).toEqual(["owner", "manager"]);
   });
 
   it("is not another key that nothing enforces", () => {

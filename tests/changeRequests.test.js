@@ -213,7 +213,7 @@ describe("the screens show each side only what it can act on", () => {
     expect(ADMIN_UI).toContain('canApprove = allowed("change_request.approve")');
     for (const role of ROLES) {
       expect(roleCan(role, "change_request.approve"), role).toBe(
-        ["owner", "admin"].includes(role)
+        ["owner"].includes(role)
       );
     }
     expect(ADMIN_UI).toMatch(/waiting on an owner or admin to approve it/i);
@@ -226,7 +226,7 @@ describe("the screens show each side only what it can act on", () => {
     expect(ADMIN_UI).toContain('canPrice = allowed("change_request.decide")');
     for (const role of ROLES) {
       expect(roleCan(role, "change_request.decide"), role).toBe(
-        ["owner", "admin", "manager"].includes(role)
+        ["owner", "manager"].includes(role)
       );
     }
   });
@@ -267,7 +267,7 @@ describe("the screens show each side only what it can act on", () => {
     // The table moved out of navConfig.js into sectionAccess.js so the edge
     // middleware could read it without pulling in an icon library, and a text
     // match would have broken on the move while the rule itself was untouched.
-    for (const role of ["owner", "admin", "manager", "team_lead"]) {
+    for (const role of ["owner", "manager", "team_lead"]) {
       expect(canAccessAdminSection("change-requests", role), role).toBe(true);
     }
     // The client nav lists it as an entry, not behind a role gate.

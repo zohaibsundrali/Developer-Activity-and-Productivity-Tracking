@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isCalendarDate as isDate, invalidOptionalDate } from "@/utils/calendarDate";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { authCan, requirePermission } from "@/utils/serverPermissions";
 import { requireUnlocked } from "@/utils/entitlements";
@@ -24,11 +25,9 @@ export const dynamic = "force-dynamic";
  */
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const GOAL_STATUS = ["open", "met", "missed", "dropped"];
 
 const clip = (v, n) => (typeof v === "string" && v.trim() ? v.trim().slice(0, n) : null);
-const isDate = (v) => typeof v === "string" && DATE_RE.test(v);
 
 /** The target must be in this organization, or an id from anywhere would do. */
 async function memberExists(svc, orgId, userId) {
@@ -156,6 +155,8 @@ export async function POST(request) {
     }
 
     const body = await request.json().catch(() => ({}));
+    const invalidDate = invalidOptionalDate(body, action === "goal" ? ["dueDate"] : []);
+    if (invalidDate) return NextResponse.json({ success: false, error: `${invalidDate} must be a valid calendar date (YYYY-MM-DD)` }, { status: 400 });
 
     if (action === "cycle") {
       const name = clip(body?.name, 200);

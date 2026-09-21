@@ -6,6 +6,8 @@ const publicRoutes = new Set([
   '/api/auth/forgot-password', '/api/auth/signup', '/api/auth/verify-code',
   '/api/invitations/accept', '/api/invitations/lookup', '/api/send-verification',
   '/api/billing/plans', '/api/billing/webhook', '/api/csp-report',
+  // Android needs the public Supabase configuration before it can sign in.
+  '/api/mobile/config',
 ]);
 const root = path.resolve('src/app/api');
 function routes(dir = root) {
@@ -34,6 +36,23 @@ test('anonymous direct requests cannot use protected API handlers', async ({ req
   }
   await testInfo.attach('anonymous-api-statuses.json', { body: JSON.stringify(results, null, 2), contentType: 'application/json' });
   expect(results.filter(r => ![401, 403].includes(r.status))).toEqual([]);
+});
+
+test('anonymous mobile bootstrap exposes only public configuration', async ({ request }) => {
+  const response = await request.get('/api/mobile/config');
+  expect(response.status()).toBe(200);
+  const body = await response.json();
+  expect(Object.keys(body).sort()).toEqual(['public_key', 'success', 'supabase_url']);
+  expect(body.success).toBe(true);
+  expect(new URL(body.supabase_url).protocol).toBe('https:');
+  let isPublicKey = /^sb_publishable_[A-Za-z0-9_-]+$/.test(body.public_key);
+  if (!isPublicKey && typeof body.public_key === 'string' && body.public_key.split('.').length === 3) {
+    try {
+      isPublicKey = JSON.parse(Buffer.from(body.public_key.split('.')[1], 'base64url').toString('utf8')).role === 'anon';
+    } catch { /* malformed configuration fails the assertion below */ }
+  }
+  // Assert a boolean so failure output cannot disclose a misconfigured secret.
+  expect(isPublicKey, 'Mobile bootstrap must contain only a publishable or anon key').toBe(true);
 });
 
 test('middleware cannot be bypassed with the internal subrequest header', async ({ request }) => {

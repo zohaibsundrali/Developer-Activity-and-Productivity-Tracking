@@ -41,7 +41,7 @@ const readSql = (p) => raw(p).replace(/^\s*--.*$/gm, "");
 const MIGRATION = "database/079_invoicing_and_pnl.sql";
 const ROUTE = "src/app/api/invoicing/route.js";
 const SCREEN = "src/components/admin/Invoicing.jsx";
-const BILLING = ["owner", "admin", "finance"];
+const BILLING = ["owner", "finance"];
 
 describe("the keys the feature introduced", () => {
   it("puts client invoicing with the money roles", () => {
@@ -322,7 +322,7 @@ describe("the screen is wired and gated", () => {
 
   it("admits nobody new to the admin area", () => {
     expect([...ADMIN_AREA_ROLES].sort()).toEqual(
-      ["admin", "finance", "hr", "manager", "owner", "qa", "team_lead"].sort()
+      ["finance", "hr", "manager", "owner", "qa", "team_lead"].sort()
     );
   });
 });

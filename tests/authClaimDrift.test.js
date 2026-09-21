@@ -540,7 +540,7 @@ describe('/api/admin/members/sync-roles — the full claims audit', () => {
     serviceClient.mockReturnValue(auditDb().svc);
     expect((await audit.GET(req('t'))).status).toBe(403);
 
-    getAuthedOrg.mockResolvedValue(actor('admin', { userType: 'client' }));
+    getAuthedOrg.mockResolvedValue(actor('owner', { userType: 'client' }));
     expect((await audit.GET(req('t'))).status).toBe(403);
   });
 
@@ -700,7 +700,7 @@ describe('/api/admin/members/sync-roles — the full claims audit', () => {
 
   it('reports a matching row as clean', async () => {
     const db = auditDb();
-    getAuthedOrg.mockResolvedValue(actor('admin'));
+    getAuthedOrg.mockResolvedValue(actor('owner'));
     serviceClient.mockReturnValue(db.svc);
 
     const json = await (await audit.GET(req('t'))).json();
@@ -722,7 +722,7 @@ describe('sync-roles helpers', () => {
     const m = membership();
     expect(audit.claimDrift(m, { organization_id: ORG, app_user_id: 'app-1', user_type: 'developer', role: 'developer' })).toEqual([]);
     expect(audit.claimDrift(m, {})).toEqual(['organization_id', 'app_user_id', 'user_type', 'role']);
-    expect(audit.claimDrift(m, { organization_id: ORG, app_user_id: 'app-1', user_type: 'developer', role: 'admin' })).toEqual(['role']);
+    expect(audit.claimDrift(m, { organization_id: ORG, app_user_id: 'app-1', user_type: 'developer', role: 'owner' })).toEqual(['role']);
   });
 });
 

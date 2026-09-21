@@ -43,8 +43,8 @@ const readSql = (p) => raw(p).replace(/^\s*--.*$/gm, "");
 
 const MIGRATION = "database/075_attendance_and_leave.sql";
 const STAFF = ROLES.filter((r) => r !== "client");
-const OVERSIGHT = ["owner", "admin", "hr", "manager"];
-const PEOPLE = ["owner", "admin", "hr"];
+const OVERSIGHT = ["owner", "hr", "manager"];
+const PEOPLE = ["owner", "hr"];
 
 describe("the catalogue keys the module introduced", () => {
   it("gives every staff role a working day and a holiday", () => {
@@ -112,10 +112,10 @@ describe("migration 075 says the same thing its policies are written against", (
     expect(narrow.length, "owner/admin/hr policies").toBeGreaterThanOrEqual(2);
 
     expect([...defaultRolesFor("leave.approve")].sort()).toEqual(
-      ["owner", "admin", "hr", "manager"].sort()
+      ["owner", "hr", "manager"].sort()
     );
     expect([...defaultRolesFor("attendance.manage")].sort()).toEqual(
-      ["owner", "admin", "hr"].sort()
+      ["owner", "hr"].sort()
     );
   });
 
@@ -300,7 +300,7 @@ describe("the module does not widen the admin front door", () => {
 
   it("still admits exactly the seven roles it did before", () => {
     expect([...ADMIN_AREA_ROLES].sort()).toEqual(
-      ["admin", "finance", "hr", "manager", "owner", "qa", "team_lead"].sort()
+      ["finance", "hr", "manager", "owner", "qa", "team_lead"].sort()
     );
     for (const role of ["developer", "designer", "devops", "employee"]) {
       expect(canAccessAdminSection("my-attendance", role), role).toBe(true);

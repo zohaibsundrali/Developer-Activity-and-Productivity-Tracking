@@ -9,7 +9,7 @@ export function mobileDatabaseError(error) {
   if (error?.code === '54000') return mobileFail('The organization has reached its 100 work-site limit.', 409);
   if (error?.code === '23P01') return mobileFail('This session overlaps recorded work. Keep the pending session and ask your manager to resolve the existing time.', 409);
   if (error?.code === '55000') return mobileFail('The timesheet week is locked. An approver must reopen it before this session can sync.', 409);
-  if (['23505', '40001'].includes(error?.code)) return mobileFail('This record changed or its identifier was already used. Refresh before retrying.', 409);
+  if (['23505', 'PT409', '40001'].includes(error?.code)) return mobileFail('This record changed or its identifier was already used. Refresh before retrying.', 409);
   if (['22023', '22007', '22008', '22P02'].includes(error?.code)) return mobileFail('The session or site data is invalid. Sessions must sync within seven days.', 400);
   return mobileFail('Mobile tracking is temporarily unavailable. Keep pending data and retry.', 503);
 }

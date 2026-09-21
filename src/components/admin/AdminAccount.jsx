@@ -196,7 +196,7 @@ export default function AdminAccount({ user }) {
   }, [load]);
 
   const email = useMemo(() => normalize(account?.email) || normalize(user?.email), [account, user]);
-  const membershipRole = normalize(user?.membership_role) || normalize(account?.role) || "admin";
+  const membershipRole = normalize(user?.membership_role) || "Member";
 
   const trimmedName = normalize(name);
   const nameDirty = trimmedName !== normalize(account?.full_name);

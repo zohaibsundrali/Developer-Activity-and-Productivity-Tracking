@@ -1,6 +1,8 @@
 export const MY_ACTIVITY_KEYS = ['productivity.view_own', 'monitoring.view_own', 'team.view_own'];
-export function myActivityPanels(can) {
-  return { productivity: can(MY_ACTIVITY_KEYS[0]), activity: can(MY_ACTIVITY_KEYS[1]), team: can(MY_ACTIVITY_KEYS[2]) };
+export function myActivityPanels(can, context) {
+  // Keyboard recordings belong to typed developer profiles. An admin UUID
+  // cannot be used as a developer selector, even when both roles can monitor.
+  return { productivity: can(MY_ACTIVITY_KEYS[0]), activity: context?.userType === 'developer' && can(MY_ACTIVITY_KEYS[1]), team: can(MY_ACTIVITY_KEYS[2]) };
 }
 export async function loadMyTypedTeam(client, context) {
   if (!context?.organizationId || !context?.userId || !['admin','developer'].includes(context.userType)) throw new Error('No staff identity');

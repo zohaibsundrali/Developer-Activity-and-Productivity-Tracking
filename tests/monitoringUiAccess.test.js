@@ -3,7 +3,12 @@ import { myActivityPanels, loadMyTypedTeam } from '@/utils/monitoringUiAccess';
 import { resolvePermission } from '@/utils/permissionEngine';
 it('keeps each own panel independent of the other grants',()=>{
  const can=key=>resolvePermission({role:'employee',overrides:{'productivity.view_own':false,'monitoring.view_own':true,'team.view_own':false}},key);
- expect(myActivityPanels(can)).toEqual({productivity:false,activity:true,team:false});
+ expect(myActivityPanels(can,{userType:'developer'})).toEqual({productivity:false,activity:true,team:false});
+});
+it('does not request developer recordings for an admin, client or unresolved identity',()=>{
+ for(const userType of ['admin','client',undefined]) {
+  expect(myActivityPanels(()=>true,{userType})).toEqual({productivity:true,activity:false,team:true});
+ }
 });
 it('binds own team lookup and names to profile type on colliding UUIDs',async()=>{
  const calls=[];let n=0;

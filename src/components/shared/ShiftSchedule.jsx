@@ -11,6 +11,7 @@ import { createWorkShiftPager } from '@/utils/workShiftPager';
 import { resolveLocalShiftTime, localShiftValue, validShiftRow, validateShiftInput, SHIFT_UUID } from '@/utils/workShifts';
 import ShiftAttendanceExceptions from '@/components/shared/ShiftAttendanceExceptions';
 import { Button, PageHeader, ErrorState } from '@/components/ui';
+import { SECTION_TITLES } from '@/components/shell/sectionTitles';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const dateAfter = (date, days) => new Date(Date.parse(date) + days * 86400000).toISOString().slice(0, 10);
@@ -122,7 +123,7 @@ export default function ShiftSchedule() {
   if (authStatus !== 'authenticated') return <p role="status">Sign in to view your schedule.</p>;
   if (!allowed('attendance.view_own')) return <ErrorState title="Schedule access is not allowed" description="Your attendance permissions do not include this view." />;
   return <div className="space-y-6">
-    <PageHeader title="Shift schedule" description="Plan shifts in the employee’s timezone. Scheduled hours are separate from recorded attendance and approved work time." />
+    <PageHeader title={SECTION_TITLES.shifts.admin} description="Plan shifts in the employee’s timezone. Scheduled hours are separate from recorded attendance and approved work time." />
     <div className="flex flex-wrap items-end gap-4 rounded-xl border border-border bg-card p-4">
       <label className="text-sm">From (UTC date)<input aria-label="Schedule from date" type="date" className={inputClass} value={from} onChange={e => setFrom(e.target.value)} /></label>
       <label className="text-sm">To (UTC date)<input aria-label="Schedule to date" type="date" className={inputClass} value={to} onChange={e => setTo(e.target.value)} /></label>

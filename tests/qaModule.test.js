@@ -46,7 +46,7 @@ const readSql = (p) => raw(p).replace(/^\s*--.*$/gm, "");
 const MIGRATION = "database/081_qa_test_management.sql";
 const ROUTE = "src/app/api/quality/route.js";
 const SCREEN = "src/components/admin/Quality.jsx";
-const REVIEWERS = ["owner", "admin", "manager", "team_lead", "qa"];
+const REVIEWERS = ["owner", "manager", "team_lead", "qa"];
 const CONTRIBUTORS = ["developer", "designer", "devops", "employee"];
 
 describe("the keys the module introduced", () => {
@@ -285,7 +285,7 @@ describe("the screen is wired and gated", () => {
 describe("the module does not widen the admin front door", () => {
   it("leaves ADMIN_AREA_ROLES at the seven roles", () => {
     expect([...ADMIN_AREA_ROLES].sort()).toEqual(
-      ["admin", "finance", "hr", "manager", "owner", "qa", "team_lead"].sort()
+      ["finance", "hr", "manager", "owner", "qa", "team_lead"].sort()
     );
   });
 

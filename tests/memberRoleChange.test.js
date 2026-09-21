@@ -150,14 +150,14 @@ beforeEach(() => {
 const root = path.resolve(__dirname, '..');
 
 describe('the role vocabulary', () => {
-  it('accepts exactly the 12 roles the memberships CHECK constraint allows', () => {
+  it('accepts exactly the 11 roles the memberships CHECK constraint allows', () => {
     // Widened by 058 (designer/qa/finance) and 067 (devops). This assertion has
     // now said eight, then eleven, then twelve, and each time it was RIGHT to
     // fail: for as long as it passed with the old number, changing somebody to
     // the new role was refused here as unknown while the database would have
     // accepted it.
     expect([...VALID_ROLES].sort()).toEqual(
-      ['admin', 'client', 'designer', 'developer', 'devops', 'employee',
+      ['client', 'designer', 'developer', 'devops', 'employee',
        'finance', 'hr', 'manager', 'owner', 'qa', 'team_lead'].sort()
     );
   });
@@ -174,9 +174,9 @@ describe('the role vocabulary', () => {
     }
   });
 
-  it('ranks owner above admin above hr above developer', () => {
-    expect(ROLE_RANK.owner).toBeGreaterThan(ROLE_RANK.admin);
-    expect(ROLE_RANK.admin).toBeGreaterThan(ROLE_RANK.hr);
+  it('ranks owner above manager above hr above developer', () => {
+    expect(ROLE_RANK.owner).toBeGreaterThan(ROLE_RANK.manager);
+    expect(ROLE_RANK.manager).toBeGreaterThan(ROLE_RANK.hr);
     expect(ROLE_RANK.hr).toBeGreaterThan(ROLE_RANK.developer);
   });
 });
@@ -186,7 +186,7 @@ describe('authorizeRoleChange — who may act at all', () => {
     expect(allow(null, member('developer'), 'manager')).toMatchObject({ ok: false, status: 401 });
   });
 
-  it.each(['manager', 'team_lead', 'developer', 'employee'])(
+  it.each(['admin', 'manager', 'team_lead', 'developer', 'employee'])(
     'refuses a %s — only owner/admin/hr may change a role',
     (role) => {
       expect(allow(actor(role), member('developer'), 'employee')).toMatchObject({
@@ -205,39 +205,39 @@ describe('authorizeRoleChange — who may act at all', () => {
 
   it('refuses a client by user_type even if the role claim says otherwise', () => {
     expect(
-      allow(actor('admin', { userType: 'client' }), member('developer'), 'employee')
+      allow(actor('owner', { userType: 'client' }), member('developer'), 'employee')
     ).toMatchObject({ ok: false, status: 403 });
   });
 
-  it.each(['owner', 'admin', 'hr'])('allows a %s to make a permitted change', (role) => {
+  it.each(['owner', 'hr'])('allows a %s to make a permitted change', (role) => {
     expect(allow(actor(role), member('developer'), 'employee')).toEqual({ ok: true });
   });
 });
 
 describe('authorizeRoleChange — nobody may change their own role', () => {
   it('refuses a self-change matched on (app_user_id, user_type)', () => {
-    const me = actor('admin', { appUserId: 'me', userType: 'admin' });
-    const myRow = member('admin', { user_id: 'me', user_type: 'admin', email: 'other@x.com' });
+    const me = actor('owner', { appUserId: 'me', userType: 'admin' });
+    const myRow = member('owner', { user_id: 'me', user_type: 'admin', email: 'other@x.com' });
     expect(allow(me, myRow, 'owner')).toMatchObject({ ok: false, status: 403 });
     expect(allow(me, myRow, 'developer')).toMatchObject({ ok: false, status: 403 });
   });
 
   it('refuses a self-change matched on email, for legacy accounts with no app_user_id', () => {
-    const me = actor('admin', { appUserId: null, email: 'Me@Example.com' });
-    const myRow = member('admin', { user_id: 'someone-else', email: 'me@example.com' });
+    const me = actor('owner', { appUserId: null, email: 'Me@Example.com' });
+    const myRow = member('owner', { user_id: 'someone-else', email: 'me@example.com' });
     expect(allow(me, myRow, 'developer')).toMatchObject({ ok: false, status: 403 });
   });
 
   it('refuses an OWNER changing their own role too — the loop is closed for everyone', () => {
     const me = actor('owner', { appUserId: 'me', userType: 'admin' });
-    expect(allow(me, member('owner', { user_id: 'me', user_type: 'admin' }), 'admin')).toMatchObject({
+    expect(allow(me, member('owner', { user_id: 'me', user_type: 'admin' }), 'manager')).toMatchObject({
       ok: false,
       status: 403,
     });
   });
 
   it('does not confuse the same app id under a different user_type', () => {
-    const me = actor('admin', { appUserId: 'shared-id', userType: 'admin', email: 'a@x.com' });
+    const me = actor('owner', { appUserId: 'shared-id', userType: 'admin', email: 'a@x.com' });
     const other = member('developer', {
       user_id: 'shared-id',
       user_type: 'developer',
@@ -248,8 +248,8 @@ describe('authorizeRoleChange — nobody may change their own role', () => {
 });
 
 describe('authorizeRoleChange — the owner role', () => {
-  it('refuses an admin granting owner', () => {
-    expect(allow(actor('admin'), member('developer'), 'owner')).toMatchObject({
+  it('refuses HR granting owner', () => {
+    expect(allow(actor('hr'), member('developer'), 'owner')).toMatchObject({
       ok: false,
       status: 403,
       error: expect.stringContaining('owner'),
@@ -263,28 +263,28 @@ describe('authorizeRoleChange — the owner role', () => {
     });
   });
 
-  it('refuses an admin REVOKING owner from someone else', () => {
-    expect(allow(actor('admin'), member('owner'), 'developer')).toMatchObject({
+  it('refuses HR REVOKING owner from someone else', () => {
+    expect(allow(actor('hr'), member('owner'), 'developer')).toMatchObject({
       ok: false,
       status: 403,
     });
   });
 
   it('lets an owner grant owner', () => {
-    expect(allow(actor('owner'), member('admin'), 'owner')).toEqual({ ok: true });
+    expect(allow(actor('owner'), member('owner'), 'owner')).toEqual({ ok: true });
   });
 
   it('lets an owner revoke owner from another owner', () => {
-    expect(allow(actor('owner'), member('owner'), 'admin')).toEqual({ ok: true });
+    expect(allow(actor('owner'), member('owner'), 'manager')).toEqual({ ok: true });
   });
 });
 
 describe('authorizeRoleChange — rank rules for non-owner callers', () => {
-  it('refuses hr promoting anyone to admin', () => {
-    expect(allow(actor('hr'), member('developer'), 'admin')).toMatchObject({
+  it('refuses hr promoting anyone to owner', () => {
+    expect(allow(actor('hr'), member('developer'), 'owner')).toMatchObject({
       ok: false,
       status: 403,
-      error: expect.stringContaining('admin'),
+      error: expect.stringContaining('owner'),
     });
   });
 
@@ -292,15 +292,15 @@ describe('authorizeRoleChange — rank rules for non-owner callers', () => {
     expect(allow(actor('hr'), member('developer'), 'hr')).toMatchObject({ ok: false, status: 403 });
   });
 
-  it('refuses hr DEMOTING an admin — otherwise people-ops can unseat the admins', () => {
-    expect(allow(actor('hr'), member('admin'), 'developer')).toMatchObject({
+  it('refuses hr DEMOTING an owner — otherwise people-ops can unseat the admins', () => {
+    expect(allow(actor('hr'), member('owner'), 'developer')).toMatchObject({
       ok: false,
       status: 403,
     });
   });
 
-  it('refuses an admin granting admin — a peer cannot be minted sideways', () => {
-    expect(allow(actor('admin'), member('developer'), 'admin')).toMatchObject({
+  it('refuses HR granting owner — a peer cannot be minted sideways', () => {
+    expect(allow(actor('hr'), member('developer'), 'owner')).toMatchObject({
       ok: false,
       status: 403,
     });
@@ -311,12 +311,12 @@ describe('authorizeRoleChange — rank rules for non-owner callers', () => {
     expect(allow(actor('hr'), member('team_lead'), 'employee')).toEqual({ ok: true });
   });
 
-  it('lets an admin promote a developer to manager', () => {
-    expect(allow(actor('admin'), member('developer'), 'manager')).toEqual({ ok: true });
+  it('lets an owner promote a developer to manager', () => {
+    expect(allow(actor('owner'), member('developer'), 'manager')).toEqual({ ok: true });
   });
 
-  it('lets an owner grant admin', () => {
-    expect(allow(actor('owner'), member('developer'), 'admin')).toEqual({ ok: true });
+  it('lets an owner grant a co-owner', () => {
+    expect(allow(actor('owner'), member('developer'), 'owner')).toEqual({ ok: true });
   });
 });
 
@@ -351,13 +351,13 @@ describe('authorizeRoleChange — target and role validation', () => {
 
 describe('writeClaimFirst — the established write order', () => {
   it('writes Auth metadata first on a lower-ranked assignment', () => {
-    expect(writeClaimFirst('admin', 'developer')).toBe(true);
-    expect(writeClaimFirst('owner', 'admin')).toBe(true);
+    expect(writeClaimFirst('owner', 'developer')).toBe(true);
+    expect(writeClaimFirst('owner', 'manager')).toBe(true);
   });
 
   it('writes membership first on a higher-ranked assignment', () => {
     expect(writeClaimFirst('developer', 'hr')).toBe(false);
-    expect(writeClaimFirst('employee', 'admin')).toBe(false);
+    expect(writeClaimFirst('employee', 'owner')).toBe(false);
   });
 
   it('treats a no-op re-stamp as a promotion order (nothing is being dropped)', () => {
@@ -380,10 +380,10 @@ describe('POST /api/admin/members/role', () => {
   });
 
   it('refuses a self-role-change end to end', async () => {
-    const me = actor('admin', { appUserId: 'me', userType: 'admin' });
+    const me = actor('owner', { appUserId: 'me', userType: 'admin' });
     const { res, json, calls } = await post({
       auth: me,
-      membership: member('admin', { user_id: 'me', user_type: 'admin' }),
+      membership: member('owner', { user_id: 'me', user_type: 'admin' }),
       body: { membershipId: 'mem-1', role: 'owner' },
     });
     expect(res.status).toBe(403);
@@ -393,7 +393,7 @@ describe('POST /api/admin/members/role', () => {
 
   it('refuses a non-owner granting owner end to end, writing nothing', async () => {
     const { res, json, calls } = await post({
-      auth: actor('admin'),
+      auth: actor('hr'),
       membership: member('developer'),
       body: { membershipId: 'mem-1', role: 'owner' },
     });
@@ -403,14 +403,14 @@ describe('POST /api/admin/members/role', () => {
     expect(calls.claimUpdates).toEqual([]);
   });
 
-  it('refuses hr promoting to admin end to end, writing nothing', async () => {
+  it('refuses hr promoting to owner end to end, writing nothing', async () => {
     const { res, json, calls } = await post({
       auth: actor('hr'),
       membership: member('developer'),
-      body: { membershipId: 'mem-1', role: 'admin' },
+      body: { membershipId: 'mem-1', role: 'owner' },
     });
     expect(res.status).toBe(403);
-    expect(json.error).toMatch(/admin/);
+    expect(json.error).toMatch(/owner/);
     expect(calls.order).toEqual([]);
     expect(calls.claimUpdates).toEqual([]);
   });
@@ -462,7 +462,7 @@ describe('POST /api/admin/members/role', () => {
   it('drops the JWT claim BEFORE the row on a demotion', async () => {
     const { res, calls } = await post({
       auth: actor('owner'),
-      membership: member('admin', { user_type: 'admin' }),
+      membership: member('owner', { user_type: 'admin' }),
       body: { membershipId: 'mem-1', role: 'developer' },
     });
     expect(res.status).toBe(200);
@@ -472,7 +472,7 @@ describe('POST /api/admin/members/role', () => {
   it('reports reconciliation when the membership write fails on a demotion', async () => {
     const { res, json, calls } = await post({
       auth: actor('owner'),
-      membership: member('admin', { user_type: 'admin' }),
+      membership: member('owner', { user_type: 'admin' }),
       body: { membershipId: 'mem-1', role: 'developer' },
       fail: { row: true },
     });
@@ -529,7 +529,7 @@ describe('POST /api/admin/members/role', () => {
   it('changes nothing when the FIRST write fails', async () => {
     const { res, calls } = await post({
       auth: actor('owner'),
-      membership: member('admin', { user_type: 'admin' }),
+      membership: member('owner', { user_type: 'admin' }),
       body: { membershipId: 'mem-1', role: 'developer' },
       fail: { claim: true },
     });

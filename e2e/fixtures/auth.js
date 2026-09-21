@@ -28,7 +28,7 @@ export async function login(page, credentials) {
   await page.getByRole('button', { name: /^Sign in as/ }).click();
 
   try {
-    if (credentials.tab === 'Admin') {
+    if (credentials.tab === 'Owner / Platform Admin') {
       await page.waitForURL(url => url.pathname === '/organizations' || url.pathname.startsWith(credentials.landing));
       if (new URL(page.url()).pathname === '/organizations') {
         const primaryOrg = await page.evaluate(() => {

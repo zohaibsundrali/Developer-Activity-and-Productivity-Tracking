@@ -1,16 +1,23 @@
 \ir project_github_link.sql
+-- Reproduce the older hosted schema instead of silently assuming NULL support.
+alter table public.developer_tasks alter column developer_id set not null;
 \ir ../../supabase/migrations/20260914182129_production_github_issue_task_import.sql
+\ir ../../supabase/migrations/20260921082531_allow_unassigned_internal_task_imports.sql
+\ir ../../supabase/migrations/20260921082913_repair_legacy_task_progress_trigger.sql
 create function github_import_issue(n bigint default 1) returns jsonb language sql as $$select jsonb_build_object('repository_id',456,'id',9000+n,'number',n,'title','Imported issue','body','Original description','state','closed','updated_at','2026-09-14T09:00:00Z','url','https://github.com/octocat/Other/issues/'||n);$$;
 create function github_import_test(n bigint default 1,v integer default 3) returns jsonb language sql security invoker as $$select import_github_issue_task('74000000-0000-0000-0000-000000000104',v,github_import_issue(n),'2026-09-15','2026-09-17');$$;
 select set_config('request.jwt.claims',github_test_claims(),false);
+update projects set status='on_hold' where id='74000000-0000-0000-0000-000000000104';
 set role authenticated;
 do $$declare first jsonb;retry jsonb;task uuid;begin
  if not (project_github_context('74000000-0000-0000-0000-000000000104')->>'can_import')::boolean then raise exception 'Import access missing';end if;
  first:=github_import_test();task:=(first->'task'->>'id')::uuid;
+ if (select status from projects where id='74000000-0000-0000-0000-000000000104')<>'on_hold' then raise exception 'Task rollup changed project lifecycle status';end if;
  if first->>'unchanged'<>'false' or first->'task'->>'status'<>'pending' then raise exception 'Initial import receipt invalid';end if;
  if not exists(select 1 from developer_tasks where id=task and developer_id is null and not client_visible and priority='medium' and task_type='feature') then raise exception 'Import inferred assignment or visibility';end if;
  update developer_tasks set task_title='Local edit',task_description='Local description',status='in_progress' where id=task;
  retry:=github_import_test();if retry->>'unchanged'<>'true' or retry->'task'->>'id'<>task::text or retry->'task'->>'title'<>'Local edit' or retry->'task'->>'status'<>'in_progress' then raise exception 'Retry overwrote local task';end if;
+ if exists(select 1 from projects p where p.id='74000000-0000-0000-0000-000000000104' and p.total_tasks_count<>(select count(*) from developer_tasks t where t.project_id=p.id)) then raise exception 'Task insert rollup stale';end if;
  if (select count(*) from github_issue_task_imports)<>1 then raise exception 'Duplicate mapping';end if;
  begin perform github_import_test(2,2);raise exception 'Stale link accepted';exception when serialization_failure then null;end;
  begin update github_issue_task_imports set issue_number=999;raise exception 'Direct source rewrite accepted';exception when insufficient_privilege then null;end;
@@ -22,6 +29,7 @@ do $$declare first jsonb;retry jsonb;task uuid;begin
  exception when foreign_key_violation then null;end;
  set constraints all deferred;
  delete from developer_tasks where id=task;
+ if exists(select 1 from projects p where p.id='74000000-0000-0000-0000-000000000104' and p.total_tasks_count<>(select count(*) from developer_tasks t where t.project_id=p.id)) then raise exception 'Task delete rollup stale';end if;
  retry:=github_import_test();if retry->'import'->>'task_id' is not null or retry->'task'<>'null'::jsonb or retry->>'unchanged'<>'true' then raise exception 'Deleted task resurrected';end if;
 end$$;
 reset role;

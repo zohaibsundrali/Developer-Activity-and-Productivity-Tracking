@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({}));
-vi.mock('@/utils/serverAuth', () => ({ getAuthedOrg: async () => ({orgId:'org-a'}), serviceClient: () => ({
-  rpc: async () => state.deletion.shift() || {data:false},
+vi.mock('@/utils/serverAuth', () => ({ getAuthedOrg: async () => ({orgId:'org-a',userId:'payer'}), serviceClient: () => ({
+  rpc: async (name) => name === 'billing_scope' ? {data:{accountId:'org-a',ownerAuthId:'payer',organizationIds:['org-a']}} : state.deletion.shift() || {data:false},
   from: () => {
     let writing = false;
     const query = { select: () => writing ? Promise.resolve(state.save) : query, eq: (...args) => {state.filters.push(args); return query;},

@@ -1,3 +1,4 @@
+import { billingAuthority } from '@/utils/accountBilling';
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { requirePermission } from "@/utils/serverPermissions";
@@ -29,10 +30,13 @@ export async function POST(request) {
     const stripe = stripeClient();
 
     const svc = serviceClient();
+    const account = await billingAuthority(svc, auth, { purchase: true });
+    if (account.denied) return NextResponse.json({ error: 'Only the billing account owner can manage this shared plan. Open the original organization for delegated billing access.' }, { status: 403 });
+    const billingOrgId = account.scope.accountId;
     const { data: subscription, error: lookupError } = await svc
       .from("organization_subscriptions")
       .select("stripe_customer_id")
-      .eq("organization_id", auth.orgId)
+      .eq("organization_id", billingOrgId)
       .maybeSingle();
 
     if (lookupError) return NextResponse.json({ error: "Billing lookup unavailable. Please retry." }, { status: 503 });
@@ -45,11 +49,11 @@ export async function POST(request) {
       );
     }
 
-    const deletion = await svc.rpc("organization_deletion_active", { p_org: auth.orgId });
+    const deletion = await svc.rpc("organization_deletion_active", { p_org: billingOrgId });
     if (deletion.error || typeof deletion.data !== "boolean") return NextResponse.json({ error: "Organization state unavailable. Please retry." }, { status: 503 });
     if (deletion.data) return NextResponse.json({ error: "Organization deletion is in progress." }, { status: 409 });
     const customer = await stripe.customers.retrieve(subscription.stripe_customer_id);
-    if (customer.deleted || customer.metadata?.organization_id !== auth.orgId) return NextResponse.json({ error: "Billing ownership needs review. Contact support." }, { status: 409 });
+    if (customer.deleted || customer.metadata?.organization_id !== billingOrgId) return NextResponse.json({ error: "Billing ownership needs review. Contact support." }, { status: 409 });
     const session = await stripe.billingPortal.sessions.create({
       customer: subscription.stripe_customer_id,
       // The billing screen is a section of the admin dashboard, not a route of
@@ -57,12 +61,12 @@ export async function POST(request) {
       return_url: `${origin}/admin/dashboard?section=billing`,
     });
 
-    const after = await svc.rpc("organization_deletion_active", { p_org: auth.orgId });
+    const after = await svc.rpc("organization_deletion_active", { p_org: billingOrgId });
     if (after.error || typeof after.data !== "boolean") return NextResponse.json({ error: "Organization state unavailable. Please retry." }, { status: 503 });
     if (after.data) return NextResponse.json({ error: "Organization deletion is in progress." }, { status: 409 });
     return NextResponse.json({ url: session.url });
   } catch (err) {
     console.error("[billing/portal] Error:", err);
-    return NextResponse.json({ error: "Failed to open billing portal" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to open billing portal" }, { status: err.status === 503 ? 503 : 500 });
   }
 }

@@ -16,6 +16,7 @@ import {
   Skeleton,
 } from "@/components/ui";
 import { authFetch } from "@/utils/authFetch";
+import { allowed } from "@/utils/permissions";
 import { showConfirm, showError, showSuccess } from "@/utils/alerts";
 
 /**
@@ -52,6 +53,8 @@ const STATUS_TONE = {
 const OUTCOME_TONE = { hired: "success", rejected: "destructive", withdrawn: "secondary" };
 
 export default function Recruitment({ developers = [] }) {
+  const canManageJobs = allowed("job.manage");
+  const canManageCandidates = allowed("candidate.manage");
   const [openings, setOpenings] = useState([]);
   const [active, setActive] = useState(null);
   const [candidates, setCandidates] = useState([]);
@@ -209,21 +212,21 @@ export default function Recruitment({ developers = [] }) {
           actions={
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={() => setActive(null)}>Back</Button>
-              {active.status === "draft" && (
+              {canManageJobs && active.status === "draft" && (
                 <Button onClick={() => setOpeningStatus(active, "open")} disabled={busy}>Open</Button>
               )}
               {active.status === "open" && (
                 <>
-                  <Button variant="outline" onClick={() => setOpeningStatus(active, "on_hold")} disabled={busy}>
+                  {canManageJobs && <Button variant="outline" onClick={() => setOpeningStatus(active, "on_hold")} disabled={busy}>
                     Hold
-                  </Button>
-                  <Button variant="outline" onClick={() => setOpeningStatus(active, "closed")} disabled={busy}>
+                  </Button>}
+                  {canManageJobs && <Button variant="outline" onClick={() => setOpeningStatus(active, "closed")} disabled={busy}>
                     Close
-                  </Button>
-                  <Button onClick={() => setCandidateForm({ fullName: "", email: "" })} disabled={busy}>
+                  </Button>}
+                  {canManageCandidates && <Button onClick={() => setCandidateForm({ fullName: "", email: "" })} disabled={busy}>
                     <UserPlus className="mr-2 h-4 w-4" aria-hidden="true" />
                     Add candidate
-                  </Button>
+                  </Button>}
                 </>
               )}
             </div>
@@ -269,7 +272,7 @@ export default function Recruitment({ developers = [] }) {
                             <Button
                               size="sm"
                               variant="ghost"
-                              disabled={busy}
+                              disabled={busy || !canManageCandidates}
                               onClick={() => move(c, { outcome: null })}
                             >
                               Reopen
@@ -280,7 +283,7 @@ export default function Recruitment({ developers = [] }) {
                             <select
                               className="h-8 rounded-md border border-input bg-background px-2 text-sm"
                               value={c.stage}
-                              disabled={busy}
+                              disabled={busy || !canManageCandidates}
                               onChange={(e) => move(c, { stage: e.target.value })}
                               aria-label={`Stage for ${c.full_name}`}
                             >
@@ -290,7 +293,7 @@ export default function Recruitment({ developers = [] }) {
                             </select>
                             <Button
                               size="sm"
-                              disabled={busy}
+                              disabled={busy || !canManageCandidates}
                               onClick={() =>
                                 move(c, { outcome: "hired" }, {
                                   title: `Hire ${c.full_name}?`,
@@ -305,7 +308,7 @@ export default function Recruitment({ developers = [] }) {
                             <Button
                               size="sm"
                               variant="outline"
-                              disabled={busy}
+                              disabled={busy || !canManageCandidates}
                               onClick={() => move(c, { outcome: "rejected" })}
                             >
                               <XCircle className="mr-1 h-4 w-4" aria-hidden="true" />
@@ -375,7 +378,7 @@ export default function Recruitment({ developers = [] }) {
       <PageHeader
         title="Recruitment"
         description="Open roles, and how far each applicant has got."
-        actions={
+        actions={canManageJobs &&
           <Button onClick={() => setOpeningForm({ title: "", openingsCount: 1 })}>
             <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
             New opening

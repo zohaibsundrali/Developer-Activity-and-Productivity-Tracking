@@ -42,21 +42,21 @@ const GUARDS = [
   { file: "src/app/api/billing/checkout/route.js", key: "billing.purchase", roles: ["owner"] },
   { file: "src/app/api/billing/cancel/route.js", key: "billing.purchase", roles: ["owner"] },
   { file: "src/app/api/billing/portal/route.js", key: "billing.purchase", roles: ["owner"] },
-  { file: "src/app/api/billing/subscription/route.js", key: "billing.view", roles: ["owner", "admin", "finance"] },
+  { file: "src/app/api/billing/subscription/route.js", key: "billing.view", roles: ["owner", "finance"] },
   { file: "src/app/api/billing/demo-activate/route.js", key: "billing.purchase", roles: ["owner"] },
-  { file: "src/app/api/admin/health/route.js", key: "system.health", roles: ["owner", "admin"] },
-  { file: "src/app/api/admin/legacy-auth-audit/route.js", key: "system.audit", roles: ["owner", "admin"] },
-  { file: "src/app/api/admin/members/sync-roles/route.js", key: "member.sync_roles", roles: ["owner", "admin"] },
-  { file: "src/app/api/admin-review/route.js", key: "task.review", roles: ["owner", "admin", "manager", "team_lead", "qa"] },
-  { file: "src/app/api/task-plan/review/route.js", key: "task.review", roles: ["owner", "admin", "manager", "team_lead", "qa"] },
-  { file: "src/app/api/notify/client/route.js", key: "client.notify", roles: ["owner", "admin", "manager"] },
-  { file: "src/app/api/proposals/[id]/decide/route.js", key: "proposal.decide", roles: ["owner", "admin", "manager"] },
-  { file: "src/app/api/projects/[id]/manager/route.js", key: "project.assign_manager", roles: ["owner", "admin"] },
-  { file: "src/app/api/invitations/route.js", key: "member.invite", roles: ["owner", "admin", "hr", "manager"] },
-  { file: "src/app/api/auth/provision/route.js", key: "member.provision", roles: ["owner", "admin", "hr", "manager"] },
-  { file: "src/app/api/change-requests/route.js", key: "change_request.create", roles: ["owner", "admin", "manager"] },
-  { file: "src/app/api/developer-gantt/route.js", key: "project.view_all", roles: ["owner", "admin", "manager", "team_lead"] },
-  { file: "src/app/api/projects/[id]/closure/route.js", key: "project.complete", roles: ["owner", "admin", "manager", "team_lead"] },
+  { file: "src/app/api/admin/health/route.js", key: "system.health", roles: ["owner"] },
+  { file: "src/app/api/admin/legacy-auth-audit/route.js", key: "system.audit", roles: ["owner"] },
+  { file: "src/app/api/admin/members/sync-roles/route.js", key: "member.sync_roles", roles: ["owner"] },
+  { file: "src/app/api/admin-review/route.js", key: "task.review", roles: ["owner", "manager", "team_lead", "qa"] },
+  { file: "src/app/api/task-plan/review/route.js", key: "task.review", roles: ["owner", "manager", "team_lead", "qa"] },
+  { file: "src/app/api/notify/client/route.js", key: "client.notify", roles: ["owner", "manager"] },
+  { file: "src/app/api/proposals/[id]/decide/route.js", key: "proposal.decide", roles: ["owner", "manager"] },
+  { file: "src/app/api/projects/[id]/manager/route.js", key: "project.assign_manager", roles: ["owner"] },
+  { file: "src/app/api/invitations/route.js", key: "member.invite", roles: ["owner", "hr", "manager"] },
+  { file: "src/app/api/auth/provision/route.js", key: "member.provision", roles: ["owner", "hr", "manager"] },
+  { file: "src/app/api/change-requests/route.js", key: "change_request.create", roles: ["owner", "manager"] },
+  { file: "src/app/api/developer-gantt/route.js", key: "project.view_all", roles: ["owner", "manager", "team_lead"] },
+  { file: "src/app/api/projects/[id]/closure/route.js", key: "project.complete", roles: ["owner", "manager", "team_lead"] },
 ];
 
 describe("each converted route asks for the permission it is supposed to", () => {
@@ -167,7 +167,7 @@ describe("the checks a permission cannot express are still there", () => {
   it("invitations and provision still refuse a grant at or above the caller", () => {
     // A capability check cannot express "not above your own rank" — it compares
     // two roles rather than asking about one. Both routes keep it.
-    expect(read("src/app/api/invitations/route.js")).toMatch(/wantedRank\s*>=\s*callerRank/);
+    expect(read("src/app/api/invitations/route.js")).toContain("!canGrantRole(auth.role, role)");
     expect(read("src/app/api/auth/provision/route.js")).toMatch(/requestedRank\s*>=\s*callerRank/);
   });
 

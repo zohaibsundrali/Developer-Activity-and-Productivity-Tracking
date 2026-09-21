@@ -92,7 +92,7 @@ function rpcFailure(error) {
   const token = String(error?.message || '').split(':')[0];
   const status = token === 'BILLING_LOCKED' ? 402 : error?.code === '42501' ? 403
     : error?.code === 'P0002' ? 404 : error?.code === '22023' ? 400
-    : ['23505', '23514', '55000', '40001'].includes(error?.code) ? 409 : 503;
+    : ['23505', '23514', '55000', 'PT409', '40001'].includes(error?.code) ? 409 : 503;
   return failure(MESSAGES[token] || (status === 503 ? "Invoice creation was not confirmed. Reload before retrying."
     : "The selected hours could not be invoiced. Reload and check their approval, rates and availability."), status);
 }

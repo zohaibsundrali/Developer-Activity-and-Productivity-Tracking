@@ -45,7 +45,7 @@ describe('transactional timesheet API', () => {
   });
 
   it('preserves permitted typed admin submissions', async () => {
-    state.auth.userType = 'admin'; state.auth.role = 'admin';
+    state.auth.userType = 'admin'; state.auth.role = 'owner';
     state.result.data = row({ user_type: 'admin' });
     expect((await POST(request('POST', { weekStart: MONDAY }))).status).toBe(200);
   });

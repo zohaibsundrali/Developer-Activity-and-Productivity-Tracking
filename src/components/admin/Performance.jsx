@@ -16,6 +16,7 @@ import {
   Skeleton,
 } from "@/components/ui";
 import { authFetch } from "@/utils/authFetch";
+import { allowed } from "@/utils/permissions";
 import { getOrgContext } from "@/utils/orgContext";
 import { showConfirm, showError, showSuccess } from "@/utils/alerts";
 
@@ -45,6 +46,9 @@ const CYCLE_TONE = { draft: "secondary", open: "success", closed: "outline" };
 const REVIEW_TONE = { draft: "outline", submitted: "warning", shared: "success" };
 
 export default function Performance({ developers = [] }) {
+  const canManageCycles = allowed("review_cycle.manage");
+  const canWriteReviews = allowed("review.write");
+  const canShareReviews = allowed("review.view_all");
   const [cycles, setCycles] = useState([]);
   const [active, setActive] = useState(null);
   const [reviews, setReviews] = useState([]);
@@ -214,24 +218,24 @@ export default function Performance({ developers = [] }) {
           actions={
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setActive(null)}>Back</Button>
-              {active.status === "open" && (
+              {canManageCycles && active.status === "open" && (
                 <Button variant="outline" onClick={() => setCycleStatus(active, "closed")} disabled={busy}>
                   <Lock className="mr-2 h-4 w-4" aria-hidden="true" />
                   Close cycle
                 </Button>
               )}
-              {closed && (
+              {canManageCycles && closed && (
                 <Button variant="outline" onClick={() => setCycleStatus(active, "open")} disabled={busy}>
                   <Unlock className="mr-2 h-4 w-4" aria-hidden="true" />
                   Reopen
                 </Button>
               )}
-              {active.status === "draft" && (
+              {canManageCycles && active.status === "draft" && (
                 <Button onClick={() => setCycleStatus(active, "open")} disabled={busy}>
                   Open for reviews
                 </Button>
               )}
-              {active.status === "open" && (
+              {canWriteReviews && active.status === "open" && (
                 <Button onClick={() => setReviewForm({ subjectUserId: "", rating: "" })} disabled={busy}>
                   <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
                   Start a review
@@ -274,13 +278,13 @@ export default function Performance({ developers = [] }) {
                       <Badge variant={REVIEW_TONE[r.status] || "outline"}>{r.status}</Badge>
                       {/* Submitting is the reviewer's act — the route refuses
                           it from anybody else, so the button follows. */}
-                      {r.status === "draft" && mine && (
+                      {canWriteReviews && r.status === "draft" && mine && (
                         <Button size="sm" onClick={() => act(r, "submit")} disabled={busy || closed}>
                           <Send className="mr-1 h-4 w-4" aria-hidden="true" />
                           Submit
                         </Button>
                       )}
-                      {r.status === "submitted" && (
+                      {canShareReviews && r.status === "submitted" && (
                         <Button size="sm" onClick={() => act(r, "share")} disabled={busy}>
                           <Share2 className="mr-1 h-4 w-4" aria-hidden="true" />
                           Share
@@ -358,7 +362,7 @@ export default function Performance({ developers = [] }) {
       <PageHeader
         title="Performance"
         description="Review cycles, and what has been written in them."
-        actions={
+        actions={canManageCycles &&
           <Button onClick={() => setCycleForm({ name: "", periodStart: "", periodEnd: "" })}>
             <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
             New cycle

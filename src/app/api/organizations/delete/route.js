@@ -42,6 +42,7 @@ export async function POST(request) {
     if (typeof body?.confirmName !== 'string') return json({ error: 'Confirm the exact organization name.' }, 400);
     const svc = serviceClient(); const receiptToken = randomBytes(32).toString('hex');
     const started = await svc.rpc('start_organization_deletion', { p_org: access.auth.orgId, p_actor: access.auth.appUserId, p_type: access.auth.userType, p_auth: access.auth.userId, p_name: body.confirmName, p_receipt_hash: hash(receiptToken) });
+    if (started.error?.message?.startsWith('SHARED_BILLING_ACCOUNT:')) return json({ error: 'This is your account’s original billing organization. Delete the other organizations on this account first to keep their shared subscription working.', code: 'shared_billing_account' }, 409);
     if (started.error?.code === '55000' && started.error.message?.startsWith('PROVISIONING_PENDING:')) {
       return json({ error: 'Finish pending member sign-in setup before deleting the organization. Retry the saved employee or client account with its original details.', code: 'provisioning_pending' }, 409);
     }

@@ -40,8 +40,8 @@ const readSql = (p) => raw(p).replace(/^\s*--.*$/gm, "");
 const MIGRATION = "database/085_recruitment_ats.sql";
 const ROUTE = "src/app/api/recruitment/route.js";
 const SCREEN = "src/components/admin/Recruitment.jsx";
-const PEOPLE = ["owner", "admin", "hr"];
-const PEOPLE_READERS = ["owner", "admin", "hr", "manager", "team_lead"];
+const PEOPLE = ["owner", "hr"];
+const PEOPLE_READERS = ["owner", "hr", "manager", "team_lead"];
 
 describe("an opening is not PII and a candidate is", () => {
   it("opens the role list wider than the applicant list", () => {
@@ -247,7 +247,7 @@ describe("the screen is wired and gated", () => {
     expect(NON_WIDENING_SECTIONS).not.toContain("recruitment");
     expect(SECTION_PERMISSIONS.recruitment).toBe("job.view");
     expect([...ADMIN_AREA_ROLES].sort()).toEqual(
-      ["admin", "finance", "hr", "manager", "owner", "qa", "team_lead"].sort()
+      ["finance", "hr", "manager", "owner", "qa", "team_lead"].sort()
     );
   });
 });

@@ -19,7 +19,7 @@ import { defaultRolesFor, PERMISSION_KEYS } from "@/utils/permissionCatalogue";
  *                                    `signal.view` already grants
  *   /api/change-requests/[id]/advance  STAFF_DECIDERS, the same three
  *                                    `change_request.decide` already grants
- *   /api/billing/access              ["owner","admin","finance"] for `canPay`
+ *   /api/billing/access              ["owner","finance"] for `canPay`
  *
  * The change-requests route kept ONE array after the fix, and deliberately: the
  * `admin_approve` step is owner/admin, narrower than the decider set, so that
@@ -35,7 +35,7 @@ import { defaultRolesFor, PERMISSION_KEYS } from "@/utils/permissionCatalogue";
  *
  * A ROLE ARRAY CANNOT HONOUR AN OVERRIDE, which is the deeper reason. `authCan`
  * consults the per-person grants and denies that travel on `auth`;
- * `["owner","admin"].includes(auth.role)` cannot, so an explicit DENY written
+ * `["owner"].includes(auth.role)` cannot, so an explicit DENY written
  * against one individual is silently ignored wherever one of these survives.
  */
 
@@ -147,7 +147,7 @@ describe("the three that were replaced ask the key that already said it", () => 
     expect(src).not.toMatch(/SIGNAL_ROLES/);
     // and the key grants exactly what the array did
     expect([...defaultRolesFor("signal.view")].sort()).toEqual(
-      ["owner", "admin", "hr", "manager", "team_lead"].sort()
+      ["owner", "hr", "manager", "team_lead"].sort()
     );
   });
 
@@ -156,7 +156,7 @@ describe("the three that were replaced ask the key that already said it", () => 
     expect(src).toMatch(/authCan\(auth, "change_request\.decide"\)/);
     expect(src).toMatch(/defaultRolesFor\("change_request\.decide"\)/);
     expect([...defaultRolesFor("change_request.decide")].sort()).toEqual(
-      ["owner", "admin", "manager"].sort()
+      ["owner", "manager"].sort()
     );
   });
 

@@ -1,4 +1,5 @@
 'use client';
+import { SECTION_TITLES } from '@/components/shell/sectionTitles';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { getOrgContext } from '@/utils/orgContext';
@@ -48,7 +49,7 @@ export default function PayrollPreparation() {
   }
   if (authStatus !== 'authenticated' || !allowed('timesheet.view_all')) return <ErrorState title="Payroll preparation access is not available" description="This view requires permission to see organization timesheets." />;
   return <div className="space-y-6">
-    <PageHeader title="Payroll preparation" description="Export approved work time for payroll review." />
+    <PageHeader title={SECTION_TITLES['payroll-preparation'].admin} description="Export approved work time for payroll review." />
     <p className="text-sm">Select the first and last Monday of the weeks to include. Each row contains the approved seconds, employee reference and source approval. Only approved weeks are included.</p>
     <form onSubmit={download} className="flex flex-wrap items-end gap-4 rounded-xl border border-border bg-card p-5">
       <label className="text-sm">First week (Monday, UTC)<input aria-label="Payroll first week" type="date" required value={from} disabled={busy} onChange={e => setFrom(e.target.value)} className="block rounded-lg border border-input bg-background px-3 py-2" /></label>

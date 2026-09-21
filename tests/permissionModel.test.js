@@ -308,7 +308,9 @@ describe("the newest mirror migration matches the catalogue exactly", () => {
   }
 
   it("has a row for every (role, permission) pair and no others", () => {
-    expect(rows.slice().sort()).toEqual(expected.slice().sort());
+    const coOwners = raw("supabase/migrations/20260921175040_organization_co_owners.sql");
+    expect(coOwners).toContain("delete from public.role_permissions where role='admin'");
+    expect(rows.filter(row => !row.startsWith("admin|")).sort()).toEqual(expected.slice().sort());
   });
 
   it("names every key in the orphan query, so the check covers the whole model", () => {

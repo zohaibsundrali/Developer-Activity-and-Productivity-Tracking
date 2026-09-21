@@ -12,7 +12,7 @@ export async function GET(request) {
     const { data, error } = await auth.svc.rpc('list_workspaces', { p_auth: auth.user.id });
     if (error || !Array.isArray(data)) return reply({ error: 'Organizations could not be loaded. Please retry.' }, 503);
     return reply({ organizations: data,
-      ownerAccount: data.some(org => ['owner', 'admin'].includes(org.role)) || ['owner', 'admin'].includes(auth.user.app_metadata?.role),
+      ownerAccount: data.some(org => org.role === 'owner') || auth.user.app_metadata?.role === 'owner',
       email: auth.user.email, emailVerified: !!auth.user.email_confirmed_at,
       currentOrganizationId: auth.claims.app_metadata?.organization_id || null });
   } catch { return reply({ error: 'Organizations could not be loaded. Please retry.' }, 503); }
@@ -31,10 +31,11 @@ export async function POST(request) {
     const { data, error } = await auth.svc.rpc('create_authenticated_workspace', {
       p_auth: auth.user.id, p_request: body.requestId,
       p_details: { company: body.company.trim(), industry: body.industry, companySize: body.companySize, country: body.country, timezone: body.timezone || 'UTC' },
-      p_plan: typeof body.planCode === 'string' ? body.planCode : 'free',
+      p_plan: 'free', // Database attaches the existing account plan; callers cannot choose another trial.
       p_terms: termsMeta.version || termsMeta.lastUpdated,
     });
     if (error) {
+      if (/^(PLAN_LIMIT_REACHED|BILLING_LOCKED)/.test(error.message || '')) return reply({ error: 'Your shared account plan has reached its limit or needs attention. Review Billing in your existing organization.' }, 402);
       if (error.message?.startsWith('WORKSPACE_RATE_LIMIT')) return reply({ error: 'Please wait before creating another organization.' }, 429);
       if (/^WORKSPACE_(FORBIDDEN|UNAUTHENTICATED)/.test(error.message || '')) return reply({ error: 'Your account access could not be confirmed.' }, 403);
       if (error.message?.startsWith('WORKSPACE_INVALID')) return reply({ error: 'Check your organization details and timezone.' }, 400);

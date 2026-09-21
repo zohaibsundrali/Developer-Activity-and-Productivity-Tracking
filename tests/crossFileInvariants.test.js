@@ -158,7 +158,7 @@ describe("service-role routes re-apply the scope RLS would have", () => {
     for (const f of routes) {
       const rel = f.path.split("app/api/")[1];
       if (EXEMPT[rel]) continue;
-      if (!f.body.includes("auth.orgId")) bad.push(rel);
+      if (!f.body.includes("auth.orgId") && !(f.body.includes("billingAuthority(svc, auth,") && f.body.includes("if (account.denied)"))) bad.push(rel);
     }
     expect(bad, `service-role routes with no org filter:\n${bad.join("\n")}`).toEqual([]);
   });
