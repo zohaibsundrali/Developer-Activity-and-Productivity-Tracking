@@ -240,7 +240,7 @@ describe("attendance is written as yourself unless you hold attendance.manage", 
 });
 
 describe("the screens exist in both shells", () => {
-  const adminSrc = read("src/app/admin/dashboard/page.js");
+  const adminSrc = read("src/app/organization/dashboard/page.js");
   const staffSrc = read("src/app/developer/dashboard/page.jsx");
 
   it("renders my-attendance and my-leave in the admin shell", () => {

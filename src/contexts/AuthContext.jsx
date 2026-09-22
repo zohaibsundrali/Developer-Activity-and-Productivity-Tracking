@@ -268,7 +268,7 @@ export function AuthProvider({ children }) {
 
         try {
           const path = window.location?.pathname || '';
-          if (path.startsWith('/admin') || path.startsWith('/developer')) {
+          if (path.startsWith('/admin') || path.startsWith('/organization/') || path.startsWith('/developer')) {
             // DELIBERATE HARD NAVIGATION — DO NOT CONVERT THIS TO router.push.
             //
             // Same reasoning as logout() above, and it applies with more force

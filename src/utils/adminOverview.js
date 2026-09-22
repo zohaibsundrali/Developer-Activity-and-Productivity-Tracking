@@ -282,6 +282,8 @@ export function overviewKpis({
   proposals,
   clientCount,
   pendingReviews,
+  changeRequestCount,
+  leaveRequestCount,
   today = ymd(),
 }) {
   const projects = graph?.projects || [];
@@ -324,32 +326,13 @@ export function overviewKpis({
     // Only ever non-null for a viewer who can open Clients; see the note on
     // the conditional query in loadAdminOverview.
     clientCount: clientCount ?? 0,
+    changeRequestCount: changeRequestCount ?? 0,
+    leaveRequestCount: leaveRequestCount ?? 0,
   };
 }
 
-/**
- * The KPI catalogue, in priority order, each one naming the screen it opens.
- *
- * ONE RULE PRODUCES THREE DASHBOARDS: show a tile only when the viewer could
- * open the screen behind it, then take the first six. Nothing is hand-assigned
- * per role, so a change to ADMIN_SECTION_ROLES moves the tiles with it and the
- * two cannot drift.
- *
- *   owner / admin   1–6: the delivery view — projects, risk, proposals, people.
- *   manager / lead  1–5 then unmanaged projects: no Employees for them, so the
- *                   sixth slot falls through to the org chart, which they can
- *                   open and which is about the work.
- *   HR              none of the first five. They get people, unmanaged
- *                   projects, overloaded, available and roles in use — a
- *                   dashboard about staffing, which is the job.
- *   QA              none of the first ten. Reviews waiting, open bugs, bugs
- *                   in QA — the queue they are answerable for.
- *   finance         one: the client head count. Their other screen is
- *                   Billing, and no money number belongs on this dashboard.
- *
- * The order is delivery-first because that is the larger audience; the
- * people-side tiles sit below it and surface for whoever has nothing above.
- */
+/** KPI destinations, filtered by section access. Owners use OWNER_KPI_KEYS;
+ * other roles keep up to six relevant counters in this priority order. */
 export const KPI_CATALOGUE = [
   { key: "totalProjects", section: "all-projects" },
   { key: "activeProjects", section: "all-projects" },
@@ -375,6 +358,17 @@ export const KPI_CATALOGUE = [
   { key: "pendingReviews", section: "task-reviews" },
   { key: "openBugs", section: "bugs" },
   { key: "bugsInQa", section: "bugs" },
+  { key: "changeRequestCount", section: "change-requests" },
+  { key: "leaveRequestCount", section: "leave-approvals" },
+  { key: "organizationCount", section: "organization", href: "/organizations" },
+];
+
+// Owners get a compact operational summary, including queues that previously
+// disappeared after the first six cards. Other roles keep their focused view.
+export const OWNER_KPI_KEYS = [
+  "totalProjects", "activeProjects", "teamMembers", "clientCount",
+  "changeRequestCount", "leaveRequestCount", "organizationCount", "pendingProposals",
+  "pendingReviews", "openBugs", "overdueTasks", "atRiskProjects",
 ];
 
 /** How many tiles the KPI row shows. Two full rows of three at `lg`. */
@@ -383,7 +377,7 @@ export const KPI_SLOTS = 6;
 /**
  * The snapshot.
  *
- * Only the work graph is fatal. A dashboard with no activity feed is thinner
+ * Counts and the work graph must load successfully. A dashboard with no activity feed is thinner
  * than intended; a dashboard that refuses to render because one side panel
  * failed is broken. Each secondary read resolves to an empty list of its own
  * accord — `Promise.all` over `.then(...)` rather than `await` in sequence, so
@@ -391,7 +385,8 @@ export const KPI_SLOTS = 6;
  */
 export async function loadAdminOverview(
   orgId,
-  { adminId, adminEmail, developerId, withClients = false, withReviews = false } = {}
+  { adminId, adminEmail, developerId, withClients = false, withReviews = false,
+    withChangeRequests = false, withLeaveRequests = false } = {}
 ) {
   if (!orgId) throw new Error("Your session has no organization. Sign in again.");
 
@@ -439,8 +434,7 @@ export async function loadAdminOverview(
         .from("clients")
         .select("id", { count: "exact", head: true })
         .eq("organization_id", orgId)
-        .then((r) => r.count ?? 0)
-        .catch(() => 0)
+        .then(readCount)
     : Promise.resolve(null);
 
   // A TENTH, ON THE SAME TERMS. Task Reviews is the one QA screen whose
@@ -457,11 +451,21 @@ export async function loadAdminOverview(
         .select("id", { count: "exact", head: true })
         .eq("organization_id", orgId)
         .eq("review_status", "pending")
-        .then((r) => r.count ?? 0)
-        .catch(() => 0)
+        .then(readCount)
     : Promise.resolve(null);
 
-  const [graph, proposals, activity, notifications, clientCount, pendingReviews] =
+  const changesQ = withChangeRequests
+    ? supabase.from("change_requests").select("id", { count: "exact", head: true })
+        .eq("organization_id", orgId)
+        .in("status", ["submitted", "estimating", "awaiting_admin", "approved"])
+        .then(readCount)
+    : Promise.resolve(null);
+  const leaveQ = withLeaveRequests
+    ? supabase.from("leave_requests").select("id", { count: "exact", head: true })
+        .eq("organization_id", orgId).eq("status", "pending").then(readCount)
+    : Promise.resolve(null);
+
+  const [graph, proposals, activity, notifications, clientCount, pendingReviews, changeRequestCount, leaveRequestCount] =
     await Promise.all([
       loadOrgWorkGraph(orgId),
       proposalsQ.then((r) => r.data || []).catch(() => []),
@@ -469,7 +473,14 @@ export async function loadAdminOverview(
       notificationsQ.then((r) => r.data || []).catch(() => []),
       clientsQ,
       reviewsQ,
+      changesQ,
+      leaveQ,
     ]);
 
-  return { graph, proposals, activity, notifications, clientCount, pendingReviews };
+  return { graph, proposals, activity, notifications, clientCount, pendingReviews, changeRequestCount, leaveRequestCount };
+}
+
+function readCount(result) {
+  if (result.error) throw new Error("Some dashboard counts could not be loaded. Please retry.");
+  return result.count ?? 0;
 }

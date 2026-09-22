@@ -12,7 +12,7 @@ import path from "node:path";
  *  is built and a root-level `middleware.ts` is silently ignored. No warning,
  *  no error, no failing test — the code was correct and simply never executed.
  *
- *  Measured against production before the move: GET /admin/dashboard,
+ *  Measured against production before the move: GET /organization/dashboard,
  *  /developer/dashboard and /client all answered 200 to an anonymous request.
  *
  *  Every test below therefore checks a fact about DELIVERY, not about logic.
@@ -62,13 +62,13 @@ describe("what it gates, and what it must not", () => {
     }
   });
 
-  it("exempts /admin/registration, or signup becomes unreachable", () => {
+  it("exempts /register, or signup becomes unreachable", () => {
     // The create-an-organization flow sits under /admin but is where sessions
     // COME FROM — nobody holds one there. Without this exemption, switching the
     // middleware on redirects every new signup to /login, which is to say it
     // takes the product off sale.
-    expect(source).toContain("/admin/registration");
-    expect(source).toMatch(/PUBLIC_PATHS[\s\S]{0,200}?\/admin\/registration/);
+    expect(source).toContain("/register");
+    expect(source).toMatch(/PUBLIC_PATHS[\s\S]{0,200}?\/register/);
     // The exemption has to be tested BEFORE the area rules, or the rule matches
     // first and the exemption never runs.
     const exemptAt = source.indexOf("PUBLIC_PATHS.some");
@@ -81,7 +81,7 @@ describe("what it gates, and what it must not", () => {
     // /admin/upgrade is reached by a locked but SIGNED-IN admin. Exempting it
     // would hand an anonymous visitor the payment screen.
     expect(source).not.toMatch(/PUBLIC_PATHS[^\]]*\/admin\/upgrade/);
-    expect(source).not.toMatch(/PUBLIC_PATHS[^\]]*\/admin\/dashboard/);
+    expect(source).not.toMatch(/PUBLIC_PATHS[^\]]*\/organization\/dashboard/);
   });
 
   it("verifies a signed session rather than the presence of a cookie", () => {

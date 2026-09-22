@@ -127,16 +127,16 @@ test.describe('Client versus internal isolation', () => {
 
     // The middleware matches on user_type, so an authenticated client is still
     // not an admin or a developer.
-    await expectBouncedToLogin(page, '/admin/dashboard');
+    await expectBouncedToLogin(page, '/organization/dashboard');
     await expectBouncedToLogin(page, '/developer/dashboard');
-    await expectBouncedToLogin(page, '/admin/dashboard?section=employees');
+    await expectBouncedToLogin(page, '/organization/dashboard?section=employees');
   });
 
   test('a client cannot reach the employee directory', async ({ page }) => {
     skipUnless(clientA);
 
     await login(page, clientA);
-    await page.goto('/admin/dashboard?section=employees');
+    await page.goto('/organization/dashboard?section=employees');
 
     // Bounced, and nothing from the directory rendered on the way out.
     await expect(page).toHaveURL(/\/login(\?|$)/);

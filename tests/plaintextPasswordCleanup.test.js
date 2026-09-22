@@ -353,7 +353,7 @@ describe("the client management screen", () => {
 });
 
 describe("the registration page", () => {
-  const src = code("src/app/admin/registration/page.js");
+  const src = code("src/app/register/page.js");
 
   it("posts the password to the server rather than writing a profile row", () => {
     expect(src).not.toMatch(/from\(["'](admin_users|developers|clients)["']\)\s*\.insert/);

@@ -44,7 +44,7 @@ const read = (p) =>
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/^\s*\/\/.*$/gm, "");
 
-const ADMIN_DASHBOARD = read("src/app/admin/dashboard/page.js");
+const ADMIN_DASHBOARD = read("src/app/organization/dashboard/page.js");
 const STAFF_DASHBOARD = read("src/app/developer/dashboard/page.jsx");
 
 /** Every key in the `own` module — the ones that mean "your own work". */

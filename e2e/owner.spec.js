@@ -21,7 +21,7 @@ test.describe('Owner', () => {
   });
 
   test('signs in and lands on the admin console with the owner navigation', async ({ page }) => {
-    await expect(page).toHaveURL(/\/admin\/dashboard/);
+    await expect(page).toHaveURL(/\/organization\/dashboard/);
     await expect(pageHeading(page, 'Dashboard Overview')).toBeVisible();
 
     // An owner sees every admin section (ADMIN_SECTION_ROLES in navConfig.js).
@@ -137,7 +137,7 @@ test.describe('Owner', () => {
     await expect(page).toHaveURL(/\/login/);
 
     // The signed cookie is gone, so the console is closed again.
-    await page.goto('/admin/dashboard');
+    await page.goto('/organization/dashboard');
     await expect(page).toHaveURL(/\/login/);
     await expect(navItem(page, 'Organization')).toHaveCount(0);
   });

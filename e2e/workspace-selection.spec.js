@@ -20,7 +20,7 @@ for (const role of ['owner', 'orgBOwner']) {
     const workspace = page.getByRole('button', { name: /^Open .* workspace$/ }).first();
     await expect(workspace).toBeVisible();
     await workspace.click();
-    await expect(page).toHaveURL(/\/admin\/dashboard/);
+    await expect(page).toHaveURL(/\/organization\/dashboard/);
     const permissions = await apiRequest(page, '/api/me/permissions');
     expect(permissions.status).toBe(200);
     expect(permissions.body.permissions).toContain('organization.view');

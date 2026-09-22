@@ -188,11 +188,11 @@ describe("notificationHref: admin surface", () => {
   // Every one of these `section` values is a real case in the admin dashboard's
   // switch, so each lands on the screen it names.
   it("routes each row shape to its section", () => {
-    expect(notificationHref({ task_id: "t1" })).toBe("/admin/dashboard?section=board&task=t1");
-    expect(notificationHref({ submission_id: "s1" })).toBe("/admin/dashboard?section=task-reviews");
-    expect(notificationHref({ entity_type: "sprint" })).toBe("/admin/dashboard?section=sprints");
-    expect(notificationHref({ entity_type: "employee" })).toBe("/admin/dashboard?section=employees");
-    expect(notificationHref({ entity_type: "team" })).toBe("/admin/dashboard?section=team-stats");
+    expect(notificationHref({ task_id: "t1" })).toBe("/organization/dashboard?section=board&task=t1");
+    expect(notificationHref({ submission_id: "s1" })).toBe("/organization/dashboard?section=task-reviews");
+    expect(notificationHref({ entity_type: "sprint" })).toBe("/organization/dashboard?section=sprints");
+    expect(notificationHref({ entity_type: "employee" })).toBe("/organization/dashboard?section=employees");
+    expect(notificationHref({ entity_type: "team" })).toBe("/organization/dashboard?section=team-stats");
   });
 
   it("uses the path-segment route for a project, not a query string", () => {
@@ -201,7 +201,7 @@ describe("notificationHref: admin surface", () => {
 
   it("prefers the most specific identifier the row carries", () => {
     expect(notificationHref({ task_id: "t1", submission_id: "s1", project_id: "p1" })).toBe(
-      "/admin/dashboard?section=board&task=t1"
+      "/organization/dashboard?section=board&task=t1"
     );
   });
 });

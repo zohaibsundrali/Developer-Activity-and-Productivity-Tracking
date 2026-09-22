@@ -165,7 +165,7 @@ export default function NotificationsPage() {
     );
   }
 
-  const dashboardPath = audience === "admin" ? "/admin/dashboard" : "/developer/dashboard";
+  const dashboardPath = audience === "admin" ? "/organization/dashboard" : "/developer/dashboard";
 
   const handleNavigate = (sectionId) => {
     // The sidebar's items are dashboard sections, and this is not one of them,

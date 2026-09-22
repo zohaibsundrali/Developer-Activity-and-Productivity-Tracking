@@ -56,7 +56,7 @@ test('anonymous mobile bootstrap exposes only public configuration', async ({ re
 });
 
 test('middleware cannot be bypassed with the internal subrequest header', async ({ request }) => {
-  for (const url of ['/admin/dashboard', '/developer/dashboard', '/client']) {
+  for (const url of ['/organization/dashboard', '/developer/dashboard', '/client']) {
     const response = await request.get(url, { maxRedirects: 0, headers: { 'x-middleware-subrequest': 'src/middleware:src/middleware:src/middleware:src/middleware:src/middleware' } });
     expect(response.status()).toBe(307);
     expect(response.headers().location).toContain('/login');

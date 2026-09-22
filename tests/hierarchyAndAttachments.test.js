@@ -98,7 +98,7 @@ describe("the Team Structure section is wired end to end", () => {
   it("is in the sidebar with a title and a component", () => {
     expect(ADMIN_NAV.map((i) => i.id)).toContain("hierarchy");
     expect(SECTION_TITLES.hierarchy?.admin).toBe("Team Structure");
-    expect(code("src/app/admin/dashboard/page.js")).toContain('case "hierarchy":');
+    expect(code("src/app/organization/dashboard/page.js")).toContain('case "hierarchy":');
   });
 
   it("is visible to founder, admin, HR, PM and team lead — the five who were asked for", () => {
@@ -111,7 +111,7 @@ describe("the Team Structure section is wired end to end", () => {
   it("wires Capacity the same way, end to end", () => {
     expect(ADMIN_NAV.map((i) => i.id)).toContain("capacity");
     expect(SECTION_TITLES.capacity?.admin).toBe("Capacity");
-    expect(code("src/app/admin/dashboard/page.js")).toContain('case "capacity":');
+    expect(code("src/app/organization/dashboard/page.js")).toContain('case "capacity":');
     // Missing from ADMIN_SECTION_ROLES means allowed for EVERYONE, via
     // canAccessAdminSection's `undefined` branch. That is the failure mode.
     expect(ADMIN_SECTION_ROLES.capacity).toBeDefined();

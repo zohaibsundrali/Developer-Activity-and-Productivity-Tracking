@@ -98,7 +98,7 @@ function projectHref(auth, projectId) {
 // /admin/* is gated to user_type 'admin' by middleware, so pointing anyone else
 // at an admin section is a redirect to /login — not a destination.
 function adminSectionHref(auth, section) {
-  return auth.userType === "admin" ? `/admin/dashboard?section=${section}` : null;
+  return auth.userType === "admin" ? `/organization/dashboard?section=${section}` : null;
 }
 
 // The staff dashboard's own people view, for callers who live on /developer.

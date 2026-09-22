@@ -25,7 +25,7 @@ test.describe('Manager', () => {
 
   test('lands on the staff dashboard with the Team oversight section', async ({ page }) => {
     if (manager.area === 'admin') {
-      await expect(page).toHaveURL(/\/admin\/dashboard/);
+      await expect(page).toHaveURL(/\/organization\/dashboard/);
       await expectNav(page, {
         visible: ['Overview', 'Project Hub', 'Views', 'Sprints', 'Reports'],
         // Owner/admin-only sections stay out of a manager's sidebar.

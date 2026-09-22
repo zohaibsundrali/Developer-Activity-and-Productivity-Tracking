@@ -5,7 +5,7 @@ import BillingGate from "@/components/billing/BillingGate";
  *
  * It was mounted only on /admin at first, which left the lock trivially
  * side-stepped: middleware lets `userType === 'admin'` into /developer, so a
- * locked admin bounced off /admin/dashboard could simply navigate to
+ * locked admin bounced off /organization/dashboard could simply navigate to
  * /developer/dashboard and carry on — as could every developer in the
  * organization, who was never redirected at all.
  *

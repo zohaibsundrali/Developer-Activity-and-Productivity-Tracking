@@ -184,7 +184,7 @@ function session(meta = context) {
         json: body
       });
     });
-    await page.route('**/admin/dashboard*', r => r.fulfill({
+    await page.route('**/organization/dashboard*', r => r.fulfill({
       contentType: 'text/html',
       body: '<h1>Workspace destination</h1>'
     }));
@@ -211,7 +211,7 @@ function session(meta = context) {
     // back from a secondary workspace to the primary organization.
     for (const [name, id] of [['Studio Two', org2], ['Verisade Studio', org1]]) {
       await page.getByRole('button', { name: `Open ${name} workspace`, exact: true }).click();
-      await page.waitForURL('**/admin/dashboard');
+      await page.waitForURL('**/organization/dashboard');
       assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem('adminUser')).organization_id), id);
       await page.goto(root + '/organizations', { waitUntil: 'networkidle' });
     }
@@ -235,13 +235,13 @@ function session(meta = context) {
       assert.equal(await page.getByRole('button', { name: 'Create organization' }).evaluate(el => getComputedStyle(el).color), 'rgb(255, 255, 255)');
       await page.screenshot({ path: path.join(artifacts, `organization-details-${width}.png`), fullPage: true });
     }
-    await page.goto(root + '/admin/registration', { waitUntil: 'networkidle' });
+    await page.goto(root + '/register', { waitUntil: 'networkidle' });
     await page.waitForURL('**/create/organization');
     await page.locator('#workspace-name').fill('New Studio');
     await page.getByRole('checkbox').check();
     assert.equal(await page.getByRole('radiogroup').count(), 0);
     await page.getByRole('button', { name: 'Create organization', exact: true }).click();
-    await page.waitForURL('**/admin/dashboard');
+    await page.waitForURL('**/organization/dashboard');
     assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem('adminUser')).organization_id), '00000000-0000-0000-0000-000000000003');
     assert(createBody);
     assert.equal(createBody.company, 'New Studio');
@@ -273,7 +273,7 @@ function session(meta = context) {
       waitUntil: 'networkidle'
     });
     assert.equal(new URL(anon.url()).pathname, '/');
-    await anon.goto(root + '/admin/registration', {
+    await anon.goto(root + '/register', {
       waitUntil: 'networkidle'
     });
     await anon.locator('#reg-email').waitFor();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 
 import { AlertTriangle, CheckCircle2, Info, RefreshCw, Siren } from "lucide-react";
 
@@ -49,18 +49,21 @@ const SEVERITY = {
   },
 };
 
-export default function SignalsPanel({ className }) {
+const SignalsPanel = forwardRef(function SignalsPanel({ className }, ref) {
   const [state, setState] = useState({ loading: true, signals: [], counts: {}, degraded: false });
+  const pending = useRef(null);
 
-  const load = useCallback(async ({ quiet = false } = {}) => {
-    if (!quiet) setState((s) => ({ ...s, loading: true }));
+  const load = useCallback(() => {
+    if (pending.current) return pending.current;
+    pending.current = (async () => {
+    setState((s) => ({ ...s, loading: true }));
     try {
-      const res = await authFetch("/api/signals");
+      const res = await authFetch("/api/signals", { cache: "no-store" });
       if (res.status === 403) {
         // Not a role that sees this. Render nothing at all rather than an
         // empty panel that implies the workspace is quiet.
         setState({ loading: false, signals: [], counts: {}, hidden: true });
-        return;
+        return true;
       }
       // ANY other non-2xx is "we do not know", not "all clear".
       //
@@ -72,7 +75,7 @@ export default function SignalsPanel({ className }) {
       // that database/052 exists to repair, so this is a live path.
       if (!res.ok) {
         setState({ loading: false, signals: [], counts: {}, degraded: true });
-        return;
+        return false;
       }
       const data = await res.json();
       setState({
@@ -82,10 +85,17 @@ export default function SignalsPanel({ className }) {
         degraded: Boolean(data.degraded),
         generatedAt: data.generatedAt || null,
       });
+      return !data.degraded;
     } catch {
       setState({ loading: false, signals: [], counts: {}, degraded: true });
+      return false;
+    } finally {
+      pending.current = null;
     }
+    })();
+    return pending.current;
   }, []);
+  useImperativeHandle(ref, () => ({ refresh: load }), [load]);
 
   useEffect(() => {
     load();
@@ -125,7 +135,8 @@ export default function SignalsPanel({ className }) {
           type="button"
           variant="ghost"
           size="sm"
-          onClick={() => load({ quiet: true })}
+          onClick={load}
+          aria-label="Refresh attention signals"
           disabled={state.loading}
           className="h-8 gap-1.5 px-2 text-muted-foreground hover:text-foreground"
         >
@@ -178,4 +189,6 @@ export default function SignalsPanel({ className }) {
       )}
     </section>
   );
-}
+});
+
+export default SignalsPanel;

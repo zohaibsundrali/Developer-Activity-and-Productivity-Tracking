@@ -58,7 +58,7 @@ describe("/api/csp-report", () => {
         body: {
           effectiveDirective: "script-src",
           blockedURL: "https://cdn.example.com/a.js",
-          documentURL: "https://app/admin/dashboard",
+          documentURL: "https://app/organization/dashboard",
         },
       },
       { type: "deprecation", body: {} }, // ignored — not a CSP report

@@ -58,7 +58,7 @@ export async function POST(request) {
       customer: subscription.stripe_customer_id,
       // The billing screen is a section of the admin dashboard, not a route of
       // its own; returning to /admin/billing would 404 on the way back.
-      return_url: `${origin}/admin/dashboard?section=billing`,
+      return_url: `${origin}/organization/dashboard?section=billing`,
     });
 
     const after = await svc.rpc("organization_deletion_active", { p_org: billingOrgId });

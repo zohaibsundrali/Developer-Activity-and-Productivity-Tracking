@@ -38,7 +38,7 @@ export const hero = {
   priceLine: "Priced per organization, not per seat. Free to start; $149 a month covers up to 100 people.",
   primaryCta: {
     label: "Create your organization",
-    href: "/admin/registration",
+    href: "/register",
     // Signup writes admin_users + organizations + owner membership + a Supabase
     // Auth account (src/app/api/auth/signup/route.js). No subscription row is
     // created, and src/utils/entitlements.js treats "no row" as the Free plan.
@@ -349,7 +349,7 @@ export const pricing = {
       description: "For trying it out on one real project.",
       trialDays: 14,
       highlight: false,
-      cta: { label: "Create your organization", href: "/admin/registration" },
+      cta: { label: "Create your organization", href: "/register" },
       limits: [
         { label: "People", value: "3" },
         { label: "Developers", value: "3" },
@@ -376,7 +376,7 @@ export const pricing = {
       description: "For a growing team.",
       trialDays: 14,
       highlight: true,
-      cta: { label: "Start on Professional", href: "/admin/registration" },
+      cta: { label: "Start on Professional", href: "/register" },
       limits: [
         { label: "People", value: "25" },
         { label: "Developers", value: "25" },
@@ -399,7 +399,7 @@ export const pricing = {
       description: "For multiple teams.",
       trialDays: 14,
       highlight: false,
-      cta: { label: "Start on Business", href: "/admin/registration" },
+      cta: { label: "Start on Business", href: "/register" },
       limits: [
         { label: "People", value: "100" },
         { label: "Developers", value: "100" },
@@ -421,7 +421,7 @@ export const pricing = {
       description: "Unlimited, with support.",
       trialDays: 0,
       highlight: false,
-      cta: { label: "Talk to us", href: "/admin/registration" },
+      cta: { label: "Talk to us", href: "/register" },
       limits: [
         { label: "People", value: "Unlimited" },
         { label: "Developers", value: "Unlimited" },
@@ -501,7 +501,7 @@ export const finalCta = {
   headline: "Set up your organization in a few minutes",
   subhead:
     "Create the org, invite your first three people, and run a real project on the board. Install the desktop agent later, or never — that part is your call, and it should be a deliberate one.",
-  primaryCta: { label: "Create your organization", href: "/admin/registration" },
+  primaryCta: { label: "Create your organization", href: "/register" },
   secondaryCta: { label: "Sign in", href: "/login" },
   reassurance:
     "Two projects and three people on the Free plan, with no trial countdown. Upgrade from the Billing page inside your dashboard when the limits start to bite.",
@@ -543,7 +543,7 @@ export const footer = {
     {
       title: "Account",
       links: [
-        { label: "Create an organization", href: "/admin/registration" },
+        { label: "Create an organization", href: "/register" },
         { label: "Join with an invite", href: "/join" },
         { label: "Sign in", href: "/login" },
         { label: "Download for Windows", href: "/download" },

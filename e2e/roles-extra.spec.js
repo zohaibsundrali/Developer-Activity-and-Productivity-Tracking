@@ -93,7 +93,7 @@ test.describe('Admin-console roles', () => {
       skipUnless(creds);
       await login(page, creds);
       expect(creds.area, `${role} is expected on the admin console (E2E_${role.toUpperCase()}_PORTAL)`).toBe('admin');
-      await expect(page).toHaveURL(/\/admin\/dashboard/);
+      await expect(page).toHaveURL(/\/organization\/dashboard/);
       await expectNav(page, nav);
       await walkSidebar(page, role, 'admin');
       // Every own-work screen is there too: this is where these roles log time.
@@ -118,7 +118,7 @@ test.describe('Staff-dashboard roles', () => {
       await expectNav(page, nav);
       await walkSidebar(page, role, 'developer');
       // TESTERS holds test_case.view, and that must NOT open the front door.
-      await expectBouncedToLogin(page, '/admin/dashboard');
+      await expectBouncedToLogin(page, '/organization/dashboard');
     });
   }
 });

@@ -500,7 +500,7 @@ describe("the catalogue agrees with the section table it replaced", () => {
      * RENDERED and has no rule — which is the one that hands a screen to
      * somebody, and is exactly how `productivity` stayed open.
      */
-    const page = read("src/app/admin/dashboard/page.js");
+    const page = read("src/app/organization/dashboard/page.js");
     const cases = [...page.matchAll(/case\s+"([a-z-]+)":/g)].map((m) => m[1]);
     expect(cases.length, "found no cases — the regex has gone stale").toBeGreaterThan(15);
     for (const section of new Set(cases)) {

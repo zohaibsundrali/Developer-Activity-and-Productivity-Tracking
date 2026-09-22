@@ -1,12 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useWorkspaces } from "@/contexts/WorkspacesContext";
 import Link from "next/link";
 import {
   Activity,
   AlertOctagon,
   Bell,
   Bug,
+  Building2,
+  CalendarDays,
+  GitPullRequest,
   ClipboardCheck,
   FolderKanban,
   Handshake,
@@ -28,6 +32,7 @@ import SignalsPanel from "@/components/admin/SignalsPanel";
 import {
   KPI_CATALOGUE,
   KPI_SLOTS,
+  OWNER_KPI_KEYS,
   PROPOSAL_BUCKETS,
   TASK_BUCKETS,
   bugSummary,
@@ -96,49 +101,61 @@ export default function DashboardOverview({ user }) {
   const [loading, setLoading] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState(null);
+  const [updatedAt, setUpdatedAt] = useState(null);
+  const inFlight = useRef(false);
+  const signalsRef = useRef(null);
+  const workspaces = useWorkspaces();
+  const refreshWorkspaces = workspaces?.refresh;
 
   const ctx = getOrgContext();
   const role = ctx?.role || null;
   const can = useCallback((section) => canAccessAdminSection(section, role), [role]);
 
   const load = useCallback(async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     try {
       setLoading(true);
       setError(null);
-      const orgId = getOrgId();
+      const orgId = ctx?.organizationId || getOrgId();
       // `user` is whichever profile row signed in — admin_users for an owner
       // or admin, developers for a manager, team lead, HR, QA or finance. The
       // notifications table keys those two on different columns, so which id
       // this is has to be said rather than assumed.
       const isAdminProfile = ctx?.userType === "admin";
-      const snapshot = await loadAdminOverview(orgId, {
+      const [snapshot, , signalsUpdated] = await Promise.all([loadAdminOverview(orgId, {
         adminId: isAdminProfile ? user?.id || null : null,
         adminEmail: isAdminProfile ? user?.email || null : null,
         developerId: isAdminProfile ? null : user?.id || null,
         withClients: canAccessAdminSection("clients", ctx?.role || null),
         withReviews: canAccessAdminSection("task-reviews", ctx?.role || null),
-      });
+        withChangeRequests: canAccessAdminSection("change-requests", ctx?.role || null),
+        withLeaveRequests: canAccessAdminSection("leave-approvals", ctx?.role || null),
+      }), refreshWorkspaces?.(), signalsRef.current?.refresh()]);
       setData(snapshot);
+      setUpdatedAt(new Date());
+      if (signalsUpdated === false) setError("Dashboard updated, but attention signals could not be refreshed. Please retry.");
     } catch (e) {
       setError(e?.message || "Could not load the dashboard.");
     } finally {
       setLoading(false);
       setHasLoaded(true);
+      inFlight.current = false;
     }
-  }, [user?.id, user?.email, ctx?.userType, ctx?.role]);
+  }, [user?.id, user?.email, ctx?.organizationId, ctx?.userType, ctx?.role, refreshWorkspaces]);
 
   useEffect(() => {
     load();
-    // Paused while the tab is hidden. This is eight to ten queries; running
+    // Paused while the tab is hidden. This includes several organization queries; running
     // them at a wall nobody is looking at is the most expensive kind of idle.
     return setVisibleInterval(load, REFRESH_MS);
   }, [load]);
 
   const view = useMemo(() => {
     if (!data) return null;
-    const { graph, proposals, activity, notifications, clientCount, pendingReviews } = data;
+    const { graph, proposals, activity, notifications } = data;
     return {
-      kpis: overviewKpis({ graph, proposals, clientCount, pendingReviews }),
+      kpis: overviewKpis(data),
       projects: projectRows(graph),
       people: peopleRows(graph),
       tasks: taskBuckets(graph),
@@ -174,13 +191,17 @@ export default function DashboardOverview({ user }) {
 
       {/* ABOVE the counters, deliberately. Everything below this line reports a
           number; this reads the numbers and says what needs doing. */}
-      <SignalsPanel className={styles.signals} />
+      <SignalsPanel ref={signalsRef} className={styles.signals} />
+      <p role="status" className="text-xs text-muted-foreground">
+        {loading ? "Refreshing dashboard…" : updatedAt ? `Last updated at ${updatedAt.toLocaleTimeString()}` : ""}
+      </p>
 
-      {error && !loading ? (
+      {error && !loading && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      {error && !data && !loading ? (
         <ErrorState title="Couldn't load the dashboard" description={error} onRetry={load} />
       ) : (
         <>
-          <KpiRow kpis={view?.kpis} loading={showSkeleton} can={can} />
+          <KpiRow kpis={{ ...view?.kpis, organizationCount: workspaces?.organizations?.length ?? null }} loading={showSkeleton} can={can} role={role} />
 
           {/* SAME RULE AS THE KPI ROW: a panel appears only when the viewer
               could open the screen behind it. One rule, three dashboards —
@@ -213,13 +234,13 @@ export default function DashboardOverview({ user }) {
  * ------------------------------------------------------------------ */
 
 /**
- * The six headline numbers, each one a link to the screen that explains it.
+ * The headline numbers, each one a link to the screen that explains it.
  *
  * `invertTrend` is not used and no trend is passed: nothing here is measured
  * against a previous period, and an arrow drawn from a number the code invented
  * is worse than no arrow. `hint` carries real context instead.
  */
-function KpiRow({ kpis, loading, can }) {
+function KpiRow({ kpis, loading, can, role }) {
   const k = kpis || {};
 
   // Presentation for each catalogue entry. The catalogue itself — order, and
@@ -292,6 +313,18 @@ function KpiRow({ kpis, loading, can }) {
       tone: "primary",
       hint: "Accounts with a portal login",
     },
+    changeRequestCount: {
+      title: "Change requests", icon: GitPullRequest, tone: "info",
+      hint: "Waiting on your team",
+    },
+    leaveRequestCount: {
+      title: "Leave requests", icon: CalendarDays, tone: "warning",
+      hint: "Pending approval",
+    },
+    organizationCount: {
+      title: "Total organizations", icon: Building2, tone: "primary",
+      hint: "Workspaces you can access",
+    },
     pendingReviews: {
       title: "Awaiting review",
       icon: ClipboardCheck,
@@ -312,14 +345,17 @@ function KpiRow({ kpis, loading, can }) {
     },
   };
 
-  const tiles = KPI_CATALOGUE.filter((entry) => can(entry.section))
-    .slice(0, KPI_SLOTS)
+  const available = KPI_CATALOGUE.filter((entry) => can(entry.section));
+  const entries = role === "owner"
+    ? OWNER_KPI_KEYS.map(key => available.find(entry => entry.key === key)).filter(Boolean)
+    : available.filter(entry => entry.key !== "organizationCount").slice(0, KPI_SLOTS);
+  const tiles = entries
     .map((entry) => ({
       ...META[entry.key],
       key: entry.key,
-      value: k[entry.key] ?? 0,
+      value: entry.key === "organizationCount" ? k.organizationCount ?? "—" : k[entry.key] ?? 0,
       section: entry.section,
-      href: `/admin/dashboard?section=${entry.section}`,
+      href: entry.href || `/organization/dashboard?section=${entry.section}`,
     }));
 
   return (
@@ -366,7 +402,7 @@ function ProjectsPanel({ rows, loading, can, className }) {
       <PanelHead
         icon={FolderKanban} title="All projects"
         hint="Riskiest first, then by how soon they are due."
-        href="/admin/dashboard?section=all-projects"
+        href="/organization/dashboard?section=all-projects"
         canOpen={can("all-projects")}
       />
       {loading ? (
@@ -436,7 +472,7 @@ function TasksPanel({ buckets, loading, can, className }) {
       <PanelHead
         icon={ClipboardCheck} title="Tasks & deadlines"
         hint="Across every project."
-        href="/admin/dashboard?section=views"
+        href="/organization/dashboard?section=views"
         canOpen={can("views")}
       />
       {loading ? (
@@ -454,7 +490,7 @@ function TasksPanel({ buckets, loading, can, className }) {
                 label={bucket.label}
                 value={(b[bucket.id] || []).length}
                 tone={bucket.tone}
-                href="/admin/dashboard?section=views"
+                href="/organization/dashboard?section=views"
                 canOpen={can("views")}
               />
             ))}
@@ -486,7 +522,7 @@ function PeoplePanel({ rows, loading, can, className }) {
       <PanelHead
         icon={Users} title="Team & workload"
         hint="Who is here, what they carry, and how much of it is late."
-        href="/admin/dashboard?section=capacity"
+        href="/organization/dashboard?section=capacity"
         canOpen={can("capacity")}
       />
       {loading ? (
@@ -590,7 +626,7 @@ function HierarchyPanel({ view, loading, can, className }) {
       <PanelHead
         icon={Network} title="Project hierarchy"
         hint="Project → manager → team, by role."
-        href="/admin/dashboard?section=hierarchy"
+        href="/organization/dashboard?section=hierarchy"
         canOpen={can("hierarchy")}
       >
         Open org chart
@@ -698,7 +734,7 @@ function ProposalsPanel({ proposals, loading, can }) {
       <PanelHead
         icon={Inbox} title="Proposals"
         hint="Grouped by whose move it is."
-        href="/admin/dashboard?section=requests"
+        href="/organization/dashboard?section=requests"
         canOpen={can("requests")}
       />
       {loading ? (
@@ -751,7 +787,7 @@ function QaPanel({ summary, loading, can }) {
       <PanelHead
         icon={Bug} title="QA & issues"
         hint="Bugs are tasks with a type, not a separate list."
-        href="/admin/dashboard?section=bugs"
+        href="/organization/dashboard?section=bugs"
         canOpen={can("bugs")}
       />
       {loading ? (
@@ -763,14 +799,14 @@ function QaPanel({ summary, loading, can }) {
               label="Open bugs"
               value={s.open ?? 0}
               tone={s.open > 0 ? "error" : "success"}
-              href="/admin/dashboard?section=bugs"
+              href="/organization/dashboard?section=bugs"
               canOpen={can("bugs")}
             />
             <BucketTile
               label="Waiting on QA"
               value={s.inQa ?? 0}
               tone={s.inQa > 0 ? "warning" : "muted"}
-              href="/admin/dashboard?section=task-reviews"
+              href="/organization/dashboard?section=task-reviews"
               canOpen={can("task-reviews")}
             />
           </div>
@@ -906,7 +942,7 @@ function ReportsPanel({ view, loading, can }) {
       <PanelHead
         icon={Activity} title="Performance"
         hint="Headlines only."
-        href="/admin/dashboard?section=reports"
+        href="/organization/dashboard?section=reports"
         canOpen={can("reports")}
       >
         Full reports

@@ -252,7 +252,7 @@ test.describe('Seed the client project', () => {
     // Clients → Project links: the form that decides what a client can see.
     // addProject leaves us on the standalone project-details page (no
     // sidebar), so the section is opened by URL.
-    await page.goto('/admin/dashboard?section=clients');
+    await page.goto('/organization/dashboard?section=clients');
     await expect(page.getByRole('heading', { level: 1, name: 'Clients' })).toBeVisible();
     await page.getByRole('tab', { name: /^Project links\b/ }).click();
     const linked = page.getByRole('button', { name: `Unlink QA Client from ${name}` });

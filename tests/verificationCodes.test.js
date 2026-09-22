@@ -142,7 +142,7 @@ describe("the constants are the ones the flow depends on", () => {
 /* ------------------------------------------------------------------ */
 
 describe("the browser no longer decides", () => {
-  const page = read("src/app/admin/registration/page.js");
+  const page = read("src/app/register/page.js");
 
   it("does not generate a code", () => {
     expect(page).not.toMatch(/Math\.random\(\)\s*\*\s*9000/);

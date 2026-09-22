@@ -31,7 +31,7 @@ import { canEnterAdminArea } from '@/components/shell/sectionAccess'
  *   { "sortedMiddleware": [], "middleware": {}, ... }
  *
  * Measured against production on 2026-08-10, before the move: GET
- * /admin/dashboard, /developer/dashboard and /client all answered 200 to an
+ * /organization/dashboard, /developer/dashboard and /client all answered 200 to an
  * anonymous request instead of redirecting to /login.
  *
  * What that did NOT cost: the pages are client-rendered and fetch their data
@@ -70,6 +70,7 @@ import { canEnterAdminArea } from '@/components/shell/sectionAccess'
 type Session = { userType?: string | null; role?: string | null }
 
 const AREA_RULES: { prefix: string; allow: (s: Session) => boolean }[] = [
+  { prefix: '/organization', allow: (s) => s.userType === 'admin' || canEnterAdminArea(s.role) },
   { prefix: '/admin', allow: (s) => s.userType === 'admin' || canEnterAdminArea(s.role) },
   { prefix: '/client', allow: (s) => s.userType === 'client' },
   { prefix: '/developer', allow: (s) => s.userType === 'developer' || s.userType === 'admin' },
@@ -78,7 +79,7 @@ const AREA_RULES: { prefix: string; allow: (s: Session) => boolean }[] = [
 /**
  * Public pages that happen to sit UNDER a protected prefix.
  *
- * `/admin/registration` is the create-an-organization flow. By definition
+ * `/register` is the create-an-organization flow. By definition
  * nobody holds a session there — it is where sessions come from. Without this
  * exemption, switching the middleware on turns signup into an immediate
  * redirect to /login, which is to say it takes the product off sale. It is
@@ -88,7 +89,7 @@ const AREA_RULES: { prefix: string; allow: (s: Session) => boolean }[] = [
  * Everything else under /admin, /developer and /client requires a session —
  * including /admin/upgrade, which a locked but signed-in admin reaches.
  */
-const PUBLIC_PATHS = ['/admin/registration']
+const PUBLIC_PATHS = ['/register', '/admin/registration']
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -99,7 +100,7 @@ export async function middleware(request: NextRequest) {
 
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) return NextResponse.next()
 
-  const rule = AREA_RULES.find((r) => pathname.startsWith(r.prefix))
+  const rule = AREA_RULES.find((r) => (pathname === r.prefix || pathname.startsWith(`${r.prefix}/`)))
   if (!rule) return NextResponse.next()
 
   const raw = request.cookies.get(SESSION_COOKIE)?.value
@@ -124,6 +125,7 @@ export const config = {
   matcher: [
     '/developer/:path*',
     '/admin/:path*',
+    '/organization/:path*',
     '/client/:path*'
   ]
 }

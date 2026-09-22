@@ -24,7 +24,7 @@
 import { canEnterAdminArea } from "@/components/shell/sectionAccess";
 
 export const DASHBOARD_HOME = Object.freeze({
-  admin: "/admin/dashboard",
+  admin: "/organization/dashboard",
   developer: "/developer/dashboard",
   client: "/client",
 });

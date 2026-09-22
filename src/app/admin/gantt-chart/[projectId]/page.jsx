@@ -171,7 +171,7 @@ export default function AdminGanttChartPage() {
   };
 
   const handleBack = () => {
-    router.push('/admin/dashboard');
+    router.push('/organization/dashboard');
   };
 
   const handleRefresh = () => {
@@ -218,7 +218,7 @@ export default function AdminGanttChartPage() {
   );
 
   const crumbs = [
-    { label: "Dashboard", href: "/admin/dashboard" },
+    { label: "Dashboard", href: "/organization/dashboard" },
     { label: project?.name || "Gantt chart" },
   ];
 

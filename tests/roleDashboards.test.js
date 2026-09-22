@@ -13,7 +13,7 @@ import {
 import { adminNavFor, staffNav } from "@/components/shell/navConfig";
 import { dashboardHomeFor } from "@/utils/dashboardHome";
 import { ROLES, userTypeForRole } from "@/utils/roles";
-import { KPI_CATALOGUE, KPI_SLOTS } from "@/utils/adminOverview";
+import { KPI_CATALOGUE, KPI_SLOTS, OWNER_KPI_KEYS } from "@/utils/adminOverview";
 
 /**
  * Every role reaching the screens that were written for it.
@@ -50,7 +50,7 @@ const read = (rel) => readFileSync(path.join(root, rel), "utf8");
 const stripComments = (s) =>
   s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
-const ADMIN_PAGE = stripComments(read("src/app/admin/dashboard/page.js"));
+const ADMIN_PAGE = stripComments(read("src/app/organization/dashboard/page.js"));
 const MIDDLEWARE = stripComments(read("src/middleware.ts"));
 const LOGIN = stripComments(read("src/app/login/page.js"));
 
@@ -142,7 +142,7 @@ describe("every role lands on the dashboard its work is on", () => {
       // Their profile row really is in `developers` — this is the fact that
       // made user_type the wrong thing to key on.
       expect(userTypeForRole(role), role).toBe("developer");
-      expect(dashboardHomeFor("developer", role), role).toBe("/admin/dashboard");
+      expect(dashboardHomeFor("developer", role), role).toBe("/organization/dashboard");
     }
   });
 
@@ -153,8 +153,8 @@ describe("every role lands on the dashboard its work is on", () => {
   });
 
   it("does not move owners, admins or clients", () => {
-    expect(dashboardHomeFor("admin", "owner")).toBe("/admin/dashboard");
-    expect(dashboardHomeFor("admin", "admin")).toBe("/admin/dashboard");
+    expect(dashboardHomeFor("admin", "owner")).toBe("/organization/dashboard");
+    expect(dashboardHomeFor("admin", "admin")).toBe("/organization/dashboard");
     expect(dashboardHomeFor("client", "client")).toBe("/client");
     // No membership role at all — a legacy session — still resolves.
     expect(dashboardHomeFor("developer")).toBe("/developer/dashboard");
@@ -166,7 +166,7 @@ describe("every role lands on the dashboard its work is on", () => {
     expect(dashboardHomeFor(null)).toBeNull();
     // …but a real membership role wins even when the user type is junk, which
     // is the whole point of consulting it first.
-    expect(dashboardHomeFor("nonsense", "hr")).toBe("/admin/dashboard");
+    expect(dashboardHomeFor("nonsense", "hr")).toBe("/organization/dashboard");
   });
 
   it("the login page routes by membership role, not by the form's picker", () => {
@@ -205,7 +205,7 @@ describe("the three gates that used to disagree", () => {
       /prefix: '\/developer', allow: \(s\) => s\.userType === 'developer' \|\| s\.userType === 'admin' \}/
     );
     // Belt and braces: the role check is invoked on exactly one rule, /admin.
-    expect(MIDDLEWARE.match(/canEnterAdminArea\(/g) || []).toHaveLength(1);
+    expect(MIDDLEWARE.match(/canEnterAdminArea\(/g) || []).toHaveLength(2);
   });
 
   it("the admin page reads both session stores", () => {
@@ -239,7 +239,8 @@ describe("what each role actually sees", () => {
   /** The KPI tiles a role gets, by the one rule that decides them. */
   const kpisFor = (role) =>
     KPI_CATALOGUE.filter((e) => canAccessAdminSection(e.section, role))
-      .slice(0, KPI_SLOTS)
+      .filter(e => role === "owner" ? OWNER_KPI_KEYS.includes(e.key) : e.key !== "organizationCount")
+      .slice(0, role === "owner" ? OWNER_KPI_KEYS.length : KPI_SLOTS)
       .map((e) => e.key);
 
   it("gives the founder the delivery view the brief asked for", () => {
@@ -250,6 +251,12 @@ describe("what each role actually sees", () => {
       "overdueTasks",
       "pendingProposals",
       "teamMembers",
+      "clientCount",
+      "pendingReviews",
+      "openBugs",
+      "changeRequestCount",
+      "leaveRequestCount",
+      "organizationCount",
     ]);
   });
 
@@ -283,6 +290,7 @@ describe("what each role actually sees", () => {
       "overloadedPeople",
       "availablePeople",
       "rolesInUse",
+      "leaveRequestCount",
     ]);
   });
 
@@ -353,10 +361,10 @@ describe("what each role actually sees", () => {
     expect(kpisFor("qa")).toEqual(["pendingReviews", "openBugs", "bugsInQa"]);
   });
 
-  it("does not disturb a dashboard that was already full", () => {
+  it("expands the owner summary while keeping other delivery dashboards focused", () => {
     // The QA tiles were appended, not inserted. Anyone whose first six slots
     // were already taken must see exactly what they saw before.
-    expect(kpisFor("owner")).not.toContain("pendingReviews");
+    expect(kpisFor("owner")).toContain("pendingReviews");
     expect(kpisFor("manager")).not.toContain("openBugs");
     expect(kpisFor("hr")).not.toContain("bugsInQa");
     // team_lead CAN open both QA screens and still gets none of the three,

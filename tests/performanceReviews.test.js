@@ -195,7 +195,7 @@ describe("the route decides per act", () => {
 });
 
 describe("the screens are wired in both shells", () => {
-  const adminSrc = read("src/app/admin/dashboard/page.js");
+  const adminSrc = read("src/app/organization/dashboard/page.js");
   const staffSrc = read("src/app/developer/dashboard/page.jsx");
 
   it("renders My Reviews in both, from one component", () => {

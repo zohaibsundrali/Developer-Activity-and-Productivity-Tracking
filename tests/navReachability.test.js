@@ -48,7 +48,7 @@ const read = (p) => readFileSync(path.join(root, p), "utf8");
 const casesIn = (file) =>
   new Set([...read(file).matchAll(/case "([a-z0-9-]+)":/g)].map((m) => m[1]));
 
-const ADMIN_PAGE = "src/app/admin/dashboard/page.js";
+const ADMIN_PAGE = "src/app/organization/dashboard/page.js";
 const STAFF_PAGE = "src/app/developer/dashboard/page.jsx";
 const CLIENT_PAGE = "src/app/client/page.jsx";
 

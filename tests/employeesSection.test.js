@@ -65,7 +65,7 @@ describe("the sidebar", () => {
     // falls through to Overview and reads as a broken button. `overview` is
     // the exception and always has been — it IS the default arm of the switch,
     // so it has no case of its own.
-    const page = code("src/app/admin/dashboard/page.js");
+    const page = code("src/app/organization/dashboard/page.js");
     for (const id of navIds.filter((x) => x !== "overview")) {
       expect(page, `no case for ${id}`).toContain(`case "${id}":`);
     }
@@ -76,7 +76,7 @@ describe("the sidebar", () => {
 });
 
 describe("the links that still point at the old screens", () => {
-  const page = code("src/app/admin/dashboard/page.js");
+  const page = code("src/app/organization/dashboard/page.js");
 
   it("resolve to Employees rather than falling through to Overview", () => {
     expect(page).toMatch(/"add-developer":\s*"employees"/);

@@ -2188,7 +2188,7 @@ export default function DeveloperActivity() {
             title="No developers available"
             description="No developer profiles are currently available to your account in this organization."
             action={allowed('member.view') ? (
-              <Button onClick={() => router.push("/admin/dashboard?section=employees")}>View Employees</Button>
+              <Button onClick={() => router.push("/organization/dashboard?section=employees")}>View Employees</Button>
             ) : undefined}
           />
         ) : (

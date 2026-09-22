@@ -4,7 +4,7 @@
  * WHY THIS FILE EXISTS
  *  Two forms take a person's name from a stranger: Add Employee
  *  (src/components/admin/AddEmployeeDialog.jsx, an admin naming someone else)
- *  and the create-organization form (src/app/admin/registration/page.js, an
+ *  and the create-organization form (src/app/register/page.js, an
  *  owner naming themselves). They were given the same brief and started to grow
  *  two implementations of it, which is how two forms end up disagreeing about
  *  whether "O'Brien" is a name. There is one rule and it lives here; both

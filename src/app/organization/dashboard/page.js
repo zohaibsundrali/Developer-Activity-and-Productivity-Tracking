@@ -1,0 +1,609 @@
+"use client";
+
+import { logoutAndRedirect } from '@/utils/browserLogout';
+import { loadDashboardOwnProjects } from "@/utils/dashboardOwnProjects";
+import { ErrorState } from "@/components/ui";
+import PermissionBoundary from "@/components/auth/PermissionBoundary";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { supabase } from "@/utils/supabaseClient";
+import AppShell from "@/components/shell/AppShell";
+import { adminNavFor, canAccessAdminSection, canEnterAdminArea, sectionTitle } from "@/components/shell/navConfig";
+import NotificationDropdown from "@/components/admin/NotificationDropdown";
+import DashboardOverview from "@/components/admin/DashboardOverview";
+import AllProjects from "@/components/admin/AllProjects";
+import ProjectRequests from "@/components/admin/ProjectRequests";
+import ChangeRequests from "@/components/admin/ChangeRequests";
+import BugQueue from "@/components/admin/BugQueue";
+import DeveloperActivity from "@/components/admin/DeveloperActivity";
+import TaskReviewPanel from "@/components/admin/TaskReviewPanel";
+import ProductivityDashboard from "@/components/admin/ProductivityDashboard";
+import OrganizationManagement from "@/components/admin/OrganizationManagement";
+import ClientManagement from "@/components/admin/ClientManagement";
+import EmployeeDirectory from "@/components/admin/EmployeeDirectory";
+import ProjectHierarchy from "@/components/admin/ProjectHierarchy";
+import ReportingLines from "@/components/admin/ReportingLines";
+import TeamCapacity from "@/components/admin/TeamCapacity";
+import TeamStats from "@/components/admin/TeamStats";
+import ProjectBoard from "@/components/admin/ProjectBoard";
+import AgileWorkspace from "@/components/admin/AgileWorkspace";
+import ProjectViews from "@/components/admin/ProjectViews";
+import ProjectOverview from "@/components/admin/ProjectOverview";
+import ReportsDashboard from "@/components/admin/ReportsDashboard";
+import AutomationRules from "@/components/admin/AutomationRules";
+import BillingSubscription from "@/components/admin/BillingSubscription";
+import SystemHealth from "@/components/admin/SystemHealth";
+import PermissionsPanel from "@/components/admin/PermissionsPanel";
+import AdminAccount from "@/components/admin/AdminAccount";
+// The own-work screens, shared with the staff dashboard rather than rebuilt.
+// Both read their identity from the session through getOrgContext(), so they do
+// not care which shell renders them — see the note on the my-work/timesheet/
+// projects entries in sectionAccess.js for why they had to be here at all.
+import MyWork from "@/components/developer/MyWork";
+import MyTimesheet from "@/components/developer/MyTimesheet";
+import MyProjects from "@/components/developer/MyProjects";
+import PayrollPreparation from "@/components/admin/PayrollPreparation";
+import MobileFieldHistory from "@/components/shared/MobileFieldHistory";
+import ShiftSchedule from "@/components/shared/ShiftSchedule";
+import MyAttendance from "@/components/shared/MyAttendance";
+import MyLeave from "@/components/shared/MyLeave";
+import LeaveApprovals from "@/components/admin/LeaveApprovals";
+import TimesheetApprovals from "@/components/admin/TimesheetApprovals";
+import Invoicing from "@/components/admin/Invoicing";
+import Quality from "@/components/admin/Quality";
+import Performance from "@/components/admin/Performance";
+import Recruitment from "@/components/admin/Recruitment";
+import Assets from "@/components/admin/Assets";
+import Contracts from "@/components/admin/Contracts";
+import MyReviews from "@/components/shared/MyReviews";
+import MyActivity from "@/components/shared/MyActivity";
+import { isSessionExpired, clearAdminSession, clearDeveloperSession } from "@/utils/sessionPolicy";
+import { Skeleton } from "@/components/ui";
+// Shared notifications and confirmation dialogs.
+import { showSuccess } from "@/utils/alerts";
+
+// Written by src/app/register/page.js the moment an organization is
+// created, and — verified across src/, tests/, e2e/ and middleware.ts — read
+// by nothing else in the codebase. Its presence in sessionStorage therefore
+// means exactly one thing: "this browser session began by completing signup",
+// which is the signal the welcome needs. A plain login never writes it, so a
+// returning admin never sees the message.
+//
+// It is deliberately NOT removed here. It is somebody else's key and it looks
+// like an auth token; the once-only guard is our own separate marker below.
+const SIGNUP_MARKER_KEY = "adminToken";
+const WELCOME_SHOWN_KEY = "devtrack.orgWelcomeShown";
+
+// Sections that have moved. "Add Developer" and "View Developers" were their
+// own screens; both are Employees now. Bookmarks, an old notification's deep
+// link and the button on Developer Activity all still point at the old ids,
+// and a section id with nowhere to go falls through to Overview — which reads
+// as "the button is broken" rather than "that screen moved".
+const LEGACY_SECTIONS = {
+  "add-developer": "employees",
+  "view-developers": "employees",
+};
+
+const resolveSection = (id) => LEGACY_SECTIONS[id] || id || "overview";
+
+// Presentational only: labels the sidebar groups the nav items into. Keys are
+// the same section ids the switch below uses; it changes no ordering, no
+// filtering and no access rule — `adminNavFor(role)` still decides membership.
+const ADMIN_NAV_GROUPS = {
+  overview: "Overview",
+  "my-work": "My Work",
+  timesheet: "My Work",
+  projects: "My Work",
+  "my-attendance": "My Work",
+  "my-leave": "My Work",
+  "my-reviews": "My Work",
+  "my-activity": "My Work",
+  "all-projects": "Delivery",
+  requests: "Delivery",
+  "change-requests": "Delivery",
+  quality: "Delivery",
+  bugs: "Delivery",
+  "project-hub": "Delivery",
+  board: "Delivery",
+  views: "Delivery",
+  sprints: "Delivery",
+  "task-reviews": "Delivery",
+  "timesheet-approvals": "Delivery",
+  "developer-activity": "Insights",
+  reports: "Insights",
+  automation: "Insights",
+  employees: "People",
+  hierarchy: "People",
+  "leave-approvals": "People",
+  performance: "People",
+  recruitment: "People",
+  assets: "Workspace",
+  capacity: "People",
+  "team-stats": "People",
+  organization: "Workspace",
+  clients: "Workspace",
+  contracts: "Workspace",
+  invoicing: "Workspace",
+  billing: "Workspace",
+  "system-health": "Workspace",
+};
+
+const withNavGroups = (items) =>
+  items.map((item) => ({ ...item, group: ADMIN_NAV_GROUPS[item.id] || "Workspace" }));
+
+// The chrome is already on screen while the first fetch runs, so the wait
+// should look like the dashboard rather than a spinner on an empty page.
+function DashboardBootSkeleton() {
+  return (
+    <div className="min-h-screen bg-background" aria-busy="true">
+      <span className="sr-only">Loading dashboard…</span>
+      <div className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-64 lg:flex-col lg:border-r lg:border-sidebar-border lg:bg-sidebar" />
+      <div className="flex min-h-screen flex-col lg:pl-64">
+        <div className="flex h-16 items-center gap-3 border-b border-border bg-card px-4 sm:px-6">
+          <Skeleton className="h-5 w-40" />
+          <div className="ml-auto flex items-center gap-3">
+            <Skeleton className="h-9 w-9 rounded-full" />
+            <Skeleton className="h-9 w-9 rounded-full" />
+          </div>
+        </div>
+        <div className="flex-1 space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+          <div className="space-y-2">
+            <Skeleton className="h-7 w-56" />
+            <Skeleton className="h-4 w-72" />
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <Skeleton key={i} className="h-[118px] w-full rounded-xl" />
+            ))}
+          </div>
+          <Skeleton className="h-64 w-full rounded-xl" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Whose session may render this shell.
+ *
+ * IT USED TO READ `adminUser` AND NOTHING ELSE, and require `role === 'admin'`.
+ *
+ * That is correct for an owner or an admin, whose profile row is in
+ * `admin_users`. It is wrong for everybody else the admin shell is built for:
+ * `userTypeForRole` files a project manager, a team lead, an HR user, a QA and
+ * a finance user in `developers`, so their session is stored under
+ * `developerUser` with `role: "developer"`. All five were bounced straight back
+ * to /login — and the old code called `clearAdminSession()` on the way, which
+ * clears the shared server cookie, so the bounce logged them out of the staff
+ * dashboard they were legitimately using.
+ *
+ * ADMITTING THEM HERE GRANTS NOTHING. This decides which shell paints. Which
+ * SECTIONS it paints is `canAccessAdminSection(section, role)` further down;
+ * which requests succeed is `getAuthedOrg` against a verified JWT; which rows
+ * come back is RLS. This is the fourth of four gates and the only cosmetic one.
+ */
+const readAdminShellSession = () => {
+  if (typeof window === 'undefined') return false;
+
+  // Admin first: somebody holding both should be their higher self.
+  const candidates = [
+    ['adminUser', sessionStorage.getItem("adminUser")],
+    ['developerUser', sessionStorage.getItem("developerUser")],
+  ];
+
+  for (const [key, raw] of candidates) {
+    if (!raw) continue;
+    let userData;
+    try {
+      userData = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+
+    // An expired session is cleared wherever it was found. Note that only the
+    // MATCHING store is cleared — wiping a developer session because an admin
+    // one had gone stale is how somebody loses a dashboard they were using.
+    if (isSessionExpired(userData)) {
+      if (key === 'adminUser') clearAdminSession();
+      else clearDeveloperSession();
+      continue;
+    }
+
+    if (userData.role === 'admin' || canEnterAdminArea(userData.membership_role)) {
+      return userData;
+    }
+  }
+
+  return false;
+};
+
+// Higher Order Component for Admin Auth
+const withAdminAuth = (WrappedComponent) => {
+  return (props) => {
+    const router = useRouter();
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+      const authCheck = () => {
+        const user = readAdminShellSession();
+        if (!user) {
+          // No clear() here. readAdminShellSession already cleared anything it
+          // found expired; reaching this line means the stored session is
+          // valid and simply not for this shell, and wiping it would sign the
+          // person out of the dashboard they DO belong on.
+          router.push("/login?redirect=" + encodeURIComponent(window.location.pathname));
+        } else {
+          setIsAuthenticated(true);
+          setLoading(false);
+        }
+      };
+
+      authCheck();
+
+      // Listen for storage changes
+      const handleStorageChange = (e) => {
+        // Either store — a manager's session lives under `developerUser`, so
+        // watching only `adminUser` would leave their tab open after a
+        // sign-out in another one.
+        if ((e.key === "adminUser" || e.key === "developerUser") && !e.newValue) {
+          router.push("/login");
+        }
+      };
+
+      // Auto logout after inactivity
+      window.addEventListener("storage", handleStorageChange);
+
+      return () => {
+        window.removeEventListener("storage", handleStorageChange);
+      };
+    }, [router]);
+
+    const handleLogout = () => logoutAndRedirect();
+
+    if (loading) {
+      return <DashboardBootSkeleton />;
+    }
+
+    if (!isAuthenticated) {
+      return null; // Will redirect in useEffect
+    }
+
+    return <PermissionBoundary><WrappedComponent {...props} onLogout={handleLogout} /></PermissionBoundary>;
+  };
+};
+
+function AdminDashboardContent({ onLogout: parentLogout }) {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [developers, setDevelopers] =  useState([]);
+  const [projects, setProjects] = useState([]);
+  // The caller's OWN assigned projects, kept separate from `projects` on
+  // purpose: that list is every project in the organization and RLS answers it
+  // EMPTY for qa and finance, who hold no project.view_all. Filtering it would
+  // have shown those two an empty My Projects and looked like they had none.
+  const [myProjects, setMyProjects] = useState([]);
+  const [myProjectsError, setMyProjectsError] = useState(null);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const sectionParam = resolveSection(searchParams?.get("section"));
+
+  // The URL is still the source of truth — back/forward, a pasted ?section=
+  // link and the notification centre's deep links all have to win — but the
+  // sidebar reads this mirror, which the click sets on the same frame. Reading
+  // `searchParams` directly meant the highlight, the topbar title and the
+  // content all waited for the router round-trip before anything moved, which
+  // is what made a section switch feel like a page load.
+  const [activeSection, setActiveSection] = useState(sectionParam);
+  const [isNavigating, startNavigation] = useTransition();
+
+  useEffect(() => {
+    setActiveSection(sectionParam);
+  }, [sectionParam]);
+
+  useEffect(() => {
+    const authUser = readAdminShellSession();
+    if (!authUser) {
+      router.push("/login");
+      return;
+    }
+
+    setUser(authUser);
+    fetchDashboardData({ initial: true });
+
+    // Set up interval to check session every minute
+    const sessionCheckInterval = setInterval(() => {
+      const currentUser = readAdminShellSession();
+      if (!currentUser) {
+        handleLogout();
+      }
+    }, 60000); // Check every minute
+
+    return () => {
+      clearInterval(sessionCheckInterval);
+    };
+  }, [router]);
+
+  // "Organization created" confirmation, shown the first time the admin portal
+  // is reached after signup and never again.
+  //
+  // Two guards, both required. The signup marker is sessionStorage-scoped and
+  // only signup writes it, so a later login in a fresh tab cannot trigger this.
+  // Our own WELCOME_SHOWN_KEY then makes it once *per* signup, so reloading
+  // /organization/dashboard or switching sections does not re-fire it — sessionStorage
+  // survives a reload, which `useEffect([])` alone would not.
+  //
+  // Presentation only: reads two flags, fetches nothing, decides nothing.
+  useEffect(() => {
+    if (!user) return;
+
+    let firstArrival = false;
+    try {
+      firstArrival =
+        sessionStorage.getItem(SIGNUP_MARKER_KEY) === "admin-authenticated" &&
+        !sessionStorage.getItem(WELCOME_SHOWN_KEY);
+      // Marked before showing, so a double-invoked effect (React StrictMode in
+      // development) still produces exactly one dialog.
+      if (firstArrival) sessionStorage.setItem(WELCOME_SHOWN_KEY, "1");
+    } catch {
+      return; /* storage unavailable — skip the welcome rather than guess */
+    }
+    if (!firstArrival) return;
+
+    const orgName = user?.organization_name;
+    showSuccess(
+      "Organization created",
+      orgName
+        ? `${orgName} is ready. Your workspace is set up — add your team and projects whenever you like.`
+        : "Your organization is ready. Add your team and projects whenever you like."
+    );
+  }, [user]);
+
+  // `initial` is the *first* load, the only one that has nothing to show yet.
+  // Every later call is a refresh triggered from inside a section (after adding
+  // a developer, say), and those used to flip `loading` back on — which swapped
+  // the whole shell out for the boot skeleton, tearing down the sidebar, the
+  // topbar and the command palette and reading exactly like a page reload. The
+  // queries below are unchanged; only the teardown is gone.
+  const fetchDashboardData = async ({ initial = false } = {}) => {
+    try {
+      if (initial) setLoading(true);
+
+      // Verify user is still authenticated
+      const currentUser = readAdminShellSession();
+      if (!currentUser) {
+        handleLogout();
+        return;
+      }
+
+      // Multi-tenant: scope all data to this admin's organization.
+      const orgId = currentUser.organization_id || null;
+
+      // Fetch developers (org-scoped)
+      let developersQuery = supabase
+        .from('developers')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (orgId) developersQuery = developersQuery.eq('organization_id', orgId);
+      const { data: developersData } = await developersQuery;
+      setDevelopers(developersData || []);
+
+      // Fetch projects (org-scoped)
+      let projectsQuery = supabase
+        .from('projects')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (orgId) projectsQuery = projectsQuery.eq('organization_id', orgId);
+      const { data: projectsData } = await projectsQuery;
+      setProjects(projectsData || []);
+
+      setMyProjectsError(null);
+      try {
+        const mine = await loadDashboardOwnProjects(supabase, {
+          organizationId: orgId,
+          userId: currentUser.id,
+          userType: currentUser.role === 'admin' ? 'admin' : 'developer',
+        });
+        setMyProjects(mine);
+      } catch (error) {
+        setMyProjectsError(error.message || 'Could not load your projects.');
+      }
+
+    } catch (error) {
+      setMyProjectsError('Could not load your projects. Please retry.');
+    } finally {
+      if (initial) setLoading(false);
+    }
+  };
+
+  const handleLogout = () => parentLogout ? parentLogout() : logoutAndRedirect();
+
+  const renderContent = () => {
+    if (!user) return null;
+
+    const contentProps = {
+      user,
+      developers,
+      projects,
+      // Wrapped rather than passed raw: children call this from click handlers,
+      // and a DOM event landing in the options argument must not be able to
+      // look like `{ initial: true }`.
+      onRefresh: () => fetchDashboardData(),
+      supabase,
+      onLogout: handleLogout
+    };
+
+    // Per-role guard: a section the role can't access falls back to Overview
+    // (defense-in-depth — blocks access via a hand-edited ?section= URL too).
+    const role = user?.membership_role || "admin";
+    if (!canAccessAdminSection(activeSection, role)) {
+      return <DashboardOverview {...contentProps} />;
+    }
+
+    // Keep the person in their own shell. The staff dashboard sends these to
+    // /developer/project-details; a manager or a QA lead reading their own task
+    // list inside /admin should not be thrown into the other area to open it.
+    const openProjectDetails = (project) => {
+      const id = project?.id ?? project?.project_id;
+      if (!id) return;
+      startNavigation(() => {
+        router.push(`/admin/project-details/${id}`);
+      });
+    };
+
+    switch (activeSection) {
+      case "my-work":
+        return <MyWork onViewProjectDetails={openProjectDetails} />;
+      case "timesheet":
+        return <MyTimesheet />;
+      case "projects":
+        if (myProjectsError) return <ErrorState description={myProjectsError} onRetry={() => fetchDashboardData()} />;
+        return (
+          <MyProjects
+            user={user}
+            assignedProjects={myProjects}
+            onViewProjectDetails={openProjectDetails}
+          />
+        );
+      case "payroll-preparation":
+        return <PayrollPreparation />;
+      case "mobile-field":
+        return <MobileFieldHistory />;
+      case "shifts":
+        return <ShiftSchedule />;
+      case "my-attendance":
+        return <MyAttendance />;
+      case "my-leave":
+        return <MyLeave />;
+      case "my-reviews":
+        return <MyReviews />;
+      case "my-activity":
+        return <MyActivity />;
+      case "leave-approvals":
+        return <LeaveApprovals />;
+      case "timesheet-approvals":
+        return <TimesheetApprovals />;
+      case "invoicing":
+        return <Invoicing />;
+      case "quality":
+        return <Quality projects={projects} />;
+      case "performance":
+        return <Performance developers={developers} />;
+      case "recruitment":
+        return <Recruitment developers={developers} />;
+      case "assets":
+        return <Assets developers={developers} />;
+      case "contracts":
+        return <Contracts projects={projects} />;
+      case "all-projects":
+        return <AllProjects {...contentProps} />;
+      case "requests":
+        return <ProjectRequests />;
+      case "change-requests":
+        return <ChangeRequests />;
+      case "bugs":
+        return <BugQueue />;
+      case "board":
+        return <ProjectBoard />;
+      case "sprints":
+        return <AgileWorkspace />;
+      case "views":
+        return <ProjectViews />;
+      case "project-hub":
+        return <ProjectOverview />;
+      case "reports":
+        return <ReportsDashboard />;
+      case "automation":
+        return <AutomationRules />;
+      case "developer-activity":
+        return <DeveloperActivity user={user} supabase={supabase} />;
+      case "task-reviews":
+        return <TaskReviewPanel currentAdmin={user} />;
+      case "employees":
+        return <EmployeeDirectory />;
+      // Two halves of one question, on one screen. ProjectHierarchy answers
+      // "who is working on what" from the project rows; ReportingLines answers
+      // "who answers to whom", which is the column that chart deliberately
+      // refuses to guess at. Putting the editor anywhere else would leave the
+      // chart explaining a gap the reader cannot close from where they are.
+      case "hierarchy":
+        return (
+          <div className="space-y-8">
+            <ProjectHierarchy />
+            <ReportingLines />
+          </div>
+        );
+      case "capacity":
+        return <TeamCapacity />;
+      case "team-stats":
+        return <TeamStats />;
+      case "organization":
+        return <OrganizationManagement />;
+      case "clients":
+        return <ClientManagement />;
+      case "billing":
+        return <BillingSubscription />;
+      case "system-health":
+        return <SystemHealth />;
+      case "permissions":
+        return <PermissionsPanel />;
+      case "account":
+        return <AdminAccount user={user} />;
+      case "productivity":
+        return <ProductivityDashboard currentAdmin={user} />;
+      default:
+        return <DashboardOverview {...contentProps} />;
+    }
+  };
+
+  if (loading) {
+    return <DashboardBootSkeleton />;
+  }
+
+  if (!user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <p className="text-sm font-medium text-muted-foreground">Redirecting to login…</p>
+      </div>
+    );
+  }
+
+  const handleNavigate = (sectionId) => {
+    // Re-clicking the section you are already on would still cost a router
+    // round-trip and a re-render for no visible change.
+    if (sectionId === activeSection) return;
+    // Paint first…
+    setActiveSection(sectionId);
+    // …then let the router catch the URL up. In a transition, so React keeps
+    // the current screen on-screen and hands us `isNavigating` for the topbar
+    // hairline instead of blanking the page.
+    startNavigation(() => {
+      router.push(`/organization/dashboard?section=${sectionId}`);
+    });
+  };
+
+  const role = user?.membership_role || "admin";
+
+  return (
+    <AppShell
+      role="admin"
+      navItems={withNavGroups(adminNavFor(role))}
+      activeSection={activeSection}
+      onNavigate={handleNavigate}
+      user={user}
+      onLogout={handleLogout}
+      // Still passed, no longer rendered: the Topbar no longer echoes the
+      // section title, because the screen's own <h1> already says it and that
+      // <h1> is the canonical one. The "Signed in as …" subtitle is gone
+      // outright — the name and email are in the topbar account menu.
+      title={sectionTitle(activeSection, "admin")}
+      navPending={isNavigating}
+      notificationSlot={<NotificationDropdown user={user} />}
+    >
+      {renderContent()}
+    </AppShell>
+  );
+}
+
+// Wrap with auth HOC
+export default withAdminAuth(AdminDashboardContent);

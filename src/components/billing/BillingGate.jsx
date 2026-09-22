@@ -32,12 +32,12 @@ import AuthLoadingScreen from "@/components/auth/AuthLoadingScreen";
 
 // Screens this must never gate.
 //
-//   /admin/registration  is the signup flow — nobody holds a session there, so
+//   /register  is the signup flow — nobody holds a session there, so
 //                        the fetch would 401 on every keystroke of a brand-new
 //                        account being created.
 //   /admin/upgrade       is where a locked admin is SENT. Gating it is an
 //                        infinite redirect.
-const EXEMPT = ["/admin/registration", "/admin/upgrade"];
+const EXEMPT = ["/register", "/admin/registration", "/admin/upgrade"];
 
 export default function BillingGate({ children }) {
   const pathname = usePathname() || "";

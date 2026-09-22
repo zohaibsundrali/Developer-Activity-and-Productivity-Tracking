@@ -28,7 +28,7 @@ import { BRAND_NAME } from "@/components/brand/brand";
 const ROOT = path.resolve(__dirname, "..");
 const read = (relative) => readFileSync(path.join(ROOT, relative), "utf8");
 
-const REGISTRATION = read("src/app/admin/registration/page.js");
+const REGISTRATION = read("src/app/register/page.js");
 const ROUTE = read("src/app/api/send-verification/route.js");
 const TEMPLATES_SRC = read("src/utils/emailTemplates.js");
 
@@ -453,7 +453,7 @@ describe("what must not have changed", () => {
  * running: the account is created SERVER-side by `admin.auth.admin.createUser`,
  * which leaves this tab with no Supabase session, so `authFetch` had no token,
  * /api/auth/session answered 401 inside an empty catch, and no signed cookie
- * was written. `router.push("/admin/dashboard")` then bounced the brand-new
+ * was written. `router.push("/organization/dashboard")` then bounced the brand-new
  * user straight to /login, having just told them their workspace was ready.
  */
 describe("registration signs the browser in before opening the dashboard", () => {

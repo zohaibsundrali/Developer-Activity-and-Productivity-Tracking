@@ -24,7 +24,7 @@ const APP_SHELL = read("src/components/shell/AppShell.jsx");
 const LAYOUT = read("src/app/layout.js");
 const TAILWIND = read("tailwind.config.js");
 const GLOBALS = read("src/app/globals.css");
-const DASHBOARD_PAGE = read("src/app/admin/dashboard/page.js");
+const DASHBOARD_PAGE = read("src/app/organization/dashboard/page.js");
 const OVERVIEW = read("src/components/admin/DashboardOverview.jsx");
 
 /** Strip block and line comments so prose about a removed feature cannot
@@ -239,9 +239,9 @@ describe("item 22 — one brand colour", () => {
 });
 
 describe("item 23 — dashboard subtitle", () => {
-  it("no longer prints the glance/last-updated line", () => {
+  it("shows refresh feedback without restoring the old glance subtitle", () => {
     expect(OVERVIEW_CODE).not.toMatch(/at a glance/);
-    expect(OVERVIEW_CODE).not.toMatch(/last updated/i);
+    expect(OVERVIEW_CODE).toMatch(/Last updated at/);
     expect(OVERVIEW_CODE).not.toMatch(/lastUpdated/);
     expect(OVERVIEW_CODE).not.toMatch(/formatTime/);
   });

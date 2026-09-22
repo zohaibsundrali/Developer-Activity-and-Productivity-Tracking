@@ -81,7 +81,7 @@ describe("every sidebar entry actually goes somewhere", () => {
   });
 
   it.each(ADMIN)("admin section '%s' has a switch case and a title", (id) => {
-    const page = read("src/app/admin/dashboard/page.js");
+    const page = read("src/app/organization/dashboard/page.js");
     // `overview` is the default branch rather than a case.
     if (id !== "overview") {
       expect(page, `no case for ${id}`).toContain(`case "${id}"`);

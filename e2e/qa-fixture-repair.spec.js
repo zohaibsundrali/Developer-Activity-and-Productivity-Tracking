@@ -12,7 +12,7 @@ test('restore the synthetic QA client project link through the owner UI', async 
   expect(client.email).toMatch(/^verisade-qa-.*@example\.com$/);
   expect(project.values.E2E_CLIENT_PROJECT_NAME).toBe('QA Client Project A');
   await login(page, owner);
-  await page.goto('/admin/dashboard?section=clients');
+  await page.goto('/organization/dashboard?section=clients');
   await page.getByRole('tab', { name: /^Project links\b/ }).click();
   const linked = page.getByRole('button', { name: 'Unlink QA Client from QA Client Project A', exact: true });
   await expect(page.locator('#link-client')).toBeVisible();

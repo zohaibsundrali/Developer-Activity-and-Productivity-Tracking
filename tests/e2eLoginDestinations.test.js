@@ -22,7 +22,7 @@ describe('E2E login expectations match automatic membership-role routing', () =>
     vi.stubEnv('E2E_MANAGER_EMAIL', 'qa@example.test');
     vi.stubEnv('E2E_MANAGER_PASSWORD', 'test-placeholder');
     vi.stubEnv('E2E_MANAGER_PORTAL', 'admin');
-    expect(credentialsFor('manager')).toMatchObject({ landing: '/admin/dashboard', area: 'admin' });
+    expect(credentialsFor('manager')).toMatchObject({ landing: '/organization/dashboard', area: 'admin' });
   });
 });
 

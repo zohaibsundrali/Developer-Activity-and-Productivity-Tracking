@@ -63,6 +63,6 @@ test.describe('Employee', () => {
   });
 
   test('the admin console is closed to an employee', async ({ page }) => {
-    await expectBouncedToLogin(page, '/admin/dashboard');
+    await expectBouncedToLogin(page, '/organization/dashboard');
   });
 });

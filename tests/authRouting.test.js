@@ -258,7 +258,7 @@ describe("the invite path has its own route", () => {
     const source = read(LOGIN);
     expect(source).toMatch(/href="\/join"/);
     expect(source).toMatch(/Join with an Invite/);
-    expect(source).toMatch(/href="\/admin\/registration"/);
+    expect(source).toMatch(/href="\/register"/);
     expect(source).toMatch(/Create an Organization/);
     // The old, ambiguous label is gone.
     expect(source).not.toMatch(/>\s*Create one\s*</);
@@ -567,7 +567,7 @@ describe("evaluatePassword", () => {
   });
 
   it("matches the rules the registration screen already enforces", () => {
-    const registration = read("src/app/admin/registration/page.js");
+    const registration = read("src/app/register/page.js");
     // Same five keys, so <PasswordChecklist> shows the same list on every
     // screen that collects a password.
     for (const key of [
