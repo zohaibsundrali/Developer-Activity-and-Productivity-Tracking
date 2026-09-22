@@ -35,14 +35,20 @@ function findRepoRoot(start = process.cwd()) {
 export const REPO_ROOT = findRepoRoot();
 
 /**
- * Load `<root>/.env.e2e` into process.env if it exists.
+ * Load E2E_ENV_FILE exclusively when set, otherwise `<root>/.env.e2e`.
+ * Relative explicit paths resolve from root; a missing explicit file fails
+ * rather than silently running against stale default credentials.
  *
  * Existing process.env values always win, so CI secrets are never clobbered by
  * a stale local file.
  */
 export function loadE2EEnvFile(root = REPO_ROOT) {
-  const file = path.join(root, '.env.e2e');
-  if (!fs.existsSync(file)) return { loaded: false, file, keys: [] };
+  const explicit = envValue('E2E_ENV_FILE');
+  const file = explicit ? path.resolve(root, explicit) : path.join(root, '.env.e2e');
+  if (!fs.existsSync(file)) {
+    if (explicit) throw new Error('Configured E2E_ENV_FILE does not exist.');
+    return { loaded: false, file, keys: [] };
+  }
 
   const keys = [];
   for (const rawLine of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {

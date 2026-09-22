@@ -1,461 +1,444 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { setVisibleInterval } from "@/hooks/useVisibleInterval";
 import { supabase } from "@/utils/supabaseClient";
 import { projectStatusMeta } from "@/utils/projectStatus";
-import { Mail, CalendarDays, FolderKanban, CheckCircle2, Clock, Timer } from "lucide-react";
+import {
+  overviewDay,
+  overviewWork,
+  overviewDuration,
+  loadOverviewTasks,
+  loadOverviewTime,
+} from "@/utils/developerOverview";
+import { canAccessAdminSection } from "@/components/shell/navConfig";
+import {
+  ArrowUpRight,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  FolderKanban,
+  RefreshCw,
+  Timer,
+} from "lucide-react";
 import StatCard from "@/components/shell/StatCard";
-import { EmptyState, PageHeader, Section, Skeleton, StatusPill } from "@/components/ui";
+import {
+  Button,
+  EmptyState,
+  PageHeader,
+  Section,
+  Skeleton,
+  StatusPill,
+} from "@/components/ui";
 
-// Project status → StatusPill state. Status is colour + glyph + text, never a
-// bare tinted chip.
-// The eight-entry map that used to live here disagreed with the six-entry one
-// in MyProjects — the same project read "Pending" on one screen and
-// "In progress" on the other. Both now read utils/projectStatus.js.
-
-export default function DashboardOverview({ user, assignedProjects = [] }) {
-  const [recentProjects, setRecentProjects] = useState([]);
-  const [todayTrackedTime, setTodayTrackedTime] = useState("00:00:00");
-  const [taskStats, setTaskStats] = useState({ completed: 0, pending: 0 });
-  // Purely presentational: lets the first paint show skeletons instead of an
-  // "empty" card that is really still loading.
-  const [firstLoadDone, setFirstLoadDone] = useState(false);
-
-  const userId = user?.id || null;
-  const userEmail = user?.email || null;
-
+const panel = "rounded-2xl border border-border bg-card p-5 shadow-card sm:p-6";
+const empty = {
+  tasks: null,
+  time: null,
+  taskError: null,
+  timeError: null,
+  busy: true,
+};
+export default function DashboardOverview({
+  user,
+  assignedProjects = [],
+  projectsLoading = false,
+  projectsError = null,
+  onSectionChange,
+  onViewProjectDetails,
+  onRefreshProjects,
+}) {
+  const profileId = user?.id,
+    organizationId = user?.organization_id,
+    email = user?.email;
+  const timezone = user?.organization_timezone || "UTC";
+  const identityKey = `${organizationId}:${profileId}:${email}:${timezone}`;
+  const [snapshot, setSnapshot] = useState({ ...empty, key: identityKey });
+  const [refresh, setRefresh] = useState(0);
+  const state = snapshot.key === identityKey ? snapshot : empty;
+  const role = user?.membership_role || "developer";
+  const canOpen = (section) =>
+    !!onSectionChange && canAccessAdminSection(section, role);
   useEffect(() => {
-    async function fetchTaskStats() {
-      if (!userId) return;
-      const { data, error } = await supabase
-        .from("developer_tasks")
-        .select("status")
-        .eq("developer_id", userId);
-
-      if (!error && data) {
-        let completed = 0;
-        let pending = 0;
-        data.forEach(t => {
-          if (t.status === "completed") completed++;
-          else pending++;
-        });
-        setTaskStats({ completed, pending });
-      }
-    }
-    fetchTaskStats();
-  }, [userId]);
-
-
-  // Debounce realtime-driven refreshes (multiple events can fire quickly).
-  const refreshDebounceRef = useRef(null);
-
-  const currentMonth = new Date().getMonth() + 1;
-  const currentYear = new Date().getFullYear();
-
-  const getStatusBadge = useCallback((status) => {
-    // The old fallback relabelled anything it did not recognise as "Pending",
-    // so a project holding a junk status looked like a normal waiting one and
-    // nobody could have found it. projectStatusMeta shows the value instead.
-    const meta = projectStatusMeta(status);
-    return { status: meta.tone, label: meta.label };
-  }, []);
-
-  const formatUpdatedAt = useCallback((value) => {
-    if (!value) return "—";
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return "—";
-    return d.toLocaleString(undefined, {
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }, []);
-
-  const parseTimeMs = useCallback((value) => {
-    if (!value) return 0;
-    const d = new Date(value);
-    const ms = d.getTime();
-    return Number.isNaN(ms) ? 0 : ms;
-  }, []);
-
-  // ⏱ Seconds → HH:MM:SS
-  const formatSeconds = useCallback((totalSeconds) => {
-    const h = Math.floor(totalSeconds / 3600);
-    const m = Math.floor((totalSeconds % 3600) / 60);
-    const s = Math.floor(totalSeconds % 60);
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  }, []);
-
-  // ⏱ Fetch Today's Tracked Time
-  const loadTodayTrackedTime = useCallback(async () => {
-    if (!userId && !userEmail) return;
-
-    // Match Admin behavior: use local date components but build UTC boundaries.
-    const now = new Date();
-    const yy = now.getFullYear();
-    const mm = now.getMonth() + 1;
-    const dd = now.getDate();
-    const dayStart = new Date(Date.UTC(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0));
-    const dayEnd = new Date(Date.UTC(yy, (mm || 1) - 1, dd || 1, 0, 0, 0, 0));
-    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
-
-    // Use the same filter that works in the Sessions page.
-    // Fallback to ids only if email isn't available.
-    let query = supabase
-      .from("productivity_sessions")
-      .select("total_duration")
-      .gte("start_time", dayStart.toISOString())
-      .lt("start_time", dayEnd.toISOString());
-
-    if (userEmail) {
-      query = query.eq("user_email", userEmail);
-    } else if (userId) {
-      query = query.or(`user_id.eq.${userId},developer_id.eq.${userId}`);
-    } else {
-      return;
-    }
-
-    const { data, error } = await query;
-
-    if (!error && data) {
-      const totalSeconds = data.reduce((sum, session) => sum + (Number(session.total_duration) || 0), 0);
-      setTodayTrackedTime(formatSeconds(totalSeconds));
-    } else if (error) {
-      // Keep UI stable; surface details for debugging.
-      console.error("[Developer Dashboard] Failed to load today's tracked time:", error);
-    }
-  }, [userId, userEmail, formatSeconds]);
-
-  // 📁 Recent Projects
-  const loadProjects = useCallback(async () => {
-    if (!userId) return;
-
-    // Goal: show up to 3 projects. Rank by an "effective" timestamp:
-    // - prefer this developer's latest task activity within the project
-    // - otherwise fall back to project updated_at/created_at
-    // This prevents a third project from being dropped just because it has no tasks yet.
-
-    const keyOf = (value) => (value === null || value === undefined ? "" : String(value));
-
-    // 1) Fetch this developer's recent task activity (used only for ordering + labels).
-    const { data: taskRows, error: tasksError } = await supabase
-      .from("developer_tasks")
-      .select("project_id, updated_at, submitted_at, created_at")
-      .eq("developer_id", userId)
-      .order("updated_at", { ascending: false })
-      .order("submitted_at", { ascending: false })
-      .order("created_at", { ascending: false })
-      .limit(2000);
-
-    const activityMsByProjectKey = new Map();
-    const rawProjectIdByKey = new Map();
-
-    if (!tasksError && Array.isArray(taskRows)) {
-      for (const row of taskRows) {
-        const projectId = row?.project_id;
-        if (!projectId) continue;
-
-        const projectKey = keyOf(projectId);
-        if (!projectKey) continue;
-
-        rawProjectIdByKey.set(projectKey, projectId);
-        const ms = Math.max(
-          parseTimeMs(row.updated_at),
-          parseTimeMs(row.submitted_at),
-          parseTimeMs(row.created_at)
-        );
-        const current = activityMsByProjectKey.get(projectKey) || 0;
-        if (ms > current) activityMsByProjectKey.set(projectKey, ms);
-      }
-    } else if (tasksError) {
-      console.error(
-        "[Developer Dashboard] Failed to load developer task activity:",
-        tasksError
-      );
-    }
-
-    // 2) Build candidate project list.
-    // Prefer assignedProjects when present, but also fetch projects for the top activity IDs
-    // in case assignedProjects is missing/incomplete.
-    const candidatesByKey = new Map();
-
-    if (Array.isArray(assignedProjects)) {
-      for (const p of assignedProjects) {
-        const projectKey = keyOf(p?.id);
-        if (!projectKey) continue;
-        candidatesByKey.set(projectKey, p);
-      }
-    }
-
-    const activityTopKeys = Array.from(activityMsByProjectKey.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .map(([k]) => k);
-
-    const missingActivityRawIds = activityTopKeys
-      .filter((k) => !candidatesByKey.has(k))
-      .map((k) => rawProjectIdByKey.get(k))
-      .filter(Boolean);
-
-    if (missingActivityRawIds.length > 0) {
-      const { data: projRows, error: projError } = await supabase
-        .from("projects")
-        .select("id, name, description, status, updated_at, created_at")
-        .in("id", missingActivityRawIds)
-        .eq("assigned_developer_id", userId);
-
-      if (projError) {
-        console.error(
-          "[Developer Dashboard] Failed to hydrate activity projects:",
-          projError
-        );
-      } else if (Array.isArray(projRows)) {
-        for (const p of projRows) {
-          const projectKey = keyOf(p?.id);
-          if (!projectKey) continue;
-          candidatesByKey.set(projectKey, p);
-        }
-      }
-    }
-
-    // If the caller passed an incomplete assignedProjects list, ensure we still have enough
-    // candidates to show up to 3 by hydrating a small set from the DB.
-    if (candidatesByKey.size > 0 && candidatesByKey.size < 3) {
-      const { data: projRows, error: projError } = await supabase
-        .from("projects")
-        .select("id, name, description, status, updated_at, created_at")
-        .eq("assigned_developer_id", userId)
-        .order("updated_at", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(25);
-
-      if (!projError) {
-        for (const p of projRows || []) {
-          const projectKey = keyOf(p?.id);
-          if (!projectKey) continue;
-          candidatesByKey.set(projectKey, p);
-        }
-      }
-    }
-
-    // If we still don't have any candidates, fetch the most recently updated assigned projects.
-    if (candidatesByKey.size === 0) {
-      const { data: projRows, error: projError } = await supabase
-        .from("projects")
-        .select("id, name, description, status, updated_at, created_at")
-        .eq("assigned_developer_id", userId)
-        .order("updated_at", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(25);
-
-      if (projError) {
-        console.error(
-          "[Developer Dashboard] Failed to load recent projects:",
-          projError
-        );
-        setRecentProjects([]);
+    let active = true,
+      running = false,
+      again = false;
+    const current = () => active;
+    setSnapshot({ ...empty, key: identityKey });
+    async function load() {
+      if (running) {
+        again = true;
         return;
       }
-
-      for (const p of projRows || []) {
-        const projectKey = keyOf(p?.id);
-        if (!projectKey) continue;
-        candidatesByKey.set(projectKey, p);
+      running = true;
+      const day = overviewDay(new Date(), timezone);
+      const identity = { organizationId, profileId, email };
+      const results = await Promise.allSettled([
+        loadOverviewTasks(supabase, identity, current),
+        loadOverviewTime(supabase, identity, day, current),
+      ]);
+      if (active)
+        setSnapshot({
+          key: identityKey,
+          day,
+          busy: false,
+          tasks: results[0].status === "fulfilled" ? results[0].value : null,
+          taskError:
+            results[0].status === "rejected" ? results[0].reason.message : null,
+          time: results[1].status === "fulfilled" ? results[1].value : null,
+          timeError:
+            results[1].status === "rejected" ? results[1].reason.message : null,
+        });
+      running = false;
+      if (again && active) {
+        again = false;
+        void load();
       }
     }
-
-    // 3) Rank candidates by effective timestamp and take up to 3.
-    const ranked = Array.from(candidatesByKey.values())
-      .map((p) => {
-        const projectKey = keyOf(p?.id);
-        const projectMs = Math.max(parseTimeMs(p?.updated_at), parseTimeMs(p?.created_at));
-        const activityMs = activityMsByProjectKey.get(projectKey) || 0;
-        const effectiveMs = Math.max(projectMs, activityMs);
-
-        return {
-          id: p.id,
-          name: p.name,
-          description: p.description,
-          status: p.status,
-          updated_at: p.updated_at,
-          created_at: p.created_at,
-          activity_at: activityMs ? new Date(activityMs).toISOString() : undefined,
-          __effectiveMs: effectiveMs,
-        };
-      })
-      .sort((a, b) => b.__effectiveMs - a.__effectiveMs)
-      .slice(0, 3)
-      .map(({ __effectiveMs, ...rest }) => rest);
-
-    setRecentProjects(ranked);
-  }, [assignedProjects, userId, parseTimeMs]);
-
-  // 🔴 REAL-TIME SUBSCRIPTION
-  useEffect(() => {
-    if (!userId && !userEmail) return;
-
-    const scheduleRefresh = () => {
-      if (refreshDebounceRef.current) {
-        clearTimeout(refreshDebounceRef.current);
-      }
-
-      refreshDebounceRef.current = setTimeout(() => {
-        void Promise.all([
-          loadProjects(),
-          loadTodayTrackedTime(),
-        ]).finally(() => setFirstLoadDone(true));
-      }, 250);
-    };
-
-    // Initial load
-    const initialLoadTimer = setTimeout(scheduleRefresh, 0);
-
-    // Realtime subscriptions (scoped to this developer where possible)
-    const sessionsChannel = supabase
-      .channel(`dev-dashboard-sessions:${userEmail || userId || "anon"}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "productivity_sessions",
-          ...(userEmail ? { filter: `user_email=eq.${userEmail}` } : {}),
-        },
-        scheduleRefresh
-      )
-      .subscribe();
-
-    const tasksChannel = supabase
-      .channel(`dev-dashboard-tasks:${userId || "anon"}`)
+    void load();
+    const stop = setVisibleInterval(load, 10000);
+    const channel = supabase
+      .channel(`developer-overview:${organizationId}:${profileId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "developer_tasks",
-          ...(userId ? { filter: `developer_id=eq.${userId}` } : {}),
+          filter: `developer_id=eq.${profileId}`,
         },
-        scheduleRefresh
+        load,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "productivity_sessions",
+          filter: `user_id=eq.${profileId}`,
+        },
+        load,
       )
       .subscribe();
-
-    // Polling fallback (mirrors Admin's approach for resilience)
-    const stopPolling = setVisibleInterval(scheduleRefresh, 10_000);
-
     return () => {
-      clearTimeout(initialLoadTimer);
-      stopPolling();
-
-      if (refreshDebounceRef.current) {
-        clearTimeout(refreshDebounceRef.current);
-        refreshDebounceRef.current = null;
-      }
-
-      supabase.removeChannel(sessionsChannel);
-      supabase.removeChannel(tasksChannel);
+      active = false;
+      stop();
+      supabase.removeChannel(channel);
     };
-  }, [userId, userEmail, loadProjects, loadTodayTrackedTime]);
-
-  const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
-
+  }, [identityKey, organizationId, profileId, email, timezone, refresh]);
+  const work = useMemo(
+    () => (state.tasks ? overviewWork(state.tasks, state.day.day) : null),
+    [state.tasks, state.day],
+  );
+  const projects = useMemo(() => {
+    const activity = new Map();
+    for (const task of state.tasks || [])
+      activity.set(
+        task.project_id,
+        Math.max(
+          activity.get(task.project_id) || 0,
+          Date.parse(task.updated_at) || 0,
+        ),
+      );
+    return [...assignedProjects]
+      .sort(
+        (a, b) =>
+          Math.max(
+            activity.get(b.id) || 0,
+            Date.parse(b.updated_at || b.created_at) || 0,
+          ) -
+          Math.max(
+            activity.get(a.id) || 0,
+            Date.parse(a.updated_at || a.created_at) || 0,
+          ),
+      )
+      .slice(0, 3);
+  }, [assignedProjects, state.tasks]);
+  const firstName = (user?.name || user?.full_name || "Your workspace").split(
+    " ",
+  )[0];
+  const refreshAll = () => {
+    setRefresh((n) => n + 1);
+    onRefreshProjects?.();
+  };
   return (
     <div className="space-y-6">
       <PageHeader
         title="Dashboard"
-        description="Your projects, hours and activity at a glance."
+        description="A clear view of your priorities, progress and recorded time."
+        actions={
+          <Button variant="outline" onClick={refreshAll} disabled={state.busy}>
+            <RefreshCw size={16} className={state.busy ? "animate-spin" : ""} />
+            Refresh
+          </Button>
+        }
       />
-
-      {/* Profile Card */}
-      <div className="rounded-xl border border-border bg-card p-6 shadow-card sm:p-7">
-        <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center">
-          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-3xl font-bold text-primary">
-            {user?.name?.charAt(0)?.toUpperCase() || user?.full_name?.charAt(0)?.toUpperCase() || "D"}
-          </div>
-          <div className="flex-1 text-center sm:text-left">
-            <h2 className="text-xl font-bold text-foreground">{user?.name || user?.full_name || "Developer"}</h2>
-            <p className="mt-1 flex items-center justify-center gap-1.5 text-sm text-muted-foreground sm:justify-start">
-              <Mail className="h-4 w-4" />
-              {userEmail}
-            </p>
-            <div className="mt-3 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
-              <span className="rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
-                {user?.role || "Software Developer"}
-              </span>
-              <span className="flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
-                <CalendarDays className="h-3.5 w-3.5" />
-                Joined {user?.created_at ? new Date(user.created_at).toLocaleDateString() : new Date().toLocaleDateString()}
-              </span>
-            </div>
-          </div>
+      <section className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-card to-card p-6 sm:p-8">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+          Your day, in focus
+        </p>
+        <h2 className="mt-3 font-display text-2xl font-semibold tracking-tight sm:text-3xl">
+          Welcome back, {firstName}.
+        </h2>
+        <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
+          Start with what needs your attention, then pick up your next task.
+        </p>
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          {canOpen("my-work") && (
+            <Button
+              onClick={() => onSectionChange("my-work")}
+              className="text-white dark:text-white"
+            >
+              Open My Work
+              <ArrowUpRight size={16} />
+            </Button>
+          )}
+          {canOpen("timesheet") && (
+            <Button
+              variant="outline"
+              onClick={() => onSectionChange("timesheet")}
+            >
+              My timesheet
+            </Button>
+          )}
+          <span className="text-xs text-muted-foreground">
+            {user?.organization_name || "Your workspace"} ·{" "}
+            {state.day?.timezone || timezone}
+          </span>
         </div>
+      </section>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          title="Open tasks"
+          value={work?.total ?? "—"}
+          hint="Work waiting on you"
+          icon={Clock}
+          tone="primary"
+          loading={state.busy}
+        />
+        <StatCard
+          title="Needs attention"
+          value={work?.attention.length ?? "—"}
+          hint="Overdue, returned or due today"
+          icon={AlertTriangle}
+          tone="warning"
+          loading={state.busy}
+        />
+        <StatCard
+          title="Awaiting review"
+          value={work?.counts.in_review ?? "—"}
+          hint="Submitted work with your reviewer"
+          icon={CheckCircle2}
+          tone="success"
+          loading={state.busy}
+        />
+        <StatCard
+          title="Tracked today"
+          value={overviewDuration(state.time?.seconds)}
+          hint={`Synced tracker time · ${state.day?.timezone || timezone}`}
+          icon={Timer}
+          tone="info"
+          loading={state.busy}
+        />
       </div>
-
-      {/* Stat cards */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Total projects" value={assignedProjects?.length || recentProjects?.length || 0} icon={FolderKanban} tone="primary" loading={!firstLoadDone} />
-        <StatCard title="Completed tasks" value={taskStats.completed} icon={CheckCircle2} tone="success" loading={!firstLoadDone} />
-        <StatCard title="Pending tasks" value={taskStats.pending} icon={Clock} tone="warning" loading={!firstLoadDone} />
-        <StatCard title="Tracked today" value={todayTrackedTime} icon={Timer} tone="info" loading={!firstLoadDone} />
-      </div>
-
-      {/* Recent projects */}
-      <Section
-        title="Most recent activity"
-        description="The three projects you touched most recently."
-        className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5"
-      >
-        {!firstLoadDone ? (
-          // Skeleton shaped like the loaded cards, so the panel does not jump.
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-busy="true">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="space-y-3 rounded-lg border border-border p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <Skeleton className="h-4 w-32" />
-                  <Skeleton className="h-5 w-20 rounded-full" />
-                </div>
-                <Skeleton className="h-3 w-full" />
-                <Skeleton className="h-3 w-2/3" />
-                <Skeleton className="h-3 w-full" />
-              </div>
-            ))}
-          </div>
-        ) : recentProjects.length === 0 ? (
-          <EmptyState
-            icon={FolderKanban}
-            title="No projects to display"
-            description="Projects assigned to you will appear here as soon as they land."
-          />
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {recentProjects.map((p) => {
-              const badge = getStatusBadge(p.status);
-              const updated = formatUpdatedAt(p.activity_at || p.updated_at || p.created_at);
-              const desc = (p.description || "").trim();
-
-              return (
-                <div
-                  key={p.id}
-                  className="rounded-lg border border-border bg-card p-4 shadow-card transition-colors duration-150 hover:border-primary/40"
+      {state.taskError && (
+        <div
+          role="alert"
+          className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm"
+        >
+          {state.taskError}{" "}
+          <button className="font-semibold underline" onClick={refreshAll}>
+            Retry
+          </button>
+        </div>
+      )}
+      {state.timeError && (
+        <div
+          role="alert"
+          className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm"
+        >
+          {state.timeError}{" "}
+          <button className="font-semibold underline" onClick={refreshAll}>
+            Retry time
+          </button>
+        </div>
+      )}
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        Tracker totals include saved seconds for sessions started today in{" "}
+        {state.day?.timezone || timezone}. They update when the tracker syncs;
+        task timers are separate in My timesheet.
+        {state.time &&
+          ` Checked ${new Date(state.time.checkedAt).toLocaleTimeString()}.`}
+      </p>
+      <div className="grid items-start gap-6 xl:grid-cols-[1.35fr_1fr]">
+        <Section
+          title="Needs attention"
+          description="The work to look at first."
+          className={panel}
+          actions={
+            canOpen("my-work") && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onSectionChange("my-work")}
+              >
+                View all
+                <ArrowUpRight size={15} />
+              </Button>
+            )
+          }
+        >
+          {state.busy ? (
+            <Skeleton className="h-48 w-full" />
+          ) : state.taskError ? (
+            <p className="text-sm text-muted-foreground">
+              Task priorities are unavailable until the data reloads.
+            </p>
+          ) : work?.attention.length ? (
+            <ul className="divide-y divide-border">
+              {work.attention.slice(0, 5).map(({ task, label, tone }) => (
+                <li
+                  key={task.id}
+                  className="flex items-start justify-between gap-4 py-4 first:pt-0 last:pb-0"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground" title={p.name}>
-                      {p.name}
+                  <div className="min-w-0">
+                    <p className="break-words text-sm font-semibold text-foreground">
+                      {task.task_title || "Untitled task"}
                     </p>
-                    <StatusPill status={badge.status} label={badge.label} size="sm" className="shrink-0" />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {assignedProjects.find((p) => p.id === task.project_id)
+                        ?.name || "Assigned work"}
+                    </p>
                   </div>
-                  <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                    {desc || "No description provided."}
-                  </p>
-                  <div className="mt-3 flex items-center justify-between border-t border-border pt-2 text-xs text-muted-foreground">
-                    <span>Last activity</span>
-                    <span className="font-medium tabular-nums text-foreground">{updated}</span>
-                  </div>
+                  <StatusPill
+                    status={tone}
+                    label={label}
+                    size="sm"
+                    className="shrink-0"
+                  />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState
+              icon={CheckCircle2}
+              title="Nothing urgent right now"
+              description="No overdue, returned or due-today tasks. Your other work is ready in My Work."
+            />
+          )}
+        </Section>
+        <Section
+          title="Work at a glance"
+          description="Your current task pipeline."
+          className={panel}
+        >
+          {state.busy ? (
+            <Skeleton className="h-48 w-full" />
+          ) : !work ? (
+            <p className="text-sm text-muted-foreground">
+              Your task summary is unavailable.
+            </p>
+          ) : (
+            <dl className="space-y-4">
+              {[
+                [
+                  "In progress",
+                  work.buckets.in_progress.length +
+                    work.buckets.due_soon.filter(
+                      (t) => t.status === "in_progress",
+                    ).length +
+                    work.buckets.overdue.filter(
+                      (t) => t.status === "in_progress",
+                    ).length,
+                ],
+                ["Due today", work.dueToday],
+                [
+                  "Due in the next 7 days",
+                  work.counts.due_soon - work.dueToday,
+                ],
+                ["Sent back", work.counts.sent_back],
+                ["Completed", work.completed],
+              ].map(([label, value]) => (
+                <div
+                  key={label}
+                  className="flex items-center justify-between gap-4 border-b border-border pb-3 last:border-0 last:pb-0"
+                >
+                  <dt className="text-sm text-muted-foreground">{label}</dt>
+                  <dd className="text-lg font-semibold tabular-nums text-foreground">
+                    {value}
+                  </dd>
                 </div>
+              ))}
+            </dl>
+          )}
+        </Section>
+      </div>
+      <Section
+        title="Recent projects"
+        description="Pick up where you left off."
+        className={panel}
+        actions={
+          canOpen("projects") && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onSectionChange("projects")}
+            >
+              All projects
+              <ArrowUpRight size={15} />
+            </Button>
+          )
+        }
+      >
+        {projectsLoading ? (
+          <Skeleton className="h-32 w-full" />
+        ) : projectsError ? (
+          <div role="alert" className="text-sm">
+            {projectsError}{" "}
+            <button className="underline" onClick={refreshAll}>
+              Retry projects
+            </button>
+          </div>
+        ) : projects.length ? (
+          <div className="grid gap-4 md:grid-cols-3">
+            {projects.map((project) => {
+              const meta = projectStatusMeta(project.status);
+              return (
+                <button
+                  key={project.id}
+                  onClick={() => onViewProjectDetails?.(project)}
+                  disabled={!onViewProjectDetails}
+                  className="min-w-0 rounded-xl border border-border bg-background/40 p-4 text-left transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <FolderKanban className="text-primary" size={21} />
+                    <StatusPill
+                      status={meta.tone}
+                      label={meta.label}
+                      size="sm"
+                    />
+                  </div>
+                  <h3 className="truncate text-sm font-semibold">
+                    {project.name}
+                  </h3>
+                  <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                    {project.description ||
+                      "Open the project to review tasks and progress."}
+                  </p>
+                  <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-primary">
+                    Open project
+                    <ArrowUpRight size={14} />
+                  </span>
+                </button>
               );
             })}
           </div>
+        ) : (
+          <EmptyState
+            icon={FolderKanban}
+            title="No projects yet"
+            description="Your assigned projects will appear here."
+          />
         )}
       </Section>
     </div>

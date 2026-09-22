@@ -5,7 +5,7 @@
 @tailwind utilities;
 
 /*
-  Unified design system — "Refined Teal" premium SaaS palette.
+  Unified design system — Verisade favicon indigo palette.
   Tokens are raw HSL channels (space-separated) so tailwind.config's
   hsl(var(--token)) resolves correctly. Replaces the old broken oklch tokens.
 */
@@ -19,10 +19,9 @@
     --popover: 0 0% 100%;
     --popover-foreground: 200 25% 12%;
 
-    /* Brand — indigo #4840DD, the logo tile colour (src/app/icon.svg).
-       This comment used to say "refined teal (evolved from #009578)", which
-       stopped being true when the palette moved to indigo. */
-    --primary: 243 70% 56%;
+    /* Exact #24206E from src/app/icon.svg, shared by both themes. */
+    --brand: 243.076923 54.929577% 27.843137%;
+    --primary: var(--brand);
     --primary-foreground: 0 0% 100%;
 
     /* Neutrals */
@@ -46,7 +45,7 @@
     /* Lines & focus */
     --border: 214 22% 90%;
     --input: 214 22% 90%;
-    --ring: 243 70% 56%;
+    --ring: var(--brand);
     --radius: 0.75rem;
 
     /* The rest of the radius scale, and it is load-bearing rather than
@@ -87,7 +86,7 @@
     --sidebar-muted: 205 14% 55%;
     --sidebar-border: 200 30% 17%;
     --sidebar-accent: 200 34% 14%;
-    --sidebar-primary: 243 75% 68%;
+    --sidebar-primary: var(--brand);
     --sidebar-primary-foreground: 0 0% 100%;
   }
 
@@ -99,7 +98,7 @@
     --card-foreground: 210 20% 96%;
     --popover: 200 28% 11%;
     --popover-foreground: 210 20% 96%;
-    --primary: 243 75% 60%;
+    --primary: var(--brand);
     --primary-foreground: 0 0% 100%;
     --secondary: 200 20% 18%;
     --secondary-foreground: 210 20% 96%;
@@ -120,14 +119,14 @@
     --info-on-tint: 199 89% 74%;
     --border: 200 22% 20%;
     --input: 200 22% 20%;
-    --ring: 243 75% 68%;
+    --ring: var(--brand);
     /* Sidebar stays dark chrome in both themes */
     --sidebar: 200 45% 7%;
     --sidebar-foreground: 205 20% 74%;
     --sidebar-muted: 205 14% 55%;
     --sidebar-border: 200 30% 15%;
     --sidebar-accent: 200 34% 13%;
-    --sidebar-primary: 243 75% 68%;
+    --sidebar-primary: var(--brand);
     --sidebar-primary-foreground: 0 0% 100%;
   }
 }

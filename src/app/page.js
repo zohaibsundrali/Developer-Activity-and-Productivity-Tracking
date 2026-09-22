@@ -25,6 +25,7 @@
  */
 
 import HomeAuthRedirect from "@/components/auth/HomeAuthRedirect";
+import { BackToTop } from "@/components/landing/LandingControls";
 import SiteNav from "@/components/landing/SiteNav";
 import Hero from "@/components/landing/Hero";
 import TrustStrip from "@/components/landing/TrustStrip";
@@ -127,6 +128,7 @@ export default function LandingPage() {
       </main>
 
       <SiteFooter />
+      <BackToTop />
     </div>
     </HomeAuthRedirect>
   );

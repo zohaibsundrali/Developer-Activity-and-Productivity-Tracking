@@ -25,7 +25,7 @@ const APP = path.join(ROOT, "src/app");
 const { MARK_CHECK_POINTS, MARK_CHECK_WIDTH, MARK_TILE_RADIUS, BRAND_NAME } =
   await import(pathToFileURL(path.join(ROOT, "src/components/brand/brand.js")).href);
 
-const INDIGO = "#4840DD"; // --primary 243 70% 56%
+const INDIGO = "#24206E"; // --primary 243.076923 54.929577% 27.843137%
 const D = MARK_CHECK_POINTS.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x} ${y}`).join("");
 
 /** `rx: 0` gives the full-bleed variant used for the Apple touch icon. */

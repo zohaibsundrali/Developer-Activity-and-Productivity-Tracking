@@ -2,7 +2,7 @@
 
 Browser-level tests that drive the real application in a real Chromium, through
 the real login form, against a real Supabase project. They exist to answer one
-question the 274 unit tests cannot: **does a person in each role actually get
+question the unit tests cannot: **does a person in each role actually get
 their job done, and does nobody get anyone else's data?**
 
 - Runner: [Playwright](https://playwright.dev) — `npm run test:e2e`
@@ -59,35 +59,32 @@ saying what to seed.
 
 Every role is optional: a missing pair skips that role's tests with a message.
 
-### 2.2 Which portal a role signs in through
+### 2.2 Automatic role detection and expected destination
 
-The login screen has three tabs and each lands somewhere different. Defaults:
+The login form asks for email and password only. Supabase verifies the account;
+the app resolves its profile and membership role automatically.
 
-| Role | Default portal | Lands on |
+| Role | Default expectation | Lands on |
 | --- | --- | --- |
-| owner, admin, org B owner | `admin` (Admin tab) | `/organizations`, then the selected `/admin/dashboard` |
-| legacy HR in `admin_users` | `admin` (Admin tab) | `/admin/dashboard` |
-| manager, developer, employee, designer, devops | `team` (Team Member tab) | `/developer/dashboard` |
-| team_lead, finance, qa | `team-admin` (Team Member tab) | `/admin/dashboard` |
-| client | `client` (Client tab) | `/client` |
+| organization owner, admin, org B owner | `admin` | `/organizations`, then the selected `/admin/dashboard` |
+| manager, HR, team lead, finance, QA | `team-admin` | `/admin/dashboard` |
+| developer, employee, designer, devops | `team` | `/developer/dashboard` |
+| client | `client` | `/client` |
 
-`team-admin` is for a person created by **Add employee** (so in `developers`,
-signing in on the Team Member tab) whose *role* belongs in the admin console:
-`dashboardHomeFor()` sends manager, team_lead, hr, finance and qa there. A seed
-made through the product therefore needs `E2E_MANAGER_PORTAL=team-admin` and
-`E2E_HR_PORTAL=team-admin`; `seed.spec.js` writes those lines itself.
+`E2E_<ROLE>_PORTAL` overrides the test's expected destination; it never selects
+a role or grants access. Valid values are `admin`, `team`, `team-admin`, `client`.
+`credentialsFor()` exposes `area` (`admin`, `staff`, `client`) for spec assertions.
+Manager and HR defaults match accounts created through Add Employee. A legacy
+profile in `admin_users` may use `admin`; its destination is the same console.
 
-Override per role when your seed differs — HR and managers can legitimately live
-either in `admin_users` (admin console) or in `developers` (staff dashboard):
+`E2E_<ROLE>_ORGANIZATION_ID` pins a role to an exact organization in the chooser.
+For disposable runs, `E2E_QA_ORG_A_ID` applies to all Org A roles and
+`E2E_QA_ORG_B_ID` to `orgBOwner`. A configured organization must be accessible;
+the helper never substitutes another workspace when it is missing.
 
-```
-E2E_HR_PORTAL=team          # HR seeded as staff instead of on the admin console
-E2E_MANAGER_PORTAL=admin    # manager seeded in admin_users
-```
-
-Valid values: `admin`, `team`, `team-admin`, `client`. `credentialsFor()` also
-exposes `area` — `admin`, `staff` or `client`, derived from where the portal
-lands — and the specs branch on that rather than on the portal name.
+Use a dedicated **organization owner**, not the platform-owner account, for
+`E2E_OWNER_*`. Platform owners are routed to `/admin` and need separate platform
+console tests. These role specs test organization dashboards.
 
 ### 2.3 Fixtures the isolation spec needs
 
@@ -109,6 +106,7 @@ with unrelated content and produce a false failure.
 
 | Variable | Default | Effect |
 | --- | --- | --- |
+| `E2E_ENV_FILE` | unset | Load only this environment file instead of `.env.e2e`; relative paths resolve from the repository root. A missing explicit file fails immediately. Existing environment variables retain precedence. |
 | `E2E_BASE_URL` | `http://localhost:3000` | Target URL. **When set, Playwright does not start its own server** — it assumes something is already running there (a preview deploy, a local `npm start`). |
 | `E2E_ALLOW_WRITES` | unset (off) | Opts in to the tests that write: submitting a task plan, completing a task, sending a support request, creating a department/team/test case/run, recording a test result. Off by default so a normal run cannot mutate the seeded tenants. Every write is idempotent — a rerun finds what the first run created. |
 | `E2E_SEED` | unset (off) | Enables `seed.spec.js`, which creates the accounts and fixtures above through the product's own screens and appends the resulting `E2E_*` lines to `.env.e2e`. See §3.4. |
@@ -127,7 +125,7 @@ fail** at the "Could not establish a secure session" step:
 ### 2.6 Local convenience file
 
 `playwright.config.js` seeds `process.env` from `.env.e2e` at the repo root if it
-exists. `.env*` is already git-ignored, so that file cannot be committed by
+exists. Set `E2E_ENV_FILE=/tmp/verisade-qa-run.env` to load an isolated run file instead; the default file is then ignored. Do not commit credential files. `.env*` is already git-ignored, so that file cannot be committed by
 accident. Values already in the environment always win, so CI secrets are never
 overwritten.
 
@@ -164,34 +162,26 @@ Organisation A (the tenant under test)      Organisation B (the neighbour)
 └── task on it with client_visible = false
 ```
 
-### 3.1 Each user needs three things
+### 3.1 Each user needs linked Auth, profile and membership records
 
-1. **A Supabase Auth user.** The login form tries `signInWithPassword` first and
-   only that path yields the JWT the app exchanges for its signed session cookie.
-   A profile row alone hits the legacy plaintext fallback, gets no JWT, and the
-   middleware then bounces every navigation. Create them in the Supabase
-   dashboard (Authentication → Users → Add user, "auto confirm") or with the
-   admin API.
-2. **A profile row with the same email**, in the table matching the portal:
-   `admin_users` (Admin tab), `developers` (Team Member tab), `clients` (Client
-   tab).
-3. **A `memberships` row** tying that profile to the organisation:
+Create disposable accounts through the application's registration, employee
+provisioning and invitation flows so all identity links are established together.
+A manually inserted profile or matching email alone cannot sign in.
 
-```sql
-insert into memberships (organization_id, user_id, user_type, role, status)
-values
-  ('<org-a-id>', '<owner-profile-id>',     'admin',     'owner',     'active'),
-  ('<org-a-id>', '<hr-profile-id>',        'admin',     'hr',        'active'),
-  ('<org-a-id>', '<manager-profile-id>',   'developer', 'manager',   'active'),
-  ('<org-a-id>', '<developer-profile-id>', 'developer', 'developer', 'active'),
-  ('<org-a-id>', '<employee-profile-id>',  'developer', 'employee',  'active'),
-  ('<org-a-id>', '<client-profile-id>',    'client',    'client',    'active'),
-  ('<org-b-id>', '<org-b-owner-id>',       'admin',     'owner',     'active');
-```
+The resulting account requires:
 
-`user_id` is the id of the **profile row**, not the Supabase Auth uid, and
-`user_type` is one of `admin` / `developer` / `client`. `status` must be
-`active` — anything else is refused at login by design (audit finding C10).
+1. A confirmed Supabase Auth user that can pass `signInWithPassword`.
+2. Trusted `app_metadata` with `user_type`, `app_user_id`, `organization_id`
+   and the current membership role. User-editable `user_metadata` grants no access.
+3. The exact profile in `admin_users`, `developers` or `clients`, with matching
+   `id`, `organization_id` and `auth_user_id` pointing to that Auth user.
+4. An active `memberships` row for the typed profile and organization.
+
+`memberships.user_id` identifies the profile, not the Auth uid; `user_type` is
+`admin`, `developer` or `client`. A suspended membership must be refused. There
+is no plaintext-password login fallback. Existing users with broken identity
+links need the documented administrator recovery process; do not patch them
+by matching email during login.
 
 ### 3.2 Data the specs look for
 
@@ -333,7 +323,7 @@ Point CI at a **dedicated Supabase project or branch**, never production.
 ## 5. What each spec asserts
 
 ### `owner.spec.js` — the account that owns the tenant
-- Signs in through the Admin tab, lands on `/admin/dashboard`, and the sidebar
+- Signs in through automatic role detection and organization selection, lands on `/admin/dashboard`, and the sidebar
   carries every owner section (All Projects, Task Reviews, Reports, Add/View
   Developers, Employees, Team Stats, Organization, Clients, Billing, System Health).
 - **Organisation**: the five tabs render; Departments and Teams offer their
@@ -351,16 +341,10 @@ Point CI at a **dedicated Supabase project or branch**, never production.
 - **Logout** returns to `/login` and re-entering `/admin/dashboard` bounces.
 
 ### `manager.spec.js` — supervisory staff
-- Lands on the staff dashboard with the extra **Team** section that only
-  supervisors get (`staffNav()`).
-- **Team**: the headcount tiles and the roster render.
-- **Employees**: the roster names people and their roles.
-- **Projects**: the assigned project list is reachable.
-- **Tasks**: opening a project reaches `/developer/project-details` and its plan.
-- `?section=team` typed by hand works *for a manager* — the positive half of the
-  guard whose negative half is in `employee.spec.js`.
-- Adapts if `E2E_MANAGER_PORTAL=admin`: then it asserts the manager-scoped admin
-  sections are present and Billing / Clients / Automation are absent.
+- Defaults to the manager-scoped admin console, matching `dashboardHomeFor()`.
+- Checks Employees, projects and task review access while restricted Billing,
+  Clients and Automation sections remain absent.
+- Includes legacy staff-area assertions when an explicit portal override is used.
 
 ### `hr.spec.js` — people operations
 - Sees Employees, Team Stats, Organization — and **not** Add Developer or View
@@ -492,13 +476,9 @@ A class-based selector breaks on any restyle and tells you nothing about whether
 the app is usable; a role-based one fails only when the app is genuinely broken —
 and doubles as an accessibility check.
 
-Two documented exceptions, both in `e2e/fixtures/auth.js`:
-- The login email/password inputs are addressed by **placeholder**, because their
-  `<label>`s carry no `htmlFor` and the inputs no `id`/`aria-label`, so the
-  placeholder *is* the accessible name today. Wiring those labels up would let
-  the fixtures switch to `getByLabel` — a worthwhile accessibility fix.
-- One `.auth-error-box` lookup quotes the app's own error text into a failure
-  message. It is diagnostic only and never asserted on.
+Login inputs use `getByLabel` with their associated accessible labels. One
+`.auth-error-box` lookup in `e2e/fixtures/auth.js` quotes the app's error text
+into a failure message; it is diagnostic only and never asserted on.
 
 **Reads by default.** The suite runs against shared seeded tenants, so tests that
 would create or mutate rows are gated behind `E2E_ALLOW_WRITES=1`. Everything

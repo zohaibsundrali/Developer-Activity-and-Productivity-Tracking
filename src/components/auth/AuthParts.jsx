@@ -133,7 +133,7 @@ export function PasswordInput({ visible, onToggle, className, ...props }) {
  *
  * Only the active layer is exposed to the accessibility tree — the others are
  * `aria-hidden`, so the accessible name stays exactly the idle label (the e2e
- * fixture matches the submit by /^Sign in as/).
+ * fixture matches the submit by its Sign in label).
  *
  * `status` is presentational and optional: pass "error" to get a single tint
  * pulse (no shake — that was removed deliberately) or "success" for the

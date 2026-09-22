@@ -1,12 +1,8 @@
 /**
  * Login / logout helpers and the authenticated-request helper.
  *
- * Selector policy: everything here is addressed by role + accessible name, or
- * by placeholder where the app gives an input no other accessible name. The
- * login form's <label>s carry no `htmlFor` and the inputs no `id`/`aria-label`
- * (src/app/login/page.js), so the placeholder IS the accessible name for the
- * email and password fields today. The one CSS selector below is used purely to
- * quote the app's own error text in a failure message — never as an assertion.
+ * Inputs use their associated labels. The CSS error selector is diagnostic
+ * only: it quotes the app's own message when login cannot reach its destination.
  */
 
 import { expect } from '@playwright/test';
@@ -19,25 +15,38 @@ export async function login(page, credentials) {
 
   await page.goto('/login');
 
-  // Pick the portal tab (Team Member / Admin / Client).
-  await page.getByRole('button', { name: credentials.tab, exact: true }).click();
+  // The verified account determines its portal automatically.
+  await page.getByLabel(/^Email address/).fill(credentials.email);
+  await page.getByLabel(/^Password/).fill(credentials.password);
 
-  await page.getByPlaceholder('you@example.com').fill(credentials.email);
-  await page.getByPlaceholder('Enter your password').fill(credentials.password);
-
-  await page.getByRole('button', { name: /^Sign in as/ }).click();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
   try {
-    if (credentials.tab === 'Owner / Platform Admin') {
+    if (credentials.area === 'admin') {
       await page.waitForURL(url => url.pathname === '/organizations' || url.pathname.startsWith(credentials.landing));
       if (new URL(page.url()).pathname === '/organizations') {
-        const primaryOrg = await page.evaluate(() => {
+        // Workspace hooks stamp session-specific claims on the refreshed JWT;
+        // the Auth user object's primary metadata can still name another org.
+        const primaryOrg = credentials.organizationId || await page.evaluate(() => {
           const key = Object.keys(sessionStorage).find(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
-          return key ? JSON.parse(sessionStorage.getItem(key))?.user?.app_metadata?.organization_id : null;
+          if (!key) return null;
+          try {
+            const session = JSON.parse(sessionStorage.getItem(key));
+            const segment = session?.access_token?.split('.')[1];
+            if (!segment) return null;
+            const encoded = segment.replace(/-/g, '+').replace(/_/g, '/');
+            return JSON.parse(atob(encoded.padEnd(Math.ceil(encoded.length / 4) * 4, '=')))?.app_metadata?.organization_id || null;
+          } catch { return null; }
         });
-        const button = primaryOrg
-          ? page.locator(`button[data-organization-id="${primaryOrg}"]`).first()
-          : page.getByRole('button', { name: /^Open .* workspace$/ }).first();
+        const available = page.getByRole('button', { name: /^Open .* workspace$/ });
+        await available.first().waitFor({ state: 'visible' });
+        // Match attributes without interpolating token text into a CSS selector.
+        const ids = await available.evaluateAll(buttons => buttons.map(button => button.dataset.organizationId));
+        const index = ids.indexOf(primaryOrg);
+        if (credentials.organizationId && index < 0) {
+          throw new Error('Configured QA organization is not accessible to this account.');
+        }
+        const button = available.nth(index >= 0 ? index : 0);
         await button.click();
       }
     }
@@ -63,10 +72,21 @@ export async function login(page, credentials) {
   }
 
   // The shell is up once its sidebar renders. Not the <h1>: the topbar no
-  // longer carries one (each screen renders its own through PageHeader), and
-  // the staff dashboard's overview is a profile card with no <h1> at all, so
-  // waiting for a level-1 heading failed every staff login.
+  // longer carries one (each screen renders its own through PageHeader).
   await expect(page.getByRole('navigation', { name: 'Sections' })).toBeVisible();
+  if (credentials.organizationId) {
+    const inExpectedWorkspace = await page.evaluate(expected => {
+      const key = Object.keys(sessionStorage).find(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
+      try {
+        const segment = JSON.parse(sessionStorage.getItem(key))?.access_token?.split('.')[1];
+        if (!segment) return false;
+        const encoded = segment.replace(/-/g, '+').replace(/_/g, '/');
+        return JSON.parse(atob(encoded.padEnd(Math.ceil(encoded.length / 4) * 4, '=')))?.app_metadata?.organization_id === expected;
+      } catch { return false; }
+    }, credentials.organizationId);
+    expect(inExpectedWorkspace, 'Verified session must match the configured QA organization').toBe(true);
+  }
+
 }
 
 /**
@@ -86,8 +106,7 @@ export async function logout(page) {
  * The Supabase access token the app is holding for the current session.
  *
  * supabase-js stores it under a `sb-<project-ref>-auth-token` key. Returns null
- * for a user who only passed the legacy plaintext check and therefore has no
- * JWT — callers must treat that as "unauthenticated", not as a failure.
+ * when no verified Auth token is present; callers treat that as unauthenticated.
  */
 export async function accessToken(page) {
   return page.evaluate(() => {

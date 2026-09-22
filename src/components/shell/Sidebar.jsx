@@ -139,7 +139,7 @@ export default function Sidebar({
         aria-modal={mobileOpen ? "true" : undefined}
         aria-label={mobileOpen ? "Main navigation" : undefined}
         className={cn(
-          "sidebar-scroll fixed inset-y-0 left-0 z-50 flex flex-col bg-sidebar text-sidebar-foreground",
+          "sidebar-scroll fixed inset-y-0 left-0 z-50 flex flex-col bg-sidebar text-sidebar-foreground dark:text-white",
           "border-r border-sidebar-border ease-in-out",
           // `visibility` is in the transition so the drawer still slides out
           // before it becomes untabbable, rather than vanishing instantly.
@@ -156,32 +156,21 @@ export default function Sidebar({
             isRail && "justify-center px-0"
           )}
         >
-          {/* The mark is its own tile — no wrapper box. `text-sidebar-primary`
-              is the indigo lightened for dark ground, and the check is a true
-              knockout, so the navy sidebar shows straight through it.
-
-              This one deliberately does NOT move to the exact brand indigo.
-              It is a graphic drawn IN indigo on the navy ground rather than a
-              fill with text on top, so the contrast that matters is mark
-              against sidebar: #7670eb on #0d1a21 measures 4.46:1, while
-              #4840dd on the same navy is 2.57:1 — under the 3:1 that
-              non-text graphics need. The brand fill belongs on the selected
-              nav row, where white/near-black ink sits on top of it; the logo
-              stays on the lightened step. */}
+          {/* Favicon indigo tile with a white inner mark in dark mode. */}
           <LogoMark className="h-9 w-9 shrink-0 text-sidebar-primary" />
           {!isRail && (
             <div className="min-w-0">
-              <p className="truncate font-display text-sm font-bold tracking-[-0.015em] text-sidebar-primary-foreground">
+              <p className="truncate font-display text-sm font-bold tracking-[-0.015em] text-sidebar-primary-foreground dark:text-white">
                 {brandName}
               </p>
-              <p className="truncate text-[11px] font-medium text-sidebar-muted">{roleLabel}</p>
+              <p className="truncate text-[11px] font-medium text-sidebar-muted dark:text-white">{roleLabel}</p>
             </div>
           )}
           {/* Mobile close */}
           <button
             type="button"
             onClick={onCloseMobile}
-            className="ml-auto rounded-lg p-1.5 text-sidebar-muted transition-colors duration-150 hover:bg-sidebar-accent hover:text-sidebar-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar lg:hidden"
+            className="ml-auto rounded-lg p-1.5 text-sidebar-muted dark:text-white transition-colors duration-150 hover:bg-sidebar-accent hover:text-sidebar-primary-foreground dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar lg:hidden"
             aria-label="Close menu"
           >
             <X className="h-5 w-5" aria-hidden="true" />
@@ -216,7 +205,7 @@ export default function Sidebar({
                 )}
               >
                 {!isRail && (
-                  <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-sidebar-muted">
+                  <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-sidebar-muted dark:text-white">
                     {group.name}
                   </p>
                 )}
@@ -241,14 +230,9 @@ export default function Sidebar({
                                 // not depend on colour perception alone.
                                 //
                                 // `bg-primary`, not `bg-sidebar-primary`: the
-                                // selected row is the one place in the rail that
-                                // carries the brand fill, and it must be the
-                                // exact brand indigo (#4840DD) rather than the
-                                // lightened step the navy-ground GRAPHICS use.
-                                // It is also the accessible choice — see the
-                                // measurements on the logo mark below.
-                                "bg-primary font-semibold text-primary-foreground shadow-card"
-                              : "font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-primary-foreground"
+                                // Match the favicon fill with white selected text.
+                                "bg-primary font-semibold text-primary-foreground dark:text-white shadow-card"
+                              : "font-medium text-sidebar-foreground dark:text-white hover:bg-sidebar-accent hover:text-sidebar-primary-foreground dark:hover:text-white"
                           )}
                         >
                           {isActive && (
@@ -306,7 +290,7 @@ export default function Sidebar({
         <button
           type="button"
           onClick={onToggleCollapse}
-          className="absolute -right-3 top-20 hidden h-6 w-6 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-muted shadow-card transition-colors duration-150 hover:text-sidebar-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:flex"
+          className="absolute -right-3 top-20 hidden h-6 w-6 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-muted dark:text-white shadow-card transition-colors duration-150 hover:text-sidebar-primary-foreground dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:flex"
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           aria-expanded={!collapsed}
           aria-controls="app-sidebar"

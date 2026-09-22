@@ -36,3 +36,59 @@
   background-color: hsl(var(--background));
   backdrop-filter: none;
 }
+
+/* A compact brand control, clear of device safe areas and below the menu. */
+.page .backToTop,
+.page .backToTop:hover,
+.page .backToTop:focus-visible {
+  color: #fff;
+  background-color: hsl(var(--primary));
+}
+.backToTop {
+  position: fixed;
+  z-index: 40;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border: 1px solid rgb(255 255 255 / 25%);
+  border-radius: 1rem;
+  box-shadow: 0 6px 24px rgb(36 32 110 / 25%);
+}
+.backToTop:focus-visible {
+  outline: 2px solid hsl(var(--foreground));
+  outline-offset: 4px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .backToTop { transition: transform 180ms ease, box-shadow 180ms ease; }
+  .backToTop:hover { transform: translateY(-3px); }
+}
+@media (min-width: 768px) {
+  .backToTop { right: 1.5rem; bottom: 1.5rem; }
+}
+
+/* Commit the palette in one paint. Animating every descendant separately caused
+   inherited text, gradients and surfaces to change at different times. Keep
+   transform/opacity transitions (including section reveals) intact. */
+:global(.landing-theme-changing) .page,
+:global(.landing-theme-changing) .page *,
+:global(.landing-theme-changing) .page *::before,
+:global(.landing-theme-changing) .page *::after {
+  transition-property: transform, opacity !important;
+}
+
+/* Solid CTA backgrounds and white labels stay consistent in both themes. */
+.page :is(a, button)[class~="bg-primary"],
+.page :is(a, button)[class~="bg-primary"]:hover {
+  background-color: hsl(243 60% 35%);
+}
+
+.page :is(a, button)[class~="bg-primary"],
+.page :is(a, button)[class~="bg-primary"]:hover,
+.page :is(a, button)[class~="bg-primary"]:focus-visible,
+.page :is(a, button)[class~="bg-primary"] :is(span, strong) {
+  color: #fff;
+}

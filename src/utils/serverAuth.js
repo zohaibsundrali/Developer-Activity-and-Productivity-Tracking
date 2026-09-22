@@ -1,3 +1,4 @@
+import { loadClientProjectScope } from "@/utils/clientProjectScope";
 import { workspaceTokenClaims, sameWorkspace } from "@/utils/workspaceClaims";
 import { createClient } from "@supabase/supabase-js";
 import { recordEvent } from "@/utils/systemEvents";
@@ -97,6 +98,9 @@ export async function getAuthedOrg(request, { allowDeletion = false } = {}) {
     });
     return null;
   }
+
+  const organizationState = await admin.from('organizations').select('status').eq('id', orgId).maybeSingle();
+  if (organizationState.error || organizationState.data?.status !== 'active') return null;
 
   // Membership is the current authority. Missing rows, query failures and
   // pending invitations must never retain privileges from an old Auth claim.
@@ -260,15 +264,12 @@ export async function getAuthedClient(request) {
   const { checkFeatureAccess } = await import("@/utils/entitlements");
   const planRefusal = await checkFeatureAccess(svc, auth.orgId, "client_portal", "Client portal");
   if (planRefusal) return { ...auth, clientId, projectIds: [], planRefusal };
-  const { data, error } = await svc
-    .from("project_clients")
-    .select("project_id")
-    .eq("client_id", clientId)
-    .eq("organization_id", auth.orgId);
-
-  if (error) return { ...auth, clientId, projectIds: [], planRefusal: { status: 503, error: "Project access verification unavailable. Please retry." } };
-  const projectIds = (data || []).map((r) => r.project_id).filter(Boolean);
-  return { ...auth, clientId, projectIds };
+  try {
+    const projectIds = await loadClientProjectScope(svc, { clientId, orgId: auth.orgId });
+    return { ...auth, clientId, projectIds };
+  } catch {
+    return { ...auth, clientId, projectIds: [], planRefusal: { status: 503, error: "Project access verification unavailable. Please retry." } };
+  }
 }
 
 // Guard: is a given project id inside the client's allowed set?

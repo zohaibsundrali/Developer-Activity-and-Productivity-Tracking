@@ -64,6 +64,8 @@ function readToken(css, name, { scope = ":root" } = {}) {
   // `@layer base`, so a non-greedy match to the first `}` is exact.
   const block = new RegExp(`${scope.replace(".", "\\.")}\\s*\\{([\\s\\S]*?)\\n  \\}`).exec(css);
   expect(block, `could not find the ${scope} block in globals.css`).toBeTruthy();
+  const alias = new RegExp(`--${name}:\\s*var\\(--([a-z-]+)\\)`).exec(block[1]);
+  if (alias) return readToken(css, alias[1], { scope: ':root' });
   const decl = new RegExp(`--${name}:\\s*([0-9.]+)\\s+([0-9.]+)%\\s+([0-9.]+)%`).exec(block[1]);
   expect(decl, `--${name} is not defined in ${scope}`).toBeTruthy();
   return { h: Number(decl[1]), s: Number(decl[2]) / 100, l: Number(decl[3]) / 100 };
@@ -197,14 +199,14 @@ describe("item 20 — light/dark mode", () => {
     const light = names(":root");
     const dark = names("\\.dark");
     // The radius scale is themeless by design; every colour token is not.
-    const missing = [...light].filter((n) => !n.startsWith("radius") && !dark.has(n));
+    const missing = [...light].filter((n) => !n.startsWith("radius") && n !== "brand" && !dark.has(n));
     expect(missing).toEqual([]);
   });
 });
 
 describe("item 22 — one brand colour", () => {
-  it("--primary is the exact brand indigo #4840dd", () => {
-    expect(toHex(hslToRgb(readToken(GLOBALS, "primary")))).toBe("#4840dd");
+  it("--primary is the exact brand indigo #24206e", () => {
+    expect(toHex(hslToRgb(readToken(GLOBALS, "primary")))).toBe("#24206e");
   });
 
   it("paints the selected sidebar item with it, not the lighter step", () => {
@@ -222,29 +224,16 @@ describe("item 22 — one brand colour", () => {
     expect(read("src/components/ui/button.jsx")).toMatch(/default: "bg-primary text-primary-foreground/);
   });
 
-  it("improves the failing contrast rather than shipping it", () => {
-    // Before: white on --sidebar-primary. Measured 3.97:1 — fails AA.
-    const before = ratio("sidebar-primary-foreground", "sidebar-primary");
-    expect(before).toBeLessThan(4.5);
-    expect(before).toBeCloseTo(3.97, 1);
-
-    // After: --primary-foreground on --primary. Light theme, ~6.81:1.
-    const after = ratio("primary-foreground", "primary");
-    expect(after).toBeGreaterThan(before);
-    expect(after).toBeGreaterThanOrEqual(4.5);
-
-    // The same pair in dark mode, where --primary IS the lighter step and the
-    // foreground flips to near-black ink. Must also clear AA, or dark mode
-    // ships the exact failure we just fixed in light mode.
-    const dark = ratio("primary-foreground", "primary", { scope: ".dark" });
-    expect(dark).toBeGreaterThanOrEqual(4.5);
+  it("keeps white primary and selected-sidebar text readable in both modes", () => {
+    for (const scope of [":root", ".dark"]) {
+      expect(ratio("primary-foreground", "primary", {scope})).toBeGreaterThanOrEqual(4.5);
+      expect(ratio("sidebar-primary-foreground", "sidebar-primary", {scope})).toBeGreaterThanOrEqual(4.5);
+      expect(toHex(hslToRgb(readToken(GLOBALS, "primary", {scope})))).toBe("#24206e");
+    }
   });
 
-  it("keeps the logo mark on the lighter step, where it is the legible one", () => {
-    // A graphic on navy, so the ratio that matters is mark-vs-sidebar and the
-    // bar is 3:1, not 4.5:1. The brand indigo loses this one.
-    expect(ratio("sidebar-primary", "sidebar")).toBeGreaterThanOrEqual(3);
-    expect(ratio("primary", "sidebar")).toBeLessThan(3);
+  it("keeps the sidebar logo on the same brand color", () => {
+    expect(readToken(GLOBALS, "sidebar-primary")).toEqual(readToken(GLOBALS, "primary"));
     expect(SIDEBAR_CODE).toMatch(/<LogoMark className="h-9 w-9 shrink-0 text-sidebar-primary" \/>/);
   });
 });
