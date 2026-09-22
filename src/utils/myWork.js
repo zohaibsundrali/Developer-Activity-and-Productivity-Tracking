@@ -181,51 +181,35 @@ export function bucketMyWork(tasks, today = ymd()) {
   };
 }
 
-/**
- * Load one person's tasks with the project each belongs to.
- *
- * TWO QUERIES, NOT A JOIN AND NOT N+1. The tasks come back in one request; the
- * projects they name come back in a second, keyed by id. Embedding
- * `projects(name)` would work, but it makes the whole request fail if the
- * relationship is not in PostgREST's schema cache — and a task list that blanks
- * because of a cache miss is worse than one with a project name missing.
- *
- * EVERY COLUMN BELOW WAS VERIFIED AGAINST THE LIVE DATABASE. The title column
- * is `task_title`, not `title`; PostgREST rejects an entire request over one
- * unknown column, so a single wrong name blanks the screen with nothing in the
- * console.
- */
-export async function loadMyWork(orgId, developerId) {
-  if (!orgId || !developerId) {
+/** Load every page of this typed assignee's tasks; grouping stays client-side. */
+export async function loadMyWork(orgId, userId, userType = 'developer') {
+  if (!orgId || !userId || !['admin', 'developer'].includes(userType)) {
     throw new Error("Your session is incomplete. Sign in again.");
   }
-
-  const { data: tasks, error } = await supabase
-    .from("developer_tasks")
-    .select(
-      "id, task_title, task_description, status, priority, task_type, project_id, " +
-        "due_date, end_date, start_date, estimated_hours, actual_hours, story_points, " +
-        "sprint_id, rejection_reason, admin_comments, submitted_at, updated_at"
-    )
-    .eq("organization_id", orgId)
-    .eq("developer_id", developerId)
-    .order("updated_at", { ascending: false })
-    .limit(500);
-
-  if (error) throw new Error(error.message || "Could not load your tasks.");
-
-  const projectIds = [...new Set((tasks || []).map((t) => t.project_id).filter(Boolean))];
-  let projectsById = new Map();
-  if (projectIds.length) {
-    const { data: projects } = await supabase
-      .from("projects")
-      .select("id, name, status")
-      .in("id", projectIds);
-    projectsById = new Map((projects || []).map((p) => [String(p.id), p]));
+  const tasks = [];
+  const pageSize = 500;
+  let cursor = null;
+  for (;;) {
+    let query = supabase.from("developer_tasks")
+      .select("*")
+      .eq("organization_id", orgId)
+      .eq(userType === 'admin' ? 'assignee_admin_id' : 'developer_id', userId)
+      .order("id", { ascending: true }).limit(pageSize);
+    if (cursor) query = query.gt("id", cursor);
+    const { data, error } = await query;
+    if (error) throw new Error(error.message || "Could not load your tasks.");
+    const page = data || [];
+    tasks.push(...page);
+    if (page.length < pageSize) break;
+    cursor = page[page.length - 1].id;
   }
-
-  return (tasks || []).map((t) => ({
-    ...t,
-    project: projectsById.get(String(t.project_id)) || null,
-  }));
+  const projectIds = [...new Set(tasks.map(t => t.project_id).filter(Boolean))];
+  const projectsById = new Map();
+  for (let offset = 0; offset < projectIds.length; offset += 100) {
+    const { data, error } = await supabase.from("projects").select("id, name, status")
+      .eq("organization_id", orgId).in("id", projectIds.slice(offset, offset + 100));
+    if (error) throw new Error(error.message || "Could not load task projects.");
+    for (const project of data || []) projectsById.set(String(project.id), project);
+  }
+  return tasks.map(t => ({ ...t, project: projectsById.get(String(t.project_id)) || null }));
 }

@@ -4,7 +4,8 @@ import { showError, showSuccess, showWarning } from "@/utils/alerts";
 import { getSignedSubmissionUrl } from "@/utils/submissionFiles";
 import { authFetch } from "@/utils/authFetch";
 import { supabase } from "@/utils/supabaseClient";
-import { getOrgId } from "@/utils/orgContext";
+import { isTaskAssignee } from "@/utils/taskAssignment";
+import { getOrgId, getOrgContext } from "@/utils/orgContext";
 // The page <h1> reads the same string the sidebar and topbar do.
 import { sectionTitle } from "@/components/shell/navConfig";
 import { Badge, Button, EmptyState, Modal, PageHeader, SkeletonCard, Tabs } from "@/components/ui";
@@ -395,10 +396,10 @@ export default function TaskReviewPanel({ currentAdmin }) {
                         Developer
                       </dt>
                       <dd className="truncate text-sm font-medium text-foreground">
-                        {submission.developers?.name || "Unknown"}
+                        {submission.developers?.name || submission.assignee_admin?.full_name || "Unknown"}
                       </dd>
                       <dd className="truncate text-xs text-muted-foreground">
-                        {submission.developers?.email}
+                        {submission.developers?.email || submission.assignee_admin?.email}
                       </dd>
                     </div>
                     <div className="min-w-0">
@@ -476,7 +477,7 @@ export default function TaskReviewPanel({ currentAdmin }) {
                   )}
 
                   {/* Action buttons */}
-                  {submission.review_status === "pending" && (
+                  {submission.review_status === "pending" && !isTaskAssignee(submission, getOrgContext()) && (
                     <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row">
                       <Button
                         size="lg"
@@ -498,8 +499,14 @@ export default function TaskReviewPanel({ currentAdmin }) {
                     </div>
                   )}
 
+                  {submission.review_status === "pending" && isTaskAssignee(submission, getOrgContext()) && (
+                    <p className="text-sm text-muted-foreground">Another authorized reviewer must review your submission.</p>
+                  )}
                   {/* Review result (for history) */}
-                  {submission.review_status !== "pending" && (
+                  {submission.review_status === "superseded" && (
+                    <p className="text-sm text-muted-foreground">This submission was superseded when the task assignment changed.</p>
+                  )}
+                  {["approved", "rejected"].includes(submission.review_status) && (
                     <div
                       className={`mt-4 rounded-lg border p-3 ${
                         submission.review_status === "approved"

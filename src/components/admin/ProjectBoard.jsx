@@ -1,4 +1,5 @@
 "use client";
+import { taskAssignmentKey } from "@/utils/taskAssignment";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -240,9 +241,10 @@ export default function ProjectBoard() {
 
   /* ---- lookups -------------------------------------------------------- */
   const assigneeName = useCallback(
-    (developerId) => {
-      if (!developerId) return null;
-      const match = (employees || []).find((e) => e.userId === developerId);
+    (task) => {
+      const key = taskAssignmentKey(task);
+      if (!key) return null;
+      const match = (employees || []).find((e) => `${e.userType}:${e.userId}` === key);
       return match?.name || null;
     },
     [employees]
@@ -258,8 +260,8 @@ export default function ProjectBoard() {
         return false;
       if (assigneeFilter !== "all") {
         if (assigneeFilter === "unassigned") {
-          if (t.developer_id) return false;
-        } else if (t.developer_id !== assigneeFilter) {
+          if (taskAssignmentKey(t)) return false;
+        } else if (taskAssignmentKey(t) !== assigneeFilter) {
           return false;
         }
       }
@@ -456,7 +458,7 @@ export default function ProjectBoard() {
         <TaskCard
           key={task.id}
           task={task}
-          assigneeName={assigneeName(task.developer_id)}
+          assigneeName={assigneeName(task)}
           onOpen={setSelectedTask}
           draggable={taskUiPermissions({ task, context: getOrgContext(), allowed }).move && allowedTransitions(task.status).length > 0}
           onDragStart={handleDragStart}
@@ -531,7 +533,7 @@ export default function ProjectBoard() {
                   <option value="all">All assignees</option>
                   <option value="unassigned">Unassigned</option>
                   {(employees || []).map((emp) => (
-                    <option key={emp.userId || emp.membershipId} value={emp.userId}>
+                    <option key={`${emp.userType}:${emp.userId}`} value={`${emp.userType}:${emp.userId}`}>
                       {emp.name}
                     </option>
                   ))}

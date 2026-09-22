@@ -1,4 +1,7 @@
 "use client";
+import { loadEmployees } from "@/utils/employeesData";
+import { allowed } from "@/utils/permissions";
+import TaskDetailDrawer from "@/components/admin/TaskDetailDrawer";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Play, RefreshCw, Square } from "lucide-react";
@@ -73,7 +76,7 @@ const PRIORITY_TONE = {
   low: "outline",
 };
 
-function TaskRow({ task, onOpen, activeTimer, onStart, onStop, busy }) {
+function TaskRow({ task, onOpen, activeTimer, onStart, onStop, busy, onDetails }) {
   const project = task.project?.name || "No project";
   const isRunning = String(activeTimer?.task_id || "") === String(task.id);
 
@@ -117,6 +120,7 @@ function TaskRow({ task, onOpen, activeTimer, onStart, onStop, busy }) {
 
       <span className="flex shrink-0 items-center gap-2 pt-0.5">
         <Deadline task={task} />
+        <Button size="sm" variant="outline" onClick={() => onDetails(task)}>View task</Button>
         {/* Logging time belongs where the tasks are. Everything behind this
             button already existed — task_time_logs, start/stop, a database
             guard against two running timers — and its only UI was inside an
@@ -180,14 +184,25 @@ export default function MyWork({ onViewProjectDetails }) {
   const [error, setError] = useState(null);
   const [activeTimer, setActiveTimer] = useState(null);
   const [timerBusy, setTimerBusy] = useState(false);
+  const [selectedTaskId, setSelectedTaskId] = useState(null);
+  const [members, setMembers] = useState([]);
+  useEffect(() => {
+    let current = true;
+    if (selectedTaskId && allowed('task.manage')) {
+      loadEmployees(getOrgId()).then(result => { if (current) setMembers(result.employees); })
+        .catch(() => { if (current) showError('Could not load assignees. Reopen the task to retry.'); });
+    }
+    return () => { current = false; };
+  }, [selectedTaskId]);
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       const ctx = getOrgContext();
-      const rows = await loadMyWork(getOrgId(), ctx?.userId || ctx?.appUserId);
+      const rows = await loadMyWork(getOrgId(), ctx?.userId || ctx?.appUserId, ctx?.userType);
       setTasks(rows);
+      setSelectedTaskId(current => rows.some(task => task.id === current) ? current : null);
     } catch (e) {
       setError(e?.message || "Could not load your work.");
     } finally {
@@ -261,7 +276,8 @@ export default function MyWork({ onViewProjectDetails }) {
     async (task) => {
       setTimerBusy(true);
       try {
-        await startTaskTimer(task.id, task.project_id || null);
+        const result = await startTaskTimer(task.id, task.project_id || null);
+        if (result?.error) throw result.error;
         await refreshTimer();
         showSuccess(`Timing "${task.task_title}"`);
       } catch (e) {
@@ -277,7 +293,8 @@ export default function MyWork({ onViewProjectDetails }) {
     if (!activeTimer) return;
     setTimerBusy(true);
     try {
-      await stopTaskTimer(activeTimer);
+      const result = await stopTaskTimer(activeTimer);
+      if (result?.error) throw result.error;
       await refreshTimer();
       showSuccess("Timer stopped");
     } catch (e) {
@@ -287,7 +304,7 @@ export default function MyWork({ onViewProjectDetails }) {
     }
   }, [activeTimer, refreshTimer]);
 
-  const timer = { activeTimer, onStart: start, onStop: stop, busy: timerBusy };
+  const timer = { activeTimer, onStart: start, onStop: stop, busy: timerBusy, onDetails: task => setSelectedTaskId(task.id) };
 
   if (loading && !tasks) {
     return (
@@ -338,6 +355,10 @@ export default function MyWork({ onViewProjectDetails }) {
             <Bucket key={b.id} bucket={b} tasks={view.buckets[b.id]} onOpen={open} timer={timer} />
           ))}
         </div>
+      )}
+      {selectedTaskId && tasks?.some(task => task.id === selectedTaskId) && (
+        <TaskDetailDrawer members={members} task={tasks.find(task => task.id === selectedTaskId)}
+          onClose={() => setSelectedTaskId(null)} onChanged={load} />
       )}
     </div>
   );

@@ -10,6 +10,11 @@ describe('task notification access', () => {
     expect(can(subject(role), task)).toBe(false);
     expect(can(subject(role, { appUserId: 'assignee' }), task)).toBe(true);
   });
+  it('allows an assigned Owner through personal access while respecting profile type', () => {
+    const owner = subject('owner', { userType: 'admin', appUserId: 'assignee', overrides: { 'task.view_all': false, 'task.review': false } });
+    expect(can(owner, { organization_id: 'org', assignee_admin_id: 'assignee' })).toBe(true);
+    expect(can(owner, task)).toBe(false);
+  });
   it('rejects clients even with a forged owner role', () => {
     expect(can(subject('owner', { userType: 'client' }), task)).toBe(false);
   });

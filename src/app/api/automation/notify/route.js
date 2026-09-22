@@ -92,7 +92,7 @@ export async function POST(request) {
     if (taskId) {
       const { data, error } = await svc
         .from("developer_tasks")
-        .select("id, task_title, project_id, organization_id, developer_id, task_type")
+        .select("id, task_title, project_id, organization_id, developer_id, assignee_admin_id, task_type")
         .eq("id", taskId)
         .eq("organization_id", auth.orgId)
         .maybeSingle();

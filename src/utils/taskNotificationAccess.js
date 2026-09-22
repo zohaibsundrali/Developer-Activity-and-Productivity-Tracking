@@ -1,3 +1,4 @@
+import { isTaskAssignee } from '@/utils/taskAssignment';
 import { authCan } from '@/utils/serverPermissions';
 
 // Match the existing submission-reader permissions: supervisors and reviewers
@@ -9,6 +10,5 @@ export function canReceiveTaskNotification(subject, task) {
   if (subject.userType !== 'admin' && subject.userType !== 'developer') return false;
   return authCan(subject, 'task.view_all') || authCan(subject, 'task.review') ||
     (task.task_type === 'bug' && authCan(subject, 'bug.triage')) ||
-    (subject.userType === 'developer' && Boolean(task.developer_id) &&
-      subject.appUserId === task.developer_id && authCan(subject, 'task.view_own'));
+    (isTaskAssignee(task, subject) && authCan(subject, 'task.view_own'));
 }

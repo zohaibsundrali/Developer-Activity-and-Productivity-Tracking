@@ -1,3 +1,4 @@
+import { taskAssignee, isTaskAssignee } from '@/utils/taskAssignment';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
@@ -128,7 +129,7 @@ export async function POST(request) {
 
     // WHOSE TASK IS THIS. Resolved from the row, checked against the token, and
     // never from `developerId` in the body — see the file header.
-    const assigneeId = task.developer_id;
+    const assigneeId = taskAssignee(task)?.userId;
     if (!assigneeId) {
       return NextResponse.json(
         { error: 'This task has no assignee, so there is nobody to submit it as' },
@@ -137,7 +138,7 @@ export async function POST(request) {
     }
 
     const isAssignee =
-      auth.userType === 'developer' && Boolean(auth.appUserId) && String(assigneeId) === String(auth.appUserId);
+      isTaskAssignee(task, auth);
 
     // The one way to submit work that is not yours. `task.manage` is
     // owner/admin/manager/team_lead — the people who assign the work in the
@@ -151,7 +152,7 @@ export async function POST(request) {
       );
     }
 
-    if (isAssignee) {
+    if (isAssignee && !(auth.userType === 'admin' && authCan(auth, 'task.manage'))) {
       const denied = requirePermission(auth, 'task.submit');
       if (denied) return denied;
     }
@@ -206,7 +207,7 @@ export async function GET(request) {
     // is the endpoint that lists it. They could not read a single row.
     const canReadAnyone =
       authCan(auth, 'task.view_all') || authCan(auth, 'task.review');
-    if (!canReadAnyone && (auth.userType !== 'developer' || !auth.appUserId || !authCan(auth, 'task.view_own'))) {
+    if (!canReadAnyone && (!['admin', 'developer'].includes(auth.userType) || !auth.appUserId || !authCan(auth, 'task.view_own'))) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     const developerId = canReadAnyone ? requestedDeveloperId : auth.appUserId;
@@ -215,7 +216,9 @@ export async function GET(request) {
       .from('task_submissions')
       .select(`
         *,
-        developer_tasks (
+        developer_tasks!inner (
+          developer_id,
+          assignee_admin_id,
           task_title,
           task_description,
           start_date,
@@ -224,6 +227,7 @@ export async function GET(request) {
           is_on_time,
           productivity_points
         ),
+        assignee_admin:admin_users!task_submissions_assignee_admin_id_fkey (full_name, email),
         developers (
           name,
           email
@@ -243,7 +247,10 @@ export async function GET(request) {
       query = query.eq('project_id', projectId);
     }
     if (developerId) {
-      query = query.eq('developer_id', developerId);
+      query = query.eq(!canReadAnyone && auth.userType === 'admin' ? 'assignee_admin_id' : 'developer_id', developerId);
+    }
+    if (!canReadAnyone) {
+      query = query.eq(auth.userType === 'admin' ? 'developer_tasks.assignee_admin_id' : 'developer_tasks.developer_id', auth.appUserId);
     }
     if (status) {
       query = query.eq('review_status', status);

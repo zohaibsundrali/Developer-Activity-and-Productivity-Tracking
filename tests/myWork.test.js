@@ -263,11 +263,11 @@ describe("the query names columns that exist", () => {
   it("scopes by organization AND person", () => {
     const src = read("src/utils/myWork.js");
     expect(src).toContain('.eq("organization_id", orgId)');
-    expect(src).toContain('.eq("developer_id", developerId)');
+    expect(src).toContain(".eq(userType === 'admin' ? 'assignee_admin_id' : 'developer_id', userId)");
   });
 
   it("refuses to guess when the session is incomplete", () => {
     const src = read("src/utils/myWork.js");
-    expect(src).toMatch(/if \(!orgId \|\| !developerId\)/);
+    expect(src).toMatch(/if \(!orgId \|\| !userId/);
   });
 });
