@@ -55,7 +55,7 @@ function databaseFailure(error) {
   const status = token === "BILLING_LOCKED" ? 402
     : code === "42501" ? 403 : code === "P0002" ? 404
     : code === "22023" ? 400
-    : ["23514", "23505", "40001", "55000"].includes(code) ? 409 : 503;
+    : ["23514", "23505", "PT409", "40001", "55000"].includes(code) ? 409 : 503;
   const message = DATABASE_MESSAGES[token] || (status === 503
     ? "Timesheets are temporarily unavailable. Please retry."
     : "The timesheet could not be changed. Reload it and check your access.");

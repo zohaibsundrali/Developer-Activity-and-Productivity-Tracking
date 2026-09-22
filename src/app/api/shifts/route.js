@@ -14,7 +14,7 @@ function databaseFailure(error) {
   if (error?.code === '42501') return fail('You do not have permission for this schedule action.', 403);
   if (error?.code === 'P0002') return fail('The shift or active staff member was not found.', 404);
   if (error?.code === '23P01') return fail('This person already has an overlapping draft or published shift. Adjust the times or cancel the other shift.', 409);
-  if (['40001', '55000', '23505'].includes(error?.code)) return fail('This shift has changed or was cancelled. Refresh the schedule before editing.', 409);
+  if (['PT409', '40001', '55000', '23505'].includes(error?.code)) return fail('This shift has changed or was cancelled. Refresh the schedule before editing.', 409);
   if (error?.code === '22023') return fail('Check the shift dates, timezone, status and staff member.', 400);
   return fail('The schedule is temporarily unavailable. Please retry.', 503);
 }

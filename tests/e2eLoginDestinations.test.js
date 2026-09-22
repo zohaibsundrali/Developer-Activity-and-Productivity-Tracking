@@ -11,7 +11,8 @@ describe('E2E login expectations match automatic membership-role routing', () =>
     vi.stubEnv(`${prefix}_EMAIL`, 'qa@example.test');
     vi.stubEnv(`${prefix}_PASSWORD`, 'test-placeholder');
     vi.stubEnv(`${prefix}_PORTAL`, '');
-    const membership = role === 'orgBOwner' ? 'owner' : role;
+    // The legacy admin seed is a second organization owner.
+    const membership = ['orgBOwner', 'admin'].includes(role) ? 'owner' : role;
     const credentials = credentialsFor(role);
     expect(credentials.ok).toBe(true);
     expect(credentials.landing).toBe(dashboardHomeFor(userTypeForRole(membership), membership));

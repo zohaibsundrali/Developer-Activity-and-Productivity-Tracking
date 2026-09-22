@@ -1,6 +1,6 @@
 import { validateInvitationScope } from "@/utils/invitationScope";
 import { NextResponse } from 'next/server';
-import { ROLES, ROLE_RANK as SHARED_ROLE_RANK, rankOf } from "@/utils/roles";
+import { ROLES, ROLE_RANK as SHARED_ROLE_RANK, rankOf, canGrantRole, invitationRolesFor } from "@/utils/roles";
 import crypto from 'crypto';
 import { sendTemplatedEmail, isValidEmail } from '@/utils/emailService';
 import { getAuthedOrg, serviceClient } from '@/utils/serverAuth';
@@ -102,7 +102,7 @@ export async function POST(request) {
     // than as the lowest rank.
     const wantedRank = rankOf(role);
     const callerRank = rankOf(auth.role);
-    if (wantedRank === null || callerRank === null || wantedRank >= callerRank) {
+    if (wantedRank === null || callerRank === null || !canGrantRole(auth.role, role)) {
       return reply(
         { success: false, error: `You cannot invite someone as "${role}".` },
         { status: 403 }
@@ -243,7 +243,7 @@ export async function GET(request) {
     }
 
     const supabase = serviceClient();
-    const grantableRoles = ROLES.filter(role => rankOf(role) < rankOf(auth.role));
+    const grantableRoles = invitationRolesFor(auth.role);
 
     // Org comes from the verified JWT — a caller can only list their own org's
     // invitations, never another organization's tokens.

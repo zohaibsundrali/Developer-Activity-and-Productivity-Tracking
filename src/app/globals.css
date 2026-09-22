@@ -242,3 +242,10 @@
   color: hsl(var(--foreground));
 }
 .dark .registration-select { color-scheme: dark; }
+
+/* Keep action labels white across shared components, native buttons and
+   links styled as buttons. Disabled controls retain their existing opacity. */
+.dark :is(button, [role="button"], [data-slot="button"], a[class*="bg-primary"], a[class*="bg-secondary"]),
+.dark :is(button, [role="button"], [data-slot="button"], a[class*="bg-primary"], a[class*="bg-secondary"]) :is(span, strong) {
+  color: #fff !important;
+}

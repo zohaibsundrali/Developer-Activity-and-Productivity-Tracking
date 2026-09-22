@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isCalendarDate as isDate, invalidOptionalDate } from "@/utils/calendarDate";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { requirePermission } from "@/utils/serverPermissions";
 import { requireUnlocked } from "@/utils/entitlements";
@@ -28,7 +29,6 @@ export const dynamic = "force-dynamic";
  */
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const STATUS = ["draft", "sent", "signed", "active", "completed", "terminated"];
 const TYPES = ["fixed_price", "time_and_materials", "retainer"];
 const MILESTONE_STATUS = ["pending", "delivered", "approved", "invoiced"];
@@ -36,7 +36,6 @@ const MILESTONE_STATUS = ["pending", "delivered", "approved", "invoiced"];
 const AMENDABLE = ["value", "contract_type", "start_date", "end_date"];
 
 const clip = (v, n) => (typeof v === "string" && v.trim() ? v.trim().slice(0, n) : null);
-const isDate = (v) => typeof v === "string" && DATE_RE.test(v);
 const money = (v) => {
   if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
@@ -131,6 +130,8 @@ export async function POST(request) {
     const { searchParams } = new URL(request.url);
     const action = searchParams.get("action") || "contract";
     const body = await request.json().catch(() => ({}));
+    const invalidDate = invalidOptionalDate(body, action === "contract" ? ["startDate", "endDate"] : ["dueDate"]);
+    if (invalidDate) return NextResponse.json({ success: false, error: `${invalidDate} must be a valid calendar date (YYYY-MM-DD)` }, { status: 400 });
 
     if (action === "contract") {
       const reference = clip(body?.reference, 60);

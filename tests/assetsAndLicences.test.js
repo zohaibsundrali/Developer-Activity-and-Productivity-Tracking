@@ -39,7 +39,7 @@ const readSql = (p) => raw(p).replace(/^\s*--.*$/gm, "");
 const MIGRATION = "database/090_assets_and_licences.sql";
 const ROUTE = "src/app/api/assets/route.js";
 const SCREEN = "src/components/admin/Assets.jsx";
-const READERS = ["owner", "admin", "hr", "finance"];
+const READERS = ["owner", "hr", "finance"];
 
 describe("the keys the module introduced", () => {
   it("opens the register to people operations and money", () => {
@@ -52,10 +52,10 @@ describe("the keys the module introduced", () => {
     // Handing somebody a laptop is onboarding, which is HR's. Buying seats is
     // recurring spend against a renewal date, which is finance's.
     expect([...defaultRolesFor("asset.manage")].sort()).toEqual(
-      ["owner", "admin", "hr"].sort()
+      ["owner", "hr"].sort()
     );
     expect([...defaultRolesFor("licence.manage")].sort()).toEqual(
-      ["owner", "admin", "finance"].sort()
+      ["owner", "finance"].sort()
     );
   });
 
@@ -271,7 +271,7 @@ describe("the screen is wired and gated", () => {
     expect(NON_WIDENING_SECTIONS).not.toContain("assets");
     expect(SECTION_PERMISSIONS.assets).toBe("asset.view");
     expect([...ADMIN_AREA_ROLES].sort()).toEqual(
-      ["admin", "finance", "hr", "manager", "owner", "qa", "team_lead"].sort()
+      ["finance", "hr", "manager", "owner", "qa", "team_lead"].sort()
     );
   });
 });

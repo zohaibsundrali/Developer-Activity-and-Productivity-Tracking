@@ -148,7 +148,7 @@ describe("two different writes behind two different keys", () => {
     // The key and the RLS must not come to disagree about who may staff a
     // project, so they are asserted against each other.
     expect([...defaultRolesFor("capacity.allocate")].sort()).toEqual(
-      ["owner", "admin", "manager"].sort()
+      ["owner", "manager"].sort()
     );
     const policy = readSql("database/071_project_members.sql");
     expect(policy).toMatch(/in \('owner','admin','manager'\)/);
@@ -158,7 +158,7 @@ describe("two different writes behind two different keys", () => {
     // A manager who could quietly raise a report's weekly hours could make
     // their own plan come out right.
     expect([...defaultRolesFor("employment.set_hours")].sort()).toEqual(
-      ["owner", "admin", "hr"].sort()
+      ["owner", "hr"].sort()
     );
     expect(defaultRolesFor("employment.set_hours")).not.toContain("manager");
   });

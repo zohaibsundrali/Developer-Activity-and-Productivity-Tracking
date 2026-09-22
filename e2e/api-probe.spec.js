@@ -70,6 +70,9 @@ const BILLING_ROLES = ['owner', 'admin', 'finance'];
 const internalProject = requireEnv('E2E_INTERNAL_PROJECT_ID');
 
 test.describe('API probe', () => {
+  // Each case signs in and performs 35 real API round trips. Keep per-action
+  // assertions unchanged, but budget for the whole batch under parallel load.
+  test.setTimeout(180_000);
   for (const role of ROLES) {
     test(`${role}: no readable route answers with a server error`, async ({ page }) => {
       const creds = credentialsFor(role);

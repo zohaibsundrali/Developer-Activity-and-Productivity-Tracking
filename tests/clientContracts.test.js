@@ -52,9 +52,9 @@ describe("the keys narrow, and the narrowing is the design", () => {
 
   it("keeps amending narrower than drafting", () => {
     expect([...defaultRolesFor("contract.manage")].sort()).toEqual(
-      ["owner", "admin", "finance"].sort()
+      ["owner", "finance"].sort()
     );
-    expect([...defaultRolesFor("contract.amend")].sort()).toEqual(["owner", "admin"].sort());
+    expect([...defaultRolesFor("contract.amend")].sort()).toEqual(["owner"].sort());
     // finance may sign a contract and may not rewrite one already signed
     expect(defaultRolesFor("contract.amend")).not.toContain("finance");
   });
@@ -236,7 +236,7 @@ describe("the screen is wired and gated", () => {
   });
 
   it("offers it to the four roles that may read a contract", () => {
-    for (const role of ["owner", "admin", "manager", "finance"]) {
+    for (const role of ["owner", "manager", "finance"]) {
       expect(adminNavFor(role).map((i) => i.id), role).toContain("contracts");
     }
     for (const role of ["hr", "qa", "team_lead"]) {
@@ -248,7 +248,7 @@ describe("the screen is wired and gated", () => {
     expect(NON_WIDENING_SECTIONS).not.toContain("contracts");
     expect(SECTION_PERMISSIONS.contracts).toBe("contract.view");
     expect([...ADMIN_AREA_ROLES].sort()).toEqual(
-      ["admin", "finance", "hr", "manager", "owner", "qa", "team_lead"].sort()
+      ["finance", "hr", "manager", "owner", "qa", "team_lead"].sort()
     );
   });
 });
@@ -261,7 +261,7 @@ describe("the migration keeps its RLS in step with the catalogue", () => {
     expect(sql).toMatch(/in \('owner','admin','finance'\)/);
     expect(sql).toMatch(/in \('owner','admin'\)/);
     expect([...defaultRolesFor("contract.view")].sort()).toEqual(
-      ["owner", "admin", "manager", "finance"].sort()
+      ["owner", "manager", "finance"].sort()
     );
   });
 

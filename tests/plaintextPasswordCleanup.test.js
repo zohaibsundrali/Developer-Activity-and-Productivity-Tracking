@@ -265,7 +265,7 @@ describe("invitation acceptance creates no plaintext password row", () => {
     ["developer", "developers"],
     ["manager", "developers"],
     ["employee", "developers"],
-    ["admin", "admin_users"],
+    ["owner", "admin_users"],
 
     // hr USED TO BE ["hr", "admin_users"] HERE. That was the accept route's own
     // `isAdminLike` (owner/admin/hr) disagreeing with userTypeForRole(), which

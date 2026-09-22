@@ -58,7 +58,7 @@ test.describe('Owner', () => {
     await expect(page.getByText('New team', { exact: true })).toBeVisible();
   });
 
-  test('members: the roster lists the owner and ownership cannot be reassigned', async ({ page }) => {
+  test('members: the roster lists the owner and self-role changes are disabled', async ({ page }) => {
     await openSection(page, 'Organization', 'Organization');
     await page.getByRole('tab', { name: /^Members\b/ }).click();
 
@@ -70,8 +70,7 @@ test.describe('Owner', () => {
     const ownRow = page.getByRole('row').filter({ hasText: owner.email });
     await expect(ownRow).toHaveCount(1);
 
-    // "owner" is not an assignable role — the owner's own role control is
-    // disabled so ownership cannot be handed away from this dropdown.
+    // Another owner can grant/revoke ownership; self-role changes stay disabled.
     await expect(ownRow.getByRole('combobox').first()).toBeDisabled();
   });
 
@@ -80,6 +79,9 @@ test.describe('Owner', () => {
     await page.getByRole('tab', { name: /^Invitations\b/ }).click();
 
     await expect(page.getByText('Invite a member', { exact: true })).toBeVisible();
+    await expect(page.locator('#invite-role option[value=owner]')).toHaveCount(1);
+    await expect(page.locator('#invite-role option[value=admin]')).toHaveCount(0);
+    await page.locator('#invite-role').selectOption('owner');
     await expect(page.getByPlaceholder('teammate@company.com')).toBeVisible();
     await expect(page.getByRole('button', { name: /Send invitation/ })).toBeVisible();
 

@@ -46,7 +46,7 @@ it.each(['version', 'user_id', 'user_type', 'status', 'start_at', 'title'])('rej
   h.auth.role = 'owner'; h.auth.userType = 'admin'; h.result.data.shift[field] = field === 'version' ? 99 : 'wrong';
   expect((await post()).status).toBe(503);
 });
-it.each([['23P01', 409], ['40001', 409], ['42501', 403], ['P0002', 404], ['22023', 400], ['XX000', 503]])('maps database %s without leaking internals', async (code, status) => {
+it.each([['23P01', 409], ['PT409',409], ['40001', 409], ['42501', 403], ['P0002', 404], ['22023', 400], ['XX000', 503]])('maps database %s without leaking internals', async (code, status) => {
   h.auth.role = 'owner'; h.auth.userType = 'admin'; h.result = { error: { code, message: 'private-database-context' } };
   const response = await post(); expect(response.status).toBe(status); expect(await response.text()).not.toContain('private-database-context');
 });

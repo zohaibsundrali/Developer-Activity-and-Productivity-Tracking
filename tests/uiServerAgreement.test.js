@@ -13,11 +13,11 @@ import { defaultRolesFor, isPermissionKey } from "@/utils/permissionCatalogue";
  * hand-typed caller role array survives in any of them. The browser was still
  * deciding the same questions with its own copies:
  *
- *   ChangeRequests.jsx     canPrice   = ["owner","admin","manager"]
- *                          canApprove = ["owner","admin"]
- *   ProjectRequests.jsx    canDecide  = ["owner","admin","manager"]
+ *   ChangeRequests.jsx     canPrice   = ["owner","manager"]
+ *                          canApprove = ["owner"]
+ *   ProjectRequests.jsx    canDecide  = ["owner","manager"]
  *   ProjectOverview.jsx    canAssignManager = hasRole("owner","admin")
- *                          eligible managers = ["owner","admin","manager","team_lead"]
+ *                          eligible managers = ["owner","manager","team_lead"]
  *   TaskDetailDrawer.jsx   canSetClientVisibility = hasRole("owner","admin","manager")
  *
  * Every one of those matched its server counterpart on the day it was written,
@@ -46,28 +46,28 @@ const SHARED = [
   {
     what: "price a change request",
     key: "change_request.decide",
-    roles: ["owner", "admin", "manager"],
+    roles: ["owner", "manager"],
     screen: "src/components/admin/ChangeRequests.jsx",
     route: "src/app/api/change-requests/[id]/advance/route.js",
   },
   {
     what: "approve a change request for sale",
     key: "change_request.approve",
-    roles: ["owner", "admin"],
+    roles: ["owner"],
     screen: "src/components/admin/ChangeRequests.jsx",
     route: "src/app/api/change-requests/[id]/advance/route.js",
   },
   {
     what: "decide a client proposal",
     key: "proposal.decide",
-    roles: ["owner", "admin", "manager"],
+    roles: ["owner", "manager"],
     screen: "src/components/admin/ProjectRequests.jsx",
     route: "src/app/api/proposals/[id]/decide/route.js",
   },
   {
     what: "assign a project manager",
     key: "project.assign_manager",
-    roles: ["owner", "admin"],
+    roles: ["owner"],
     screen: "src/components/admin/ProjectOverview.jsx",
     route: "src/app/api/projects/[id]/manager/route.js",
   },
@@ -120,7 +120,7 @@ describe("target lists have one definition too", () => {
     // NOT a permission — it says who may BE assigned, not who may assign. It
     // had two copies: ELIGIBLE_MANAGER_ROLES in the route and an inline filter
     // in ProjectOverview.
-    expect([...MANAGEABLE_BY_ROLES]).toEqual(["owner", "admin", "manager", "team_lead"]);
+    expect([...MANAGEABLE_BY_ROLES]).toEqual(["owner", "manager", "team_lead"]);
     expect(read("src/components/admin/ProjectOverview.jsx")).toContain(
       "MANAGEABLE_BY_ROLES.includes(e.role)"
     );
@@ -168,7 +168,7 @@ describe("client visibility got its own key rather than borrowing one", () => {
     // an argument for a dedicated key — not for a role list in a component.
     expect(isPermissionKey("task.set_client_visibility")).toBe(true);
     expect([...defaultRolesFor("task.set_client_visibility")]).toEqual([
-      "owner", "admin", "manager",
+      "owner", "manager",
     ]);
   });
 });

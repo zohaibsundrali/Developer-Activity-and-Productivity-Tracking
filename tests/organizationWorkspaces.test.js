@@ -39,7 +39,7 @@ describe('authorized organization routes', () => {
     mocks.rpc.mockResolvedValue({ data: { organizationId: ORG, profileId: PROFILE, userType: 'admin' } });
     const response = await POST(request({ requestId: SID, company: ' Example ', termsAccepted: true, planCode: 'professional', authUserId: PROFILE, email: 'someone@else.test', password: 'do-not-use', role: 'owner', paid: true }));
     expect(response.status).toBe(201);
-    expect(mocks.rpc).toHaveBeenCalledExactlyOnceWith('create_authenticated_workspace', expect.objectContaining({ p_auth: UID, p_request: SID, p_details: { company: 'Example', industry: undefined, companySize: undefined, country: undefined, timezone: 'UTC' }, p_plan: 'professional' }));
+    expect(mocks.rpc).toHaveBeenCalledExactlyOnceWith('create_authenticated_workspace', expect.objectContaining({ p_auth: UID, p_request: SID, p_details: { company: 'Example', industry: undefined, companySize: undefined, country: undefined, timezone: 'UTC' }, p_plan: 'free' }));
     expect(JSON.stringify(mocks.rpc.mock.calls)).not.toMatch(/do-not-use|someone@else|paid/);
   });
   it.each([{ company: '' }, { company: 'x', termsAccepted: false }, { company: 'x', termsAccepted: true, requestId: 'bad' }])('validates details and explicit terms', async body => {

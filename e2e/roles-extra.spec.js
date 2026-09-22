@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { credentialsFor, requireEnv, skipUnless } from './fixtures/credentials.js';
 import { login } from './fixtures/auth.js';
-import { clickAndResolveSection, expectBouncedToLogin, expectNav, expectNoErrorState, navItem, navLabels, pageHeading } from './fixtures/app.js';
+import { clickAndResolveSection, expectBouncedToLogin, expectNav, expectNoErrorState, navItem, navLabels, pageHeading, waitForSectionReady } from './fixtures/app.js';
 import { writesAllowed } from './fixtures/env.js';
 import { SECTION_TITLES } from '../src/components/shell/sectionTitles.js';
 
@@ -38,8 +38,18 @@ async function walkSidebar(page, who, shellKey) {
       expect(title, `${who}: "${label}" opened section "${id}", which sectionTitles.js does not know`).toBeTruthy();
       await expect(pageHeading(page, title), `${who}: "${label}" should render "${title}"`).toBeVisible();
     }
-    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+    await waitForSectionReady(page);
     await expectNoErrorState(page, `${who} → ${label}`);
+    if (who === 'finance' && id === 'clients') {
+      await expect(page.getByText('QA Client', { exact: true }).first()).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Send invitation', exact: true })).toHaveCount(0);
+      await expect(page.getByText('Pending invitations', { exact: true })).toHaveCount(0);
+      await expect(page.getByLabel('Password', { exact: true })).toHaveCount(0);
+    }
+    if (who === 'admin' && id === 'clients') {
+      await expect(page.getByRole('button', { name: 'Send invitation', exact: true })).toBeVisible();
+      await expect(page.getByText('Pending invitations', { exact: true })).toBeVisible();
+    }
     walked.push(`${label} → ${id}`);
   }
   test.info().attachments.push({
@@ -69,12 +79,14 @@ const CONSOLE_ROLES = {
     hidden: ['Billing', 'Employees', 'Organization', 'All Projects', 'Reports', 'Permissions', 'Clients', 'Invoicing'],
   },
   admin: {
-    visible: ['All Projects', 'Employees', 'Organization', 'Billing', 'System Health', 'Automation', 'Developer Activity', 'Board', 'Clients'],
-    hidden: ['Permissions'],
+    visible: ['All Projects', 'Employees', 'Organization', 'Billing', 'System Health', 'Automation', 'Developer Activity', 'Board', 'Clients', 'Permissions'],
+    hidden: [],
   },
 };
 
 test.describe('Admin-console roles', () => {
+  // Each test walks every offered screen, matching the full admin survey budget.
+  test.setTimeout(300_000);
   for (const [role, nav] of Object.entries(CONSOLE_ROLES)) {
     test(`${role}: lands on the console, every offered section renders, and the catalogue holds`, async ({ page }) => {
       const creds = credentialsFor(role);

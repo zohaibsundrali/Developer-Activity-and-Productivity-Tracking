@@ -52,8 +52,8 @@ import { getOrgContext } from "@/utils/orgContext";
 const pct = (v) => (v === null || v === undefined ? "—" : `${Math.round(Number(v))}%`);
 
 export default function MyActivity() {
-  const panels = myActivityPanels(allowed);
   const context = getOrgContext();
+  const panels = myActivityPanels(allowed, context);
   const scope = `${context?.organizationId}:${context?.userType}:${context?.userId}:${panels.productivity}:${panels.activity}:${panels.team}`;
   const liveScope = useRef(scope); liveScope.current = scope;
   const generation = useRef(0);

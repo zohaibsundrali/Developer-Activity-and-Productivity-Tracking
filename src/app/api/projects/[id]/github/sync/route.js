@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const choices = ['auto','local','github'];
 function failure(error) {
-  const status = ['42501','P0002'].includes(error?.code) ? 403 : ['40001','40P01','23505','55000'].includes(error?.code) ? 409 : ['22023','23514'].includes(error?.code) ? 400 : String(error?.message).startsWith('BILLING_LOCKED') ? 402 : 503;
+  const status = ['42501','P0002'].includes(error?.code) ? 403 : ['PT409', '40001','40P01','23505','55000'].includes(error?.code) ? 409 : ['22023','23514'].includes(error?.code) ? 400 : String(error?.message).startsWith('BILLING_LOCKED') ? 402 : 503;
   return new GithubFailure(status === 403 ? 'This imported task is unavailable or your task access changed.' : status === 409 ? 'The task, repository or sync evidence changed. Preview again and resolve conflicts.' : status === 400 ? 'Check the sync choices and preview the task again.' : 'Task synchronization is temporarily unavailable.', status);
 }
 async function readContext(client, auth, project, version) {

@@ -21,7 +21,6 @@
 /** Every role, ordered highest privilege → lowest. */
 export const ROLES = [
   "owner",
-  "admin",
   "manager",
   "hr",
   "finance",
@@ -49,7 +48,6 @@ export const ROLES = [
  */
 export const ROLE_RANK = {
   owner: 100,
-  admin: 90,
   manager: 70,
   hr: 60,
   finance: 55,
@@ -99,7 +97,7 @@ export const ROLE_RANK = {
  */
 export function userTypeForRole(role) {
   if (role === "client") return "client";
-  if (role === "owner" || role === "admin") return "admin";
+  if (role === "owner") return "admin";
   return "developer";
 }
 
@@ -168,7 +166,6 @@ export const PROJECT_ROLES = Object.freeze([
  */
 export const MANAGEABLE_BY_ROLES = Object.freeze([
   "owner",
-  "admin",
   "manager",
   "team_lead",
 ]);
@@ -191,4 +188,14 @@ export function grantableStaffRoles(callerRole) {
   const callerRank = rankOf(callerRole);
   if (callerRank === null) return [];
   return STAFF_ROLES.filter((r) => ROLE_RANK[r] < callerRank);
+}
+
+/** Organization owners may appoint peers. Other inviters remain below their rank. */
+export function canGrantRole(actorRole, targetRole) {
+  return isRole(actorRole) && isRole(targetRole)
+    && (actorRole === "owner" || rankOf(targetRole) < rankOf(actorRole));
+}
+
+export function invitationRolesFor(actorRole) {
+  return ROLES.filter(role => canGrantRole(actorRole, role));
 }

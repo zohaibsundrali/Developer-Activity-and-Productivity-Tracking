@@ -40,7 +40,7 @@ const readSql = (p) => raw(p).replace(/^\s*--.*$/gm, "");
 
 const MIGRATION = "database/077_timesheet_approval.sql";
 const ROUTE = "src/app/api/timesheets/route.js";
-const SUPERVISORS = ["owner", "admin", "manager", "team_lead"];
+const SUPERVISORS = ["owner", "manager", "team_lead"];
 const STAFF = ROLES.filter((r) => r !== "client");
 
 describe("the keys the feature introduced", () => {
@@ -144,7 +144,7 @@ describe("the lock lives in the database, because nothing else can hold it", () 
   it("keeps its RLS role list in step with the catalogue", () => {
     expect(sql).toMatch(/in \('owner','admin','manager','team_lead'\)/);
     expect([...defaultRolesFor("timesheet.approve")].sort()).toEqual(
-      ["owner", "admin", "manager", "team_lead"].sort()
+      ["owner", "manager", "team_lead"].sort()
     );
   });
 
@@ -241,7 +241,7 @@ describe("the approvals screen is wired and gated", () => {
 
   it("admits nobody new to the admin area", () => {
     expect([...ADMIN_AREA_ROLES].sort()).toEqual(
-      ["admin", "finance", "hr", "manager", "owner", "qa", "team_lead"].sort()
+      ["finance", "hr", "manager", "owner", "qa", "team_lead"].sort()
     );
   });
 });

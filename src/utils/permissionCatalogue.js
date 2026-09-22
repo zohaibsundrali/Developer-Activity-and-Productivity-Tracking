@@ -65,24 +65,24 @@ import { ROLES } from "@/utils/roles";
  * call sites. These are the exact groupings the replaced code used.
  */
 const OWNER_ONLY = ["owner"];
-const ADMINS = ["owner", "admin"];
+const ADMINS = ["owner"];
 /** Employee and people operations. */
-const PEOPLE = ["owner", "admin", "hr"];
+const PEOPLE = ["owner", "hr"];
 /** Task and delivery oversight. */
-const SUPERVISORS = ["owner", "admin", "manager", "team_lead"];
+const SUPERVISORS = ["owner", "manager", "team_lead"];
 /**
  * The read-only people screens. Wider than PEOPLE because a manager deciding
  * who to assign needs to see who is free — and nothing on those screens writes.
  */
-const PEOPLE_READERS = ["owner", "admin", "hr", "manager", "team_lead"];
+const PEOPLE_READERS = ["owner", "hr", "manager", "team_lead"];
 /** Money, and deliberately NOT the monitoring surface. */
-const BILLING = ["owner", "admin", "finance"];
+const BILLING = ["owner", "finance"];
 /** Reviewers of submitted work. QA is here and in almost nowhere else. */
-const REVIEWERS = ["owner", "admin", "manager", "team_lead", "qa"];
+const REVIEWERS = ["owner", "manager", "team_lead", "qa"];
 /** Who may bring someone into the org. Wider than PEOPLE by `manager`. */
-const INVITERS = ["owner", "admin", "hr", "manager"];
+const INVITERS = ["owner", "hr", "manager"];
 /** Who decides on a client's proposal or change request. */
-const DECIDERS = ["owner", "admin", "manager"];
+const DECIDERS = ["owner", "manager"];
 /** Who files work for review — everyone who produces something. */
 const CONTRIBUTORS = ["developer", "designer", "devops", "qa", "employee", "team_lead"];
 /**
@@ -122,7 +122,7 @@ const STAFF = ROLES.filter((r) => r !== "client");
  * `hr` is here and `finance` is not, which is the same line BILLING draws from
  * the other side: who is at work is people operations, not money.
  */
-const ATTENDANCE_OVERSIGHT = ["owner", "admin", "hr", "manager"];
+const ATTENDANCE_OVERSIGHT = ["owner", "hr", "manager"];
 /**
  * Who may look at what the company owns.
  *
@@ -131,7 +131,7 @@ const ATTENDANCE_OVERSIGHT = ["owner", "admin", "hr", "manager"];
  * manager has no reason to read the serial numbers of every laptop in the
  * building, and an asset register everybody can edit is not a register.
  */
-const ASSET_READERS = ["owner", "admin", "hr", "finance"];
+const ASSET_READERS = ["owner", "hr", "finance"];
 
 
 /**

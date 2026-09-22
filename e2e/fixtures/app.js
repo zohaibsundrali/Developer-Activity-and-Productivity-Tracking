@@ -47,6 +47,12 @@ export async function expectNoErrorState(page, context) {
   await expect(page.getByText(/Application error|Permissions are temporarily unavailable/), context).toHaveCount(0);
 }
 
+/** Wait for section data, without waiting for the app's persistent realtime connection. */
+export async function waitForSectionReady(page) {
+  await expect(page.locator('main [data-slot="skeleton"]:visible, main [aria-busy="true"]:visible')).toHaveCount(0);
+  await expect(page.locator('main [role="status"]:visible').filter({ hasText: /loading/i })).toHaveCount(0);
+}
+
 /** The topbar section heading. */
 export function pageHeading(page, name) {
   return name

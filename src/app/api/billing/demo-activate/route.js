@@ -1,3 +1,4 @@
+import { billingAuthority } from '@/utils/accountBilling';
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
 import { requirePermission } from "@/utils/serverPermissions";
@@ -87,6 +88,9 @@ export async function POST(request) {
     const requested = String(body?.planCode || "").trim().toLowerCase();
 
     const svc = serviceClient();
+    const account = await billingAuthority(svc, auth, { purchase: true });
+    if (account.denied) return NextResponse.json({ error: 'Only the billing account owner can manage this shared plan. Open the original organization for delegated billing access.' }, { status: 403 });
+    const billingOrgId = account.scope.accountId;
 
     // The plan comes from the catalogue, never from the request. Without this
     // lookup, `{"planCode":"enterprise"}` is a free upgrade to unlimited.
@@ -118,7 +122,7 @@ export async function POST(request) {
     const { data: updated, error } = await svc
       .from("organization_subscriptions")
       .upsert({
-        organization_id: auth.orgId,
+        organization_id: billingOrgId,
         plan_code: plan.code,
         status: "active",
         trial_start: null,
@@ -141,7 +145,7 @@ export async function POST(request) {
 
     // Belt and braces: never report success for a write that touched nothing.
     if (!updated || updated.length === 0) {
-      console.error("[billing/demo-activate] upsert affected no rows", auth.orgId);
+      console.error("[billing/demo-activate] upsert affected no rows", billingOrgId);
       return NextResponse.json(
         { error: "Could not activate the plan. Please try again." },
         { status: 500 }
@@ -152,7 +156,7 @@ export async function POST(request) {
     // is a question worth being able to answer later, and the answer must not
     // depend on someone having tailed the logs that day.
     await recordEvent({
-      orgId: auth.orgId,
+      orgId: billingOrgId,
       type: "billing.demo_activated",
       severity: "warning",
       source: "billing",
@@ -169,6 +173,6 @@ export async function POST(request) {
     });
   } catch (e) {
     console.error("[billing/demo-activate]", e?.message || e);
-    return NextResponse.json({ error: "Could not activate the plan." }, { status: 500 });
+    return NextResponse.json({ error: "Could not activate the plan." }, { status: e.status === 503 ? 503 : 500 });
   }
 }

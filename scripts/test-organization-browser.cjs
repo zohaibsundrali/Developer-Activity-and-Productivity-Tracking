@@ -207,51 +207,45 @@ function session(meta = context) {
         fullPage: true
       });
     }
+    // Existing cards must establish the chosen context, including when moving
+    // back from a secondary workspace to the primary organization.
+    for (const [name, id] of [['Studio Two', org2], ['Verisade Studio', org1]]) {
+      await page.getByRole('button', { name: `Open ${name} workspace`, exact: true }).click();
+      await page.waitForURL('**/admin/dashboard');
+      assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem('adminUser')).organization_id), id);
+      await page.goto(root + '/organizations', { waitUntil: 'networkidle' });
+    }
     await page.getByRole('link', {
       name: 'New Organization',
       exact: true
     }).first().click();
+    await page.waitForURL('**/create/organization');
     await page.getByRole('heading', {
       name: 'Create your organization',
       exact: true
     }).waitFor();
     assert.equal(await page.locator('input[type="password"],input[type="email"]').count(), 0);
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 1000 });
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      const heading = await page.getByRole('heading', { name: 'Create your organization', exact: true }).boundingBox();
+      const details = await page.getByRole('region', { name: 'Organization details', exact: true }).boundingBox();
+      if (width === 1440) assert(heading.x + heading.width <= details.x);
+      else assert(heading.y < details.y);
+      assert.equal(await page.getByRole('button', { name: 'Create organization' }).evaluate(el => getComputedStyle(el).color), 'rgb(255, 255, 255)');
+      await page.screenshot({ path: path.join(artifacts, `organization-details-${width}.png`), fullPage: true });
+    }
+    await page.goto(root + '/admin/registration', { waitUntil: 'networkidle' });
+    await page.waitForURL('**/create/organization');
     await page.locator('#workspace-name').fill('New Studio');
     await page.getByRole('checkbox').check();
-    await page.getByRole('button', {
-      name: 'Continue to plans'
-    }).click();
-    await page.getByRole('radiogroup').waitFor();
-    assert.equal(await page.getByRole('radio').count(), 2);
-    await page.setViewportSize({
-      width: 1440,
-      height: 1000
-    });
-    await page.screenshot({
-      path: path.join(artifacts, 'organization-plans.png'),
-      fullPage: true
-    });
-    await page.getByRole('radio').first().focus();
-    await page.keyboard.press('ArrowRight');
-    assert(await page.getByRole('radio').nth(1).isChecked());
-    await page.setViewportSize({
-      width: 390,
-      height: 1000
-    });
-    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-    await page.screenshot({
-      path: path.join(artifacts, 'organization-plans-mobile.png'),
-      fullPage: true
-    });
-    // Confirm setup uses only the authenticated endpoint, without OTP/account fields.
-    await page.getByRole('button', {
-      name: 'Start free trial'
-    }).click();
+    assert.equal(await page.getByRole('radiogroup').count(), 0);
+    await page.getByRole('button', { name: 'Create organization', exact: true }).click();
     await page.waitForURL('**/admin/dashboard');
     assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem('adminUser')).organization_id), '00000000-0000-0000-0000-000000000003');
     assert(createBody);
     assert.equal(createBody.company, 'New Studio');
-    assert.equal(createBody.planCode, 'professional');
+    assert(!('planCode' in createBody));
     assert(!('email' in createBody));
     assert(!('password' in createBody));
     assert.equal(verifyCalls, 0);
@@ -284,6 +278,33 @@ function session(meta = context) {
     });
     await anon.locator('#reg-email').waitFor();
     assert(await anon.locator('#reg-password').count());
+    // Exercise the public verification boundary without sending real email or
+    // creating an account. Capture the final grant passed to signup.
+    let publicSignup = null;
+    await anon.route('**/api/send-verification', r => r.fulfill({ json: { success: true } }));
+    await anon.route('**/api/auth/verify-code', r => r.fulfill({ json: {
+      success: true, verificationGrant: 'a'.repeat(64)
+    } }));
+    await anon.route('**/api/auth/signup', r => {
+      publicSignup = r.request().postDataJSON();
+      return r.fulfill({ status: 503, json: { error: 'QA signup unavailable. Please retry.' } });
+    });
+    await anon.locator('#reg-name').fill('Test Owner');
+    await anon.locator('#reg-company').fill('Public Signup Studio');
+    await anon.locator('#reg-email').fill('signup@example.test');
+    await anon.locator('#reg-password').fill('TestPassword123!');
+    await anon.locator('#reg-confirm').fill('TestPassword123!');
+    await anon.locator('#reg-terms').check();
+    await anon.getByRole('button', { name: 'Create account', exact: true }).click();
+    for (let digit = 1; digit <= 6; digit++) {
+      await anon.getByRole('textbox', { name: `Verification code, digit ${digit} of 6`, exact: true }).fill(String(digit));
+    }
+    await anon.getByRole('button', { name: 'Create workspace on Free', exact: true }).waitFor();
+    await anon.getByRole('button', { name: 'Create workspace on Free', exact: true }).click();
+    await anon.getByText('QA signup unavailable. Please retry.', { exact: true }).waitFor();
+    assert.equal(publicSignup.verificationGrant, 'a'.repeat(64));
+    assert.equal(publicSignup.email, 'signup@example.test');
+    assert.equal(publicSignup.termsAccepted, true);
     await page.goto(root + '/organizations', {
       waitUntil: 'networkidle'
     });
@@ -303,7 +324,10 @@ function session(meta = context) {
       staffRootPublic: true,
       anonymousRootPublic: true,
       authenticatedSetupNoCredentials: true,
-      planKeyboard: true,
+      existingWorkspaceSwitchBothDirections: true,
+      publicVerificationToBilling: true,
+      signupFailurePreservesForm: true,
+      authenticatedSetupSkipsPlans: true,
       verificationCalls: verifyCalls,
       pageErrors: errors
     }));

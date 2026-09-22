@@ -39,8 +39,8 @@ const readSql = (p) => raw(p).replace(/^\s*--.*$/gm, "");
 
 const MIGRATION = "database/083_performance_reviews.sql";
 const ROUTE = "src/app/api/performance/route.js";
-const PEOPLE = ["owner", "admin", "hr"];
-const WRITERS = ["owner", "admin", "hr", "manager", "team_lead"];
+const PEOPLE = ["owner", "hr"];
+const WRITERS = ["owner", "hr", "manager", "team_lead"];
 const STAFF = ROLES.filter((r) => r !== "client");
 
 describe("the keys the module introduced", () => {
@@ -238,7 +238,7 @@ describe("the module does not widen the admin front door", () => {
 
   it("leaves ADMIN_AREA_ROLES at the seven roles", () => {
     expect([...ADMIN_AREA_ROLES].sort()).toEqual(
-      ["admin", "finance", "hr", "manager", "owner", "qa", "team_lead"].sort()
+      ["finance", "hr", "manager", "owner", "qa", "team_lead"].sort()
     );
     for (const role of ["developer", "designer", "devops", "employee"]) {
       expect(canAccessAdminSection("my-reviews", role), role).toBe(true);

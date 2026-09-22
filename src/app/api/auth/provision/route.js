@@ -69,7 +69,7 @@ export async function POST(request) {
     }
 
     // ── The granted role must rank strictly below the caller's own ──
-    const requestedRole = role || (userType === "admin" ? "admin" : userType === "client" ? "client" : "developer");
+    const requestedRole = role || (userType === "admin" ? "owner" : userType === "client" ? "client" : "developer");
     // The profile table follows the ROLE, not the caller's `userType` hint:
     // asking for role "client" and userType "developer" must not write a
     // developer seat with a client's rank.

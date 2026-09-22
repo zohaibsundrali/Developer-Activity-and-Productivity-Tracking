@@ -16,6 +16,7 @@ import {
   Skeleton,
 } from "@/components/ui";
 import { authFetch } from "@/utils/authFetch";
+import { allowed } from "@/utils/permissions";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId } from "@/utils/orgContext";
 import { showConfirm, showError, showSuccess } from "@/utils/alerts";
@@ -73,6 +74,8 @@ const money = (v, currency = "USD") =>
     : new Intl.NumberFormat(undefined, { style: "currency", currency }).format(Number(v));
 
 export default function Contracts({ projects = [] }) {
+  const canManage = allowed("contract.manage");
+  const canAmend = allowed("contract.amend");
   const [contracts, setContracts] = useState([]);
   const [active, setActive] = useState(null);
   const [milestones, setMilestones] = useState([]);
@@ -278,10 +281,10 @@ export default function Contracts({ projects = [] }) {
           actions={
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={() => setActive(null)}>Back</Button>
-              {active.status === "draft" && (
+              {canManage && active.status === "draft" && (
                 <Button variant="outline" onClick={() => setStatus("sent")} disabled={busy}>Mark sent</Button>
               )}
-              {["draft", "sent"].includes(active.status) && (
+              {canManage && ["draft", "sent"].includes(active.status) && (
                 <Button onClick={() => setStatus("signed")} disabled={busy}>
                   <FileSignature className="mr-2 h-4 w-4" aria-hidden="true" />
                   Sign
@@ -289,15 +292,15 @@ export default function Contracts({ projects = [] }) {
               )}
               {signed && !["completed", "terminated"].includes(active.status) && (
                 <>
-                  <Button variant="outline" onClick={() => setAmendForm({ field: "value", value: "" })} disabled={busy}>
+                  {canAmend && <Button variant="outline" onClick={() => setAmendForm({ field: "value", value: "" })} disabled={busy}>
                     Amend
-                  </Button>
-                  <Button variant="outline" onClick={() => setStatus("completed")} disabled={busy}>
+                  </Button>}
+                  {canManage && <Button variant="outline" onClick={() => setStatus("completed")} disabled={busy}>
                     Complete
-                  </Button>
+                  </Button>}
                 </>
               )}
-              {!["completed", "terminated"].includes(active.status) && (
+              {canManage && !["completed", "terminated"].includes(active.status) && (
                 <Button onClick={() => setMilestoneForm({ title: "" })} disabled={busy}>
                   <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
                   Milestone
@@ -334,17 +337,17 @@ export default function Contracts({ projects = [] }) {
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant={MILESTONE_TONE[m.status] || "outline"}>{m.status}</Badge>
-                    {m.status === "pending" && (
+                    {canManage && m.status === "pending" && (
                       <Button size="sm" variant="outline" disabled={busy} onClick={() => moveMilestone(m, "delivered")}>
                         Delivered
                       </Button>
                     )}
-                    {m.status === "delivered" && (
+                    {canManage && m.status === "delivered" && (
                       <Button size="sm" disabled={busy} onClick={() => moveMilestone(m, "approved")}>
                         Approve
                       </Button>
                     )}
-                    {m.status === "approved" && (
+                    {canManage && m.status === "approved" && (
                       <Button size="sm" variant="outline" disabled={busy} onClick={() => askForInvoice(m)}>
                         Mark invoiced
                       </Button>
@@ -528,7 +531,7 @@ export default function Contracts({ projects = [] }) {
       <PageHeader
         title="Contracts"
         description="What was agreed with each client, and what has been delivered against it."
-        actions={
+        actions={canManage &&
           <Button onClick={() => setForm({ reference: "", title: "", contractType: "fixed_price" })}>
             <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
             New contract

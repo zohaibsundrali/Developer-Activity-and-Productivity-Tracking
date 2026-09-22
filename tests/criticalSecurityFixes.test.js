@@ -32,13 +32,13 @@ describe("C-1 · self-repair cannot raise a role", () => {
   const membership = (role) => ({ role });
 
   it("refuses a promotion", () => {
-    expect(wouldEscalateRole(claims("hr"), membership("admin"))).toBe(true);
+    expect(wouldEscalateRole(claims("hr"), membership("owner"))).toBe(true);
     expect(wouldEscalateRole(claims("developer"), membership("owner"))).toBe(true);
-    expect(wouldEscalateRole(claims("manager"), membership("admin"))).toBe(true);
+    expect(wouldEscalateRole(claims("manager"), membership("owner"))).toBe(true);
   });
 
   it("allows a demotion that adds no capabilities", () => {
-    expect(wouldEscalateRole(claims("owner"), membership("admin"))).toBe(false);
+    expect(wouldEscalateRole(claims("owner"), membership("manager"))).toBe(false);
     expect(wouldEscalateRole(claims("owner"), membership("hr"))).toBe(false);
   });
 
@@ -49,7 +49,7 @@ describe("C-1 · self-repair cannot raise a role", () => {
       expect(wouldEscalateRole({ role: empty }, membership("developer")), String(empty)).toBe(false);
       expect(wouldEscalateRole({ role: empty }, membership("owner")), String(empty)).toBe(false);
     }
-    expect(wouldEscalateRole(null, membership("admin"))).toBe(false);
+    expect(wouldEscalateRole(null, membership("owner"))).toBe(false);
   });
 
   it("is a no-op when nothing changed", () => {

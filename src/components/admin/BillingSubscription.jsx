@@ -760,7 +760,7 @@ export default function BillingSubscription() {
           show at all before migration 066. */}
       <Section
         title="Payment method"
-        description="The card Stripe charges for this organization."
+        description="The card Stripe charges for this shared account."
       >
         <div className="rounded-xl border border-border bg-card p-5 shadow-card">
           {card ? (
@@ -826,8 +826,8 @@ export default function BillingSubscription() {
 
       {/* Usage */}
       <Section
-        title="Usage this period"
-        description="Counts and limits are reported by the server. Resource increases are checked in the database; tracking history controls which older records you can access."
+        title="Combined account usage"
+        description="These limits are shared across all organizations on your account. Adding an organization does not reset usage or start another trial."
       >
         <div className="rounded-xl border border-border bg-card p-5 shadow-card">
           {usageRows.length === 0 ? (

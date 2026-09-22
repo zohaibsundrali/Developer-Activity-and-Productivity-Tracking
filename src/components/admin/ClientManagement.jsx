@@ -5,6 +5,7 @@ import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
 import { updateInvoiceRecord, confirmInvoiceMutation } from "@/utils/invoiceMutationRequests";
 import { authFetch } from "@/utils/authFetch";
+import { can } from "@/utils/permissions";
 import { showSuccess, showError, showConfirm } from "@/utils/alerts";
 import {
   PageHeader, Section, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter,
@@ -228,6 +229,9 @@ export default function ClientManagement() {
     setOrgReady(true);
   }, []);
 
+  const canInvite = orgReady && can("member.invite");
+  const canProvision = orgReady && can("member.provision");
+
   const loadAll = useCallback(async () => {
     if (!orgId) return;
     setLoading(true);
@@ -247,7 +251,7 @@ export default function ClientManagement() {
       // It fails on its own, so it gets its own error state rather than being
       // reported as "no pending invitations".
       try {
-        setClientInvites(await fetchClientInvitations());
+        setClientInvites(canInvite ? await fetchClientInvitations() : []);
       } catch (err) {
         setClientInvites([]);
         setInvitesError(err?.message || "Could not load client invitations.");
@@ -257,7 +261,7 @@ export default function ClientManagement() {
     } finally {
       setLoading(false);
     }
-  }, [orgId]);
+  }, [orgId, canInvite]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
@@ -316,7 +320,7 @@ export default function ClientManagement() {
       <div key={tab} className="animate-fade-in motion-reduce:animate-none">
         {tab === "clients" && (
           <ClientsTab clients={clients} invites={clientInvites} projects={projects} reload={loadAll}
-            loading={loading} loadError={error} invitesError={invitesError} />
+            loading={loading} loadError={error} invitesError={invitesError} canInvite={canInvite} canProvision={canProvision} />
         )}
         {tab === "links" && (
           <ClientLinksTab orgId={orgId} clients={clients} projects={projects} links={projectClients} reload={loadAll} loading={loading} loadError={error} />
@@ -339,7 +343,7 @@ export default function ClientManagement() {
 }
 
 /* ---------------- Clients ---------------- */
-function ClientsTab({ clients, invites, projects, reload, loading, loadError, invitesError }) {
+function ClientsTab({ clients, invites, projects, reload, loading, loadError, invitesError, canInvite, canProvision }) {
   const [email, setEmail] = useState("");
   const [selected, setSelected] = useState([]); // project ids to link on accept
   const [sending, setSending] = useState(false);
@@ -419,9 +423,9 @@ function ClientsTab({ clients, invites, projects, reload, loading, loadError, in
     <div className="grid gap-5 lg:grid-cols-3">
       {/* Two ways in, stacked in the same column: create the account outright,
           or invite and let them choose their own password. */}
-      <div className="space-y-5 lg:col-span-1">
-      <CreateClientAccount reload={reload} />
-      <Card>
+      {(canInvite || canProvision) && <div className="space-y-5 lg:col-span-1">
+      {canProvision && <CreateClientAccount reload={reload} />}
+      {canInvite && <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Mail aria-hidden="true" className="h-4 w-4 text-primary" /> Invite a client
@@ -462,10 +466,10 @@ function ClientsTab({ clients, invites, projects, reload, loading, loadError, in
             </Button>
           </form>
         </CardContent>
-      </Card>
-      </div>
+      </Card>}
+      </div>}
 
-      <div className="space-y-6 lg:col-span-2">
+      <div className={`space-y-6 ${canInvite || canProvision ? "lg:col-span-2" : "lg:col-span-3"}`}>
         {/* Existing clients */}
         <Section title="Clients" description="Everyone with access to this workspace's client portal.">
           {loadError ? (
@@ -531,7 +535,7 @@ function ClientsTab({ clients, invites, projects, reload, loading, loadError, in
         </Section>
 
         {/* Pending client invitations */}
-        <Section title="Pending invitations" description="Invites that have been sent but not accepted yet.">
+        {canInvite && <Section title="Pending invitations" description="Invites that have been sent but not accepted yet.">
           {/* `invitesError` is the invitations endpoint failing on its own. The
               empty state below asserts that every invite was accepted or
               revoked, which a failed request cannot support. */}
@@ -617,7 +621,7 @@ function ClientsTab({ clients, invites, projects, reload, loading, loadError, in
               </div>
             </>
           )}
-        </Section>
+        </Section>}
       </div>
     </div>
   );

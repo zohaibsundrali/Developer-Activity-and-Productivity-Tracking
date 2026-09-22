@@ -291,13 +291,13 @@ describe("the section map is derived, not a second copy", () => {
     //
     // Spot-checked against literal expectations instead, so a wrong mapping in
     // SECTION_PERMISSIONS actually fails something.
-    expect([...ADMIN_SECTION_ROLES.billing]).toEqual(["owner", "admin", "finance"]);
-    expect([...ADMIN_SECTION_ROLES.employees]).toEqual(["owner", "admin", "hr"]);
+    expect([...ADMIN_SECTION_ROLES.billing]).toEqual(["owner", "finance"]);
+    expect([...ADMIN_SECTION_ROLES.employees]).toEqual(["owner", "hr"]);
     expect([...ADMIN_SECTION_ROLES["task-reviews"]]).toEqual([
-      "owner", "admin", "manager", "team_lead", "qa",
+      "owner", "manager", "team_lead", "qa",
     ]);
-    expect([...ADMIN_SECTION_ROLES["developer-activity"]]).toEqual(["owner", "admin"]);
-    expect([...ADMIN_SECTION_ROLES.productivity]).toEqual(["owner", "admin"]);
+    expect([...ADMIN_SECTION_ROLES["developer-activity"]]).toEqual(["owner"]);
+    expect([...ADMIN_SECTION_ROLES.productivity]).toEqual(["owner"]);
     expect(ADMIN_SECTION_ROLES.overview).toBeNull();
     expect(ADMIN_SECTION_ROLES.account).toBeNull();
 

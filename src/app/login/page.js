@@ -99,7 +99,7 @@ export default function LoginPage() {
         const response = await authFetch("/api/organizations", { cache: "no-store" });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || "Could not load your organizations. Please try again.");
-        if (result.ownerAccount || result.organizations?.some(org => ["owner", "admin"].includes(org.role))) {
+        if (result.ownerAccount || result.organizations?.some(org => org.role === "owner")) {
           // Selection establishes the typed profile and workspace permissions.
           await fetch("/api/auth/session", { method: "DELETE" });
           router.push("/organizations");
@@ -168,7 +168,7 @@ export default function LoginPage() {
         expiryDate.setDate(expiryDate.getDate() + SESSION_MAX_AGE_DAYS);
         document.cookie = `admin_auth=true; expires=${expiryDate.toUTCString()}; path=/`;
         document.cookie = `admin_id=${loggedInData.id}; expires=${expiryDate.toUTCString()}; path=/; HttpOnly; Secure`;
-        setTimeout(() => { router.push(["owner", "admin"].includes(org.membershipRole) ? "/organizations" : "/admin/dashboard"); }, 100);
+        setTimeout(() => { router.push(org.membershipRole === "owner" ? "/organizations" : "/admin/dashboard"); }, 100);
       } else if (role === "client") {
         sessionStorage.setItem("clientUser", JSON.stringify(userSession));
         localStorage.removeItem("clientUser");

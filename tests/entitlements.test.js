@@ -42,6 +42,7 @@ const PLANS = {
 /** Minimal stand-in for the service-role client: no network, exact counts. */
 function fakeService({ subscription = null, counts = {}, failCount = false } = {}) {
   return {
+    rpc: async (_name, { p_org }) => ({ data: { accountId: p_org, ownerAuthId: 'payer', organizationIds: [p_org] } }),
     from(table) {
       if (table === "organization_subscriptions") {
         return {
@@ -262,7 +263,7 @@ describe("checkResourceLimit", () => {
 describe("billing verification failures", () => {
   const failing = (failedTable, failure) => {
     const normal = fakeService();
-    return { from(table) {
+    return { rpc: normal.rpc, from(table) {
       if (table !== failedTable) return normal.from(table);
       const q = { select: () => q, eq: () => q, neq: () => q,
         maybeSingle: async () => failure, then: (resolve) => Promise.resolve(failure).then(resolve) };

@@ -74,7 +74,7 @@ const THIRD_PARTY = 'user-third-party';
 
 const STAFF_ROLES = ROLES.filter((r) => r !== 'client');
 /** Roles whose accounts live in admin_users, so userType is "admin". */
-const ADMIN_USER_TYPES = new Set(['owner', 'admin', 'manager', 'hr', 'finance']);
+const ADMIN_USER_TYPES = new Set(['owner', 'manager', 'hr', 'finance']);
 
 function staff(role, extra = {}) {
   return {
@@ -281,7 +281,7 @@ afterEach(() => {
 // 1. /api/automation/notify — automation.manage
 // ══════════════════════════════════════════════════════════════════════════
 
-const NOTIFY_ALLOWED = ['owner', 'admin'];
+const NOTIFY_ALLOWED = ['owner'];
 
 function notifyTables() {
   state.tables = {
@@ -431,7 +431,7 @@ describe('/api/automation/notify only fans out for automation.manage', () => {
 // 2. /api/ai-generate-tasks — task.manage, plus the caps and the org stamp
 // ══════════════════════════════════════════════════════════════════════════
 
-const TASK_MANAGE = ['owner', 'admin', 'manager', 'team_lead'];
+const TASK_MANAGE = ['owner', 'manager', 'team_lead'];
 
 function aiTables() {
   state.tables = {
@@ -523,7 +523,7 @@ describe('/api/ai-generate-tasks only writes tasks for task.manage', () => {
       description: 'x',
       noOfDays: 1,
     }));
-    const { status, body } = await generate(staff('admin'));
+    const { status, body } = await generate(staff('owner'));
     expect(status).toBe(200);
     const rows = queries('developer_tasks', 'insert')[0].payload;
     expect(rows.length).toBeLessThanOrEqual(100);
@@ -536,7 +536,7 @@ describe('/api/ai-generate-tasks only writes tasks for task.manage', () => {
     state.aiTasks = [
       { title: 'T'.repeat(5000), description: 'D'.repeat(50000), noOfDays: 1 },
     ];
-    await generate(staff('admin'));
+    await generate(staff('owner'));
     const [row] = queries('developer_tasks', 'insert')[0].payload;
     expect(row.task_title.length).toBeLessThanOrEqual(200);
     expect(row.task_description.length).toBeLessThanOrEqual(2000);
@@ -547,7 +547,7 @@ describe('/api/ai-generate-tasks only writes tasks for task.manage', () => {
 // 3. The commercial pipeline: change-requests GET and proposals GET
 // ══════════════════════════════════════════════════════════════════════════
 
-const PIPELINE_READERS = ['owner', 'admin', 'manager', 'team_lead'];
+const PIPELINE_READERS = ['owner', 'manager', 'team_lead'];
 
 const CHANGE_REQUEST_ROW = {
   id: 'cr-1',
@@ -750,7 +750,7 @@ describe('/api/task-submission: the submitter has to be the assignee', () => {
     expect(queries('task_submissions', 'insert')).toHaveLength(0);
   });
 
-  it.each(['owner', 'admin', 'manager', 'team_lead'])(
+  it.each(['owner', 'manager', 'team_lead'])(
     'a %s holds task.manage and may submit on the assignee\'s behalf',
     async (role) => {
       const { status } = await submit(staff(role, { appUserId: THIRD_PARTY }));
@@ -807,7 +807,7 @@ describe('/api/task-submission: the submitter has to be the assignee', () => {
 // 5. Separation of duties — nobody reviews their own work
 // ══════════════════════════════════════════════════════════════════════════
 
-const REVIEWERS = ['owner', 'admin', 'manager', 'team_lead', 'qa'];
+const REVIEWERS = ['owner', 'manager', 'team_lead', 'qa'];
 
 function reviewTables({ taskDeveloper, submissionDeveloper, reviewer }) {
   state.tables = {
@@ -909,7 +909,7 @@ describe('/api/admin-review refuses to let anyone approve their own work', () =>
     expect(queries('productivity_metrics', 'upsert')).toHaveLength(0);
   });
 
-  it.each(['owner', 'admin'])(
+  it.each(['owner'])(
     '%s is NOT exempt — separation of duties that stops at the top is not separation of duties',
     async (role) => {
       const { status } = await review(staff(role, { appUserId: ME, userType: 'developer' }), { taskDeveloper: ME });
@@ -978,7 +978,7 @@ describe('/api/task-plan/review delegates atomic authority to SQL', () => {
     expect(queries('projects', 'update')).toHaveLength(0);
   });
   it('does not mistake an admin profile for a developer with the same UUID', async () => {
-    const { status } = await reviewPlan(staff('admin', { appUserId: ME }));
+    const { status } = await reviewPlan(staff('owner', { appUserId: ME }));
     expect(status).toBe(200);
     expect(queries('commit_task_plan_review', 'rpc')[0].payload.p_type).toBe('admin');
   });

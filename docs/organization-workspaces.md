@@ -1,5 +1,11 @@
 # Organization chooser and authenticated creation
 
+> The shared-account billing update changes authenticated creation to
+> `/create/organization`, removes repeat plan selection, and combines limits.
+> See [shared account billing](shared-account-billing.md) for the current behavior
+> and required follow-up migration. The sections below describe the initial
+> organization chooser implementation.
+
 ## Audit and behavior
 
 The public root was a server-rendered marketing page with no Auth redirect.
@@ -72,9 +78,9 @@ remain until the Auth session is removed, so revocation never silently falls bac
 
 ## Deployment order — required before enabling the UI
 
-This change has **not** been applied to the hosted database or pushed/deployed.
-The web code requires the new database RPCs and Auth hook; do not deploy the app
-alone.
+The web code requires the new database RPCs and Auth hook. Merging or deploying
+the web code does not apply SQL migrations or enable the hook automatically.
+Verify these prerequisites for each deployment environment.
 
 1. Apply `20260920051306_authenticated_organization_workspaces.sql` through the
    established migration release process. It scopes admin profile email and Auth
@@ -132,3 +138,26 @@ This script intercepts Supabase and application API calls, so it does not create
 live accounts or organizations. Screenshots go to the ignored
 `test-results/organization-workspaces/` directory. Set
 `PLAYWRIGHT_EXECUTABLE_PATH` only if Chromium is installed at a custom location.
+
+## Follow-up audit — 2026-09-20
+
+The existing implementation already provides the requested routes, authenticated
+organization setup, shared plan styling, and server-authorized workspace selection.
+The follow-up changes extend browser coverage and clarify deployment instructions;
+they do not change application behavior or require another migration.
+
+- Production build passed (existing React hook lint warnings remain).
+- The full test run passed 5,068 of 5,069 tests. The remaining permission-document
+  test was blocked by sandbox `spawnSync node EPERM`; its entire 54-test file passed
+  when rerun outside that restriction.
+- Browser checks passed for owner root redirect, staff/anonymous public Home,
+  logout then public Home, existing workspace switching in both directions,
+  authenticated creation and workspace handoff without credential/OTP prompts,
+  empty memberships, keyboard plan selection, and 1440/768/390-pixel layouts.
+- Added public registration coverage: details → mocked email verification →
+  billing → signup request with the verification grant and terms acceptance.
+  A simulated signup failure displays its error without leaving the form.
+- No browser page errors occurred. These browser checks use mocked identity/API
+  responses. They do not verify actual email delivery, hosted account creation,
+  or production hook execution. Live authenticated acceptance testing remains
+  necessary after deployment and hook configuration.

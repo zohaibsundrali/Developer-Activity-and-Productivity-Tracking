@@ -4,7 +4,7 @@ import { canReceiveTaskNotification } from '@/utils/taskNotificationAccess';
 import { sendTemplatedEmail, emailMode } from '@/utils/emailService';
 
 const TASK_ACTIONS = new Set(['assign', 'set_status', 'set_priority', 'add_label']);
-const permanentCodes = new Set(['42501', '22023', '23514', '40001']);
+const permanentCodes = new Set(['42501', '22023', '23514', 'PT409', '40001']);
 const failure = (message, code = '22023') => Object.assign(new Error(message), { code });
 
 // Dependency injection keeps regression tests focused on RLS client selection,

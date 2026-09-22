@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { ROLES, rankOf } from "@/utils/roles";
+import { ROLES, rankOf, canGrantRole, invitationRolesFor } from "@/utils/roles";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
 import { can, getRole } from "@/utils/permissions";
@@ -47,7 +47,6 @@ export const roleLabel = (role) => {
 const roleVariant = (role) => {
   const r = String(role || "").toLowerCase();
   if (r === "owner") return "default";
-  if (r === "admin") return "info";
   if (r === "manager" || r === "team_lead" || r === "hr" || r === "finance") return "secondary";
   if (r === "client") return "warning";
   return "outline";
@@ -409,7 +408,7 @@ function TeamsTab({ orgId, teams, departments, members, reload, loading, loadErr
   const [managerId, setManagerId] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const managers = members.filter((m) => ["owner", "admin", "manager"].includes(m.role));
+  const managers = members.filter((m) => ["owner", "manager"].includes(m.role));
 
   const add = async (e) => {
     e.preventDefault();
@@ -540,6 +539,12 @@ function TeamsTab({ orgId, teams, departments, members, reload, loading, loadErr
 
 /* ---------------- Members ---------------- */
 function MembersTab({ teams, departments, members, reload, loading, loadError }) {
+  const caller = getOrgContext();
+  const ownMembership = m => m.user_id === caller?.userId && m.user_type === caller?.userType;
+  const mayChangeRole = m => !ownMembership(m) && m.user_type !== "client"
+    && ["owner", "hr"].includes(caller?.role)
+    && (caller?.role === "owner" || (rankOf(m.role) ?? Infinity) < (rankOf(caller?.role) ?? 0));
+
   // `role` is the one field that cannot be patched from the browser.
   //
   // A member's role lives in TWO places: `memberships.role`, which this table
@@ -609,12 +614,10 @@ function MembersTab({ teams, departments, members, reload, loading, loadError })
                     <div className="flex items-center gap-2">
                       <Badge variant={roleVariant(m.role)} size="sm">{roleLabel(m.role)}</Badge>
                       <select value={m.role} onChange={(e) => update(m.id, { role: e.target.value })}
-                        disabled={m.role === "owner"}
+                        disabled={!mayChangeRole(m)}
                         aria-label={`Change role for ${m.email}`}
                         className={`${CONTROL_SM} disabled:cursor-not-allowed disabled:opacity-50`}>
-                        {/* "owner" is not an assignable role here — ownership can't be
-                            granted from the member dropdown to avoid accidental escalation. */}
-                        {ROLES.filter((r) => r !== "owner").map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
+                        {ROLES.filter(r => r === m.role || (r !== "client" && canGrantRole(caller?.role, r))).map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
                       </select>
                     </div>
                   </td>
@@ -673,7 +676,7 @@ function InvitationsTab({ orgId, invitations, teams, departments, reload, loadin
   // rank, which is exactly what /api/invitations enforces. The dropdown used to
   // list every non-owner role, so a manager saw "admin" and picked a choice
   // that always returned 403.
-  const callerRank = rankOf(getRole()) ?? 0;
+  const invitationRoles = invitationRolesFor(getRole());
   const [teamId, setTeamId] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [sending, setSending] = useState(false);
@@ -741,7 +744,7 @@ function InvitationsTab({ orgId, invitations, teams, departments, reload, loadin
             </Field>
             <Field label="Role" htmlFor="invite-role">
               <select id="invite-role" value={role} onChange={(e) => setRole(e.target.value)} className={CONTROL}>
-                {ROLES.filter((r) => r !== "owner" && (rankOf(r) ?? 0) < callerRank).map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
+                {invitationRoles.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
               </select>
             </Field>
             <Field label="Team" htmlFor="invite-team">

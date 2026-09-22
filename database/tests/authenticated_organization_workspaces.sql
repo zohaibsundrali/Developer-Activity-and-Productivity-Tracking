@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 \ir transactional_signup_recovery.sql
-create role supabase_auth_admin;
+do $$ begin if not exists(select 1 from pg_roles where rolname='supabase_auth_admin') then create role supabase_auth_admin; end if; end $$;
 create table public.user_permissions(membership_id uuid,permission_key text,allowed boolean);
 create table auth.sessions(id uuid primary key,user_id uuid references auth.users(id));
 create function auth.uid() returns uuid language sql stable as $$select nullif(auth.jwt()->>'sub','')::uuid$$;

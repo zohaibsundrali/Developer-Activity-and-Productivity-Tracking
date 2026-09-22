@@ -81,3 +81,26 @@ it.each(['{', 'null', '[]', '"text"'])('rejects malformed invitation body %s bef
  const response=await POST(new Request('https://app.test/api/invitations',{method:'POST',body}));
  expect(response.status).toBe(400);expect(state.inserts).toEqual([]);expect(state.send).not.toHaveBeenCalled();
 });
+
+describe('co-owner invitations', () => {
+ it('lets an owner invite a peer and see owner invitation tokens', async () => {
+  state.role='owner';
+  const response=await POST(req({role:'owner'}));
+  expect(response.status).toBe(200);
+  expect(state.inserts[0]).toMatchObject({role:'owner',organization_id:'org',invited_by:'actor'});
+  expect(state.send).toHaveBeenCalledOnce();
+  await GET(new Request('https://app.test/api/invitations'));
+  expect(state.filters.find(f=>f.column==='role').values).toContain('owner');
+  expect(state.filters.find(f=>f.column==='role').values).not.toContain('admin');
+ });
+ it.each(['hr','manager','developer','admin'])('refuses %s granting owner before any write or email', async role => {
+  state.role=role;
+  expect((await POST(req({role:'owner'}))).status).toBe(403);
+  expect(state.inserts).toEqual([]);expect(state.send).not.toHaveBeenCalled();
+ });
+ it('rejects a retired admin assignment even from an owner', async () => {
+  state.role='owner';
+  expect((await POST(req({role:'admin'}))).status).toBe(400);
+  expect(state.inserts).toEqual([]);expect(state.send).not.toHaveBeenCalled();
+ });
+});

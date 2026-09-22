@@ -37,6 +37,7 @@ export const ROLES = {
   qa: { prefix: 'E2E_QA', portal: 'team-admin' },
   designer: { prefix: 'E2E_DESIGNER', portal: 'team' },
   devops: { prefix: 'E2E_DEVOPS', portal: 'team' },
+  // Legacy seed name; its membership is now a second Owner.
   admin: { prefix: 'E2E_ADMIN', portal: 'admin' },
   // Organisation B — only the isolation spec needs it.
   orgBOwner: { prefix: 'E2E_ORG_B_OWNER', portal: 'admin' },

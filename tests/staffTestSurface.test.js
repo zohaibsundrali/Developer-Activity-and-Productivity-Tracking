@@ -103,10 +103,10 @@ describe("095 — who may READ a test plan", () => {
     // mirror table is not load-bearing. So the only thing keeping the two in
     // step is this test.
     for (const key of ["test_case.view", "test_run.execute"]) {
-      expect(sorted(defaultRolesFor(key)), key).toEqual(sorted(TESTERS));
+      expect(sorted(defaultRolesFor(key)), key).toEqual(sorted(TESTERS.filter(r => r !== "admin")));
     }
     for (const key of ["test_case.manage", "test_run.manage", "bug.raise"]) {
-      expect(sorted(defaultRolesFor(key)), key).toEqual(sorted(REVIEWERS));
+      expect(sorted(defaultRolesFor(key)), key).toEqual(sorted(REVIEWERS.filter(r => r !== "admin")));
     }
   });
 
@@ -281,7 +281,7 @@ describe("096 — the mirror, re-synced", () => {
       previous.rows.filter((r) => keyOf(r) === "test_run.execute").map(roleOf)
     );
     expect(executeBefore.length).toBeGreaterThan(0);
-    expect(sorted(defaultRolesFor("bug.raise"))).toEqual(executeBefore);
+    expect(sorted(defaultRolesFor("bug.raise"))).toEqual(executeBefore.filter(r => r !== "admin"));
     expect(sorted(rows.filter((r) => keyOf(r) === "bug.raise").map(roleOf))).toEqual(executeBefore);
   });
 
@@ -399,7 +399,7 @@ describe("the staff Tests screen", () => {
     expect(staff).toMatch(/case "my-tests":\s*return <TestCases \/>;/);
     expect(read(ADMIN_DASHBOARD)).not.toContain('"my-tests"');
 
-    for (const r of TESTERS) {
+    for (const r of TESTERS.filter(role => role !== "admin")) {
       const inStaff = staffNav(r).some((i) => i.id === "my-tests");
       expect(inStaff || canEnterAdminArea(r), `${r} holds the key but has no screen`).toBe(true);
     }

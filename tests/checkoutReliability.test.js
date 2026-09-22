@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({ queries: {}, writes: [], stripe: {}, auth: null }));
 vi.mock("@/utils/serverAuth", () => ({
   getAuthedOrg: async () => state.auth,
-  serviceClient: () => ({ rpc: async () => ({data: state.deleting?.length ? state.deleting.shift() : false}), from(table) {
+  serviceClient: () => ({ rpc: async (name) => name === 'billing_scope' ? {data:{accountId:state.auth.orgId,ownerAuthId:state.auth.userId,organizationIds:[state.auth.orgId]}} : ({data: state.deleting?.length ? state.deleting.shift() : false}), from(table) {
     let updating = false;
     const q = {
       select: () => updating ? Promise.resolve({ data: state.saveRace ? [] : [{ organization_id: 'org-a' }], error: state.saveError || null }) : q,
@@ -26,7 +26,7 @@ const request = () => new Request("https://app.test/api/billing/checkout", {
   method: "POST", body: JSON.stringify({ planCode: "professional" }),
 });
 beforeEach(() => {
-  state.auth = { orgId: "org-a", email: "owner@example.test" };
+  state.auth = { userId: 'payer', orgId: "org-a", email: "owner@example.test" };
   state.writes = []; state.filters = []; state.saveRace = false; state.saveError = null; state.deleting = [];
   state.queries = {
     billing_plans: { data: { code: "professional", name: "Professional", is_active: true, stripe_price_id: "price_pro", amount_cents: 4900 } },

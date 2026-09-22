@@ -9,7 +9,7 @@ import { SHIFT_UUID, shiftInstant } from '@/utils/workShifts';
 export const dynamic = 'force-dynamic';
 function databaseFailure(error) {
   const code = error?.code;
-  const status = code === '42501' || code === 'P0002' ? 403 : ['40001','23505','55000'].includes(code) ? 409 : ['22023','23514'].includes(code) ? 400 : String(error?.message || '').startsWith('BILLING_LOCKED') ? 402 : String(error?.message || '').startsWith('PLAN_LIMIT_REACHED') ? 409 : 503;
+  const status = code === '42501' || code === 'P0002' ? 403 : ['PT409', '40001','23505','55000'].includes(code) ? 409 : ['22023','23514'].includes(code) ? 400 : String(error?.message || '').startsWith('BILLING_LOCKED') ? 402 : String(error?.message || '').startsWith('PLAN_LIMIT_REACHED') ? 409 : 503;
   return new GithubFailure(status === 403 ? 'Project access and task management/read permission are required.' : status === 409 ? 'The repository, project or task limit changed. Refresh before importing.' : status === 400 ? 'Check the issue content and planned dates.' : status === 402 ? 'Your subscription requires attention before importing.' : 'Issue import is temporarily unavailable.', status);
 }
 async function context(client, auth, id, version) {

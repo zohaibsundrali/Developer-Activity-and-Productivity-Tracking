@@ -20,7 +20,7 @@ function databaseFailure(error) {
   const token = String(error?.message || "").split(":")[0];
   const status = token === "BILLING_LOCKED" ? 402 : error?.code === "42501" ? 403
     : error?.code === "P0002" ? 404 : error?.code === "22023" ? 400
-    : ["55000", "23514", "23505", "40001"].includes(error?.code) ? 409 : 503;
+    : ["55000", "23514", "23505", "PT409", "40001"].includes(error?.code) ? 409 : 503;
   return fail(status === 402 ? "Your subscription requires attention before attendance can change."
     : status === 403 ? "You do not have permission for this attendance action."
     : status === 404 ? "That active staff member was not found."

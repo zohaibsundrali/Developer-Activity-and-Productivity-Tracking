@@ -128,7 +128,7 @@ describe("every role exists in every list that decides anything", () => {
    */
   it("the member role picker maps over the shared list rather than its own", () => {
     expect(ORGMGMT).toMatch(/import \{[^}]*\bROLES\b[^}]*\} from "@\/utils\/roles"/);
-    expect(ORGMGMT).toMatch(/ROLES\.filter\(\(r\) => r !== "owner"\)\.map\(/);
+    expect(ORGMGMT).toContain("canGrantRole(caller?.role, r)");
   });
 
   it("the member role picker keeps no local copy of the roles", () => {
@@ -144,8 +144,8 @@ describe("every role exists in every list that decides anything", () => {
     const ranks = Object.fromEntries(
       [...ROLES_MODULE.matchAll(/^\s*(\w+):\s*(\d+),/gm)].map((m) => [m[1], Number(m[2])])
     );
-    expect(ranks.owner).toBeGreaterThan(ranks.admin);
-    expect(ranks.admin).toBeGreaterThan(ranks.manager);
+    expect(ranks.owner).toBeGreaterThan(ranks.manager);
+    expect(ranks.admin).toBeUndefined();
     expect(ranks.manager).toBeGreaterThan(ranks.hr);
     expect(ranks.hr).toBeGreaterThan(ranks.finance);
     expect(ranks.finance).toBeGreaterThan(ranks.team_lead);

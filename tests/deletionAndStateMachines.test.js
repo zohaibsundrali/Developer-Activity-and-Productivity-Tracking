@@ -567,12 +567,12 @@ describe("who may run the most destructive route in the product", () => {
   };
 
   it("honours a per-person DENY, which the hand-typed role list ignored", async () => {
-    // THE POINT OF FINDING 1b. `["owner","admin"].includes(auth.role)` admits
+    // THE POINT OF FINDING 1b. `["owner"].includes(auth.role)` admits
     // the same two roles as `member.delete` and consults no override, so a DENY
     // written against one named admin was honoured everywhere in the product
     // except here.
     const { status } = await runDelete({
-      auth: actor({ role: "admin", overrides: { "member.delete": false } }),
+      auth: actor({ role: "owner", overrides: { "member.delete": false } }),
     });
     expect(status).toBe(403);
     untouched();
@@ -621,7 +621,7 @@ describe("who may run the most destructive route in the product", () => {
 
   it("refuses to delete the caller's own account", async () => {
     const { status } = await runDelete({
-      auth: actor({ role: "admin", appUserId: LEAVER }),
+      auth: actor({ role: "owner", appUserId: LEAVER }),
     });
     expect(status).toBe(400);
     untouched();
@@ -631,7 +631,7 @@ describe("who may run the most destructive route in the product", () => {
     // isAdminAuthorizedForDeveloper was defined and called from nowhere while
     // developerDeletion.js claimed the route repeated it against the verified
     // token. An admin who did not add this person is now refused...
-    const stranger = actor({ role: "admin", appUserId: "app-other", email: "other@acme.test" });
+    const stranger = actor({ role: "hr", appUserId: "app-other", email: "other@acme.test" });
     expect((await runDelete({ auth: stranger })).status).toBe(403);
     untouched();
 
@@ -644,7 +644,7 @@ describe("who may run the most destructive route in the product", () => {
   it("compares against the TOKEN, not the adminId in the body", async () => {
     // The body is caller-supplied. If it were trusted, the check would be
     // self-certifying: anyone could claim to be the person who added them.
-    const stranger = actor({ role: "admin", appUserId: "app-other", email: "other@acme.test" });
+    const stranger = actor({ role: "hr", appUserId: "app-other", email: "other@acme.test" });
     const { status } = await runDelete({
       auth: stranger,
       body: { ...deleteBody(), adminId: "app-owner", adminEmail: "owner@acme.test" },
@@ -904,7 +904,7 @@ function seedProposal(status) {
 
 
 
-async function runDecide(body, auth = actor({ role: "admin" })) {
+async function runDecide(body, auth = actor({ role: "owner" })) {
   getAuthedOrg.mockResolvedValue(auth);
   return readJson(await decide(jsonRequest(body), { params: { id: PROPOSAL } }));
 }
@@ -964,7 +964,7 @@ describe("a declined proposal stays declined", () => {
      * already been sent, and with no record that it was ever refused.
      */
     db = seedProposal("in_review");
-    getAuthedOrg.mockResolvedValue(actor({ role: "admin" }));
+    getAuthedOrg.mockResolvedValue(actor({ role: "owner" }));
     const [rejected, accepted] = await Promise.all([
       decide(jsonRequest({ decision: "rejected", reason: "not this quarter" }), {
         params: { id: PROPOSAL },
@@ -1104,7 +1104,7 @@ describe("closing a project is a step somebody takes once", () => {
 describe('proposal acceptance composes project capabilities', () => {
   it('does not create a project when project.create is explicitly denied', async () => {
     db = seedProposal('submitted');
-    const { status } = await runDecide({ decision: 'accepted' }, actor({ role: 'admin', overrides: { 'project.create': false } }));
+    const { status } = await runDecide({ decision: 'accepted' }, actor({ role: 'owner', overrides: { 'project.create': false } }));
     expect(status).toBe(403);expect(db.tables.projects).toHaveLength(0);expect(theProposal().status).toBe('submitted');
   });
   it('does not let proposal.decide assign a manager without the separate capability', async () => {
@@ -1114,12 +1114,12 @@ describe('proposal acceptance composes project capabilities', () => {
   });
   it('honors an explicit manager-assignment denial for admins too', async () => {
     db = seedProposal('submitted');
-    const { status } = await runDecide({ decision: 'accepted', managerId: '10000000-0000-4000-8000-000000000002' }, actor({ role: 'admin', overrides: { 'project.assign_manager': false } }));
+    const { status } = await runDecide({ decision: 'accepted', managerId: '10000000-0000-4000-8000-000000000002' }, actor({ role: 'owner', overrides: { 'project.assign_manager': false } }));
     expect(status).toBe(403);expect(db.tables.projects).toHaveLength(0);
   });
   it('permits rejection without project creation or assignment authority', async () => {
     db = seedProposal('submitted');
-    const { status } = await runDecide({ decision: 'rejected', reason: 'No capacity', managerId: '10000000-0000-4000-8000-000000000002' }, actor({ role: 'admin', overrides: { 'project.create': false, 'project.assign_manager': false } }));
+    const { status } = await runDecide({ decision: 'rejected', reason: 'No capacity', managerId: '10000000-0000-4000-8000-000000000002' }, actor({ role: 'owner', overrides: { 'project.create': false, 'project.assign_manager': false } }));
     expect(status).toBe(200);expect(theProposal().status).toBe('rejected');expect(db.tables.projects).toHaveLength(0);
   });
   it.each(['client', 'unknown'])('refuses a %s profile despite spoofed staff permissions', async userType => {

@@ -7,7 +7,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const reply = (data, status = 200) => NextResponse.json(data, { status, headers: { 'Cache-Control': 'private, no-store', Vary: 'Authorization, Cookie' } });
 function databaseFailure(error) {
   if (error?.code === '42501' || error?.code === 'P0002') return new GithubFailure('This project integration is not available to your account.', 403);
-  if (error?.code === '40001') return new GithubFailure('The repository link changed. Refresh before trying again.', 409);
+  if (['PT409', '40001'].includes(error?.code)) return new GithubFailure('The repository link changed. Refresh before trying again.', 409);
   if (error?.code === '22023') return new GithubFailure('Check the repository link and version.', 400);
   if (error?.message === 'BILLING_LOCKED') return new GithubFailure('Your subscription requires attention before this link can change.', 402);
   return new GithubFailure('The project integration is temporarily unavailable.');

@@ -3,7 +3,7 @@ import { canReceiveTaskNotification as can } from '@/utils/taskNotificationAcces
 const task = { organization_id: 'org', developer_id: 'assignee' };
 const subject = (role, extra = {}) => ({ orgId: 'org', appUserId: 'other', userType: 'developer', role, overrides: {}, ...extra });
 describe('task notification access', () => {
-  it.each(['owner', 'admin', 'manager', 'team_lead', 'qa'])('%s can receive work they may read or review', role => {
+  it.each(['owner', 'manager', 'team_lead', 'qa'])('%s can receive work they may read or review', role => {
     expect(can(subject(role), task)).toBe(true);
   });
   it.each(['developer', 'designer', 'devops', 'employee', 'hr', 'finance'])('%s cannot receive an unrelated task', role => {

@@ -1,3 +1,4 @@
+import { invalidOptionalDate } from "@/utils/calendarDate";
 import { checkFeatureAccess } from "@/utils/entitlements";
 import { NextResponse } from "next/server";
 import { getAuthedOrg, serviceClient } from "@/utils/serverAuth";
@@ -24,14 +25,10 @@ export const dynamic = "force-dynamic";
 /**
  * What a client may see of their own proposal.
  *
- * `internal_notes` is stripped HERE and not by RLS, and that distinction is
- * load-bearing: Row Level Security is row-level, so the client_read policy in
- * 059 correctly grants the whole row and cannot withhold one column. This is
- * the same arrangement as change_requests.pm_notes, and it carries the same
- * caveat — a client reading `project_proposals` through PostgREST directly
- * would still see the notes. The honest fix is a view or a column-level grant;
- * both are larger than this feature warrants today, so it is written down
- * rather than assumed away.
+ * The API strips `internal_notes` from the client projection. Production
+ * permission migrations also deny direct client reads of the source table,
+ * since row-level filtering alone cannot hide that column. Live QA verifies
+ * both the API projection and direct REST denial.
  */
 const CLIENT_SAFE = (row) => {
   const { internal_notes, ...rest } = row;
@@ -137,6 +134,10 @@ export async function POST(request) {
     }
     if (title.length > MAX_TITLE || description.length > MAX_DESCRIPTION) {
       return NextResponse.json({ error: "That is longer than we can store." }, { status: 400 });
+    }
+
+    if (invalidOptionalDate(body, ["desiredDeadline"])) {
+      return NextResponse.json({ error: "Desired deadline must be a real date, as YYYY-MM-DD." }, { status: 400 });
     }
 
     // Budget is stored as a number or not at all. "around 50k" is not a
