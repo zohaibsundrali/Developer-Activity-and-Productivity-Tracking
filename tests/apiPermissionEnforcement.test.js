@@ -994,9 +994,10 @@ describe('/api/task-submission GET: typed own access and permission overrides', 
     expect((await read(staff('developer', { overrides: { 'task.view_own': false } }))).status).toBe(403);
     expect(queries('task_submissions', 'select')).toHaveLength(0);
   });
-  it('does not treat an admin profile UUID as a developer assignment', async () => {
-    expect((await read(staff('hr', { overrides: { 'task.view_own': true } }))).status).toBe(403);
-    expect(queries('task_submissions', 'select')).toHaveLength(0);
+  it('uses the admin assignment column for admin-profile personal submissions', async () => {
+    expect((await read(staff('hr', { overrides: { 'task.view_own': true } }))).status).toBe(200);
+    expect(queries('task_submissions', 'select')[0].filters).toContainEqual({ method: 'eq', args: ['assignee_admin_id', ME] });
+    expect(queries('task_submissions', 'select')[0].filters).toContainEqual({ method: 'eq', args: ['developer_tasks.assignee_admin_id', ME] });
   });
   it('fails closed without a developer identity', async () => {
     expect((await read(staff('developer', { appUserId: null }))).status).toBe(403);

@@ -1,3 +1,4 @@
+import { taskAssignmentPatch, taskAssignmentKey } from '@/utils/taskAssignment';
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId, getOrgContext } from "@/utils/orgContext";
 import { authFetch } from "@/utils/authFetch";
@@ -224,7 +225,7 @@ export async function updateTask(taskId, patch, logCtx = null) {
   return { error };
 }
 
-const TASK_SNAPSHOT = "id, status, priority, task_type, developer_id, project_id, labels, task_title";
+const TASK_SNAPSHOT = "id, status, priority, task_type, developer_id, assignee_admin_id, project_id, labels, task_title";
 
 /**
  * The single guarded entry point for every task status change driven by a
@@ -348,20 +349,21 @@ export async function moveTask(taskId, { status, position }, logCtx = null) {
 
 // Assignment notifications are generated from the database's actual OLD/NEW
 // rows in the same transaction, including initial assignment and removal.
-export async function assignTask(taskId, developerId, logCtx = null) {
-  const res = await updateTask(taskId, { developer_id: developerId || null }, logCtx);
-  if (res.error || !developerId) return res;
+export async function assignTask(taskId, assignment, logCtx = null) {
+  const patch = taskAssignmentPatch(assignment);
+  const res = await updateTask(taskId, patch, logCtx);
+  if (res.error || !assignment) return res;
 
   try {
     const { data, error } = await supabase
       .from("developer_tasks")
-      .select("id, status, priority, task_type, developer_id, project_id, labels, task_title, organization_id")
+      .select("id, status, priority, task_type, developer_id, assignee_admin_id, project_id, labels, task_title, organization_id")
       .eq("organization_id", getOrgId())
       .eq("id", taskId)
       .single();
     // A concurrent assignment may already have superseded this one. Its
     // database notice is durable; don't run an automation for another target.
-    if (error || !data || data.developer_id !== developerId) return res;
+    if (error || !data || taskAssignmentKey(data) !== taskAssignmentKey(patch)) return res;
     const { runAutomations } = await import("@/utils/automation");
     await runAutomations({ event: "assigned", task: data, projectId: data.project_id });
   } catch {

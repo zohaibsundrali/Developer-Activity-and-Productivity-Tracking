@@ -1,4 +1,6 @@
 "use client";
+import TaskCompletionModal from "@/components/developer/TaskCompletionModal";
+import { isTaskAssignee, taskAssignee, taskAssignmentKey, taskAssignmentPatch } from "@/utils/taskAssignment";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
@@ -202,6 +204,7 @@ export default function TaskDetailDrawer({
   const [mentionQuery, setMentionQuery] = useState("");
   const commentRef = useRef(null);
   const [submittingComment, setSubmittingComment] = useState(false);
+  const [showSubmission, setShowSubmission] = useState(false);
 
   const ctx = getOrgContext();
   const taskId = task?.id;
@@ -209,13 +212,13 @@ export default function TaskDetailDrawer({
   useEffect(() => {
     let active = true;
     setPlanAccess(null);
-    if (task?.developer_id === ctx?.userId && ctx?.userType === 'developer' && task?.project_id && allowed('task.update_own')) {
+    if (isTaskAssignee(task, ctx) && task?.project_id && allowed('task.update_own')) {
       supabase.rpc('auth_task_plan_edit', { p_project: task.project_id }).then(({ data, error }) => {
         if (active) setPlanAccess({ taskId, editable: !error && data === true });
       }).catch(() => { if (active) setPlanAccess({ taskId, editable: false }); });
     }
     return () => { active = false; };
-  }, [taskId, task?.project_id, task?.developer_id, ctx?.userId, ctx?.userType, ctx?.organizationId]);
+  }, [taskId, task?.project_id, task?.developer_id, task?.assignee_admin_id, ctx?.userId, ctx?.userType, ctx?.organizationId]);
   const actionAccess = taskUiPermissions({ task: form?.id === taskId ? form : task, context: ctx, allowed,
     ownPlanEditable: planAccess?.taskId === taskId && planAccess.editable });
 
@@ -294,26 +297,19 @@ export default function TaskDetailDrawer({
     [memberIndex, ctx]
   );
 
-  // developer_tasks.developer_id is a foreign key onto developers(id), and a
-  // membership's user_id is only a developers.id when its user_type is
-  // "developer" - for an admin-typed membership it is an admin_users.id. Offering
-  // anyone by ROLE therefore let a manager or team lead be picked whose id the
-  // foreign key then rejected, so the assignment silently failed to save.
-  //
-  // Deactivated people are excluded for the same reason work should not be
-  // routed to them at all: offboarding is meant to stop new work arriving.
+  // Keep profile type in option values so Owner and staff identities remain distinct.
   const assignableMembers = useMemo(
     () =>
       (members || []).filter((m) => {
         if (!m) return false;
-        if (m.userType !== "developer") return false;
+        if (!["admin", "developer"].includes(m.userType) || m.role === "client") return false;
         return isMembershipActive(m.status);
       }),
     [members]
   );
 
   const canAssignReviewer = actionAccess.manage || allowed('task.review');
-  const reviewerScope = `${ctx?.organizationId}:${ctx?.userType}:${ctx?.userId}:${taskId}`;
+  const reviewerScope = `${ctx?.organizationId}:${ctx?.userType}:${ctx?.userId}:${taskId}:${taskAssignmentKey(form)}`;
   const [reviewerState, setReviewerState] = useState(null);
   const [reviewerRetry, setReviewerRetry] = useState(0);
   useEffect(() => {
@@ -384,16 +380,19 @@ export default function TaskDetailDrawer({
   // "assigned" automation trigger and notifies the new assignee. Routing it
   // through saveField is what left that trigger unreachable from the UI.
   const handleAssign = useCallback(
-    async (developerId) => {
+    async (key) => {
+      const assignment = key ? assignableMembers.find(m => `${m.userType}:${m.userId}` === key) : null;
+      if (key && !assignment) return;
       if (!taskId || !actionAccess.manage) return;
       setSavingField("developer_id");
       try {
-        const { error } = await assignTask(taskId, developerId || null);
+        const { error } = await assignTask(taskId, assignment);
         if (error) {
           showError("Could not assign", error.message || String(error));
           return;
         }
-        setForm((prev) => ({ ...(prev || {}), developer_id: developerId || null }));
+        setForm((prev) => ({ ...(prev || {}), ...taskAssignmentPatch(assignment),
+          status: ["awaiting_approval", "reviewed"].includes(prev?.status) ? "pending" : prev?.status }));
         try {
           onChanged?.();
         } catch {
@@ -405,7 +404,7 @@ export default function TaskDetailDrawer({
         setSavingField(null);
       }
     },
-    [taskId, onChanged, actionAccess]
+    [taskId, onChanged, actionAccess, assignableMembers]
   );
 
   // Status is the one field that is never a plain column write: the legal moves
@@ -772,15 +771,17 @@ export default function TaskDetailDrawer({
 
   const statusChoices = [
     currentStatus,
-    ...allowedTransitions(currentStatus).filter((s) => s !== currentStatus),
+    ...allowedTransitions(currentStatus).filter((s) => s !== currentStatus &&
+      (!['completed', 'rejected'].includes(s) || (!isTaskAssignee(form, ctx) && allowed('task.review')))),
   ];
 
   const ref = taskRef(task);
-  const assigneeLabel = form?.developer_id
-    ? memberIndex.byIdentity.get(`developer:${form.developer_id}`)?.name || null
+  const assigneeLabel = taskAssignmentKey(form)
+    ? memberIndex.byIdentity.get(taskAssignmentKey(form))?.name || null
     : null;
 
   return (
+    <>
     <Drawer
       open
       onClose={onClose}
@@ -807,6 +808,10 @@ export default function TaskDetailDrawer({
           </span>
         </div>
 
+        {taskAssignee(form) && ['pending', 'in_progress', 'rejected'].includes(form?.status || 'pending') &&
+          (actionAccess.manage || (isTaskAssignee(form, ctx) && allowed('task.submit'))) ? (
+          <Button onClick={() => setShowSubmission(true)}>Submit work for review</Button>
+        ) : null}
         {savingField ? (
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground" aria-live="polite">
             <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" /> Saving…
@@ -941,12 +946,12 @@ export default function TaskDetailDrawer({
                   id={`task-assignee-${taskId}`}
                 disabled={!actionAccess.manage}
                   className={`${SELECT_CLASS} w-full`}
-                  value={form?.developer_id ?? ""}
+                  value={taskAssignmentKey(form)}
                   onChange={(e) => handleAssign(e.target.value || null)}
                 >
                   <option value="">Unassigned</option>
                   {assignableMembers.map((m) => (
-                    <option key={String(m.userId)} value={m.userId}>
+                    <option key={`${m.userType}:${m.userId}`} value={`${m.userType}:${m.userId}`}>
                       {m.name}
                       {m.role ? ` (${pretty(m.role)})` : ""}
                     </option>
@@ -1554,5 +1559,9 @@ export default function TaskDetailDrawer({
         </Block>
       </div>
     </Drawer>
+    {showSubmission && <TaskCompletionModal isOpen onClose={() => setShowSubmission(false)} task={form}
+      project={{ id: form.project_id }} developer={{ id: taskAssignee(form)?.userId }}
+      onTaskUpdated={() => { setShowSubmission(false); onChanged?.(); refresh(); }} />}
+    </>
   );
 }
