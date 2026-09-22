@@ -217,7 +217,7 @@ describe("buildWeek carries what the screen needs to act", () => {
 });
 
 describe("the approvals screen is wired and gated", () => {
-  const adminSrc = read("src/app/admin/dashboard/page.js");
+  const adminSrc = read("src/app/organization/dashboard/page.js");
 
   it("renders and titles the section", () => {
     expect(adminSrc).toContain('case "timesheet-approvals":');

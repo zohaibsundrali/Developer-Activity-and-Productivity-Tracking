@@ -52,7 +52,7 @@ async function testLogin(browser, kind, roleLabel, email, password, expectPath) 
 (async () => {
   const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
   const results = [];
-  results.push(await testLogin(browser, "ADMIN", "Admin", creds.admin.email, creds.admin.password, "/admin/dashboard"));
+  results.push(await testLogin(browser, "ADMIN", "Admin", creds.admin.email, creds.admin.password, "/organization/dashboard"));
   results.push(await testLogin(browser, "DEVELOPER", "Developer", creds.dev.email, creds.dev.password, "/developer/dashboard"));
   await browser.close();
   console.log("\n===== LOGIN TEST RESULTS =====");

@@ -207,7 +207,7 @@ export default function UpgradePage() {
         "You're all set",
         `${data.planName || chosen.name} is active. Taking you back to your dashboard.`
       );
-      router.replace("/admin/dashboard");
+      router.replace("/organization/dashboard");
     } catch (err) {
       const message = err?.message || "We couldn't activate that plan.";
       setError(message);
@@ -230,7 +230,7 @@ export default function UpgradePage() {
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => router.push("/admin/dashboard")}
+            onClick={() => router.push("/organization/dashboard")}
             className="h-9 gap-1.5 px-2.5 text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />

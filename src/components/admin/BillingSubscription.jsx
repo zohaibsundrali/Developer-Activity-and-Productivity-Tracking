@@ -241,7 +241,7 @@ export default function BillingSubscription() {
       searchParams?.get("plan") === "changed" ? "changed" : searchParams?.get("checkout");
     if (!outcome) return;
     setCheckoutOutcome(outcome);
-    router.replace("/admin/dashboard?section=billing", { scroll: false });
+    router.replace("/organization/dashboard?section=billing", { scroll: false });
   }, [searchParams, router]);
 
   const load = useCallback(async () => {

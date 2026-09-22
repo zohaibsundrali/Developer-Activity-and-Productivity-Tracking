@@ -13,9 +13,9 @@ import { envValue } from './env.js';
 
 /** Expected destination after the app detects the verified account role. */
 export const PORTALS = {
-  admin: { landing: '/admin/dashboard' },
+  admin: { landing: '/organization/dashboard' },
   team: { landing: '/developer/dashboard' },
-  'team-admin': { landing: '/admin/dashboard' },
+  'team-admin': { landing: '/organization/dashboard' },
   client: { landing: '/client' },
 };
 
@@ -102,7 +102,7 @@ export function credentialsFor(role) {
 
 /** admin console, staff dashboard or client portal, from where a portal lands. */
 export function areaOf(landing) {
-  if (landing.startsWith('/admin')) return 'admin';
+  if (landing.startsWith('/organization/') || landing.startsWith('/admin')) return 'admin';
   if (landing.startsWith('/client')) return 'client';
   return 'staff';
 }

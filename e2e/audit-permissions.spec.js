@@ -13,7 +13,7 @@ test('a per-user deny survives a dashboard reload and direct navigation', async 
     const body = await response.json();
     await route.fulfill({ response, json: { ...body, permissions: body.permissions.filter(k => k !== 'billing.view') } });
   });
-  await page.goto('/admin/dashboard?section=billing');
+  await page.goto('/organization/dashboard?section=billing');
   await expect(page.getByRole('navigation', { name: 'Sections' })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Billing', exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Billing & Subscription', exact: true })).toHaveCount(0);

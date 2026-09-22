@@ -370,7 +370,7 @@ const ROOT = path.resolve(__dirname, "..");
 const code = (relative) =>
   readFileSync(path.join(ROOT, relative), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 
-const REGISTRATION = code("src/app/admin/registration/page.js");
+const REGISTRATION = code("src/app/register/page.js");
 const INVITE = code("src/app/invite/[token]/page.jsx");
 const PAGES = [
   ["registration page", REGISTRATION],

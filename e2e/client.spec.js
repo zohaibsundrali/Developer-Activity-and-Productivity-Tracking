@@ -114,7 +114,7 @@ test.describe('Client', () => {
   });
 
   test('the internal dashboards are closed to a client', async ({ page }) => {
-    await expectBouncedToLogin(page, '/admin/dashboard');
+    await expectBouncedToLogin(page, '/organization/dashboard');
     await expectBouncedToLogin(page, '/developer/dashboard');
   });
 });

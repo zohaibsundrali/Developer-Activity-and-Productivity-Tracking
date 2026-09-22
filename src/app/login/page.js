@@ -168,7 +168,7 @@ export default function LoginPage() {
         expiryDate.setDate(expiryDate.getDate() + SESSION_MAX_AGE_DAYS);
         document.cookie = `admin_auth=true; expires=${expiryDate.toUTCString()}; path=/`;
         document.cookie = `admin_id=${loggedInData.id}; expires=${expiryDate.toUTCString()}; path=/; HttpOnly; Secure`;
-        setTimeout(() => { router.push(org.membershipRole === "owner" ? "/organizations" : "/admin/dashboard"); }, 100);
+        setTimeout(() => { router.push(org.membershipRole === "owner" ? "/organizations" : "/organization/dashboard"); }, 100);
       } else if (role === "client") {
         sessionStorage.setItem("clientUser", JSON.stringify(userSession));
         localStorage.removeItem("clientUser");
@@ -313,14 +313,14 @@ export default function LoginPage() {
         </form>
 
         {/* THE TWO ENTRY PATHS, NOW ACTUALLY TWO.
-            "Create one" was a single link to /admin/registration — the
+            "Create one" was a single link to /register — the
             org-creation form with a mode toggle hidden inside it — so the only
             two ways to get an account were presented as one, under a label that
             said neither. They are different acts: joining a workspace someone
             else already set up (the invite decided your organization, your
             email and your role) versus creating one from nothing. Each now
             names itself and each has its own route: /join and
-            /admin/registration. Both are <Link>s, so neither costs a page load. */}
+            /register. Both are <Link>s, so neither costs a page load. */}
         <div
           className="auth-enter mt-7 space-y-2 border-t border-border pt-5 text-center text-sm text-muted-foreground"
           style={enterDelay(220)}
@@ -337,7 +337,7 @@ export default function LoginPage() {
           <p>
             Starting from scratch?{" "}
             <Link
-              href="/admin/registration"
+              href="/register"
               className="font-medium text-primary underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               Create an Organization

@@ -35,11 +35,13 @@
   .signals ul { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @container (min-width: 960px) {
+  .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .panelGrid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .panel { grid-column: span 2; }
   .wide { grid-column: span 4; }
   .half { grid-column: span 3; }
 }
+@container (min-width: 1200px) { .kpis { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
 
 /* Keep the five-row preview available without letting long names/risks dominate the page. */
 .projectList { max-height: 20rem; overflow-y: auto; scrollbar-width: thin; scrollbar-color: hsl(var(--border)) transparent; padding-right: .375rem; }

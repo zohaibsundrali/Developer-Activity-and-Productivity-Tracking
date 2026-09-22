@@ -63,7 +63,7 @@ function at(haystack, needle) {
 
 describe("dashboardHomeFor", () => {
   it("answers for each of the three profile types", () => {
-    expect(dashboardHomeFor("admin")).toBe("/admin/dashboard");
+    expect(dashboardHomeFor("admin")).toBe("/organization/dashboard");
     expect(dashboardHomeFor("developer")).toBe("/developer/dashboard");
     expect(dashboardHomeFor("client")).toBe("/client");
   });
@@ -109,7 +109,7 @@ describe("one copy of the dashboard routes", () => {
     expect(source).toMatch(/import \{ DASHBOARD_HOME \} from "@\/utils\/dashboardHome"/);
     // The literals it used to carry. Re-adding one is how /client gets renamed
     // in two places out of three.
-    expect(source).not.toMatch(/["']\/admin\/dashboard["']/);
+    expect(source).not.toMatch(/["']\/organization\/dashboard["']/);
     expect(source).not.toMatch(/["']\/developer\/dashboard["']/);
   });
 });
@@ -194,7 +194,7 @@ describe("SiteNav offers the dashboard to somebody already signed in", () => {
 
   it("points the button at the context's route, never a literal", () => {
     expect(code).toMatch(/<CtaButton href=\{home\}/);
-    expect(code).not.toMatch(/["']\/admin\/dashboard["']/);
+    expect(code).not.toMatch(/["']\/organization\/dashboard["']/);
     expect(code).not.toMatch(/["']\/client["']/);
   });
 

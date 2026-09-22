@@ -34,7 +34,7 @@ test.describe('HR', () => {
     // hr is in `developers` when created by Add employee and signs in on the
     // Team Member tab; dashboardHomeFor() still sends the role to the console.
 
-    await expect(page).toHaveURL(/\/admin\/dashboard/);
+    await expect(page).toHaveURL(/\/organization\/dashboard/);
     await expectNav(page, {
       visible: ['Overview', 'Employees', 'Team Stats', 'Organization'],
       // Add Developer and View Developers are both Employees now.
@@ -142,7 +142,7 @@ test.describe('HR', () => {
     // canAccessAdminSection() must reject this and render Overview instead.
     // Each screen renders its own <h1> through PageHeader now, so the proof is
     // which title is on the page — the overview's, not billing's.
-    await gotoSection(page, '/admin/dashboard', 'billing');
+    await gotoSection(page, '/organization/dashboard', 'billing');
     await expect(page.getByRole('heading', { level: 1, name: 'Dashboard Overview' })).toBeVisible();
     await expect(page.getByRole('heading', { level: 1, name: 'Billing & Subscription' })).toHaveCount(0);
     await expect(page.getByText('Current plan', { exact: true })).toHaveCount(0);

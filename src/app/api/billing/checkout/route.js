@@ -249,7 +249,7 @@ export async function POST(request) {
         planCode: plan.code,
         planName: plan.name,
         subscriptionId: liveSubscription.id,
-        url: `${origin}/admin/dashboard?section=billing&plan=changed`,
+        url: `${origin}/organization/dashboard?section=billing&plan=changed`,
       });
     }
 
@@ -287,8 +287,8 @@ export async function POST(request) {
       // its own — sending a paying customer anywhere else lands them on a 404.
       // `checkout` is read by that screen; the Stripe session id is not carried
       // back because the webhook, not the browser, records what was bought.
-      success_url: `${origin}/admin/dashboard?section=billing&checkout=success`,
-      cancel_url: `${origin}/admin/dashboard?section=billing&checkout=cancelled`,
+      success_url: `${origin}/organization/dashboard?section=billing&checkout=success`,
+      cancel_url: `${origin}/organization/dashboard?section=billing&checkout=cancelled`,
       client_reference_id: organizationId,
       allow_promotion_codes: true,
       metadata,

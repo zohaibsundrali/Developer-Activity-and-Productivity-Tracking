@@ -586,7 +586,7 @@ describe("the command palette offers the shell the user is actually in", () => {
      * in the `developers` table, so all five sign in with
      * `userType: "developer"` — while `dashboardHomeFor` puts them in the ADMIN
      * shell, because that is decided by role. Branching on userType therefore
-     * handed a manager sitting on /admin/dashboard six staff entries pointing
+     * handed a manager sitting on /organization/dashboard six staff entries pointing
      * at /developer/dashboard: none of the sections they work in, and every one
      * of them a one-way trip out of their own shell.
      */
@@ -618,7 +618,7 @@ describe("the command palette offers the shell the user is actually in", () => {
   });
 
   it("gives a manager sections a plain developer never sees", () => {
-    // A weaker version of this test — "the base path is /admin/dashboard" —
+    // A weaker version of this test — "the base path is /organization/dashboard" —
     // would pass on a list that was still empty or still generic.
     const manager = navCommandsFor(ctx("developer", "manager")).map((c) => c.sectionId);
     expect(manager).toContain("all-projects");
@@ -721,7 +721,7 @@ describe("the command palette offers the shell the user is actually in", () => {
   it("still reads the shared route map rather than its own literals", () => {
     const code = stripComments(read("src/components/shell/searchCommands.js"));
     expect(code).toMatch(/import \{ DASHBOARD_HOME \} from ['"]@\/utils\/dashboardHome['"]/);
-    expect(code).not.toMatch(/["']\/admin\/dashboard["']/);
+    expect(code).not.toMatch(/["']\/organization\/dashboard["']/);
     expect(code).not.toMatch(/["']\/developer\/dashboard["']/);
     // And the branch is on the role rule, not on the profile table.
     expect(code).toMatch(/canEnterAdminArea\(/);

@@ -254,7 +254,7 @@ describe("the route decides who may do what, per act", () => {
 });
 
 describe("the screen is wired and gated", () => {
-  const adminSrc = read("src/app/admin/dashboard/page.js");
+  const adminSrc = read("src/app/organization/dashboard/page.js");
   const screen = read(SCREEN);
 
   it("renders and titles the section", () => {

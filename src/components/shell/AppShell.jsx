@@ -9,6 +9,7 @@ import GlobalSearchButton from "./GlobalSearchButton";
 import { processPendingAutomations } from "@/utils/automationDispatch";
 import { startAutomationSessionRecovery } from "@/utils/automationSessionRecovery";
 import { BRAND_NAME } from "@/components/brand/brand";
+import { WorkspacesProvider } from "@/contexts/WorkspacesContext";
 
 // Deliberately still "devtrack.*" after the rename to Verisade. This key names a
 // slot in a real user's browser, not the product — changing it would silently
@@ -98,6 +99,7 @@ export default function AppShell({
   }, []);
 
   return (
+    <WorkspacesProvider user={user}>
     <div className="min-h-screen bg-background">
       <a
         href="#main-content"
@@ -159,5 +161,6 @@ export default function AppShell({
           window-level Cmd+K listener, which has to be live while it is shut. */}
       <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
+    </WorkspacesProvider>
   );
 }

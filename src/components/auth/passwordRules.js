@@ -2,7 +2,7 @@
  * The password rules the sign-up screens already enforce, in one hook-free
  * module so the new screens state them identically instead of drifting.
  *
- * These are EXACTLY the rules in src/app/admin/registration/page.js — same five
+ * These are EXACTLY the rules in src/app/register/page.js — same five
  * requirements, same special-character class. Nothing here is new policy, and
  * nothing here is a security boundary: Supabase Auth enforces its own project
  * minimum on the server, and this only decides what the checklist shows and

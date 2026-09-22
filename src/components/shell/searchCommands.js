@@ -67,7 +67,7 @@ export function roleFor(ctx) {
  *  the `developers` table, so a manager, a team lead, an HR user, a QA and a
  *  finance user all sign in carrying `userType: "developer"`. Meanwhile
  *  `dashboardHomeFor` routes anyone matching `canEnterAdminArea(role)` to
- *  /admin/dashboard — which is all five of them.
+ *  /organization/dashboard — which is all five of them.
  *
  *  So a manager landed on the admin dashboard, pressed Ctrl+K, and was offered
  *  the six-entry STAFF nav pointing at `/developer/dashboard?section=…`: not

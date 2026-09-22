@@ -259,7 +259,7 @@ export default function AdminProjectDetailsPage() {
   const canReviewPlan = taskPlanSubmitted && taskPlanStatus === "pending";
   const isPlanApproved = taskPlanStatus === "approved";
 
-  const backToProjects = () => router.push("/admin/dashboard?section=all-projects");
+  const backToProjects = () => router.push("/organization/dashboard?section=all-projects");
 
   const pageFrame = (children) => (
     <div className="min-h-screen bg-background">
@@ -273,7 +273,7 @@ export default function AdminProjectDetailsPage() {
         <PageHeader
           title="Project details"
           breadcrumbs={[
-            { label: "Projects", href: "/admin/dashboard?section=all-projects" },
+            { label: "Projects", href: "/organization/dashboard?section=all-projects" },
             { label: "Details" },
           ]}
         />
@@ -305,7 +305,7 @@ export default function AdminProjectDetailsPage() {
         <PageHeader
           title="Project details"
           breadcrumbs={[
-            { label: "Projects", href: "/admin/dashboard?section=all-projects" },
+            { label: "Projects", href: "/organization/dashboard?section=all-projects" },
             { label: "Details" },
           ]}
         />
@@ -332,7 +332,7 @@ export default function AdminProjectDetailsPage() {
         title={project?.name || "Untitled project"}
         description="Task plan, progress and review for this project."
         breadcrumbs={[
-          { label: "Projects", href: "/admin/dashboard?section=all-projects" },
+          { label: "Projects", href: "/organization/dashboard?section=all-projects" },
           { label: project?.name || "Details" },
         ]}
         actions={

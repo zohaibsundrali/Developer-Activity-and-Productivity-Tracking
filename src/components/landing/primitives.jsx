@@ -377,7 +377,7 @@ const BUTTON_SIZES = {
  * is `motion-safe:` gated so reduced motion gets a static arrow rather than an
  * instant jump.
  *
- * Every CTA on this page points at an in-app route — `/admin/registration`,
+ * Every CTA on this page points at an in-app route — `/register`,
  * `/login`, `/pricing` — and a hardcoded `<a>` made each of them a full
  * document load: the whole framework torn down and rebooted to move one route,
  * which is the single most expensive thing the landing page did. In-app hrefs

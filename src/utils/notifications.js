@@ -66,7 +66,7 @@ export function categoryMeta(category) {
  */
 export function notificationHref(n, { audience = "admin" } = {}) {
   if (!n) return null;
-  const adminBase = "/admin/dashboard";
+  const adminBase = "/organization/dashboard";
 
   // `/developer/project-details` identifies a project by `id` and nothing else,
   // so every developer link has to carry that one param — any other spelling

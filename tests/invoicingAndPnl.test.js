@@ -299,7 +299,7 @@ describe("a client sees the breakdown of their own bill and nothing else", () =>
 });
 
 describe("the screen is wired and gated", () => {
-  const adminSrc = read("src/app/admin/dashboard/page.js");
+  const adminSrc = read("src/app/organization/dashboard/page.js");
 
   it("renders and titles the section", () => {
     expect(adminSrc).toContain('case "invoicing":');

@@ -828,7 +828,7 @@ async function main() {
   console.log("  WHAT TO DO NEXT");
   console.log(rule());
   console.log("  1. The database has no accounts at all. You cannot log in.");
-  console.log("  2. Go to /admin/registration and sign up again. That flow creates");
+  console.log("  2. Go to /register and sign up again. That flow creates");
   console.log("     the admin_users row, the organization, the owner membership and");
   console.log("     the Supabase Auth account in one step (/api/auth/signup).");
   console.log("  3. Your old email address is free again — the Auth account that used");

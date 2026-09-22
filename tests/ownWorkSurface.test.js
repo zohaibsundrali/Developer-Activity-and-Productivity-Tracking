@@ -45,7 +45,7 @@ const read = (p) =>
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/^\s*\/\/.*$/gm, "");
 
-const ADMIN_DASHBOARD = "src/app/admin/dashboard/page.js";
+const ADMIN_DASHBOARD = "src/app/organization/dashboard/page.js";
 /** The five moved into /admin by the area fix, who lost their own work to it. */
 const MOVED = ["manager", "hr", "finance", "qa", "team_lead"];
 const CONTRIBUTORS = ["developer", "designer", "devops", "employee"];

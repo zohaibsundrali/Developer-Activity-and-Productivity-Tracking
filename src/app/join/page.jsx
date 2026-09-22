@@ -27,10 +27,10 @@ import { evaluatePassword } from "@/components/auth/passwordRules";
  *
  * WHY THIS ROUTE EXISTS AT ALL
  *  "Join with an invite" and "Create an organization" used to be the same
- *  destination: /admin/registration, which is the org-creation form with a
+ *  destination: /register, which is the org-creation form with a
  *  segmented toggle bolted onto it. Two things were wrong with that. The URL
  *  lied — someone joining a workspace is not registering an admin, and the path
- *  said /admin/registration. And the two acts have almost nothing in common:
+ *  said /register. And the two acts have almost nothing in common:
  *  creating an organization asks for a company, an industry, a size, a country
  *  and an email verification round-trip; joining one asks for a code and a
  *  password, because the organization, the email and the ROLE were all decided
@@ -38,7 +38,7 @@ import { evaluatePassword } from "@/components/auth/passwordRules";
  *  a mode toggle, a heading and a mental model built for the other job.
  *
  *  So the invite path gets its own route, its own copy and its own form. The
- *  org-creation form is untouched and still lives at /admin/registration.
+ *  org-creation form is untouched and still lives at /register.
  *
  * THE CODE FLOW, END TO END
  *  1. An admin creates an invitation (admin console). A row lands in
@@ -398,7 +398,7 @@ function JoinForm() {
               Don&apos;t have a code? Only an administrator of an existing workspace can
               issue one. If you meant to start a new organization instead,{" "}
               <Link
-                href="/admin/registration"
+                href="/register"
                 className="font-medium text-primary underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 create one here

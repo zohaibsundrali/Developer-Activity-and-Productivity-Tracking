@@ -84,8 +84,8 @@ async function testOrgTab(page, tab) {
 
   // ---------- ADMIN ----------
   const adminCtx = await browser.newContext();
-  const { page: aPage } = await loginAs(adminCtx, "Admin", creds.admin.email, creds.admin.password, "/admin/dashboard");
-  if (aPage.url().includes("/admin/dashboard")) {
+  const { page: aPage } = await loginAs(adminCtx, "Admin", creds.admin.email, creds.admin.password, "/organization/dashboard");
+  if (aPage.url().includes("/organization/dashboard")) {
     for (const label of ["All Projects", "Task Reviews", "Developer Activity", "Add Developer", "View Developers", "Organization", "Overview"]) {
       await clickSidebar(aPage, label);
     }

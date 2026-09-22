@@ -57,7 +57,7 @@ const ROUTE = "src/app/api/quality/route.js";
 const SCREEN = "src/components/shared/TestCases.jsx";
 const LINES = "src/components/admin/ReportingLines.jsx";
 const CHART = "src/components/admin/ProjectHierarchy.jsx";
-const ADMIN_DASHBOARD = "src/app/admin/dashboard/page.js";
+const ADMIN_DASHBOARD = "src/app/organization/dashboard/page.js";
 const STAFF_DASHBOARD = "src/app/developer/dashboard/page.jsx";
 
 const rls = readSql(RLS);

@@ -227,7 +227,7 @@ describe("a client reads their own contract", () => {
 });
 
 describe("the screen is wired and gated", () => {
-  const adminSrc = read("src/app/admin/dashboard/page.js");
+  const adminSrc = read("src/app/organization/dashboard/page.js");
 
   it("renders and titles the section", () => {
     expect(adminSrc).toContain('case "contracts":');

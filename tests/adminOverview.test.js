@@ -148,7 +148,7 @@ describe("the conditional queries only fire for people who can see the answer", 
     expect(LOADER).toMatch(/const reviewsQ = withReviews\s*\?/);
     // Promise.all takes both branches. A `false` branch that threw would take
     // the whole dashboard down for the roles that skip the query.
-    expect(LOADER.match(/: Promise\.resolve\(null\)/g) || []).toHaveLength(2);
+    expect(LOADER.match(/: Promise\.resolve\(null\)/g) || []).toHaveLength(4);
   });
 
   it("decides the flags by the same section rule that decides the tiles", () => {
