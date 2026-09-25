@@ -55,7 +55,7 @@ export default function Hero() {
                 <p className="inline-flex max-w-full items-center gap-2 rounded-full border border-border bg-card/80 px-4 py-2 shadow-card backdrop-blur-sm">
                   <span
                     aria-hidden="true"
-                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
+                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" style={{ backgroundColor: "hsl(243 60% 35%)" }}
                   />
                   <span className="text-xs font-medium leading-snug tracking-[-0.005em] text-foreground sm:text-sm">
                     {eyebrow}

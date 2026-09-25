@@ -32,6 +32,7 @@ export default function FinalCta() {
   return (
     <section
       ref={sectionRef}
+      data-final-cta
       aria-labelledby={title ? "final-cta-heading" : undefined}
       className="relative isolate overflow-hidden bg-primary py-20 text-primary-foreground sm:py-24 lg:py-28"
     >

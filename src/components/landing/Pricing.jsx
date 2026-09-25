@@ -1,273 +1,69 @@
 "use client";
 
-/**
- * Pricing.
- *
- * Four cards on `xl`, two from `sm`, one on a phone. The plan the content marks
- * (`highlight` / `featured` / `popular`) gets the heavier border and the only
- * filled button in the section, so "one primary CTA per section" survives
- * having four buttons on screen.
- *
- * `priceLabel` is preferred over `price` because the author already formatted
- * it — reading the raw `price: 0` would put a bare "0" on the Free card.
- *
- * The plan limits are the page's counters: real numbers from the seeded billing
- * plans, counting up as each card reveals. Non-numeric limits ("Unlimited")
- * fall through the counter untouched, because it only animates when it can find
- * a number.
- */
+import { Fragment, useState } from "react";
+import { Check, X } from "lucide-react";
+import { Container, CtaButton, SectionHeading } from "@/components/landing/primitives";
+import { pricing } from "@/components/landing/content";
 
-import { Calculator, Check, Minus } from "lucide-react";
-
-import {
-  CARD_LIFT,
-  Container,
-  Counter,
-  CtaButton,
-  Reveal,
-  SectionHeading,
-  stagger,
-} from "@/components/landing/primitives";
-import { bullets, cta, heading, items, pick, pickList, pricing, str } from "@/components/landing/content";
-
-/** `[{label,value}]` — the seeded plan limits. */
-function planLimits(entry) {
-  return pickList(entry, "limits", "quotas", "caps")
-    .map((limit) => {
-      if (typeof limit === "string") return null;
-      const label = pick(limit, "label", "name", "title");
-      const value = str(limit?.value ?? limit?.amount ?? limit?.count);
-      return label && value ? { label, value } : null;
-    })
-    .filter(Boolean);
-}
-
-function planList() {
-  const plans = items(pricing, "plans", "tiers", "items", "list")
-    .map((entry) => {
-      if (!entry || typeof entry !== "object") return null;
-      const name = pick(entry, "name", "title", "plan", "tier");
-      if (!name) return null;
-      return {
-        key: pick(entry, "code", "id") ?? name,
-        name,
-        // Author-formatted label first; the raw number is the last resort.
-        price: pick(entry, "priceLabel", "displayPrice", "price", "amount", "cost"),
-        period: pick(entry, "period", "interval", "cadence", "per", "unit"),
-        description: pick(entry, "description", "body", "copy", "text", "tagline"),
-        limits: planLimits(entry),
-        includes: bullets(entry, "includes", "features", "bullets", "points"),
-        excludes: bullets(entry, "excludes", "notIncluded", "missing"),
-        action: cta(entry.cta ?? entry.primaryCta ?? entry.action ?? entry.link),
-        note: pick(entry, "note", "footnote", "smallprint"),
-        featured: Boolean(entry.highlight ?? entry.featured ?? entry.popular ?? entry.recommended),
-        badge: pick(entry, "badge", "ribbon", "tagLabel"),
-      };
-    })
-    .filter(Boolean);
-
-  // Nothing marked? Give the emphasis to the first card so the eye has an entry
-  // point — but never render a "most popular" claim the content did not make.
-  if (plans.length > 0 && !plans.some((plan) => plan.featured)) plans[0].featured = true;
-
-  return plans;
-}
+const groups = [
+  { title: "Limits", rows: [
+    ["People", "3", "25", "100", "Unlimited"],
+    ["Projects", "2", "25", "150", "Unlimited"],
+    ["Open tasks", "50", "2,000", "20,000", "Unlimited"],
+  ] },
+  { title: "Core", rows: [
+    "Board views — kanban, list, table, calendar, timeline",
+    "Epics, sprints, story points, burndown",
+    "Task review with file submissions",
+    "Activity tracking + dashboard",
+    "Reports — CSV & PDF export",
+    "Automation rules",
+    "Due-date reminders & recurring tasks",
+  ].map((label) => [label, true, true, true, true]) },
+  { title: "Collaboration", rows: [
+    ["Email actions in automation", false, true, true, true],
+    ["Client portal logins", false, true, true, true],
+    ["Multi-team support", false, false, true, true],
+  ] },
+];
 
 export default function Pricing() {
-  const plans = planList();
-  const { eyebrow, title, description } = heading(pricing);
-  const footnote = pick(pricing, "footnote", "disclaimer", "smallprint");
-  const note = pick(pricing, "note");
-  // The arithmetic, stated once, next to the table it is about.
-  const comparison = pick(pricing, "comparison", "versus", "seatMath");
-
-  if (plans.length === 0 && !title) return null;
-
-  /*
-    Four across only once the measure can actually pay for it.
-
-    On the 1400px container `xl` gives each of four cards ~323px, which is the
-    first width at which the two-column limits list holds "Unlimited" on one
-    line and the plan button holds its label without wrapping. Below that the
-    row collapses to two — 1024px over four cards left ~229px each, and the
-    limits grid was folding inside it. Two roomy cards beat four cramped ones.
-  */
-  const columns =
-    plans.length >= 4
-      ? "sm:grid-cols-2 xl:grid-cols-4"
-      : plans.length === 3
-        ? "sm:grid-cols-2 lg:grid-cols-3"
-        : plans.length === 2
-          ? "sm:grid-cols-2"
-          : "";
-
+  const [annual, setAnnual] = useState(false);
+  const salesUrl = process.env.NEXT_PUBLIC_SALES_CONTACT_URL || "/contact";
   return (
-    <section
-      id="pricing"
-      aria-labelledby={title ? "pricing-heading" : undefined}
-      className="relative isolate scroll-mt-20 overflow-hidden border-t border-border bg-background py-20 sm:py-24 lg:py-32"
-    >
+    <section id="pricing" aria-labelledby="pricing-heading" className="scroll-mt-20 border-t border-border bg-background py-20 sm:py-24 lg:py-32">
       <Container>
-        <SectionHeading
-          eyebrow={eyebrow}
-          title={title}
-          description={description}
-          headingId={title ? "pricing-heading" : undefined}
-          align="center"
-        />
-
-        {plans.length > 0 ? (
-          <ul
-            className={[
-              // `max-w-md` caps the single-column phone layout only; from `sm`
-              // up the row takes the full container.
-              "mx-auto mt-16 grid max-w-md grid-cols-1 items-stretch gap-5 sm:mt-20 sm:max-w-none xl:gap-6",
-              columns,
-            ]
-              .filter(Boolean)
-              .join(" ")}
-          >
-            {plans.map((plan, index) => (
-              <Reveal as="li" key={plan.key} delay={stagger(index)} className="h-full">
-                <article
-                  className={[
-                    "relative flex h-full flex-col rounded-2xl bg-card p-6 sm:p-7",
-                    CARD_LIFT,
-                    plan.featured
-                      ? "border-2 border-primary shadow-elevated"
-                      : "border border-border shadow-card",
-                  ].join(" ")}
-                >
-                  {plan.featured && plan.badge ? (
-                    <span className="absolute -top-3 left-6 inline-flex items-center rounded-full bg-primary px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary-foreground">
-                      {plan.badge}
-                    </span>
-                  ) : null}
-
-                  <h3 className="font-display text-lg font-semibold tracking-[-0.01em] text-foreground">
-                    {plan.name}
-                  </h3>
-
-                  {plan.description ? (
-                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                      {plan.description}
-                    </p>
-                  ) : null}
-
-                  {plan.price ? (
-                    <p className="mt-6 flex items-baseline gap-1">
-                      <span className="font-display text-4xl font-semibold tracking-[-0.03em] text-foreground">
-                        {plan.price}
-                      </span>
-                      {plan.period ? (
-                        <span className="text-sm text-muted-foreground">
-                          <span aria-hidden="true">/</span>
-                          <span className="sr-only"> per </span>
-                          {plan.period}
-                        </span>
-                      ) : null}
-                    </p>
-                  ) : null}
-
-                  {plan.limits.length > 0 ? (
-                    <dl className="mt-7 grid grid-cols-2 gap-x-5 gap-y-4 border-t border-border pt-6 xl:gap-x-6">
-                      {plan.limits.map((limit) => (
-                        <div key={limit.label}>
-                          <dd className="font-display text-xl font-semibold tracking-[-0.02em] text-foreground">
-                            <Counter value={limit.value} />
-                          </dd>
-                          <dt className="mt-0.5 text-xs text-muted-foreground">{limit.label}</dt>
-                        </div>
-                      ))}
-                    </dl>
-                  ) : null}
-
-                  {plan.includes.length > 0 ? (
-                    <ul className="mt-6 flex-1 space-y-3 border-t border-border pt-6">
-                      {plan.includes.map((feature) => (
-                        <li key={feature.text} className="flex items-start gap-2.5">
-                          <Check
-                            className="mt-0.5 h-4 w-4 shrink-0 text-success"
-                            strokeWidth={2.5}
-                            aria-hidden="true"
-                          />
-                          <span className="text-sm leading-relaxed text-foreground">
-                            {feature.text}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <span className="flex-1" />
-                  )}
-
-                  {plan.excludes.length > 0 ? (
-                    <ul className="mt-4 space-y-2.5">
-                      {plan.excludes.map((feature) => (
-                        <li key={feature.text} className="flex items-start gap-2.5">
-                          <Minus
-                            className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
-                            strokeWidth={2.5}
-                            aria-hidden="true"
-                          />
-                          <span className="text-sm leading-relaxed text-muted-foreground line-through decoration-border">
-                            {feature.text}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-
-                  {plan.action ? (
-                    <CtaButton
-                      href={plan.action.href}
-                      variant={plan.featured ? "primary" : "secondary"}
-                      size="md"
-                      className="mt-7 w-full px-4 text-center leading-tight"
-                    >
-                      {plan.action.label}
-                    </CtaButton>
-                  ) : null}
-
-                  {plan.note ? (
-                    <p className="mt-4 text-xs text-muted-foreground">{plan.note}</p>
-                  ) : null}
-                </article>
-              </Reveal>
-            ))}
-          </ul>
-        ) : null}
-
-        {comparison ? (
-          <Reveal delay={stagger(1)}>
-            {/* One step wider than the prose cap, not the full container: the
-                icon and its gap eat ~64px, so `max-w-4xl` leaves the sentence
-                itself at a readable measure while giving it room to stop
-                wrapping onto three ragged lines. */}
-            <div className="mx-auto mt-12 flex max-w-4xl flex-col items-center gap-4 rounded-2xl border border-primary/20 bg-accent p-6 text-center sm:flex-row sm:items-center sm:gap-5 sm:p-7 sm:text-left">
-              <span
-                aria-hidden="true"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"
-              >
-                <Calculator className="h-5 w-5" strokeWidth={1.75} />
-              </span>
-              <p className="text-sm leading-relaxed text-accent-foreground sm:text-base">
-                {comparison}
-              </p>
-            </div>
-          </Reveal>
-        ) : null}
-
-        {footnote || note ? (
-          <Reveal delay={stagger(2)}>
-            <div className="mx-auto mt-10 max-w-2xl space-y-2 text-center">
-              {footnote ? (
-                <p className="text-sm leading-relaxed text-foreground">{footnote}</p>
-              ) : null}
-              {note ? <p className="text-sm leading-relaxed text-muted-foreground">{note}</p> : null}
-            </div>
-          </Reveal>
-        ) : null}
+        <SectionHeading title={pricing.title} description="Start small. Build momentum. Choose the room your team needs, with core project tools on every plan." headingId="pricing-heading" align="center" />
+        <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+          <div role="group" aria-label="Billing interval" className="inline-flex rounded-xl border border-border bg-muted p-1">
+            {[false, true].map((value) => <button key={String(value)} type="button" aria-pressed={annual === value} onClick={() => setAnnual(value)} className={`rounded-lg px-5 py-2.5 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${annual === value ? "bg-card shadow-card" : ""}`}>{value ? "Annual" : "Monthly"}</button>)}
+          </div>
+          <span className="rounded-full bg-accent px-3 py-1 text-xs font-semibold text-accent-foreground">Save 20%</span>
+        </div>
+        <ul className="mt-12 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+          {pricing.plans.map((plan) => {
+            const price = annual && plan.annualPrice ? plan.annualPrice : plan.price;
+            const href = plan.code === "enterprise" ? salesUrl : plan.cta.href;
+            return <li key={plan.code} className={`relative flex flex-col rounded-2xl bg-card p-6 shadow-card ${plan.highlight ? "border-2 border-primary" : "border border-border"}`}>
+              {plan.badge && <span className="absolute -top-3 left-6 rounded-full border border-primary bg-accent px-3 py-1 text-xs font-semibold">{plan.badge}</span>}
+              <h3 className="font-display text-xl font-semibold">{plan.name}</h3>
+              <p className="mt-2 text-sm text-muted-foreground">{plan.description}</p>
+              <p aria-live="polite" className="mt-6"><span className="font-display text-4xl font-semibold tracking-tight">${price}</span><span className="text-sm text-muted-foreground">/mo</span></p>
+              <p className="mb-6 mt-2 min-h-10 text-xs text-muted-foreground">{annual && plan.annualPrice ? `$${price * 12} billed annually per organization` : plan.price === 0 ? "Free to start" : "Billed monthly per organization"}</p>
+              {href ? <CtaButton href={href} variant={plan.highlight ? "primary" : "secondary"} size="md" className="mt-auto w-full px-3 text-center">{plan.cta.label}</CtaButton> : <button type="button" disabled title="Sales contact form is not configured yet" className="mt-auto min-h-11 rounded-lg border border-border px-3 py-3 text-sm font-semibold opacity-60">{plan.cta.label}</button>}
+            </li>;
+          })}
+        </ul>
+        <div role="region" aria-label="Plan comparison, scroll horizontally to compare all plans" tabIndex={0} className="mt-12 overflow-x-auto rounded-2xl border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <table className="w-full min-w-[800px] border-collapse text-sm">
+            <caption className="sr-only">Compare limits and features across all four Verisade plans</caption>
+            <thead><tr className="border-b border-border bg-card"><th scope="col" className="p-5 text-left">Compare plans</th>{pricing.plans.map((plan) => <th key={plan.code} scope="col" className={`p-5 text-center ${plan.highlight ? "bg-accent" : ""}`}>{plan.name}</th>)}</tr></thead>
+            <tbody>{groups.map((group) => <Fragment key={group.title}>
+              <tr className="border-y border-border bg-muted"><th scope="rowgroup" colSpan={5} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider">{group.title}</th></tr>
+              {group.rows.map(([label, ...values]) => <tr key={label} className="border-b border-border last:border-0"><th scope="row" className="max-w-sm px-5 py-4 text-left font-normal">{label}</th>{values.map((value, index) => <td key={index} className={`px-5 py-4 text-center ${index === 1 ? "bg-accent" : ""}`}>{typeof value === "boolean" ? <><span className="sr-only">{value ? "Included" : "Not included"}</span>{value ? <Check aria-hidden="true" className="mx-auto h-4 w-4 text-success" /> : <X aria-hidden="true" className="mx-auto h-4 w-4 text-muted-foreground" />}</> : value}</td>)}</tr>)}
+            </Fragment>)}</tbody>
+          </table>
+        </div>
       </Container>
     </section>
   );

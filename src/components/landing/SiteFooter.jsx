@@ -103,7 +103,7 @@ function linkGroups() {
     .filter(Boolean);
 }
 
-export default function SiteFooter() {
+export default function SiteFooter({ homeLinks = false }) {
   const groups = linkGroups();
   const brand = footer?.brand ?? footer ?? null;
   const tagline = pick(brand, "tagline", "description", "blurb", "summary");
@@ -142,14 +142,14 @@ export default function SiteFooter() {
       <Container className="py-14 sm:py-16">
         <div className="grid grid-cols-1 gap-12 text-center sm:text-left lg:grid-cols-12 lg:gap-8">
           <Reveal className="lg:col-span-4">
-            <a
-              href="#top"
+            <FooterLink
+              href={homeLinks ? "/" : "#top"}
               onClick={(event) => scrollToSection(event, "#top")}
               className="inline-flex items-center rounded-lg text-sidebar-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
             >
               <Logo variant="full" className="text-lg" markClassName="text-sidebar-primary" />
               <span className="sr-only">Back to top</span>
-            </a>
+            </FooterLink>
 
             {tagline ? (
               <p className="mx-auto mt-5 max-w-xs text-sm leading-relaxed text-sidebar-muted sm:mx-0">
@@ -175,7 +175,7 @@ export default function SiteFooter() {
                     {group.links.map((link) => (
                       <li key={`${group.title}-${link.label}`}>
                         {link.href ? (
-                          <FooterLink href={link.href} className={linkClass}>
+                          <FooterLink href={homeLinks && link.href.startsWith("#") ? `/${link.href}` : link.href} className={linkClass}>
                             {link.label}
                           </FooterLink>
                         ) : (

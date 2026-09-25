@@ -5,6 +5,8 @@ const h=vi.hoisted(()=>({release:null}));
 vi.mock('@/utils/desktopRelease',()=>({getDesktopRelease:()=>h.release}));
 vi.mock('next/link',()=>({default:props=>React.createElement('a',props,props.children)}));
 vi.mock('@/components/brand/Logo',()=>({default:()=>React.createElement('span',null,'Brand')}));
+vi.mock('@/components/landing/SiteNav',()=>({default:()=>React.createElement('header',null,React.createElement('a',{href:'/login'},'Sign in'))}));
+vi.mock('@/components/landing/SiteFooter',()=>({default:()=>React.createElement('footer',null,'Footer')}));
 globalThis.React=React;
 const {default:Page}=await import('@/app/download/page');
 beforeEach(()=>{h.release=null;});
