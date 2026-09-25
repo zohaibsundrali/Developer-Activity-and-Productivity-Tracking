@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { Check, X } from "lucide-react";
 import { Container, CtaButton, SectionHeading } from "@/components/landing/primitives";
 import { pricing } from "@/components/landing/content";
@@ -40,30 +40,52 @@ export default function Pricing() {
           </div>
           <span className="rounded-full bg-accent px-3 py-1 text-xs font-semibold text-accent-foreground">Save 20%</span>
         </div>
-        <ul className="mt-12 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-          {pricing.plans.map((plan) => {
+        <ul className="mt-12 grid items-stretch gap-x-5 gap-y-8 sm:grid-cols-2 xl:grid-cols-4">
+          {pricing.plans.map((plan, planIndex) => {
             const price = annual && plan.annualPrice ? plan.annualPrice : plan.price;
             const href = plan.code === "enterprise" ? salesUrl : plan.cta.href;
-            return <li key={plan.code} className={`relative flex flex-col rounded-2xl bg-card p-6 shadow-card ${plan.highlight ? "border-2 border-primary" : "border border-border"}`}>
+            return <li key={plan.code} className={`relative flex min-w-0 flex-col rounded-2xl border bg-card p-5 shadow-card sm:p-6 ${plan.highlight ? "border-primary ring-1 ring-primary" : "border-border"}`}>
               {plan.badge && <span className="absolute -top-3 left-6 rounded-full border border-primary bg-accent px-3 py-1 text-xs font-semibold">{plan.badge}</span>}
               <h3 className="font-display text-xl font-semibold">{plan.name}</h3>
-              <p className="mt-2 text-sm text-muted-foreground">{plan.description}</p>
+              <p className="mt-2 text-sm leading-5 text-muted-foreground sm:min-h-10">{plan.description}</p>
               <p aria-live="polite" className="mt-6"><span className="font-display text-4xl font-semibold tracking-tight">${price}</span><span className="text-sm text-muted-foreground">/mo</span></p>
-              <p className="mb-6 mt-2 min-h-10 text-xs text-muted-foreground">{annual && plan.annualPrice ? `$${price * 12} billed annually per organization` : plan.price === 0 ? "Free to start" : "Billed monthly per organization"}</p>
-              {href ? <CtaButton href={href} variant={plan.highlight ? "primary" : "secondary"} size="md" className="mt-auto w-full px-3 text-center">{plan.cta.label}</CtaButton> : <button type="button" disabled title="Sales contact form is not configured yet" className="mt-auto min-h-11 rounded-lg border border-border px-3 py-3 text-sm font-semibold opacity-60">{plan.cta.label}</button>}
+              <p className="mt-2 sm:min-h-10 text-xs leading-5 text-muted-foreground">{annual && plan.annualPrice ? `$${price * 12} billed annually per organization` : plan.price === 0 ? "Free to start" : "Billed monthly per organization"}</p>
+              <div className="my-5 space-y-5 border-t border-border pt-5">
+                {groups.map((group) => (
+                  <section key={group.title} aria-labelledby={`${plan.code}-${group.title.toLowerCase()}`}>
+                    <h4 id={`${plan.code}-${group.title.toLowerCase()}`} className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{group.title}</h4>
+                    {group.title === "Limits" ? (
+                      <dl className="space-y-2 rounded-xl bg-muted/50 p-3 text-sm">
+                        {group.rows.map(([label, ...values]) => (
+                          <div key={label} className="flex items-baseline justify-between gap-3">
+                            <dt className="text-muted-foreground">{label}</dt>
+                            <dd className="font-semibold tabular-nums">{values[planIndex]}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    ) : (
+                      <ul className="space-y-2.5">
+                        {group.rows.map(([label, ...values]) => {
+                          const included = values[planIndex];
+                          const Icon = included ? Check : X;
+                          return (
+                            <li key={label} className={`flex items-start gap-2 text-sm leading-5 ${included ? "text-foreground" : "text-muted-foreground"}`}>
+                              <Icon aria-hidden="true" className={`mt-0.5 h-4 w-4 shrink-0 ${included ? "text-success" : "text-muted-foreground"}`} />
+                              <span><span className="sr-only">{included ? "Included: " : "Not included: "}</span>{label}{!included && <span aria-hidden="true" className="block text-xs">Not included</span>}</span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </section>
+                ))}
+              </div>
+              <div className="mt-auto border-t border-border pt-5">
+                {href ? <CtaButton href={href} variant={plan.highlight ? "primary" : "secondary"} size="md" className="w-full px-3 text-center">{plan.cta.label}</CtaButton> : <button type="button" disabled title="Sales contact form is not configured yet" className="min-h-11 w-full rounded-lg border border-border px-3 py-3 text-sm font-semibold opacity-60">{plan.cta.label}</button>}
+              </div>
             </li>;
           })}
         </ul>
-        <div role="region" aria-label="Plan comparison, scroll horizontally to compare all plans" tabIndex={0} className="mt-12 overflow-x-auto rounded-2xl border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <table className="w-full min-w-[800px] border-collapse text-sm">
-            <caption className="sr-only">Compare limits and features across all four Verisade plans</caption>
-            <thead><tr className="border-b border-border bg-card"><th scope="col" className="p-5 text-left">Compare plans</th>{pricing.plans.map((plan) => <th key={plan.code} scope="col" className={`p-5 text-center ${plan.highlight ? "bg-accent" : ""}`}>{plan.name}</th>)}</tr></thead>
-            <tbody>{groups.map((group) => <Fragment key={group.title}>
-              <tr className="border-y border-border bg-muted"><th scope="rowgroup" colSpan={5} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider">{group.title}</th></tr>
-              {group.rows.map(([label, ...values]) => <tr key={label} className="border-b border-border last:border-0"><th scope="row" className="max-w-sm px-5 py-4 text-left font-normal">{label}</th>{values.map((value, index) => <td key={index} className={`px-5 py-4 text-center ${index === 1 ? "bg-accent" : ""}`}>{typeof value === "boolean" ? <><span className="sr-only">{value ? "Included" : "Not included"}</span>{value ? <Check aria-hidden="true" className="mx-auto h-4 w-4 text-success" /> : <X aria-hidden="true" className="mx-auto h-4 w-4 text-muted-foreground" />}</> : value}</td>)}</tr>)}
-            </Fragment>)}</tbody>
-          </table>
-        </div>
       </Container>
     </section>
   );
