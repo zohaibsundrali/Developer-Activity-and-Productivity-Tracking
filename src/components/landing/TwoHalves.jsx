@@ -1,133 +1,31 @@
 "use client";
 
-/**
- * "Two halves, one permission model" — the structural claim, given its own band
- * directly under the trust strip.
- *
- * The layout *is* the argument: two equal columns, visibly separate, joined by
- * a spine that runs between them. On `lg` the spine is a vertical rule with the
- * shared-permission line centred on it; below `lg` the columns stack and the
- * spine becomes a horizontal band, because a vertical connector between two
- * stacked cards on a phone reads as a divider rather than a join.
- *
- * The connector is drawn with a bordered pseudo-free `<span>` and a badge, all
- * `aria-hidden`; the sentence it carries is real text in the flow, so the claim
- * survives with images and CSS off.
- */
-
-import {
-  CARD_LIFT,
-  Container,
-  IconChip,
-  Reveal,
-  SectionHeading,
-  stagger,
-} from "@/components/landing/primitives";
-import { extras, pick, pickList, str } from "@/components/landing/content";
-
-const twoHalves = extras.twoHalves ?? null;
-
-function columns() {
-  return pickList(twoHalves, "columns", "halves", "items")
-    .map((entry) => {
-      if (!entry || typeof entry !== "object") return null;
-      const title = pick(entry, "title", "name", "heading", "label");
-      if (!title) return null;
-      return {
-        title,
-        description: pick(entry, "description", "body", "copy", "text"),
-        icon: entry.icon ?? entry.iconName ?? null,
-      };
-    })
-    .filter(Boolean);
-}
+import { ArrowRight, Check, LayoutDashboard, Monitor, MousePointer2, Keyboard, Clock3 } from "lucide-react";
+import { Container, SectionHeading } from "@/components/landing/primitives";
+import { extras } from "@/components/landing/content";
 
 export default function TwoHalves() {
-  if (!twoHalves) return null;
-
-  const id = str(twoHalves.id) ?? "one-system";
-  const eyebrow = pick(twoHalves, "eyebrow", "kicker", "label", "tag");
-  const title = pick(twoHalves, "title", "heading", "headline");
-  const description = pick(twoHalves, "description", "subhead", "body", "intro");
-  const spine = pick(twoHalves, "spine", "shared", "connector", "common");
-  const footnote = pick(twoHalves, "footnote", "note", "caveat");
-  const halves = columns();
-
-  if (!title && halves.length === 0) return null;
-
-  return (
-    <section
-      id={id}
-      aria-labelledby={title ? "two-halves-heading" : undefined}
-      className="relative isolate scroll-mt-20 overflow-hidden border-t border-border bg-background py-20 sm:py-24 lg:py-32"
-    >
-      <Container>
-        <SectionHeading
-          eyebrow={eyebrow}
-          title={title}
-          description={description}
-          headingId={title ? "two-halves-heading" : undefined}
-          align="center"
-        />
-
-        {halves.length > 0 ? (
-          <div className="relative mt-16 sm:mt-20">
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-16">
-              {halves.slice(0, 2).map((half, index) => (
-                <Reveal key={half.title} delay={stagger(index)} className="h-full">
-                  <article
-                    className={[
-                      "flex h-full flex-col rounded-2xl border border-border bg-card p-7 shadow-card sm:p-8",
-                      CARD_LIFT,
-                    ].join(" ")}
-                  >
-                    <IconChip icon={half.icon} size="lg" />
-                    <h3
-                      className={[
-                        "font-display text-xl font-semibold tracking-[-0.015em] text-foreground sm:text-2xl",
-                        half.icon ? "mt-6" : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                    >
-                      {half.title}
-                    </h3>
-                    {half.description ? (
-                      <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
-                        {half.description}
-                      </p>
-                    ) : null}
-                  </article>
-                </Reveal>
-              ))}
+  const content = extras.twoHalves;
+  return <section id={content.id} aria-labelledby="two-halves-heading" className="scroll-mt-20 border-t border-border bg-background py-20 sm:py-24">
+    <Container>
+      <SectionHeading eyebrow={content.eyebrow} title={content.title} description={content.description} headingId="two-halves-heading" align="center" />
+      <div className="mt-12 grid gap-6 lg:grid-cols-2">
+        {content.columns.map((half, index) => {
+          const Icon = index === 0 ? LayoutDashboard : Monitor;
+          return <article key={half.title} className="overflow-hidden rounded-2xl border border-border bg-card shadow-card">
+            <div className="p-6 sm:p-8">
+              <div className="flex items-center gap-3"><div className="rounded-xl bg-accent p-3"><Icon className="h-6 w-6 text-primary" aria-hidden="true" /></div><span className="text-xs font-semibold uppercase tracking-wider">{index === 0 ? "Organize the work" : "Understand the workday"}</span></div>
+              <h3 className="mt-6 font-display text-2xl font-semibold">{half.title}</h3>
+              <p className="mt-3 max-w-lg text-sm leading-relaxed text-muted-foreground">{half.description}</p>
             </div>
-
-            {/* The join. Vertical rule between the columns on lg, a plain band
-                below it — decorative only; the sentence itself is real text. */}
-            {spine ? (
-              <Reveal delay={stagger(2)}>
-                <div className="relative mt-6 lg:mt-10">
-                  <span
-                    aria-hidden="true"
-                    className="absolute -top-20 left-1/2 hidden h-[calc(100%+5rem)] w-px -translate-x-1/2 bg-gradient-to-b from-border via-primary/30 to-border lg:block"
-                  />
-                  <p className="relative mx-auto max-w-3xl rounded-2xl border border-primary/20 bg-accent px-6 py-6 text-center text-base leading-relaxed text-accent-foreground sm:px-8 sm:text-lg">
-                    {spine}
-                  </p>
-                </div>
-              </Reveal>
-            ) : null}
-
-            {footnote ? (
-              <Reveal delay={stagger(3)}>
-                <p className="mx-auto mt-8 max-w-2xl text-center text-sm leading-relaxed text-muted-foreground">
-                  {footnote}
-                </p>
-              </Reveal>
-            ) : null}
-          </div>
-        ) : null}
-      </Container>
-    </section>
-  );
+            <div aria-hidden="true" className="mx-6 mb-6 rounded-xl border border-border bg-muted p-4 sm:mx-8 sm:mb-8">
+              <p className="mb-4 text-xs font-medium text-muted-foreground">{index === 0 ? "A clear path to delivery" : "Workday insights at a glance"}</p>
+              {index === 0 ? <div className="grid grid-cols-3 gap-2">{["To do", "In progress", "In review"].map((label, i) => <div key={label} className="rounded-lg border border-border bg-card p-3"><p className="text-xs font-semibold">{label}</p><div className="mt-4 h-1.5 w-4/5 rounded bg-primary/20" /><div className="mt-2 h-1.5 w-3/5 rounded bg-primary/10" /><div className="mt-4 flex justify-end">{i === 2 ? <Check className="h-4 w-4 text-success" /> : <ArrowRight className="h-4 w-4 text-primary" />}</div></div>)}</div> : <div className="grid grid-cols-3 gap-2">{[[Keyboard, "Keyboard"], [MousePointer2, "Mouse"], [Clock3, "Active time"]].map(([Signal, label]) => <div key={label} className="rounded-lg border border-border bg-card p-3"><Signal className="h-5 w-5 text-primary" /><p className="mt-3 text-xs font-semibold">{label}</p><div className="mt-3 flex h-5 items-end gap-1">{[40, 75, 55, 100, 65].map((height, i) => <span key={i} className="flex-1 rounded-sm bg-primary/30" style={{height: `${height}%`}} />)}</div></div>)}</div>}
+            </div>
+          </article>;
+        })}
+      </div>
+      <p className="mx-auto mt-8 max-w-2xl text-center text-base font-medium leading-relaxed">{content.spine}</p>
+    </Container>
+  </section>;
 }

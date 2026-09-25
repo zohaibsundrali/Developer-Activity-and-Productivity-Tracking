@@ -182,7 +182,7 @@ function accountActions() {
  * @param {Object} props
  * @param {Set<string>} props.sections ids of the sections that actually rendered
  */
-export default function SiteNav({ sections }) {
+export default function SiteNav({ sections, homeLinks = false }) {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const toggleRef = useRef(null);
@@ -215,7 +215,7 @@ export default function SiteNav({ sections }) {
 
   const links = [...(contentLinks() ?? DEFAULT_LINKS), { label: "Download", href: "/download" }].filter(
     (link) => !link.href.startsWith("#") || !sections || sections.has(link.href.slice(1)),
-  );
+  ).map((link) => ({ ...link, href: homeLinks && link.href.startsWith("#") ? `/${link.href}` : link.href }));
 
   // Every nav action is borrowed from copy that already exists on the page, so
   // the header can never advertise a destination or a label written here.
@@ -318,15 +318,15 @@ export default function SiteNav({ sections }) {
     >
       <Container as="nav" aria-label="Main">
         <div className="flex h-16 items-center gap-3 xl:h-20 xl:gap-4">
-          <a
+          <NavAnchor
             id="landing-home-link"
-            href="#top"
-            onClick={(event) => scrollToSection(event, "#top")}
+            href={homeLinks ? "/" : "#top"}
+            onClick={(event) => scrollToSection(event, homeLinks ? "/" : "#top")}
             className="inline-flex shrink-0 items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <Logo variant="full" className="text-lg text-foreground" />
             <span className="sr-only">Home</span>
-          </a>
+          </NavAnchor>
 
           {/*
             Section links, grouped against the logo rather than pushed to the
@@ -338,13 +338,13 @@ export default function SiteNav({ sections }) {
           <ul className="hidden items-center gap-0.5 xl:flex xl:ml-2">
             {links.map((link) => (
               <li key={link.href}>
-                <a
+                <NavAnchor
                   href={link.href}
                   onClick={(event) => scrollToSection(event, link.href)}
                   className="inline-flex h-9 whitespace-nowrap items-center rounded-lg px-3 text-sm font-medium tracking-[-0.005em] text-muted-foreground transition-colors duration-200 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   {link.label}
-                </a>
+                </NavAnchor>
               </li>
             ))}
           </ul>
@@ -454,7 +454,7 @@ export default function SiteNav({ sections }) {
           <Container as="ul" className="flex flex-1 flex-col items-center justify-center gap-1 py-8">
             {links.map((link) => (
               <li key={link.href} className="w-full">
-                <a
+                <NavAnchor
                   href={link.href}
                   onClick={(event) => {
                     scrollToSection(event, link.href);
@@ -463,7 +463,7 @@ export default function SiteNav({ sections }) {
                   className="flex h-14 w-full items-center justify-center rounded-lg px-3 text-center text-lg font-bold tracking-[-0.01em] text-foreground transition-colors duration-200 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   {link.label}
-                </a>
+                </NavAnchor>
               </li>
             ))}
           </Container>

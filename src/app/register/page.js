@@ -347,6 +347,12 @@ function AdminRegistration() {
   const [verificationGrant, setVerificationGrant] = useState(null);
 
   const [step, setStep] = useState(1);
+  const [detailsPart, setDetailsPart] = useState("account");
+
+  useEffect(() => {
+    const requestedPlan = new URLSearchParams(window.location.search).get("plan");
+    if (["professional", "business"].includes(requestedPlan)) setSelectedPlan(requestedPlan);
+  }, []);
   const [loading, setLoading] = useState(false);
   const [verificationLoading, setVerificationLoading] = useState(false);
   const [errors, setErrors] = useState({});
@@ -375,6 +381,10 @@ function AdminRegistration() {
   const code = codeDigits.join("");
   const codeComplete = codeDigits.every((digit) => digit !== "");
   const msLeft = codeExpiry ? Math.max(0, codeExpiry - nowTs) : 0;
+  useEffect(() => {
+    if (step === 1 && mode === "create") document.getElementById(detailsPart === "account" ? "reg-name" : "reg-company")?.focus();
+  }, [detailsPart, step, mode]);
+
   const codeExpired = step === 2 && Boolean(codeExpiry) && msLeft === 0;
 
   /**
@@ -403,6 +413,7 @@ function AdminRegistration() {
 
   const switchMode = (next) => {
     setMode(next);
+    setDetailsPart("account");
     setErrors({});
   };
 
@@ -522,7 +533,7 @@ function AdminRegistration() {
     }
   };
 
-  const validateForm = () => {
+  const validateForm = (accountOnly = false) => {
     const newErrors = {};
 
     if (!formData.fullName || formData.fullName.trim() === "") {
@@ -532,7 +543,7 @@ function AdminRegistration() {
       if (nameProblem) newErrors.fullName = nameProblem;
     }
 
-    if (!formData.company || formData.company.trim() === "") {
+    if (!accountOnly && (!formData.company || formData.company.trim() === "")) {
       newErrors.company = "Company is required";
     }
 
@@ -566,7 +577,7 @@ function AdminRegistration() {
     // counts — anyone can POST past this form. What this adds is that the
     // browser never gets that far: submitting with the box unticked stops
     // here, says why next to the box, and moves the caret to it.
-    if (!termsAccepted) {
+    if (!accountOnly && !termsAccepted) {
       newErrors.terms = "Please accept the Terms of Service to continue";
     }
 
@@ -586,6 +597,7 @@ function AdminRegistration() {
 
   const showEmailConflict = (result) => {
     setStep(1);
+    setDetailsPart("account");
     setVerificationGrant(null);
     resetCodeBoxes();
     setErrors({ email: result.error });
@@ -662,10 +674,16 @@ function AdminRegistration() {
     setLoading(true);
     setErrors({});
 
-    const problems = validateForm();
+    const problems = validateForm(detailsPart === "account");
     if (Object.keys(problems).length > 0) {
       setLoading(false);
       focusFirstProblem(problems);
+      return;
+    }
+
+    if (detailsPart === "account") {
+      setDetailsPart("company");
+      setLoading(false);
       return;
     }
 
@@ -1006,7 +1024,7 @@ function AdminRegistration() {
       <AuthCard>
         {mode === "create" && (
           <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Step {step} of 3 — {STEP_LABELS[step] || "your details"}
+            Step {step} of 3 — {step === 1 ? (detailsPart === "account" ? "your account · 1 of 2" : "your company · 2 of 2") : STEP_LABELS[step]}
           </p>
         )}
 
@@ -1018,7 +1036,7 @@ function AdminRegistration() {
               ? "Verify your email"
               : mode === "join"
               ? "Join an organization"
-              : "Create your workspace"
+              : detailsPart === "account" ? "Start with your account" : "Tell us about your company"
           }
           description={
             step === 3
@@ -1027,7 +1045,7 @@ function AdminRegistration() {
               ? "We sent a 6-digit verification code to your inbox."
               : mode === "join"
               ? "Enter the invite code your organization sent you."
-              : "Set up admin access to the tracking dashboard for your company."
+              : detailsPart === "account" ? "A few essentials to create your Verisade account." : "Give your workspace a name. You can add your team after signup."
           }
         />
 
@@ -1049,6 +1067,7 @@ function AdminRegistration() {
 
             {mode === "create" ? (
               <form onSubmit={handleRegister} className="mt-6 space-y-5">
+                {detailsPart === "account" ? <>
                 <Field label="Full name" htmlFor="reg-name" error={errors.fullName} required>
                   <Input
                     id="reg-name"
@@ -1063,6 +1082,57 @@ function AdminRegistration() {
                   />
                 </Field>
 
+                <Field label="Email address" htmlFor="reg-email" error={errors.email} required>
+                  <Input
+                    id="reg-email"
+                    type="email"
+                    placeholder="john@example.com"
+                    value={formData.email}
+                    onChange={(e) => handleInputChange('email', e.target.value)}
+                    className={AUTH_INPUT}
+                    aria-invalid={errors.email ? true : undefined}
+                    autoComplete="email"
+                    required
+                  />
+                </Field>
+
+                <div className="space-y-2">
+                  <Field label="Password" htmlFor="reg-password" error={errors.password} required>
+                    <PasswordInput
+                      id="reg-password"
+                      placeholder="Min. 8 characters"
+                      value={formData.password}
+                      onChange={(e) => handleInputChange('password', e.target.value)}
+                      aria-invalid={errors.password ? true : undefined}
+                      autoComplete="new-password"
+                      required
+                      visible={showPassword}
+                      onToggle={() => setShowPassword(!showPassword)}
+                    />
+                  </Field>
+                  {formData.password && <PasswordChecklist requirements={pwVal.requirements} />}
+                </div>
+
+                <Field
+                  label="Confirm password"
+                  htmlFor="reg-confirm"
+                  error={errors.confirmPassword}
+                  required
+                >
+                  <PasswordInput
+                    id="reg-confirm"
+                    placeholder="Repeat password"
+                    value={formData.confirmPassword}
+                    onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
+                    aria-invalid={errors.confirmPassword ? true : undefined}
+                    autoComplete="new-password"
+                    required
+                    visible={showConfirmPassword}
+                    onToggle={() => setShowConfirmPassword(!showConfirmPassword)}
+                  />
+                </Field>
+
+                </> : <>
                 <Field
                   label="Company / organization"
                   htmlFor="reg-company"
@@ -1123,56 +1193,6 @@ function AdminRegistration() {
                   />
                 </Field>
 
-                <Field label="Email address" htmlFor="reg-email" error={errors.email} required>
-                  <Input
-                    id="reg-email"
-                    type="email"
-                    placeholder="john@example.com"
-                    value={formData.email}
-                    onChange={(e) => handleInputChange('email', e.target.value)}
-                    className={AUTH_INPUT}
-                    aria-invalid={errors.email ? true : undefined}
-                    autoComplete="email"
-                    required
-                  />
-                </Field>
-
-                <div className="space-y-2">
-                  <Field label="Password" htmlFor="reg-password" error={errors.password} required>
-                    <PasswordInput
-                      id="reg-password"
-                      placeholder="Min. 8 characters"
-                      value={formData.password}
-                      onChange={(e) => handleInputChange('password', e.target.value)}
-                      aria-invalid={errors.password ? true : undefined}
-                      autoComplete="new-password"
-                      required
-                      visible={showPassword}
-                      onToggle={() => setShowPassword(!showPassword)}
-                    />
-                  </Field>
-                  {formData.password && <PasswordChecklist requirements={pwVal.requirements} />}
-                </div>
-
-                <Field
-                  label="Confirm password"
-                  htmlFor="reg-confirm"
-                  error={errors.confirmPassword}
-                  required
-                >
-                  <PasswordInput
-                    id="reg-confirm"
-                    placeholder="Repeat password"
-                    value={formData.confirmPassword}
-                    onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
-                    aria-invalid={errors.confirmPassword ? true : undefined}
-                    autoComplete="new-password"
-                    required
-                    visible={showConfirmPassword}
-                    onToggle={() => setShowConfirmPassword(!showConfirmPassword)}
-                  />
-                </Field>
-
                 <TermsConsent
                   id="reg-terms"
                   checked={termsAccepted}
@@ -1183,6 +1203,7 @@ function AdminRegistration() {
                   error={errors.terms}
                   disabled={loading}
                 />
+                </>}
 
                 <SubmitButton
                   loading={loading}
@@ -1190,8 +1211,9 @@ function AdminRegistration() {
                   status={errors.general || errors.email ? "error" : "idle"}
                   disabled={loading}
                 >
-                  Create account
+                  {detailsPart === "account" ? "Continue to company details" : "Send verification code"}
                 </SubmitButton>
+                {detailsPart === "company" && <button type="button" disabled={loading} onClick={() => { setDetailsPart("account"); setErrors({}); }} className="mx-auto block rounded text-sm font-medium underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring">Back to account details</button>}
               </form>
             ) : (
               <form onSubmit={handleJoin} className="mt-6 space-y-5">
@@ -1372,7 +1394,7 @@ function AdminRegistration() {
               status={codeMessage || errors.general ? "error" : "idle"}
               disabled={verificationLoading || codeExpired}
             >
-              Verify &amp; complete
+              Verify &amp; choose plan
             </SubmitButton>
 
             <p className="text-center text-sm text-muted-foreground">

@@ -32,17 +32,17 @@ export const hero = {
   // Kept to ~25 words: the first CTA should be reachable without a paragraph.
   // Every claim here is the compressed form of one already made below.
   subhead:
-    "Epics, sprints, a six-view board and task review — plus desktop activity tracking on the machines you choose. One permission model over both halves.",
+    "Turn busy days into visible progress. Plan projects, keep your team aligned, and see how work moves forward — all in Verisade.",
   // Price above the fold. Both figures are the seeded billing_plans rows:
   // Free is $0 with no card, Business is $149/month for up to 100 people.
-  priceLine: "Priced per organization, not per seat. Free to start; $149 a month covers up to 100 people.",
+  priceLine: "One workspace. Clear priorities. A team that knows what comes next. Start free and grow together.",
   primaryCta: {
     label: "Create your organization",
     href: "/register",
     // Signup writes admin_users + organizations + owner membership + a Supabase
     // Auth account (src/app/api/auth/signup/route.js). No subscription row is
     // created, and src/utils/entitlements.js treats "no row" as the Free plan.
-    sublabel: "Free plan, no card required",
+    sublabel: "",
   },
   secondaryCta: {
     label: "See exactly what the tracker records",
@@ -66,7 +66,7 @@ export const socialProof = {
     { value: "5", label: "signals the desktop agent records" },
     { value: "$0", label: "to start, no card required" },
   ],
-  line: "Every table is scoped to your organization by Postgres row-level security, and clients are locked out of all eight tracking tables. Screenshots live in a private bucket, served only through URLs that expire in ten minutes.",
+  line: "Less chasing updates. More moving work forward. Bring projects, people and progress together in one clear view.",
 };
 
 // ---------------------------------------------------------------------------
@@ -75,29 +75,29 @@ export const socialProof = {
 
 export const twoHalves = {
   id: "one-system",
-  eyebrow: "One system, not two",
-  title: "Two halves, one permission model",
+  eyebrow: "Built for the whole workday",
+  title: "Plan with clarity. See progress as it happens.",
   description:
-    "Most teams run a project tool and a tracker side by side, then reconcile them by hand. Here the board and the agent read the same tasks, the same organization and the same role and permission system.",
+    "Give your team a clear path from the next task to the finished project. Connect project planning and workday insights in one shared workspace.",
   columns: [
     {
       title: "Project management",
       icon: "Kanban",
       description:
-        "Epics, sprints, story points and burndown. Six views over one board. Task review with file submissions, and a client portal with approvals and invoices.",
+        "Make priorities clear and keep delivery moving. Organize tasks, plan sprints and review finished work without losing the bigger picture.",
     },
     {
       title: "Activity tracking",
       icon: "Activity",
       description:
-        "Screenshots with the active application, applications and window titles, keystroke and unique-key counts with words per minute, and active-versus-idle minutes.",
+        "Understand where the workday goes. Bring time, app usage, keyboard activity and mouse activity into a clear dashboard your team can act on.",
     },
   ],
   // Deliberately claims only the boundary the database actually draws.
   spine:
-    "One organization id on every table, and one row-level security policy enforcing that boundary on every query — in both halves, from the same signed session.",
+    "From the first task to the final review, keep everyone focused on what matters: moving the work forward together.",
   footnote:
-    "Skip the desktop agent entirely and the project management half is untouched. Neither half depends on the other.",
+    "",
 };
 
 // ---------------------------------------------------------------------------
@@ -108,7 +108,7 @@ export const features = [
   {
     title: "Desktop activity tracking",
     description:
-      "A desktop agent records screenshots, the applications and window titles people used, keystroke and unique-key counts with words per minute, and active-versus-idle minutes. The admin dashboard has six views over it — Overview, Mouse, Keyboard, Apps, Screenshots and Logins — and refreshes live while a session is running.",
+      "See screenshots, app usage, keyboard activity, mouse activity, and active and idle time in one dashboard. Follow the workday with live updates while a tracking session is running.",
     icon: "Activity",
     role: "Owner and admin",
   },
@@ -376,7 +376,9 @@ export const pricing = {
       description: "For a growing team.",
       trialDays: 14,
       highlight: true,
-      cta: { label: "Start on Professional", href: "/register" },
+      badge: "Most Popular",
+      annualPrice: 39,
+      cta: { label: "Start Free Trial", href: "/register?plan=professional" },
       limits: [
         { label: "People", value: "25" },
         { label: "Developers", value: "25" },
@@ -399,7 +401,8 @@ export const pricing = {
       description: "For multiple teams.",
       trialDays: 14,
       highlight: false,
-      cta: { label: "Start on Business", href: "/register" },
+      annualPrice: 119,
+      cta: { label: "Start on Business", href: "/register?plan=business" },
       limits: [
         { label: "People", value: "100" },
         { label: "Developers", value: "100" },
@@ -421,7 +424,7 @@ export const pricing = {
       description: "Unlimited, with support.",
       trialDays: 0,
       highlight: false,
-      cta: { label: "Talk to us", href: "/register" },
+      cta: { label: "Talk to Sales", href: "/contact" },
       limits: [
         { label: "People", value: "Unlimited" },
         { label: "Developers", value: "Unlimited" },
@@ -500,11 +503,11 @@ export const finalCta = {
   eyebrow: "Free plan, no card",
   headline: "Set up your organization in a few minutes",
   subhead:
-    "Create the org, invite your first three people, and run a real project on the board. Install the desktop agent later, or never — that part is your call, and it should be a deliberate one.",
+    "Bring your team together, give every task a clear next step, and turn your next project into visible progress. Your workspace is ready to begin.",
   primaryCta: { label: "Create your organization", href: "/register" },
   secondaryCta: { label: "Sign in", href: "/login" },
   reassurance:
-    "Two projects and three people on the Free plan, with no trial countdown. Upgrade from the Billing page inside your dashboard when the limits start to bite.",
+    "Start with three people and two projects on Free. Choose more room as your team grows.",
 };
 
 // ---------------------------------------------------------------------------
@@ -518,7 +521,7 @@ export const finalCta = {
 export const footer = {
   brand: {
     name: BRAND_NAME,
-    tagline: "Project management and developer activity tracking, under one permission model.",
+    tagline: "Clear projects. Connected teams. Visible progress.",
     icon: "Activity",
   },
   linkGroups: [

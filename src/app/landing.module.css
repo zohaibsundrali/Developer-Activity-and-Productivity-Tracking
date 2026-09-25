@@ -92,3 +92,16 @@
 .page :is(a, button)[class~="bg-primary"] :is(span, strong) {
   color: #fff;
 }
+
+.page [data-final-cta] {
+  --landing-text: #fff;
+  background-color: hsl(243 60% 35%);
+}
+.page [data-final-cta] :is(a, button) {
+  background-color: transparent;
+  border-color: rgb(255 255 255 / 40%);
+  color: #fff;
+}
+.page [data-final-cta] :is(a, button):hover {
+  background-color: rgb(255 255 255 / 10%);
+}

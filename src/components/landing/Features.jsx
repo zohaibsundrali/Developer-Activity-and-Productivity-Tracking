@@ -117,7 +117,7 @@ export default function Features() {
                 </CardHeading>
 
                 {card.description ? (
-                  <p className="mt-3 flex-1 text-sm leading-relaxed text-muted-foreground sm:text-[0.9375rem]">
+                  <p className="mt-3 flex-1 text-sm leading-relaxed text-muted-foreground">
                     {card.description}
                   </p>
                 ) : (
