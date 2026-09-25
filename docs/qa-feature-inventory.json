@@ -30,6 +30,10 @@
       "route": "/client"
     },
     {
+      "file": "src/app/contact/page.jsx",
+      "route": "/contact"
+    },
+    {
       "file": "src/app/create/organization/page.js",
       "route": "/create/organization"
     },
@@ -82,6 +86,10 @@
       "route": "/notifications"
     },
     {
+      "file": "src/app/organization/dashboard/page.js",
+      "route": "/organization/dashboard"
+    },
+    {
       "file": "src/app/organizations/page.js",
       "route": "/organizations"
     },
@@ -92,6 +100,10 @@
     {
       "file": "src/app/privacy/page.js",
       "route": "/privacy"
+    },
+    {
+      "file": "src/app/register/page.js",
+      "route": "/register"
     },
     {
       "file": "src/app/reset-password/page.jsx",
@@ -185,11 +197,11 @@
       "methods": [
         {
           "method": "POST",
-          "line": 26
+          "line": 27
         },
         {
           "method": "GET",
-          "line": 226
+          "line": 205
         }
       ]
     },
@@ -545,7 +557,7 @@
       "methods": [
         {
           "method": "GET",
-          "line": 20
+          "line": 22
         }
       ]
     },
@@ -565,7 +577,7 @@
       "methods": [
         {
           "method": "GET",
-          "line": 11
+          "line": 13
         }
       ]
     },
@@ -618,6 +630,16 @@
         {
           "method": "GET",
           "line": 61
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/contact/route.js",
+      "route": "/api/contact",
+      "methods": [
+        {
+          "method": "POST",
+          "line": 4
         }
       ]
     },
@@ -972,12 +994,90 @@
       ]
     },
     {
+      "file": "src/app/api/platform/alerts/route.js",
+      "route": "/api/platform/alerts",
+      "methods": [
+        {
+          "method": "POST",
+          "line": 2
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/platform/analytics/route.js",
+      "route": "/api/platform/analytics",
+      "methods": [
+        {
+          "method": "GET",
+          "line": 4
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/platform/billing/actions/route.js",
+      "route": "/api/platform/billing/actions",
+      "methods": [
+        {
+          "method": "GET",
+          "line": 6
+        },
+        {
+          "method": "POST",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/platform/billing/reconcile/route.js",
+      "route": "/api/platform/billing/reconcile",
+      "methods": [
+        {
+          "method": "POST",
+          "line": 5
+        }
+      ]
+    },
+    {
       "file": "src/app/api/platform/billing/route.js",
       "route": "/api/platform/billing",
       "methods": [
         {
           "method": "GET",
+          "line": 4
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/platform/export/route.js",
+      "route": "/api/platform/export",
+      "methods": [
+        {
+          "method": "GET",
+          "line": 7
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/platform/health/route.js",
+      "route": "/api/platform/health",
+      "methods": [
+        {
+          "method": "GET",
           "line": 3
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/platform/management/route.js",
+      "route": "/api/platform/management",
+      "methods": [
+        {
+          "method": "GET",
+          "line": 11
+        },
+        {
+          "method": "POST",
+          "line": 21
         }
       ]
     },
@@ -991,11 +1091,11 @@
         },
         {
           "method": "DELETE",
-          "line": 36
+          "line": 41
         },
         {
           "method": "PATCH",
-          "line": 50
+          "line": 55
         }
       ]
     },
@@ -1005,7 +1105,7 @@
       "methods": [
         {
           "method": "GET",
-          "line": 3
+          "line": 4
         }
       ]
     },
@@ -1016,6 +1116,30 @@
         {
           "method": "GET",
           "line": 3
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/platform/projects/[id]/route.js",
+      "route": "/api/platform/projects/[id]",
+      "methods": [
+        {
+          "method": "GET",
+          "line": 4
+        },
+        {
+          "method": "POST",
+          "line": 17
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/platform/projects/route.js",
+      "route": "/api/platform/projects",
+      "methods": [
+        {
+          "method": "GET",
+          "line": 4
         }
       ]
     },
@@ -1283,11 +1407,11 @@
       "methods": [
         {
           "method": "POST",
-          "line": 48
+          "line": 49
         },
         {
           "method": "GET",
-          "line": 184
+          "line": 185
         }
       ]
     },
@@ -1458,361 +1582,6 @@
       }
     },
     {
-      "file": "src/app/admin/registration/page.js",
-      "line": 208,
-      "element": "input",
-      "label": "",
-      "attributes": {
-        "key": "{index}",
-        "id": "{index === 0 ? id : `${id}-${index + 1}`}",
-        "ref": "{(el) => { boxes.current[index] = el; }}",
-        "type": "text",
-        "inputMode": "numeric",
-        "pattern": "[0-9]*",
-        "autoComplete": "{index === 0 ? \"one-time-code\" : \"off\"}",
-        "maxLength": "{1}",
-        "value": "{digit}",
-        "disabled": "{disabled}",
-        "aria-label": "{`Verification code, digit ${index + 1} of ${length}`}",
-        "aria-describedby": "{describedBy}",
-        "aria-invalid": "{invalid}",
-        "aria-required": "{required}",
-        "onChange": "{handleChange(index)}",
-        "onKeyDown": "{handleKeyDown(index)}",
-        "onPaste": "{handlePaste(index)}",
-        "onFocus": "{(event) => event.target.select()}",
-        "className": "{`h-14 w-12 rounded-lg border bg-transparent text-center font-mono text-2xl font-semibold text-foreground outline-none transition-colors duration-150 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-14 ${ invalid ? \"border-destructive\" : \"border-input\" }`}"
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 263,
-      "element": "Link",
-      "label": "Terms of Service",
-      "attributes": {
-        "href": "/terms",
-        "target": "_blank",
-        "rel": "noopener noreferrer",
-        "className": "font-medium text-primary underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 276,
-      "element": "input",
-      "label": "",
-      "attributes": {
-        "id": "{id}",
-        "type": "checkbox",
-        "checked": "{checked}",
-        "onChange": "{(e) => onChange(e.target.checked)}",
-        "disabled": "{disabled}",
-        "aria-required": "true",
-        "aria-invalid": "{error ? true : undefined}",
-        "aria-describedby": "{error ? `${id}-error` : undefined}",
-        "className": "mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 994,
-      "element": "Button",
-      "label": "Back to home",
-      "attributes": {
-        "type": "button",
-        "variant": "ghost",
-        "size": "sm",
-        "onClick": "{handleGoToHome}",
-        "className": "h-9 gap-1.5 px-2.5 text-muted-foreground hover:text-foreground"
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1039,
-      "element": "SegmentedControl",
-      "label": "",
-      "attributes": {
-        "label": "Registration type",
-        "value": "{mode}",
-        "onChange": "{switchMode}",
-        "options": "{[ { value: \"create\", label: \"Create organization\" }, { value: \"join\", label: \"Join with code\" }, ]}"
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1053,
-      "element": "Input",
-      "label": "",
-      "attributes": {
-        "id": "reg-name",
-        "type": "text",
-        "placeholder": "John Doe",
-        "value": "{formData.fullName}",
-        "onChange": "{(e) => handleInputChange('fullName', e.target.value)}",
-        "className": "{AUTH_INPUT}",
-        "aria-invalid": "{errors.fullName ? true : undefined}",
-        "autoComplete": "name",
-        "required": null
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1073,
-      "element": "Input",
-      "label": "",
-      "attributes": {
-        "id": "reg-company",
-        "type": "text",
-        "placeholder": "Tech Solutions Inc.",
-        "value": "{formData.company}",
-        "onChange": "{(e) => handleInputChange('company', e.target.value)}",
-        "className": "{AUTH_INPUT}",
-        "aria-invalid": "{errors.company ? true : undefined}",
-        "required": null
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1087,
-      "element": "select",
-      "label": "",
-      "attributes": {
-        "id": "reg-industry",
-        "value": "{formData.industry}",
-        "onChange": "{(e) => handleInputChange('industry', e.target.value)}",
-        "className": "registration-select h-11 w-full rounded-lg border border-input bg-background px-3 text-base text-foreground outline-none transition-colors duration-150 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:text-sm"
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1101,
-      "element": "select",
-      "label": "",
-      "attributes": {
-        "id": "reg-size",
-        "value": "{formData.companySize}",
-        "onChange": "{(e) => handleInputChange('companySize', e.target.value)}",
-        "className": "registration-select h-11 w-full rounded-lg border border-input bg-background px-3 text-base text-foreground outline-none transition-colors duration-150 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:text-sm"
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1116,
-      "element": "Input",
-      "label": "",
-      "attributes": {
-        "id": "reg-country",
-        "type": "text",
-        "placeholder": "Pakistan",
-        "value": "{formData.country}",
-        "onChange": "{(e) => handleInputChange('country', e.target.value)}",
-        "className": "{AUTH_INPUT}"
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1127,
-      "element": "Input",
-      "label": "",
-      "attributes": {
-        "id": "reg-email",
-        "type": "email",
-        "placeholder": "john@example.com",
-        "value": "{formData.email}",
-        "onChange": "{(e) => handleInputChange('email', e.target.value)}",
-        "className": "{AUTH_INPUT}",
-        "aria-invalid": "{errors.email ? true : undefined}",
-        "autoComplete": "email",
-        "required": null
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1142,
-      "element": "PasswordInput",
-      "label": "",
-      "attributes": {
-        "id": "reg-password",
-        "placeholder": "Min. 8 characters",
-        "value": "{formData.password}",
-        "onChange": "{(e) => handleInputChange('password', e.target.value)}",
-        "aria-invalid": "{errors.password ? true : undefined}",
-        "autoComplete": "new-password",
-        "required": null,
-        "visible": "{showPassword}",
-        "onToggle": "{() => setShowPassword(!showPassword)}"
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1163,
-      "element": "PasswordInput",
-      "label": "",
-      "attributes": {
-        "id": "reg-confirm",
-        "placeholder": "Repeat password",
-        "value": "{formData.confirmPassword}",
-        "onChange": "{(e) => handleInputChange('confirmPassword', e.target.value)}",
-        "aria-invalid": "{errors.confirmPassword ? true : undefined}",
-        "autoComplete": "new-password",
-        "required": null,
-        "visible": "{showConfirmPassword}",
-        "onToggle": "{() => setShowConfirmPassword(!showConfirmPassword)}"
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1176,
-      "element": "TermsConsent",
-      "label": "",
-      "attributes": {
-        "id": "reg-terms",
-        "checked": "{termsAccepted}",
-        "onChange": "{(next) => { setTermsAccepted(next); if (errors.terms) setErrors((prev) => ({ ...prev, terms: \"\" })); }}",
-        "error": "{errors.terms}",
-        "disabled": "{loading}"
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1203,
-      "element": "Input",
-      "label": "",
-      "attributes": {
-        "id": "join-token",
-        "type": "text",
-        "placeholder": "e.g. 3f9c2a10-…",
-        "value": "{joinData.token}",
-        "onChange": "{(e) => handleJoinChange('token', e.target.value)}",
-        "className": "{`${AUTH_INPUT} font-mono`}",
-        "aria-invalid": "{errors.token ? true : undefined}",
-        "required": null
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1216,
-      "element": "Input",
-      "label": "",
-      "attributes": {
-        "id": "join-name",
-        "type": "text",
-        "placeholder": "John Doe",
-        "value": "{joinData.fullName}",
-        "onChange": "{(e) => handleJoinChange('fullName', e.target.value)}",
-        "className": "{AUTH_INPUT}",
-        "aria-invalid": "{errors.fullName ? true : undefined}",
-        "autoComplete": "name",
-        "required": null
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1231,
-      "element": "PasswordInput",
-      "label": "",
-      "attributes": {
-        "id": "join-password",
-        "placeholder": "Min. 8 characters",
-        "value": "{joinData.password}",
-        "onChange": "{(e) => handleJoinChange('password', e.target.value)}",
-        "aria-invalid": "{errors.password ? true : undefined}",
-        "autoComplete": "new-password",
-        "required": null,
-        "visible": "{showPassword}",
-        "onToggle": "{() => setShowPassword(!showPassword)}"
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1256,
-      "element": "PasswordInput",
-      "label": "",
-      "attributes": {
-        "id": "join-confirm",
-        "placeholder": "Repeat password",
-        "value": "{joinData.confirmPassword}",
-        "onChange": "{(e) => handleJoinChange('confirmPassword', e.target.value)}",
-        "aria-invalid": "{errors.confirmPassword ? true : undefined}",
-        "autoComplete": "new-password",
-        "required": null,
-        "visible": "{showConfirmPassword}",
-        "onToggle": "{() => setShowConfirmPassword(!showConfirmPassword)}"
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1269,
-      "element": "TermsConsent",
-      "label": "",
-      "attributes": {
-        "id": "join-terms",
-        "checked": "{joinTermsAccepted}",
-        "onChange": "{(next) => { setJoinTermsAccepted(next); if (errors.terms) setErrors((prev) => ({ ...prev, terms: \"\" })); }}",
-        "error": "{errors.terms}",
-        "disabled": "{joinLoading}"
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1294,
-      "element": "PlanChoice",
-      "label": "",
-      "attributes": {
-        "plans": "{plans}",
-        "value": "{selectedPlan}",
-        "onChange": "{setSelectedPlan}",
-        "loading": "{plansLoading}",
-        "disabled": "{verificationLoading}"
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1317,
-      "element": "button",
-      "label": "Back",
-      "attributes": {
-        "type": "button",
-        "onClick": "{() => setStep(2)}",
-        "disabled": "{verificationLoading}",
-        "className": "mx-auto block rounded text-sm font-medium text-muted-foreground underline-offset-4 transition-colors duration-150 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed"
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1345,
-      "element": "OtpInput",
-      "label": "",
-      "attributes": {
-        "digits": "{codeDigits}",
-        "onChange": "{setCodeDigits}",
-        "disabled": "{verificationLoading || codeExpired}",
-        "focusSignal": "{otpFocusSignal}"
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1380,
-      "element": "button",
-      "label": "",
-      "attributes": {
-        "type": "button",
-        "onClick": "{handleResendCode}",
-        "disabled": "{loading}",
-        "className": "rounded font-medium text-primary underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1397,
-      "element": "Link",
-      "label": "Sign in",
-      "attributes": {
-        "href": "/login",
-        "className": "font-medium text-primary underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-      }
-    },
-    {
       "file": "src/app/admin/upgrade/page.jsx",
       "line": 229,
       "element": "Button",
@@ -1821,7 +1590,7 @@
         "type": "button",
         "variant": "ghost",
         "size": "sm",
-        "onClick": "{() => router.push(\"/admin/dashboard\")}",
+        "onClick": "{() => router.push(\"/organization/dashboard\")}",
         "className": "h-9 gap-1.5 px-2.5 text-muted-foreground hover:text-foreground"
       }
     },
@@ -1872,6 +1641,48 @@
       "attributes": {
         "href": "/login",
         "className": "font-medium text-primary underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      }
+    },
+    {
+      "file": "src/app/contact/ContactForm.jsx",
+      "line": 22,
+      "element": "input",
+      "label": "",
+      "attributes": {
+        "id": "{`contact-${name}`}",
+        "name": "{name}",
+        "type": "{type}",
+        "autoComplete": "{autoComplete}",
+        "maxLength": "{maxLength}",
+        "required": null,
+        "disabled": "{status === 'sending'}",
+        "className": "h-11 w-full rounded-lg border border-input bg-background px-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      }
+    },
+    {
+      "file": "src/app/contact/ContactForm.jsx",
+      "line": 23,
+      "element": "textarea",
+      "label": "",
+      "attributes": {
+        "id": "contact-message",
+        "name": "message",
+        "rows": "{4}",
+        "maxLength": "{3000}",
+        "required": null,
+        "disabled": "{status === 'sending'}",
+        "placeholder": "Tell us about your team size, workflow and what you’d like to see in a demo.",
+        "className": "w-full rounded-lg border border-input bg-background p-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      }
+    },
+    {
+      "file": "src/app/contact/ContactForm.jsx",
+      "line": 25,
+      "element": "button",
+      "label": "",
+      "attributes": {
+        "disabled": "{status === 'sending'}",
+        "className": "min-h-12 w-full rounded-lg bg-primary px-5 py-3 font-semibold text-primary-foreground disabled:opacity-60"
       }
     },
     {
@@ -2212,42 +2023,33 @@
     },
     {
       "file": "src/app/download/page.jsx",
-      "line": 13,
+      "line": 23,
       "element": "Link",
-      "label": "",
+      "label": "Get the desktop app",
       "attributes": {
-        "href": "/",
-        "aria-label": "{`${BRAND_NAME} home`}"
+        "href": "#windows-download",
+        "className": "mt-8 inline-flex items-center gap-2 text-sm font-semibold underline underline-offset-4"
       }
     },
     {
       "file": "src/app/download/page.jsx",
-      "line": 14,
-      "element": "Link",
-      "label": "Sign in",
-      "attributes": {
-        "href": "/login",
-        "className": "font-medium underline underline-offset-4"
-      }
-    },
-    {
-      "file": "src/app/download/page.jsx",
-      "line": 24,
+      "line": 30,
       "element": "a",
-      "label": "Download Windows setup (.exe)",
+      "label": "Download for Windows",
       "attributes": {
         "href": "/api/desktop/download",
-        "className": "inline-flex rounded-lg bg-primary px-6 py-3 font-semibold text-primary-foreground"
+        "download": null,
+        "className": "mt-7 flex min-h-12 items-center justify-center gap-3 rounded-lg bg-primary px-5 py-3 text-center font-semibold text-primary-foreground"
       }
     },
     {
       "file": "src/app/download/page.jsx",
-      "line": 48,
+      "line": 53,
       "element": "Link",
       "label": "Read the privacy policy",
       "attributes": {
         "href": "/privacy",
-        "className": "inline-block font-medium underline underline-offset-4"
+        "className": "underline underline-offset-4"
       }
     },
     {
@@ -2521,7 +2323,7 @@
       "element": "Link",
       "label": "create one here",
       "attributes": {
-        "href": "/admin/registration",
+        "href": "/register",
         "className": "font-medium text-primary underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       }
     },
@@ -2609,24 +2411,12 @@
         "variant": "ghost",
         "size": "sm",
         "onClick": "{handleGoToHome}",
-        "className": "h-9 gap-1.5 px-2.5 text-muted-foreground hover:text-foreground"
+        "className": "h-9 gap-1.5 px-2.5 text-black hover:text-black dark:text-white dark:hover:text-white"
       }
     },
     {
       "file": "src/app/login/page.js",
       "line": 260,
-      "element": "SegmentedControl",
-      "label": "",
-      "attributes": {
-        "label": "Account type",
-        "value": "{role}",
-        "onChange": "{setRole}",
-        "options": "{[ { value: \"developer\", label: \"Team Member\", title: \"Developers, Managers and Employees sign in here\", }, { value: \"admin\", label: \"Owner / Platform Admin\" }, { value: \"client\", label: \"Client\" }, ]}"
-      }
-    },
-    {
-      "file": "src/app/login/page.js",
-      "line": 278,
       "element": "Input",
       "label": "",
       "attributes": {
@@ -2643,7 +2433,7 @@
     },
     {
       "file": "src/app/login/page.js",
-      "line": 292,
+      "line": 274,
       "element": "PasswordInput",
       "label": "",
       "attributes": {
@@ -2660,7 +2450,7 @@
     },
     {
       "file": "src/app/login/page.js",
-      "line": 312,
+      "line": 294,
       "element": "Link",
       "label": "Forgot password?",
       "attributes": {
@@ -2670,7 +2460,7 @@
     },
     {
       "file": "src/app/login/page.js",
-      "line": 347,
+      "line": 330,
       "element": "Link",
       "label": "Join with an Invite",
       "attributes": {
@@ -2680,11 +2470,11 @@
     },
     {
       "file": "src/app/login/page.js",
-      "line": 356,
+      "line": 339,
       "element": "Link",
       "label": "Create an Organization",
       "attributes": {
-        "href": "/admin/registration",
+        "href": "/register",
         "className": "font-medium text-primary underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       }
     },
@@ -2733,12 +2523,379 @@
     },
     {
       "file": "src/app/page.js",
-      "line": 107,
+      "line": 108,
       "element": "a",
       "label": "Skip to content",
       "attributes": {
         "href": "#main",
         "className": "sr-only z-[60] focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:inline-flex focus:h-11 focus:items-center focus:rounded-lg focus:border focus:border-border focus:bg-card focus:px-4 focus:text-sm focus:font-semibold focus:text-foreground focus:shadow-elevated focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 208,
+      "element": "input",
+      "label": "",
+      "attributes": {
+        "key": "{index}",
+        "id": "{index === 0 ? id : `${id}-${index + 1}`}",
+        "ref": "{(el) => { boxes.current[index] = el; }}",
+        "type": "text",
+        "inputMode": "numeric",
+        "pattern": "[0-9]*",
+        "autoComplete": "{index === 0 ? \"one-time-code\" : \"off\"}",
+        "maxLength": "{1}",
+        "value": "{digit}",
+        "disabled": "{disabled}",
+        "aria-label": "{`Verification code, digit ${index + 1} of ${length}`}",
+        "aria-describedby": "{describedBy}",
+        "aria-invalid": "{invalid}",
+        "aria-required": "{required}",
+        "onChange": "{handleChange(index)}",
+        "onKeyDown": "{handleKeyDown(index)}",
+        "onPaste": "{handlePaste(index)}",
+        "onFocus": "{(event) => event.target.select()}",
+        "className": "{`h-14 w-12 rounded-lg border bg-transparent text-center font-mono text-2xl font-semibold text-foreground outline-none transition-colors duration-150 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-14 ${ invalid ? \"border-destructive\" : \"border-input\" }`}"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 263,
+      "element": "Link",
+      "label": "Terms of Service",
+      "attributes": {
+        "href": "/terms",
+        "target": "_blank",
+        "rel": "noopener noreferrer",
+        "className": "font-medium text-primary underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 276,
+      "element": "input",
+      "label": "",
+      "attributes": {
+        "id": "{id}",
+        "type": "checkbox",
+        "checked": "{checked}",
+        "onChange": "{(e) => onChange(e.target.checked)}",
+        "disabled": "{disabled}",
+        "aria-required": "true",
+        "aria-invalid": "{error ? true : undefined}",
+        "aria-describedby": "{error ? `${id}-error` : undefined}",
+        "className": "mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1012,
+      "element": "Button",
+      "label": "Back to home",
+      "attributes": {
+        "type": "button",
+        "variant": "ghost",
+        "size": "sm",
+        "onClick": "{handleGoToHome}",
+        "className": "h-9 gap-1.5 px-2.5 text-muted-foreground hover:text-foreground"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1057,
+      "element": "SegmentedControl",
+      "label": "",
+      "attributes": {
+        "label": "Registration type",
+        "value": "{mode}",
+        "onChange": "{switchMode}",
+        "options": "{[ { value: \"create\", label: \"Create organization\" }, { value: \"join\", label: \"Join with code\" }, ]}"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1072,
+      "element": "Input",
+      "label": "",
+      "attributes": {
+        "id": "reg-name",
+        "type": "text",
+        "placeholder": "John Doe",
+        "value": "{formData.fullName}",
+        "onChange": "{(e) => handleInputChange('fullName', e.target.value)}",
+        "className": "{AUTH_INPUT}",
+        "aria-invalid": "{errors.fullName ? true : undefined}",
+        "autoComplete": "name",
+        "required": null
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1086,
+      "element": "Input",
+      "label": "",
+      "attributes": {
+        "id": "reg-email",
+        "type": "email",
+        "placeholder": "john@example.com",
+        "value": "{formData.email}",
+        "onChange": "{(e) => handleInputChange('email', e.target.value)}",
+        "className": "{AUTH_INPUT}",
+        "aria-invalid": "{errors.email ? true : undefined}",
+        "autoComplete": "email",
+        "required": null
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1101,
+      "element": "PasswordInput",
+      "label": "",
+      "attributes": {
+        "id": "reg-password",
+        "placeholder": "Min. 8 characters",
+        "value": "{formData.password}",
+        "onChange": "{(e) => handleInputChange('password', e.target.value)}",
+        "aria-invalid": "{errors.password ? true : undefined}",
+        "autoComplete": "new-password",
+        "required": null,
+        "visible": "{showPassword}",
+        "onToggle": "{() => setShowPassword(!showPassword)}"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1122,
+      "element": "PasswordInput",
+      "label": "",
+      "attributes": {
+        "id": "reg-confirm",
+        "placeholder": "Repeat password",
+        "value": "{formData.confirmPassword}",
+        "onChange": "{(e) => handleInputChange('confirmPassword', e.target.value)}",
+        "aria-invalid": "{errors.confirmPassword ? true : undefined}",
+        "autoComplete": "new-password",
+        "required": null,
+        "visible": "{showConfirmPassword}",
+        "onToggle": "{() => setShowConfirmPassword(!showConfirmPassword)}"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1143,
+      "element": "Input",
+      "label": "",
+      "attributes": {
+        "id": "reg-company",
+        "type": "text",
+        "placeholder": "Tech Solutions Inc.",
+        "value": "{formData.company}",
+        "onChange": "{(e) => handleInputChange('company', e.target.value)}",
+        "className": "{AUTH_INPUT}",
+        "aria-invalid": "{errors.company ? true : undefined}",
+        "required": null
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1157,
+      "element": "select",
+      "label": "",
+      "attributes": {
+        "id": "reg-industry",
+        "value": "{formData.industry}",
+        "onChange": "{(e) => handleInputChange('industry', e.target.value)}",
+        "className": "registration-select h-11 w-full rounded-lg border border-input bg-background px-3 text-base text-foreground outline-none transition-colors duration-150 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:text-sm"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1171,
+      "element": "select",
+      "label": "",
+      "attributes": {
+        "id": "reg-size",
+        "value": "{formData.companySize}",
+        "onChange": "{(e) => handleInputChange('companySize', e.target.value)}",
+        "className": "registration-select h-11 w-full rounded-lg border border-input bg-background px-3 text-base text-foreground outline-none transition-colors duration-150 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:text-sm"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1186,
+      "element": "Input",
+      "label": "",
+      "attributes": {
+        "id": "reg-country",
+        "type": "text",
+        "placeholder": "Pakistan",
+        "value": "{formData.country}",
+        "onChange": "{(e) => handleInputChange('country', e.target.value)}",
+        "className": "{AUTH_INPUT}"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1196,
+      "element": "TermsConsent",
+      "label": "",
+      "attributes": {
+        "id": "reg-terms",
+        "checked": "{termsAccepted}",
+        "onChange": "{(next) => { setTermsAccepted(next); if (errors.terms) setErrors((prev) => ({ ...prev, terms: \"\" })); }}",
+        "error": "{errors.terms}",
+        "disabled": "{loading}"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1216,
+      "element": "button",
+      "label": "Back to account details",
+      "attributes": {
+        "type": "button",
+        "disabled": "{loading}",
+        "onClick": "{() => { setDetailsPart(\"account\"); setErrors({}); }}",
+        "className": "mx-auto block rounded text-sm font-medium underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1225,
+      "element": "Input",
+      "label": "",
+      "attributes": {
+        "id": "join-token",
+        "type": "text",
+        "placeholder": "e.g. 3f9c2a10-…",
+        "value": "{joinData.token}",
+        "onChange": "{(e) => handleJoinChange('token', e.target.value)}",
+        "className": "{`${AUTH_INPUT} font-mono`}",
+        "aria-invalid": "{errors.token ? true : undefined}",
+        "required": null
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1238,
+      "element": "Input",
+      "label": "",
+      "attributes": {
+        "id": "join-name",
+        "type": "text",
+        "placeholder": "John Doe",
+        "value": "{joinData.fullName}",
+        "onChange": "{(e) => handleJoinChange('fullName', e.target.value)}",
+        "className": "{AUTH_INPUT}",
+        "aria-invalid": "{errors.fullName ? true : undefined}",
+        "autoComplete": "name",
+        "required": null
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1253,
+      "element": "PasswordInput",
+      "label": "",
+      "attributes": {
+        "id": "join-password",
+        "placeholder": "Min. 8 characters",
+        "value": "{joinData.password}",
+        "onChange": "{(e) => handleJoinChange('password', e.target.value)}",
+        "aria-invalid": "{errors.password ? true : undefined}",
+        "autoComplete": "new-password",
+        "required": null,
+        "visible": "{showPassword}",
+        "onToggle": "{() => setShowPassword(!showPassword)}"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1278,
+      "element": "PasswordInput",
+      "label": "",
+      "attributes": {
+        "id": "join-confirm",
+        "placeholder": "Repeat password",
+        "value": "{joinData.confirmPassword}",
+        "onChange": "{(e) => handleJoinChange('confirmPassword', e.target.value)}",
+        "aria-invalid": "{errors.confirmPassword ? true : undefined}",
+        "autoComplete": "new-password",
+        "required": null,
+        "visible": "{showConfirmPassword}",
+        "onToggle": "{() => setShowConfirmPassword(!showConfirmPassword)}"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1291,
+      "element": "TermsConsent",
+      "label": "",
+      "attributes": {
+        "id": "join-terms",
+        "checked": "{joinTermsAccepted}",
+        "onChange": "{(next) => { setJoinTermsAccepted(next); if (errors.terms) setErrors((prev) => ({ ...prev, terms: \"\" })); }}",
+        "error": "{errors.terms}",
+        "disabled": "{joinLoading}"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1316,
+      "element": "PlanChoice",
+      "label": "",
+      "attributes": {
+        "plans": "{plans}",
+        "value": "{selectedPlan}",
+        "onChange": "{setSelectedPlan}",
+        "loading": "{plansLoading}",
+        "disabled": "{verificationLoading}"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1339,
+      "element": "button",
+      "label": "Back",
+      "attributes": {
+        "type": "button",
+        "onClick": "{() => setStep(2)}",
+        "disabled": "{verificationLoading}",
+        "className": "mx-auto block rounded text-sm font-medium text-muted-foreground underline-offset-4 transition-colors duration-150 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1367,
+      "element": "OtpInput",
+      "label": "",
+      "attributes": {
+        "digits": "{codeDigits}",
+        "onChange": "{setCodeDigits}",
+        "disabled": "{verificationLoading || codeExpired}",
+        "focusSignal": "{otpFocusSignal}"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1402,
+      "element": "button",
+      "label": "",
+      "attributes": {
+        "type": "button",
+        "onClick": "{handleResendCode}",
+        "disabled": "{loading}",
+        "className": "rounded font-medium text-primary underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1419,
+      "element": "Link",
+      "label": "Sign in",
+      "attributes": {
+        "href": "/login",
+        "className": "font-medium text-primary underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       }
     },
     {
@@ -5607,7 +5764,7 @@
     },
     {
       "file": "src/components/admin/DashboardOverview.jsx",
-      "line": 165,
+      "line": 182,
       "element": "Button",
       "label": "",
       "attributes": {
@@ -5618,7 +5775,7 @@
     },
     {
       "file": "src/components/admin/DashboardOverview.jsx",
-      "line": 345,
+      "line": 381,
       "element": "Link",
       "label": "",
       "attributes": {
@@ -5775,7 +5932,7 @@
       "element": "Button",
       "label": "View Employees",
       "attributes": {
-        "onClick": "{() => router.push(\"/admin/dashboard?section=employees\")}"
+        "onClick": "{() => router.push(\"/organization/dashboard?section=employees\")}"
       }
     },
     {
@@ -7309,7 +7466,7 @@
     },
     {
       "file": "src/components/admin/ProjectBoard.jsx",
-      "line": 56,
+      "line": 57,
       "element": "button",
       "label": "Add task",
       "attributes": {
@@ -7320,7 +7477,7 @@
     },
     {
       "file": "src/components/admin/ProjectBoard.jsx",
-      "line": 69,
+      "line": 70,
       "element": "Input",
       "label": "",
       "attributes": {
@@ -7334,7 +7491,7 @@
     },
     {
       "file": "src/components/admin/ProjectBoard.jsx",
-      "line": 84,
+      "line": 85,
       "element": "Button",
       "label": "Add",
       "attributes": {
@@ -7345,7 +7502,7 @@
     },
     {
       "file": "src/components/admin/ProjectBoard.jsx",
-      "line": 88,
+      "line": 89,
       "element": "Button",
       "label": "Cancel",
       "attributes": {
@@ -7356,7 +7513,7 @@
     },
     {
       "file": "src/components/admin/ProjectBoard.jsx",
-      "line": 382,
+      "line": 384,
       "element": "Button",
       "label": "Refresh",
       "attributes": {
@@ -7367,7 +7524,7 @@
     },
     {
       "file": "src/components/admin/ProjectBoard.jsx",
-      "line": 418,
+      "line": 420,
       "element": "Button",
       "label": "Retry task link",
       "attributes": {
@@ -7378,7 +7535,7 @@
     },
     {
       "file": "src/components/admin/ProjectBoard.jsx",
-      "line": 492,
+      "line": 494,
       "element": "select",
       "label": "",
       "attributes": {
@@ -7390,7 +7547,7 @@
     },
     {
       "file": "src/components/admin/ProjectBoard.jsx",
-      "line": 508,
+      "line": 510,
       "element": "select",
       "label": "",
       "attributes": {
@@ -7402,7 +7559,7 @@
     },
     {
       "file": "src/components/admin/ProjectBoard.jsx",
-      "line": 525,
+      "line": 527,
       "element": "select",
       "label": "",
       "attributes": {
@@ -7414,7 +7571,7 @@
     },
     {
       "file": "src/components/admin/ProjectBoard.jsx",
-      "line": 543,
+      "line": 545,
       "element": "select",
       "label": "",
       "attributes": {
@@ -7952,7 +8109,7 @@
     },
     {
       "file": "src/components/admin/ProjectViews.jsx",
-      "line": 217,
+      "line": 224,
       "element": "Button",
       "label": "Refresh",
       "attributes": {
@@ -7963,7 +8120,7 @@
     },
     {
       "file": "src/components/admin/ProjectViews.jsx",
-      "line": 303,
+      "line": 310,
       "element": "select",
       "label": "",
       "attributes": {
@@ -7975,7 +8132,7 @@
     },
     {
       "file": "src/components/admin/ProjectViews.jsx",
-      "line": 325,
+      "line": 332,
       "element": "select",
       "label": "",
       "attributes": {
@@ -7987,7 +8144,7 @@
     },
     {
       "file": "src/components/admin/ProjectViews.jsx",
-      "line": 340,
+      "line": 347,
       "element": "Button",
       "label": "",
       "attributes": {
@@ -8001,7 +8158,7 @@
     },
     {
       "file": "src/components/admin/ProjectViews.jsx",
-      "line": 351,
+      "line": 358,
       "element": "Button",
       "label": "Save view",
       "attributes": {
@@ -8011,7 +8168,7 @@
     },
     {
       "file": "src/components/admin/ProjectViews.jsx",
-      "line": 358,
+      "line": 365,
       "element": "Tabs",
       "label": "",
       "attributes": {
@@ -8024,7 +8181,7 @@
     },
     {
       "file": "src/components/admin/ProjectViews.jsx",
-      "line": 393,
+      "line": 400,
       "element": "select",
       "label": "",
       "attributes": {
@@ -8036,7 +8193,7 @@
     },
     {
       "file": "src/components/admin/ProjectViews.jsx",
-      "line": 410,
+      "line": 417,
       "element": "select",
       "label": "",
       "attributes": {
@@ -8048,7 +8205,7 @@
     },
     {
       "file": "src/components/admin/ProjectViews.jsx",
-      "line": 427,
+      "line": 434,
       "element": "select",
       "label": "",
       "attributes": {
@@ -8060,7 +8217,7 @@
     },
     {
       "file": "src/components/admin/ProjectViews.jsx",
-      "line": 445,
+      "line": 452,
       "element": "select",
       "label": "",
       "attributes": {
@@ -8072,7 +8229,7 @@
     },
     {
       "file": "src/components/admin/ProjectViews.jsx",
-      "line": 462,
+      "line": 469,
       "element": "Button",
       "label": "Clear filters",
       "attributes": {
@@ -8711,21 +8868,22 @@
     },
     {
       "file": "src/components/admin/SignalsPanel.jsx",
-      "line": 124,
+      "line": 134,
       "element": "Button",
       "label": "",
       "attributes": {
         "type": "button",
         "variant": "ghost",
         "size": "sm",
-        "onClick": "{() => load({ quiet: true })}",
+        "onClick": "{load}",
+        "aria-label": "Refresh attention signals",
         "disabled": "{state.loading}",
         "className": "h-8 gap-1.5 px-2 text-muted-foreground hover:text-foreground"
       }
     },
     {
       "file": "src/components/admin/SprintBoard.jsx",
-      "line": 330,
+      "line": 328,
       "element": "select",
       "label": "",
       "attributes": {
@@ -8737,7 +8895,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 158,
+      "line": 160,
       "element": "select",
       "label": "",
       "attributes": {
@@ -8750,7 +8908,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 188,
+      "line": 190,
       "element": "input",
       "label": "",
       "attributes": {
@@ -8767,7 +8925,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 211,
+      "line": 213,
       "element": "select",
       "label": "",
       "attributes": {
@@ -8780,7 +8938,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 234,
+      "line": 236,
       "element": "select",
       "label": "",
       "attributes": {
@@ -8793,7 +8951,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 252,
+      "line": 254,
       "element": "Button",
       "label": "Remove",
       "attributes": {
@@ -8806,7 +8964,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 297,
+      "line": 299,
       "element": "Input",
       "label": "",
       "attributes": {
@@ -8820,7 +8978,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 305,
+      "line": 307,
       "element": "select",
       "label": "",
       "attributes": {
@@ -8832,7 +8990,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 316,
+      "line": 318,
       "element": "textarea",
       "label": "",
       "attributes": {
@@ -8845,7 +9003,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 326,
+      "line": 328,
       "element": "button",
       "label": "",
       "attributes": {
@@ -8860,7 +9018,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 340,
+      "line": 342,
       "element": "Button",
       "label": "",
       "attributes": {
@@ -8871,7 +9029,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 344,
+      "line": 346,
       "element": "Button",
       "label": "Cancel",
       "attributes": {
@@ -8884,7 +9042,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 390,
+      "line": 392,
       "element": "Input",
       "label": "",
       "attributes": {
@@ -8898,7 +9056,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 398,
+      "line": 400,
       "element": "select",
       "label": "",
       "attributes": {
@@ -8910,7 +9068,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 411,
+      "line": 413,
       "element": "Input",
       "label": "",
       "attributes": {
@@ -8922,7 +9080,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 420,
+      "line": 422,
       "element": "Input",
       "label": "",
       "attributes": {
@@ -8933,7 +9091,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 428,
+      "line": 430,
       "element": "Input",
       "label": "",
       "attributes": {
@@ -8945,7 +9103,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 438,
+      "line": 440,
       "element": "Button",
       "label": "",
       "attributes": {
@@ -8956,7 +9114,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 442,
+      "line": 444,
       "element": "Button",
       "label": "Cancel",
       "attributes": {
@@ -8969,7 +9127,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 560,
+      "line": 562,
       "element": "Button",
       "label": "New epic",
       "attributes": {
@@ -8979,7 +9137,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 614,
+      "line": 616,
       "element": "Button",
       "label": "",
       "attributes": {
@@ -8993,7 +9151,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 655,
+      "line": 657,
       "element": "Button",
       "label": "New sprint",
       "attributes": {
@@ -9003,7 +9161,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 725,
+      "line": 727,
       "element": "Button",
       "label": "",
       "attributes": {
@@ -9017,7 +9175,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 739,
+      "line": 741,
       "element": "Button",
       "label": "",
       "attributes": {
@@ -9028,7 +9186,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 806,
+      "line": 808,
       "element": "Input",
       "label": "",
       "attributes": {
@@ -9043,7 +9201,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 820,
+      "line": 822,
       "element": "Button",
       "label": "Add task",
       "attributes": {
@@ -9054,7 +9212,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 855,
+      "line": 857,
       "element": "Tabs",
       "label": "",
       "attributes": {
@@ -9125,7 +9283,16 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 880,
+      "line": 813,
+      "element": "Button",
+      "label": "Submit work for review",
+      "attributes": {
+        "onClick": "{() => setShowSubmission(true)}"
+      }
+    },
+    {
+      "file": "src/components/admin/TaskDetailDrawer.jsx",
+      "line": 885,
       "element": "Input",
       "label": "",
       "attributes": {
@@ -9140,7 +9307,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 903,
+      "line": 908,
       "element": "select",
       "label": "",
       "attributes": {
@@ -9153,7 +9320,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 923,
+      "line": 928,
       "element": "select",
       "label": "",
       "attributes": {
@@ -9166,20 +9333,20 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 940,
+      "line": 945,
       "element": "select",
       "label": "",
       "attributes": {
         "id": "{`task-assignee-${taskId}`}",
         "disabled": "{!actionAccess.manage}",
         "className": "{`${SELECT_CLASS} w-full`}",
-        "value": "{form?.developer_id ?? \"\"}",
+        "value": "{taskAssignmentKey(form)}",
         "onChange": "{(e) => handleAssign(e.target.value || null)}"
       }
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 959,
+      "line": 964,
       "element": "Input",
       "label": "",
       "attributes": {
@@ -9194,7 +9361,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 976,
+      "line": 981,
       "element": "Input",
       "label": "",
       "attributes": {
@@ -9207,7 +9374,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 986,
+      "line": 991,
       "element": "Input",
       "label": "",
       "attributes": {
@@ -9222,7 +9389,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1003,
+      "line": 1008,
       "element": "Input",
       "label": "",
       "attributes": {
@@ -9237,7 +9404,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1020,
+      "line": 1025,
       "element": "select",
       "label": "",
       "attributes": {
@@ -9250,7 +9417,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1037,
+      "line": 1042,
       "element": "select",
       "label": "",
       "attributes": {
@@ -9263,7 +9430,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1062,
+      "line": 1067,
       "element": "input",
       "label": "",
       "attributes": {
@@ -9276,7 +9443,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1104,
+      "line": 1109,
       "element": "textarea",
       "label": "",
       "attributes": {
@@ -9290,7 +9457,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1113,
+      "line": 1118,
       "element": "Button",
       "label": "Save",
       "attributes": {
@@ -9301,7 +9468,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1169,
+      "line": 1174,
       "element": "Input",
       "label": "",
       "attributes": {
@@ -9314,7 +9481,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1181,
+      "line": 1186,
       "element": "Button",
       "label": "Add",
       "attributes": {
@@ -9325,7 +9492,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1220,
+      "line": 1225,
       "element": "input",
       "label": "",
       "attributes": {
@@ -9337,7 +9504,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1246,
+      "line": 1251,
       "element": "Input",
       "label": "",
       "attributes": {
@@ -9350,7 +9517,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1258,
+      "line": 1263,
       "element": "Button",
       "label": "Add",
       "attributes": {
@@ -9361,7 +9528,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1296,
+      "line": 1301,
       "element": "select",
       "label": "",
       "attributes": {
@@ -9373,7 +9540,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1309,
+      "line": 1314,
       "element": "select",
       "label": "",
       "attributes": {
@@ -9385,7 +9552,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1323,
+      "line": 1328,
       "element": "Button",
       "label": "Add dependency",
       "attributes": {
@@ -9396,7 +9563,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1337,
+      "line": 1342,
       "element": "button",
       "label": "",
       "attributes": {
@@ -9409,7 +9576,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1351,
+      "line": 1356,
       "element": "Button",
       "label": "",
       "attributes": {
@@ -9420,7 +9587,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1362,
+      "line": 1367,
       "element": "Button",
       "label": "Retry",
       "attributes": {
@@ -9429,7 +9596,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1366,
+      "line": 1371,
       "element": "select",
       "label": "",
       "attributes": {
@@ -9441,7 +9608,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1379,
+      "line": 1384,
       "element": "Button",
       "label": "Add",
       "attributes": {
@@ -9452,7 +9619,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1420,
+      "line": 1425,
       "element": "button",
       "label": "",
       "attributes": {
@@ -9466,7 +9633,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1434,
+      "line": 1439,
       "element": "button",
       "label": "",
       "attributes": {
@@ -9480,7 +9647,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1462,
+      "line": 1467,
       "element": "input",
       "label": "",
       "attributes": {
@@ -9492,7 +9659,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1510,
+      "line": 1515,
       "element": "textarea",
       "label": "",
       "attributes": {
@@ -9507,7 +9674,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1524,
+      "line": 1529,
       "element": "button",
       "label": "",
       "attributes": {
@@ -9519,7 +9686,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 1541,
+      "line": 1546,
       "element": "Button",
       "label": "Comment",
       "attributes": {
@@ -9755,7 +9922,7 @@
     },
     {
       "file": "src/components/admin/TaskReviewPanel.jsx",
-      "line": 292,
+      "line": 293,
       "element": "Button",
       "label": "Refresh",
       "attributes": {
@@ -9766,7 +9933,7 @@
     },
     {
       "file": "src/components/admin/TaskReviewPanel.jsx",
-      "line": 317,
+      "line": 318,
       "element": "Tabs",
       "label": "",
       "attributes": {
@@ -9779,7 +9946,7 @@
     },
     {
       "file": "src/components/admin/TaskReviewPanel.jsx",
-      "line": 450,
+      "line": 451,
       "element": "Button",
       "label": "Download",
       "attributes": {
@@ -9790,7 +9957,7 @@
     },
     {
       "file": "src/components/admin/TaskReviewPanel.jsx",
-      "line": 481,
+      "line": 482,
       "element": "Button",
       "label": "Approve task",
       "attributes": {
@@ -9801,7 +9968,7 @@
     },
     {
       "file": "src/components/admin/TaskReviewPanel.jsx",
-      "line": 489,
+      "line": 490,
       "element": "Button",
       "label": "Reject task",
       "attributes": {
@@ -9813,7 +9980,7 @@
     },
     {
       "file": "src/components/admin/TaskReviewPanel.jsx",
-      "line": 544,
+      "line": 551,
       "element": "Button",
       "label": "Cancel",
       "attributes": {
@@ -9825,7 +9992,7 @@
     },
     {
       "file": "src/components/admin/TaskReviewPanel.jsx",
-      "line": 547,
+      "line": 554,
       "element": "Button",
       "label": "",
       "attributes": {
@@ -9837,7 +10004,7 @@
     },
     {
       "file": "src/components/admin/TaskReviewPanel.jsx",
-      "line": 599,
+      "line": 606,
       "element": "textarea",
       "label": "",
       "attributes": {
@@ -9851,7 +10018,7 @@
     },
     {
       "file": "src/components/admin/TaskReviewPanel.jsx",
-      "line": 620,
+      "line": 627,
       "element": "textarea",
       "label": "",
       "attributes": {
@@ -10261,7 +10428,7 @@
     },
     {
       "file": "src/components/admin/views/ListView.jsx",
-      "line": 49,
+      "line": 51,
       "element": "div",
       "label": "",
       "attributes": {
@@ -10274,7 +10441,7 @@
     },
     {
       "file": "src/components/admin/views/ListView.jsx",
-      "line": 203,
+      "line": 202,
       "element": "select",
       "label": "",
       "attributes": {
@@ -10286,7 +10453,7 @@
     },
     {
       "file": "src/components/admin/views/TableView.jsx",
-      "line": 243,
+      "line": 245,
       "element": "button",
       "label": "",
       "attributes": {
@@ -11092,7 +11259,7 @@
     },
     {
       "file": "src/components/client/ClientSupport.jsx",
-      "line": 313,
+      "line": 315,
       "element": "textarea",
       "label": "",
       "attributes": {
@@ -11107,7 +11274,7 @@
     },
     {
       "file": "src/components/client/ClientSupport.jsx",
-      "line": 326,
+      "line": 328,
       "element": "Button",
       "label": "Send",
       "attributes": {
@@ -11118,7 +11285,7 @@
     },
     {
       "file": "src/components/client/ClientSupport.jsx",
-      "line": 407,
+      "line": 409,
       "element": "Input",
       "label": "",
       "attributes": {
@@ -11131,7 +11298,7 @@
     },
     {
       "file": "src/components/client/ClientSupport.jsx",
-      "line": 418,
+      "line": 420,
       "element": "select",
       "label": "",
       "attributes": {
@@ -11143,7 +11310,7 @@
     },
     {
       "file": "src/components/client/ClientSupport.jsx",
-      "line": 435,
+      "line": 437,
       "element": "textarea",
       "label": "",
       "attributes": {
@@ -11157,7 +11324,7 @@
     },
     {
       "file": "src/components/client/ClientSupport.jsx",
-      "line": 452,
+      "line": 454,
       "element": "Button",
       "label": "",
       "attributes": {
@@ -11168,7 +11335,7 @@
     },
     {
       "file": "src/components/client/ClientSupport.jsx",
-      "line": 455,
+      "line": 457,
       "element": "Button",
       "label": "Cancel",
       "attributes": {
@@ -11181,7 +11348,7 @@
     },
     {
       "file": "src/components/client/ClientSupport.jsx",
-      "line": 467,
+      "line": 469,
       "element": "Button",
       "label": "",
       "attributes": {
@@ -11388,6 +11555,101 @@
         "className": "h-11 px-6 text-[15px] border-border text-foreground hover:bg-muted",
         "onClick": "{() => { resetForm(); setIsFormOpen(false); }}",
         "disabled": "{isSubmitting}"
+      }
+    },
+    {
+      "file": "src/components/developer/DashboardOverview.jsx",
+      "line": 170,
+      "element": "Button",
+      "label": "Refresh",
+      "attributes": {
+        "variant": "outline",
+        "onClick": "{refreshAll}",
+        "disabled": "{state.busy}"
+      }
+    },
+    {
+      "file": "src/components/developer/DashboardOverview.jsx",
+      "line": 188,
+      "element": "Button",
+      "label": "Open My Work",
+      "attributes": {
+        "onClick": "{() => onSectionChange(\"my-work\")}",
+        "className": "text-white dark:text-white"
+      }
+    },
+    {
+      "file": "src/components/developer/DashboardOverview.jsx",
+      "line": 197,
+      "element": "Button",
+      "label": "My timesheet",
+      "attributes": {
+        "variant": "outline",
+        "onClick": "{() => onSectionChange(\"timesheet\")}"
+      }
+    },
+    {
+      "file": "src/components/developer/DashboardOverview.jsx",
+      "line": 250,
+      "element": "button",
+      "label": "Retry",
+      "attributes": {
+        "className": "font-semibold underline",
+        "onClick": "{refreshAll}"
+      }
+    },
+    {
+      "file": "src/components/developer/DashboardOverview.jsx",
+      "line": 261,
+      "element": "button",
+      "label": "Retry time",
+      "attributes": {
+        "className": "font-semibold underline",
+        "onClick": "{refreshAll}"
+      }
+    },
+    {
+      "file": "src/components/developer/DashboardOverview.jsx",
+      "line": 280,
+      "element": "Button",
+      "label": "View all",
+      "attributes": {
+        "variant": "ghost",
+        "size": "sm",
+        "onClick": "{() => onSectionChange(\"my-work\")}"
+      }
+    },
+    {
+      "file": "src/components/developer/DashboardOverview.jsx",
+      "line": 382,
+      "element": "Button",
+      "label": "All projects",
+      "attributes": {
+        "variant": "ghost",
+        "size": "sm",
+        "onClick": "{() => onSectionChange(\"projects\")}"
+      }
+    },
+    {
+      "file": "src/components/developer/DashboardOverview.jsx",
+      "line": 398,
+      "element": "button",
+      "label": "Retry projects",
+      "attributes": {
+        "className": "underline",
+        "onClick": "{refreshAll}"
+      }
+    },
+    {
+      "file": "src/components/developer/DashboardOverview.jsx",
+      "line": 407,
+      "element": "button",
+      "label": "",
+      "attributes": {
+        "key": "{project.id}",
+        "onClick": "{() => onViewProjectDetails?.(project)}",
+        "disabled": "{!onViewProjectDetails}",
+        "className": "min-w-0 rounded-xl border border-border bg-background/40 p-4 text-left transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       }
     },
     {
@@ -11605,7 +11867,7 @@
     },
     {
       "file": "src/components/developer/MyWork.jsx",
-      "line": 87,
+      "line": 90,
       "element": "button",
       "label": "",
       "attributes": {
@@ -11616,7 +11878,18 @@
     },
     {
       "file": "src/components/developer/MyWork.jsx",
-      "line": 124,
+      "line": 123,
+      "element": "Button",
+      "label": "View task",
+      "attributes": {
+        "size": "sm",
+        "variant": "outline",
+        "onClick": "{() => onDetails(task)}"
+      }
+    },
+    {
+      "file": "src/components/developer/MyWork.jsx",
+      "line": 128,
       "element": "Button",
       "label": "",
       "attributes": {
@@ -11630,7 +11903,7 @@
     },
     {
       "file": "src/components/developer/MyWork.jsx",
-      "line": 322,
+      "line": 339,
       "element": "Button",
       "label": "Refresh",
       "attributes": {
@@ -11835,6 +12108,58 @@
       }
     },
     {
+      "file": "src/components/landing/LandingControls.jsx",
+      "line": 61,
+      "element": "button",
+      "label": "",
+      "attributes": {
+        "type": "button",
+        "onClick": "{toggle}",
+        "aria-label": "Dark mode",
+        "aria-pressed": "{mounted ? dark : undefined}",
+        "title": "{dark ? \"Switch to light mode\" : \"Switch to dark mode\"}",
+        "className": "ml-auto inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-card shadow-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background xl:ml-0"
+      }
+    },
+    {
+      "file": "src/components/landing/LandingControls.jsx",
+      "line": 91,
+      "element": "button",
+      "label": "",
+      "attributes": {
+        "type": "button",
+        "aria-label": "Back to top",
+        "title": "Back to top",
+        "className": "{styles.backToTop}",
+        "onClick": "{() => { document.getElementById(\"landing-home-link\")?.focus({ preventScroll: true }); window.scrollTo({ top: 0, behavior: window.matchMedia(\"(prefers-reduced-motion: reduce)\").matches ? \"instant\" : \"smooth\" }); }}"
+      }
+    },
+    {
+      "file": "src/components/landing/Pricing.jsx",
+      "line": 39,
+      "element": "button",
+      "label": "",
+      "attributes": {
+        "key": "{String(value)}",
+        "type": "button",
+        "aria-pressed": "{annual === value}",
+        "onClick": "{() => setAnnual(value)}",
+        "className": "{`rounded-lg px-5 py-2.5 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${annual === value ? \"bg-card shadow-card\" : \"\"}`}"
+      }
+    },
+    {
+      "file": "src/components/landing/Pricing.jsx",
+      "line": 53,
+      "element": "button",
+      "label": "",
+      "attributes": {
+        "type": "button",
+        "disabled": null,
+        "title": "Sales contact form is not configured yet",
+        "className": "mt-auto min-h-11 rounded-lg border border-border px-3 py-3 text-sm font-semibold opacity-60"
+      }
+    },
+    {
       "file": "src/components/landing/SiteFooter.jsx",
       "line": 74,
       "element": "Link",
@@ -11858,50 +12183,51 @@
     {
       "file": "src/components/landing/SiteFooter.jsx",
       "line": 145,
-      "element": "a",
+      "element": "FooterLink",
       "label": "",
       "attributes": {
-        "href": "#top",
+        "href": "{homeLinks ? \"/\" : \"#top\"}",
         "onClick": "{(event) => scrollToSection(event, \"#top\")}",
         "className": "inline-flex items-center rounded-lg text-sidebar-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
       }
     },
     {
       "file": "src/components/landing/SiteNav.jsx",
-      "line": 320,
-      "element": "a",
+      "line": 321,
+      "element": "NavAnchor",
       "label": "",
       "attributes": {
-        "href": "#top",
-        "onClick": "{(event) => scrollToSection(event, \"#top\")}",
+        "id": "landing-home-link",
+        "href": "{homeLinks ? \"/\" : \"#top\"}",
+        "onClick": "{(event) => scrollToSection(event, homeLinks ? \"/\" : \"#top\")}",
         "className": "inline-flex shrink-0 items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       }
     },
     {
       "file": "src/components/landing/SiteNav.jsx",
-      "line": 339,
-      "element": "a",
+      "line": 341,
+      "element": "NavAnchor",
       "label": "",
       "attributes": {
         "href": "{link.href}",
         "onClick": "{(event) => scrollToSection(event, link.href)}",
-        "className": "inline-flex h-9 items-center rounded-lg px-3 text-sm font-medium tracking-[-0.005em] text-muted-foreground transition-colors duration-200 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        "className": "inline-flex h-9 whitespace-nowrap items-center rounded-lg px-3 text-sm font-medium tracking-[-0.005em] text-muted-foreground transition-colors duration-200 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       }
     },
     {
       "file": "src/components/landing/SiteNav.jsx",
-      "line": 365,
+      "line": 366,
       "element": "NavAnchor",
       "label": "",
       "attributes": {
         "href": "{navSignIn.href}",
         "onClick": "{(event) => scrollToSection(event, navSignIn.href)}",
-        "className": "inline-flex h-10 items-center rounded-lg px-3 text-sm font-semibold text-foreground transition-colors duration-200 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        "className": "inline-flex h-10 whitespace-nowrap items-center rounded-lg px-3 text-sm font-semibold text-foreground transition-colors duration-200 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       }
     },
     {
       "file": "src/components/landing/SiteNav.jsx",
-      "line": 405,
+      "line": 407,
       "element": "button",
       "label": "",
       "attributes": {
@@ -11910,13 +12236,13 @@
         "onClick": "{() => setOpen((value) => !value)}",
         "aria-expanded": "{open}",
         "aria-controls": "site-nav-panel",
-        "className": "{[ \"ml-auto inline-flex h-11 w-11 items-center justify-center rounded-xl border transition-colors duration-200\", \"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:hidden\", open ? \"border-sidebar bg-sidebar text-sidebar-primary-foreground hover:bg-sidebar-acce"
+        "className": "{[ \"inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-colors duration-200\", \"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background xl:hidden\", open ? \"border-sidebar bg-sidebar text-sidebar-primary-foreground hover:bg-sidebar-acc"
       }
     },
     {
       "file": "src/components/landing/SiteNav.jsx",
-      "line": 455,
-      "element": "a",
+      "line": 457,
+      "element": "NavAnchor",
       "label": "",
       "attributes": {
         "href": "{link.href}",
@@ -11926,7 +12252,7 @@
     },
     {
       "file": "src/components/landing/SiteNav.jsx",
-      "line": 483,
+      "line": 485,
       "element": "CtaButton",
       "label": "Dashboard",
       "attributes": {
@@ -11938,7 +12264,7 @@
     },
     {
       "file": "src/components/landing/SiteNav.jsx",
-      "line": 494,
+      "line": 496,
       "element": "CtaButton",
       "label": "",
       "attributes": {
@@ -11950,7 +12276,7 @@
     },
     {
       "file": "src/components/landing/SiteNav.jsx",
-      "line": 504,
+      "line": 506,
       "element": "CtaButton",
       "label": "",
       "attributes": {
@@ -11962,7 +12288,7 @@
     },
     {
       "file": "src/components/landing/SiteNav.jsx",
-      "line": 514,
+      "line": 516,
       "element": "NavAnchor",
       "label": "",
       "attributes": {
@@ -12154,29 +12480,16 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 39,
+      "line": 24,
       "element": "button",
-      "label": "",
+      "label": "Sign out",
       "attributes": {
-        "aria-label": "Previous page",
-        "disabled": "{page<=1}",
-        "onClick": "{()=>setPage(page-1)}"
+        "onClick": "{()=>logoutAndRedirect()}"
       }
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 39,
-      "element": "button",
-      "label": "",
-      "attributes": {
-        "aria-label": "Next page",
-        "disabled": "{page>=pages}",
-        "onClick": "{()=>setPage(page+1)}"
-      }
-    },
-    {
-      "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 52,
+      "line": 25,
       "element": "Link",
       "label": "Sign in",
       "attributes": {
@@ -12185,7 +12498,7 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 52,
+      "line": 25,
       "element": "button",
       "label": "Try again",
       "attributes": {
@@ -12194,7 +12507,7 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 52,
+      "line": 25,
       "element": "Link",
       "label": "Your organizations",
       "attributes": {
@@ -12203,7 +12516,7 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 55,
+      "line": 31,
       "element": "Link",
       "label": "",
       "attributes": {
@@ -12213,18 +12526,18 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 55,
+      "line": 31,
       "element": "button",
       "label": "",
       "attributes": {
         "key": "{id}",
-        "aria-current": "{section===id?'page':undefined}",
+        "aria-current": "{currentSection===id?'page':undefined}",
         "onClick": "{()=>{setSelected(null);setSection(id);}}"
       }
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 55,
+      "line": 31,
       "element": "Link",
       "label": "Open your workspaces",
       "attributes": {
@@ -12233,7 +12546,7 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 56,
+      "line": 32,
       "element": "button",
       "label": "",
       "attributes": {
@@ -12243,7 +12556,7 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 56,
+      "line": 32,
       "element": "button",
       "label": "",
       "attributes": {
@@ -12253,7 +12566,7 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 57,
+      "line": 33,
       "element": "button",
       "label": "Refresh",
       "attributes": {
@@ -12263,7 +12576,7 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 68,
+      "line": 50,
       "element": "button",
       "label": "Explore organizations",
       "attributes": {
@@ -12272,7 +12585,7 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 78,
+      "line": 61,
       "element": "input",
       "label": "",
       "attributes": {
@@ -12285,7 +12598,7 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 78,
+      "line": 61,
       "element": "button",
       "label": "Search",
       "attributes": {
@@ -12294,7 +12607,20 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 78,
+      "line": 61,
+      "element": "Filters",
+      "label": "",
+      "attributes": {
+        "value": "{filters}",
+        "onChange": "{v=>{setFilters(v);setPage(1);}}",
+        "organization": "{false}",
+        "search": "{false}",
+        "statuses": "{['active','suspended']}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformConsole.jsx",
+      "line": 61,
       "element": "button",
       "label": "",
       "attributes": {
@@ -12304,7 +12630,7 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 78,
+      "line": 61,
       "element": "button",
       "label": "",
       "attributes": {
@@ -12314,7 +12640,7 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 83,
+      "line": 67,
       "element": "button",
       "label": "",
       "attributes": {
@@ -12325,7 +12651,19 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 83,
+      "line": 67,
+      "element": "Filters",
+      "label": "",
+      "attributes": {
+        "value": "{filters}",
+        "onChange": "{v=>{setFilters(v);setPage(1);}}",
+        "search": "{false}",
+        "statuses": "{tab==='subscriptions'?['active','trialing','past_due','canceled']:['paid','open','void','uncollectible']}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformConsole.jsx",
+      "line": 67,
       "element": "button",
       "label": "",
       "attributes": {
@@ -12335,7 +12673,7 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 89,
+      "line": 73,
       "element": "button",
       "label": "All organizations",
       "attributes": {
@@ -12345,7 +12683,7 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 93,
+      "line": 78,
       "element": "button",
       "label": "",
       "attributes": {
@@ -12356,7 +12694,7 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 94,
+      "line": 79,
       "element": "button",
       "label": "Delete organization",
       "attributes": {
@@ -12366,7 +12704,7 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 102,
+      "line": 87,
       "element": "button",
       "label": "",
       "attributes": {
@@ -12378,7 +12716,7 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 102,
+      "line": 87,
       "element": "input",
       "label": "",
       "attributes": {
@@ -12392,7 +12730,7 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 102,
+      "line": 87,
       "element": "textarea",
       "label": "",
       "attributes": {
@@ -12406,7 +12744,7 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 102,
+      "line": 87,
       "element": "button",
       "label": "Cancel",
       "attributes": {
@@ -12417,7 +12755,7 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 102,
+      "line": 87,
       "element": "button",
       "label": "",
       "attributes": {
@@ -12427,7 +12765,7 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 108,
+      "line": 93,
       "element": "button",
       "label": "",
       "attributes": {
@@ -12437,13 +12775,566 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 108,
+      "line": 93,
       "element": "button",
       "label": "",
       "attributes": {
         "disabled": "{!!busy}",
         "className": "{styles.button}",
         "onClick": "{()=>retry(j.organization_id)}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 30,
+      "element": "button",
+      "label": "",
+      "attributes": {
+        "type": "button",
+        "aria-label": "Close action",
+        "onClick": "{close}",
+        "disabled": "{busy}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 33,
+      "element": "select",
+      "label": "",
+      "attributes": {
+        "value": "{values[field.name]}",
+        "required": "{field.required !== false}",
+        "onChange": "{e => setValues(v => ({ ...v, [field.name]: e.target.value }))}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 35,
+      "element": "input",
+      "label": "",
+      "attributes": {
+        "type": "{field.type || 'text'}",
+        "value": "{values[field.name]}",
+        "required": "{field.required !== false}",
+        "min": "{field.min}",
+        "max": "{field.max}",
+        "step": "{field.step}",
+        "maxLength": "{field.maxLength || 250}",
+        "onChange": "{e => setValues(v => ({ ...v, [field.name]: e.target.value }))}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 38,
+      "element": "input",
+      "label": "",
+      "attributes": {
+        "autoComplete": "off",
+        "value": "{confirmation}",
+        "onChange": "{e => setConfirmation(e.target.value)}",
+        "required": null
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 39,
+      "element": "textarea",
+      "label": "",
+      "attributes": {
+        "required": null,
+        "minLength": "{8}",
+        "maxLength": "{500}",
+        "rows": "{3}",
+        "value": "{reason}",
+        "onChange": "{e => setReason(e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 41,
+      "element": "button",
+      "label": "Cancel",
+      "attributes": {
+        "type": "button",
+        "disabled": "{busy}",
+        "onClick": "{close}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 41,
+      "element": "button",
+      "label": "",
+      "attributes": {
+        "className": "{destructive ? styles.destructiveButton : styles.primaryButton}",
+        "disabled": "{busy || reason.trim().length < 8 || (!!confirmName && confirmation !== confirmName)}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 49,
+      "element": "input",
+      "label": "",
+      "attributes": {
+        "placeholder": "Name or email",
+        "value": "{draft.search || ''}",
+        "maxLength": "{100}",
+        "onChange": "{e => setDraft({ ...draft, search: e.target.value })}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 50,
+      "element": "input",
+      "label": "",
+      "attributes": {
+        "placeholder": "All organizations",
+        "value": "{draft.organizationId || ''}",
+        "onChange": "{e => setDraft({ ...draft, organizationId: e.target.value })}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 51,
+      "element": "select",
+      "label": "",
+      "attributes": {
+        "value": "{draft.status || ''}",
+        "onChange": "{e => setDraft({ ...draft, status: e.target.value })}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 52,
+      "element": "input",
+      "label": "",
+      "attributes": {
+        "type": "date",
+        "value": "{draft.from || ''}",
+        "onChange": "{e => setDraft({ ...draft, from: e.target.value })}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 53,
+      "element": "input",
+      "label": "",
+      "attributes": {
+        "type": "date",
+        "value": "{draft.to || ''}",
+        "min": "{draft.from}",
+        "onChange": "{e => setDraft({ ...draft, to: e.target.value })}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 54,
+      "element": "button",
+      "label": "Apply filters",
+      "attributes": {
+        "className": "{styles.button}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 55,
+      "element": "button",
+      "label": "Clear",
+      "attributes": {
+        "className": "{styles.textButton}",
+        "type": "button",
+        "onClick": "{() => { setDraft({}); onChange({}); }}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 70,
+      "element": "button",
+      "label": "",
+      "attributes": {
+        "className": "{styles.button}",
+        "key": "{format}",
+        "disabled": "{!!busy}",
+        "onClick": "{() => download(format)}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 79,
+      "element": "Filters",
+      "label": "",
+      "attributes": {
+        "value": "{filters}",
+        "onChange": "{v => { setFilters(v); setPage(1); }}",
+        "statuses": "{[{value:'active',label:'Not archived'},{value:'archived',label:'Archived'}]}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 81,
+      "element": "button",
+      "label": "",
+      "attributes": {
+        "className": "{styles.textButton}",
+        "onClick": "{() => setSelected(row)}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 82,
+      "element": "button",
+      "label": "Inspect",
+      "attributes": {
+        "className": "{styles.button}",
+        "onClick": "{() => setSelected(row)}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 82,
+      "element": "button",
+      "label": "",
+      "attributes": {
+        "className": "{styles.button}",
+        "onClick": "{() => setAction({ row, type: row.archived ? 'restore' : 'archive' })}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 82,
+      "element": "button",
+      "label": "Delete",
+      "attributes": {
+        "className": "{styles.dangerText}",
+        "onClick": "{() => setAction({ row, type: 'delete' })}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 85,
+      "element": "button",
+      "label": "",
+      "attributes": {
+        "aria-label": "Close project details",
+        "onClick": "{() => setSelected(null)}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 105,
+      "element": "button",
+      "label": "",
+      "attributes": {
+        "className": "{styles.primaryButton}",
+        "disabled": "{busy}",
+        "onClick": "{enroll}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 107,
+      "element": "select",
+      "label": "",
+      "attributes": {
+        "value": "{factorId}",
+        "onChange": "{e => setFactorId(e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 107,
+      "element": "input",
+      "label": "",
+      "attributes": {
+        "autoComplete": "one-time-code",
+        "inputMode": "numeric",
+        "pattern": "[0-9]{6}",
+        "maxLength": "{6}",
+        "required": null,
+        "value": "{code}",
+        "onChange": "{e => setCode(e.target.value.replace(/\\D/g, ''))}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 107,
+      "element": "button",
+      "label": "",
+      "attributes": {
+        "className": "{styles.primaryButton}",
+        "disabled": "{busy || code.length !== 6}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 109,
+      "element": "button",
+      "label": "",
+      "attributes": {
+        "className": "{styles.button}",
+        "disabled": "{!access.mfaSatisfied}",
+        "onClick": "{()=>setPolicyAction(true)}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 127,
+      "element": "button",
+      "label": "Invite member",
+      "attributes": {
+        "className": "{styles.primaryButton}",
+        "onClick": "{() => setAction({ title: 'Invite workspace member', description: 'Create an invitation for the selected organization.', action: 'member.invite', fields: [{ name: 'organizationId', label: 'Organization ID', value: filters.organizationId }, { name: 'email', label: 'Email', type: 'email' }, { name: 'role', label: 'Workspace role', options: roles.filt"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 128,
+      "element": "Filters",
+      "label": "",
+      "attributes": {
+        "value": "{filters}",
+        "onChange": "{v => { setFilters(v); setPage(1); }}",
+        "statuses": "{['active', 'invited', 'suspended']}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 129,
+      "element": "input",
+      "label": "",
+      "attributes": {
+        "readOnly": null,
+        "value": "{invite.inviteLink}",
+        "onFocus": "{e => e.target.select()}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 129,
+      "element": "button",
+      "label": "Dismiss",
+      "attributes": {
+        "className": "{styles.textButton}",
+        "onClick": "{() => setInvite(null)}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 130,
+      "element": "button",
+      "label": "Change role",
+      "attributes": {
+        "className": "{styles.button}",
+        "onClick": "{() => dialog(row, 'role')}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 130,
+      "element": "button",
+      "label": "",
+      "attributes": {
+        "className": "{styles.button}",
+        "onClick": "{() => dialog(row, 'status')}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 130,
+      "element": "button",
+      "label": "Revoke sessions",
+      "attributes": {
+        "className": "{styles.textButton}",
+        "onClick": "{() => dialog(row, 'sessions')}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 141,
+      "element": "button",
+      "label": "",
+      "attributes": {
+        "className": "{styles.button}",
+        "onClick": "{() => setAction(true)}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 151,
+      "element": "button",
+      "label": "Add team member",
+      "attributes": {
+        "className": "{styles.primaryButton}",
+        "onClick": "{() => setAction({ type: 'upsert', fields: fields() })}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 152,
+      "element": "button",
+      "label": "Edit access",
+      "attributes": {
+        "className": "{styles.button}",
+        "onClick": "{() => setAction({ type: 'upsert', fields: fields(row) })}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 152,
+      "element": "button",
+      "label": "Remove access",
+      "attributes": {
+        "className": "{styles.dangerText}",
+        "onClick": "{() => setAction({ type: 'remove', row })}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 165,
+      "element": "button",
+      "label": "Refund",
+      "attributes": {
+        "className": "{styles.textButton}",
+        "onClick": "{() => choose('refund')}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 165,
+      "element": "button",
+      "label": "Change plan",
+      "attributes": {
+        "className": "{styles.button}",
+        "onClick": "{() => choose('change_plan')}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 165,
+      "element": "button",
+      "label": "Extend trial",
+      "attributes": {
+        "className": "{styles.button}",
+        "onClick": "{() => choose('extend_trial')}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 165,
+      "element": "button",
+      "label": "Cancel subscription",
+      "attributes": {
+        "className": "{styles.textButton}",
+        "onClick": "{() => choose('cancel_subscription')}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 165,
+      "element": "button",
+      "label": "Recent requests",
+      "attributes": {
+        "className": "{styles.textButton}",
+        "onClick": "{() => choose('requests')}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 166,
+      "element": "button",
+      "label": "Close",
+      "attributes": {
+        "className": "{styles.button}",
+        "onClick": "{()=>setAction(null)}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 174,
+      "element": "button",
+      "label": "",
+      "attributes": {
+        "aria-label": "Close requests",
+        "disabled": "{!!busy}",
+        "onClick": "{close}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 174,
+      "element": "button",
+      "label": "",
+      "attributes": {
+        "className": "{styles.button}",
+        "disabled": "{!!busy || row.can_retry===false || Date.now()-Date.parse(row.created_at)>23*60*60*1000 || (row.status==='pending'&&Date.now()-Date.parse(row.updated_at || row.created_at)<120000)}",
+        "onClick": "{()=>resume(row)}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 174,
+      "element": "input",
+      "label": "",
+      "attributes": {
+        "placeholder": "re_…",
+        "value": "{providerIds[row.id]||''}",
+        "onChange": "{e=>setProviderIds({...providerIds,[row.id]:e.target.value})}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 174,
+      "element": "button",
+      "label": "Verify provider result",
+      "attributes": {
+        "className": "{styles.button}",
+        "disabled": "{!!busy || row.can_reconcile===false || (row.payload?.action==='refund'&&!providerIds[row.id]?.startsWith('re_'))}",
+        "onClick": "{()=>reconcile(row)}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 180,
+      "element": "Filters",
+      "label": "",
+      "attributes": {
+        "value": "{filters}",
+        "onChange": "{setFilters}",
+        "organization": "{false}",
+        "search": "{false}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 192,
+      "element": "button",
+      "label": "",
+      "attributes": {
+        "className": "{styles.button}",
+        "disabled": "{busy === alert.id}",
+        "onClick": "{() => acknowledge(alert)}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformUI.jsx",
+      "line": 33,
+      "element": "button",
+      "label": "",
+      "attributes": {
+        "aria-label": "Previous page",
+        "disabled": "{page<=1}",
+        "onClick": "{()=>setPage(page-1)}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformUI.jsx",
+      "line": 33,
+      "element": "button",
+      "label": "",
+      "attributes": {
+        "aria-label": "Next page",
+        "disabled": "{page>=pages}",
+        "onClick": "{()=>setPage(page+1)}"
       }
     },
     {
@@ -13671,7 +14562,7 @@
     },
     {
       "file": "src/components/shell/AppShell.jsx",
-      "line": 102,
+      "line": 104,
       "element": "a",
       "label": "Skip to content",
       "attributes": {
@@ -13681,7 +14572,7 @@
     },
     {
       "file": "src/components/shell/AppShell.jsx",
-      "line": 135,
+      "line": 137,
       "element": "GlobalSearchButton",
       "label": "",
       "attributes": {
@@ -14036,6 +14927,29 @@
       }
     },
     {
+      "file": "src/components/shell/OrganizationSwitcher.jsx",
+      "line": 18,
+      "element": "select",
+      "label": "",
+      "attributes": {
+        "id": "active-organization",
+        "value": "{activeId || \"\"}",
+        "onChange": "{event => switchTo(event.target.value)}",
+        "className": "min-h-11 w-full min-w-0 appearance-none truncate rounded-lg border border-border bg-card py-2 pl-3 pr-8 text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+      }
+    },
+    {
+      "file": "src/components/shell/OrganizationSwitcher.jsx",
+      "line": 25,
+      "element": "button",
+      "label": "Organizations unavailable. Retry",
+      "attributes": {
+        "type": "button",
+        "onClick": "{() => refresh().catch(() => {})}",
+        "className": "block text-left text-xs text-destructive underline"
+      }
+    },
+    {
       "file": "src/components/shell/Sidebar.jsx",
       "line": 125,
       "element": "div",
@@ -14048,19 +14962,19 @@
     },
     {
       "file": "src/components/shell/Sidebar.jsx",
-      "line": 181,
+      "line": 170,
       "element": "button",
       "label": "",
       "attributes": {
         "type": "button",
         "onClick": "{onCloseMobile}",
-        "className": "ml-auto rounded-lg p-1.5 text-sidebar-muted transition-colors duration-150 hover:bg-sidebar-accent hover:text-sidebar-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar lg:hidden",
+        "className": "ml-auto rounded-lg p-1.5 text-sidebar-muted dark:text-white transition-colors duration-150 hover:bg-sidebar-accent hover:text-sidebar-primary-foreground dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar lg:hidden",
         "aria-label": "Close menu"
       }
     },
     {
       "file": "src/components/shell/Sidebar.jsx",
-      "line": 229,
+      "line": 218,
       "element": "button",
       "label": "",
       "attributes": {
@@ -14073,13 +14987,13 @@
     },
     {
       "file": "src/components/shell/Sidebar.jsx",
-      "line": 306,
+      "line": 290,
       "element": "button",
       "label": "",
       "attributes": {
         "type": "button",
         "onClick": "{onToggleCollapse}",
-        "className": "absolute -right-3 top-20 hidden h-6 w-6 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-muted shadow-card transition-colors duration-150 hover:text-sidebar-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:flex",
+        "className": "absolute -right-3 top-20 hidden h-6 w-6 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-muted dark:text-white shadow-card transition-colors duration-150 hover:text-sidebar-primary-foreground dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:flex",
         "aria-label": "{collapsed ? \"Expand sidebar\" : \"Collapse sidebar\"}",
         "aria-expanded": "{!collapsed}",
         "aria-controls": "app-sidebar"
@@ -14087,7 +15001,7 @@
     },
     {
       "file": "src/components/shell/Topbar.jsx",
-      "line": 69,
+      "line": 70,
       "element": "button",
       "label": "",
       "attributes": {
@@ -14101,7 +15015,7 @@
     },
     {
       "file": "src/components/shell/Topbar.jsx",
-      "line": 165,
+      "line": 166,
       "element": "button",
       "label": "",
       "attributes": {
@@ -14114,7 +15028,7 @@
     },
     {
       "file": "src/components/shell/Topbar.jsx",
-      "line": 185,
+      "line": 186,
       "element": "button",
       "label": "",
       "attributes": {
@@ -14130,7 +15044,7 @@
     },
     {
       "file": "src/components/shell/Topbar.jsx",
-      "line": 238,
+      "line": 239,
       "element": "Link",
       "label": "Organizations",
       "attributes": {
@@ -14143,7 +15057,7 @@
     },
     {
       "file": "src/components/shell/Topbar.jsx",
-      "line": 240,
+      "line": 241,
       "element": "button",
       "label": "Sign out",
       "attributes": {
@@ -14257,45 +15171,19 @@
         "placeholder": "{search.placeholder || \"Search…\"}",
         "className": "pl-8"
       }
+    },
+    {
+      "file": "src/contexts/WorkspacesContext.jsx",
+      "line": 74,
+      "element": "a",
+      "label": "Choose an organization",
+      "attributes": {
+        "href": "/organizations",
+        "className": "mt-5 inline-flex min-h-11 items-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground"
+      }
     }
   ],
   "forms": [
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1051,
-      "element": "form",
-      "attributes": {
-        "onSubmit": "{handleRegister}",
-        "className": "mt-6 space-y-5"
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1197,
-      "element": "form",
-      "attributes": {
-        "onSubmit": "{handleJoin}",
-        "className": "mt-6 space-y-5"
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1293,
-      "element": "form",
-      "attributes": {
-        "onSubmit": "{handlePlanContinue}",
-        "className": "mt-6 space-y-5"
-      }
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 1327,
-      "element": "form",
-      "attributes": {
-        "onSubmit": "{verifyCodeAndContinue}",
-        "className": "mt-6 space-y-5"
-      }
-    },
     {
       "file": "src/app/admin/upgrade/page.jsx",
       "line": 282,
@@ -14303,6 +15191,15 @@
       "attributes": {
         "onSubmit": "{handleSubmit}",
         "className": "mt-6 space-y-5"
+      }
+    },
+    {
+      "file": "src/app/contact/ContactForm.jsx",
+      "line": 21,
+      "element": "form",
+      "attributes": {
+        "onSubmit": "{submit}",
+        "className": "space-y-5 rounded-2xl border border-border bg-card p-6 shadow-card sm:p-8"
       }
     },
     {
@@ -14334,10 +15231,46 @@
     },
     {
       "file": "src/app/login/page.js",
-      "line": 276,
+      "line": 258,
       "element": "form",
       "attributes": {
         "onSubmit": "{handleLogin}",
+        "className": "mt-6 space-y-5"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1069,
+      "element": "form",
+      "attributes": {
+        "onSubmit": "{handleRegister}",
+        "className": "mt-6 space-y-5"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1219,
+      "element": "form",
+      "attributes": {
+        "onSubmit": "{handleJoin}",
+        "className": "mt-6 space-y-5"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1315,
+      "element": "form",
+      "attributes": {
+        "onSubmit": "{handlePlanContinue}",
+        "className": "mt-6 space-y-5"
+      }
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 1349,
+      "element": "form",
+      "attributes": {
+        "onSubmit": "{verifyCodeAndContinue}",
         "className": "mt-6 space-y-5"
       }
     },
@@ -14526,7 +15459,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 291,
+      "line": 293,
       "element": "form",
       "attributes": {
         "onSubmit": "{submit}",
@@ -14535,7 +15468,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 384,
+      "line": 386,
       "element": "form",
       "attributes": {
         "onSubmit": "{submit}",
@@ -14544,7 +15477,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 574,
+      "line": 576,
       "element": "EpicForm",
       "attributes": {
         "initial": "{null}",
@@ -14555,7 +15488,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 593,
+      "line": 595,
       "element": "EpicForm",
       "attributes": {
         "initial": "{epic}",
@@ -14566,7 +15499,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 669,
+      "line": 671,
       "element": "SprintForm",
       "attributes": {
         "initial": "{null}",
@@ -14578,7 +15511,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 693,
+      "line": 695,
       "element": "SprintForm",
       "attributes": {
         "key": "{sprint.id}",
@@ -14637,7 +15570,7 @@
     },
     {
       "file": "src/components/client/ClientSupport.jsx",
-      "line": 309,
+      "line": 311,
       "element": "form",
       "attributes": {
         "onSubmit": "{handleSend}",
@@ -14646,7 +15579,7 @@
     },
     {
       "file": "src/components/client/ClientSupport.jsx",
-      "line": 405,
+      "line": 407,
       "element": "form",
       "attributes": {
         "onSubmit": "{handleSubmit}",
@@ -14693,7 +15626,7 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 78,
+      "line": 61,
       "element": "form",
       "attributes": {
         "className": "{styles.search}",
@@ -14702,10 +15635,36 @@
     },
     {
       "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 102,
+      "line": 87,
       "element": "form",
       "attributes": {
         "onSubmit": "{remove}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 29,
+      "element": "form",
+      "attributes": {
+        "onSubmit": "{save}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 48,
+      "element": "form",
+      "attributes": {
+        "className": "{styles.filters}",
+        "onSubmit": "{e => { e.preventDefault(); onChange(draft); }}"
+      }
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 107,
+      "element": "form",
+      "attributes": {
+        "onSubmit": "{verify}",
+        "className": "{styles.mfaForm}"
       }
     },
     {
@@ -14755,18 +15714,6 @@
     }
   ],
   "databaseCalls": [
-    {
-      "file": "src/app/admin/dashboard/page.js",
-      "line": 383,
-      "method": "from",
-      "target": "developers"
-    },
-    {
-      "file": "src/app/admin/dashboard/page.js",
-      "line": 392,
-      "method": "from",
-      "target": "projects"
-    },
     {
       "file": "src/app/admin/gantt-chart/[projectId]/page.jsx",
       "line": 123,
@@ -14937,67 +15884,67 @@
     },
     {
       "file": "src/app/api/admin-review/route.js",
-      "line": 84,
+      "line": 85,
       "method": "from",
       "target": "developer_tasks"
     },
     {
       "file": "src/app/api/admin-review/route.js",
-      "line": 101,
+      "line": 102,
       "method": "from",
       "target": "projects"
     },
     {
       "file": "src/app/api/admin-review/route.js",
-      "line": 126,
+      "line": 127,
       "method": "from",
       "target": "task_submissions"
     },
     {
       "file": "src/app/api/admin-review/route.js",
-      "line": 201,
+      "line": 180,
       "method": "rpc",
       "target": "commit_task_review"
     },
     {
       "file": "src/app/api/admin-review/route.js",
-      "line": 268,
+      "line": 247,
       "method": "from",
       "target": "memberships"
     },
     {
       "file": "src/app/api/admin-review/route.js",
-      "line": 289,
+      "line": 268,
       "method": "from",
       "target": "projects"
     },
     {
       "file": "src/app/api/admin-review/route.js",
-      "line": 317,
+      "line": 296,
       "method": "from",
       "target": "task_submissions"
     },
     {
       "file": "src/app/api/admin-review/route.js",
-      "line": 349,
+      "line": 328,
       "method": "from",
       "target": "task_submissions"
     },
     {
       "file": "src/app/api/admin-review/route.js",
-      "line": 404,
+      "line": 383,
       "method": "from",
       "target": "activity_logs"
     },
     {
       "file": "src/app/api/admin-review/route.js",
-      "line": 423,
+      "line": 402,
       "method": "from",
       "target": "screenshots"
     },
     {
       "file": "src/app/api/admin-review/route.js",
-      "line": 439,
+      "line": 418,
       "method": "from",
       "target": "monitoring"
     },
@@ -15765,55 +16712,55 @@
     },
     {
       "file": "src/app/api/client/projects/[id]/route.js",
-      "line": 36,
+      "line": 38,
       "method": "from",
       "target": "projects"
     },
     {
       "file": "src/app/api/client/projects/[id]/route.js",
-      "line": 53,
+      "line": 55,
       "method": "from",
       "target": "milestones"
     },
     {
       "file": "src/app/api/client/projects/[id]/route.js",
-      "line": 80,
+      "line": 82,
       "method": "from",
       "target": "developer_tasks"
     },
     {
       "file": "src/app/api/client/projects/[id]/route.js",
-      "line": 103,
+      "line": 105,
       "method": "from",
       "target": "task_attachments"
     },
     {
       "file": "src/app/api/client/projects/[id]/route.js",
-      "line": 146,
+      "line": 148,
       "method": "from",
       "target": "developers"
     },
     {
       "file": "src/app/api/client/projects/[id]/route.js",
-      "line": 151,
+      "line": 153,
       "method": "from",
       "target": "employee_profiles"
     },
     {
       "file": "src/app/api/client/projects/[id]/route.js",
-      "line": 196,
+      "line": 198,
       "method": "from",
       "target": "project_updates"
     },
     {
       "file": "src/app/api/client/projects/[id]/route.js",
-      "line": 212,
+      "line": 214,
       "method": "from",
       "target": "task_submissions"
     },
     {
       "file": "src/app/api/client/projects/[id]/route.js",
-      "line": 237,
+      "line": 239,
       "method": "from",
       "target": "approvals"
     },
@@ -15849,19 +16796,19 @@
     },
     {
       "file": "src/app/api/client/projects/route.js",
-      "line": 25,
+      "line": 27,
       "method": "from",
       "target": "projects"
     },
     {
       "file": "src/app/api/client/projects/route.js",
-      "line": 46,
+      "line": 48,
       "method": "from",
       "target": "developer_tasks"
     },
     {
       "file": "src/app/api/client/projects/route.js",
-      "line": 61,
+      "line": 63,
       "method": "from",
       "target": "approvals"
     },
@@ -16586,10 +17533,100 @@
       "target": "performance_reviews"
     },
     {
-      "file": "src/app/api/platform/billing/route.js",
+      "file": "src/app/api/platform/alerts/route.js",
+      "line": 2,
+      "method": "rpc",
+      "target": "platform_acknowledge_alert"
+    },
+    {
+      "file": "src/app/api/platform/analytics/route.js",
       "line": 9,
+      "method": "rpc",
+      "target": "platform_revenue"
+    },
+    {
+      "file": "src/app/api/platform/billing/actions/route.js",
+      "line": 11,
+      "method": "rpc",
+      "target": "platform_billing_context"
+    },
+    {
+      "file": "src/app/api/platform/billing/actions/route.js",
+      "line": 22,
+      "method": "rpc",
+      "target": "platform_billing_context"
+    },
+    {
+      "file": "src/app/api/platform/billing/actions/route.js",
+      "line": 26,
+      "method": "rpc",
+      "target": "platform_billing_begin"
+    },
+    {
+      "file": "src/app/api/platform/billing/actions/route.js",
+      "line": 32,
+      "method": "rpc",
+      "target": "platform_billing_finish"
+    },
+    {
+      "file": "src/app/api/platform/billing/actions/route.js",
+      "line": 36,
+      "method": "rpc",
+      "target": "platform_billing_finish"
+    },
+    {
+      "file": "src/app/api/platform/billing/reconcile/route.js",
+      "line": 9,
+      "method": "rpc",
+      "target": "platform_billing_context"
+    },
+    {
+      "file": "src/app/api/platform/billing/reconcile/route.js",
+      "line": 21,
+      "method": "rpc",
+      "target": "platform_billing_context"
+    },
+    {
+      "file": "src/app/api/platform/billing/reconcile/route.js",
+      "line": 32,
+      "method": "rpc",
+      "target": "platform_billing_finish"
+    },
+    {
+      "file": "src/app/api/platform/billing/route.js",
+      "line": 12,
       "method": "from",
       "target": "invoices ? 'billing_invoices' : 'organization_subscriptions'"
+    },
+    {
+      "file": "src/app/api/platform/export/route.js",
+      "line": 22,
+      "method": "from",
+      "target": "config.table"
+    },
+    {
+      "file": "src/app/api/platform/health/route.js",
+      "line": 3,
+      "method": "rpc",
+      "target": "platform_health"
+    },
+    {
+      "file": "src/app/api/platform/management/route.js",
+      "line": 17,
+      "method": "rpc",
+      "target": "platform_management_list"
+    },
+    {
+      "file": "src/app/api/platform/management/route.js",
+      "line": 35,
+      "method": "rpc",
+      "target": "platform_management_mutate"
+    },
+    {
+      "file": "src/app/api/platform/management/route.js",
+      "line": 41,
+      "method": "from",
+      "target": "organizations"
     },
     {
       "file": "src/app/api/platform/organizations/[id]/route.js",
@@ -16599,21 +17636,45 @@
     },
     {
       "file": "src/app/api/platform/organizations/[id]/route.js",
-      "line": 29,
+      "line": 34,
       "method": "from",
       "target": "list.table"
     },
     {
       "file": "src/app/api/platform/organizations/[id]/route.js",
-      "line": 42,
+      "line": 47,
       "method": "rpc",
       "target": "platform_start_deletion"
     },
     {
       "file": "src/app/api/platform/organizations/[id]/route.js",
-      "line": 53,
+      "line": 58,
       "method": "rpc",
       "target": "platform_retry_deletion"
+    },
+    {
+      "file": "src/app/api/platform/projects/[id]/route.js",
+      "line": 9,
+      "method": "from",
+      "target": "projects"
+    },
+    {
+      "file": "src/app/api/platform/projects/[id]/route.js",
+      "line": 12,
+      "method": "from",
+      "target": "table"
+    },
+    {
+      "file": "src/app/api/platform/projects/[id]/route.js",
+      "line": 22,
+      "method": "rpc",
+      "target": "platform_project_action"
+    },
+    {
+      "file": "src/app/api/platform/projects/route.js",
+      "line": 10,
+      "method": "from",
+      "target": "projects"
     },
     {
       "file": "src/app/api/productivity/route.js",
@@ -17199,19 +18260,19 @@
     },
     {
       "file": "src/app/api/task-submission/route.js",
-      "line": 97,
+      "line": 98,
       "method": "from",
       "target": "developer_tasks"
     },
     {
       "file": "src/app/api/task-submission/route.js",
-      "line": 161,
+      "line": 162,
       "method": "rpc",
       "target": "commit_task_submission"
     },
     {
       "file": "src/app/api/task-submission/route.js",
-      "line": 214,
+      "line": 215,
       "method": "from",
       "target": "task_submissions"
     },
@@ -17382,6 +18443,18 @@
       "line": 1021,
       "method": "from",
       "target": "{ length: totalDays }"
+    },
+    {
+      "file": "src/app/organization/dashboard/page.js",
+      "line": 383,
+      "method": "from",
+      "target": "developers"
+    },
+    {
+      "file": "src/app/organization/dashboard/page.js",
+      "line": 392,
+      "method": "from",
+      "target": "projects"
     },
     {
       "file": "src/app/sessions/[sessionId]/page.jsx",
@@ -17625,13 +18698,13 @@
     },
     {
       "file": "src/components/admin/DashboardOverview.jsx",
-      "line": 585,
+      "line": 621,
       "method": "from",
       "target": "groups.entries()"
     },
     {
       "file": "src/components/admin/DashboardOverview.jsx",
-      "line": 943,
+      "line": 979,
       "method": "from",
       "target": "{ length: rows }"
     },
@@ -17721,7 +18794,7 @@
     },
     {
       "file": "src/components/admin/ProjectBoard.jsx",
-      "line": 152,
+      "line": 153,
       "method": "from",
       "target": "projects"
     },
@@ -17763,19 +18836,19 @@
     },
     {
       "file": "src/components/admin/ProjectViews.jsx",
-      "line": 83,
+      "line": 84,
       "method": "from",
       "target": "projects"
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 213,
+      "line": 216,
       "method": "rpc",
       "target": "auth_task_plan_edit"
     },
     {
       "file": "src/components/admin/TaskReviewPanel.jsx",
-      "line": 137,
+      "line": 138,
       "method": "from",
       "target": "developer_tasks"
     },
@@ -17874,54 +18947,6 @@
       "line": 457,
       "method": "from",
       "target": "{ length: 4 }"
-    },
-    {
-      "file": "src/components/developer/DashboardOverview.jsx",
-      "line": 31,
-      "method": "from",
-      "target": "developer_tasks"
-    },
-    {
-      "file": "src/components/developer/DashboardOverview.jsx",
-      "line": 106,
-      "method": "from",
-      "target": "productivity_sessions"
-    },
-    {
-      "file": "src/components/developer/DashboardOverview.jsx",
-      "line": 143,
-      "method": "from",
-      "target": "developer_tasks"
-    },
-    {
-      "file": "src/components/developer/DashboardOverview.jsx",
-      "line": 192,
-      "method": "from",
-      "target": "activityMsByProjectKey.entries()"
-    },
-    {
-      "file": "src/components/developer/DashboardOverview.jsx",
-      "line": 203,
-      "method": "from",
-      "target": "projects"
-    },
-    {
-      "file": "src/components/developer/DashboardOverview.jsx",
-      "line": 226,
-      "method": "from",
-      "target": "projects"
-    },
-    {
-      "file": "src/components/developer/DashboardOverview.jsx",
-      "line": 245,
-      "method": "from",
-      "target": "projects"
-    },
-    {
-      "file": "src/components/developer/DashboardOverview.jsx",
-      "line": 270,
-      "method": "from",
-      "target": "candidatesByKey.values()"
     },
     {
       "file": "src/components/developer/MyTimesheet.jsx",
@@ -18111,33 +19136,45 @@
     },
     {
       "file": "src/utils/adminOverview.js",
-      "line": 398,
+      "line": 393,
       "method": "from",
       "target": "project_proposals"
     },
     {
       "file": "src/utils/adminOverview.js",
-      "line": 405,
+      "line": 400,
       "method": "from",
       "target": "pm_activity"
     },
     {
       "file": "src/utils/adminOverview.js",
-      "line": 422,
+      "line": 417,
       "method": "from",
       "target": "notification_inbox"
     },
     {
       "file": "src/utils/adminOverview.js",
-      "line": 438,
+      "line": 433,
       "method": "from",
       "target": "clients"
     },
     {
       "file": "src/utils/adminOverview.js",
-      "line": 455,
+      "line": 449,
       "method": "from",
       "target": "task_submissions"
+    },
+    {
+      "file": "src/utils/adminOverview.js",
+      "line": 458,
+      "method": "from",
+      "target": "change_requests"
+    },
+    {
+      "file": "src/utils/adminOverview.js",
+      "line": 464,
+      "method": "from",
+      "target": "leave_requests"
     },
     {
       "file": "src/utils/agileWorkspaceRequests.js",
@@ -18242,6 +19279,12 @@
       "target": "projects"
     },
     {
+      "file": "src/utils/clientProjectScope.js",
+      "line": 7,
+      "method": "from",
+      "target": "project_clients"
+    },
+    {
       "file": "src/utils/dashboardOwnProjects.js",
       "line": 15,
       "method": "from",
@@ -18258,6 +19301,12 @@
       "line": 28,
       "method": "from",
       "target": "projects"
+    },
+    {
+      "file": "src/utils/developerOverview.js",
+      "line": 92,
+      "method": "from",
+      "target": "developer_tasks"
     },
     {
       "file": "src/utils/deviceAuth.js",
@@ -18483,13 +19532,13 @@
     },
     {
       "file": "src/utils/myWork.js",
-      "line": 203,
+      "line": 193,
       "method": "from",
       "target": "developer_tasks"
     },
     {
       "file": "src/utils/myWork.js",
-      "line": 220,
+      "line": 209,
       "method": "from",
       "target": "projects"
     },
@@ -18705,325 +19754,331 @@
     },
     {
       "file": "src/utils/platformOwner.js",
-      "line": 12,
+      "line": 15,
       "method": "rpc",
-      "target": "platform_owner_access"
+      "target": "platform_access"
     },
     {
       "file": "src/utils/platformOwner.js",
-      "line": 25,
+      "line": 27,
+      "method": "rpc",
+      "target": "platform_record_access"
+    },
+    {
+      "file": "src/utils/platformOwner.js",
+      "line": 40,
       "method": "rpc",
       "target": "name"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 150,
+      "line": 151,
       "method": "from",
       "target": "developer_tasks"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 182,
+      "line": 183,
       "method": "from",
       "target": "developer_tasks"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 203,
+      "line": 204,
       "method": "from",
       "target": "developer_tasks"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 245,
+      "line": 246,
       "method": "from",
       "target": "developer_tasks"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 296,
+      "line": 297,
       "method": "from",
       "target": "task_submissions"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 356,
+      "line": 358,
       "method": "from",
       "target": "developer_tasks"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 376,
+      "line": 378,
       "method": "from",
       "target": "sprints"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 384,
+      "line": 386,
       "method": "from",
       "target": "epics"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 402,
-      "method": "from",
-      "target": "task_comments"
-    },
-    {
-      "file": "src/utils/pmData.js",
-      "line": 403,
-      "method": "from",
-      "target": "task_checklists"
-    },
-    {
-      "file": "src/utils/pmData.js",
       "line": 404,
       "method": "from",
-      "target": "task_watchers"
+      "target": "task_comments"
     },
     {
       "file": "src/utils/pmData.js",
       "line": 405,
       "method": "from",
-      "target": "task_attachments"
+      "target": "task_checklists"
     },
     {
       "file": "src/utils/pmData.js",
       "line": 406,
       "method": "from",
+      "target": "task_watchers"
+    },
+    {
+      "file": "src/utils/pmData.js",
+      "line": 407,
+      "method": "from",
+      "target": "task_attachments"
+    },
+    {
+      "file": "src/utils/pmData.js",
+      "line": 408,
+      "method": "from",
       "target": "task_dependencies"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 428,
+      "line": 430,
       "method": "from",
       "target": "memberships"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 433,
+      "line": 435,
       "method": "from",
       "target": "developers"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 434,
+      "line": 436,
       "method": "from",
       "target": "admin_users"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 547,
+      "line": 549,
       "method": "from",
       "target": "developer_tasks"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 552,
+      "line": 554,
       "method": "from",
       "target": "task_watchers"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 626,
+      "line": 628,
       "method": "from",
       "target": "task_comments"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 652,
+      "line": 654,
       "method": "from",
       "target": "task_checklists"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 662,
+      "line": 664,
       "method": "from",
       "target": "task_checklists"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 677,
+      "line": 679,
       "method": "from",
       "target": "task_watchers"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 683,
+      "line": 685,
       "method": "from",
       "target": "task_watchers"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 697,
+      "line": 699,
       "method": "from",
       "target": "task_dependencies"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 714,
+      "line": 716,
       "method": "from",
       "target": "sprints"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 800,
+      "line": 803,
       "method": "from",
       "target": "saved_views"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 809,
+      "line": 818,
       "method": "from",
       "target": "saved_views"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 815,
+      "line": 828,
       "method": "from",
       "target": "saved_views"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 831,
+      "line": 846,
       "method": "from",
       "target": "saved_views"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 839,
+      "line": 856,
       "method": "from",
       "target": "pm_activity"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 854,
+      "line": 871,
       "method": "from",
       "target": "pm_activity"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 881,
+      "line": 898,
       "method": "from",
       "target": "task_time_logs"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 914,
+      "line": 931,
       "method": "from",
       "target": "task_time_logs"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 953,
+      "line": 970,
       "method": "from",
       "target": "task_time_logs"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 982,
+      "line": 999,
       "method": "from",
       "target": "task_time_logs"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 1005,
+      "line": 1022,
       "method": "from",
       "target": "task_time_logs"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 1034,
+      "line": 1051,
       "method": "from",
       "target": "project_labels"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 1041,
+      "line": 1058,
       "method": "from",
       "target": "project_labels"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 1049,
+      "line": 1066,
       "method": "from",
       "target": "project_labels"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 1060,
+      "line": 1077,
       "method": "from",
       "target": "project_custom_fields"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 1067,
+      "line": 1084,
       "method": "from",
       "target": "project_custom_fields"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 1075,
+      "line": 1092,
       "method": "from",
       "target": "project_custom_fields"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 1093,
+      "line": 1110,
       "method": "from",
       "target": "milestones"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 1116,
+      "line": 1133,
       "method": "from",
       "target": "projects"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 1122,
+      "line": 1139,
       "method": "rpc",
       "target": "clone_project"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 1162,
+      "line": 1179,
       "method": "from",
       "target": "task-submissions"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 1166,
+      "line": 1183,
       "method": "from",
       "target": "task_attachments"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 1198,
+      "line": 1215,
       "method": "from",
       "target": "task-submissions"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 1220,
+      "line": 1237,
       "method": "from",
       "target": "task_attachments"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 1225,
+      "line": 1242,
       "method": "from",
       "target": "task-submissions"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 1260,
+      "line": 1277,
       "method": "from",
       "target": "project_comments"
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 1295,
+      "line": 1312,
       "method": "from",
       "target": "project_comments"
     },
@@ -19137,27 +20192,27 @@
     },
     {
       "file": "src/utils/serverAuth.js",
-      "line": 69,
+      "line": 70,
       "method": "rpc",
       "target": "workspace_context"
     },
     {
       "file": "src/utils/serverAuth.js",
-      "line": 108,
+      "line": 102,
+      "method": "from",
+      "target": "organizations"
+    },
+    {
+      "file": "src/utils/serverAuth.js",
+      "line": 112,
       "method": "from",
       "target": "memberships"
     },
     {
       "file": "src/utils/serverAuth.js",
-      "line": 148,
+      "line": 152,
       "method": "from",
       "target": "PROFILE_TABLE[userType]"
-    },
-    {
-      "file": "src/utils/serverAuth.js",
-      "line": 263,
-      "method": "from",
-      "target": "project_clients"
     },
     {
       "file": "src/utils/serverReports.js",
@@ -19304,6 +20359,12 @@
       "target": "atob(encoded)"
     },
     {
+      "file": "src/utils/workspaceIdentity.js",
+      "line": 17,
+      "method": "rpc",
+      "target": "platform_session_active"
+    },
+    {
       "file": "e2e/admin-modules.spec.js",
       "line": 58,
       "method": "from",
@@ -19317,7 +20378,7 @@
     },
     {
       "file": "e2e/audit-security.spec.js",
-      "line": 51,
+      "line": 57,
       "method": "from",
       "target": "body.public_key.split('.')[1]"
     },
@@ -19388,6 +20449,42 @@
       "target": "{ length: 500 }"
     },
     {
+      "file": "tests/clientProjectPagination.test.js",
+      "line": 33,
+      "method": "from",
+      "target": "{ length: 1101 }"
+    },
+    {
+      "file": "tests/clientProjectPagination.test.js",
+      "line": 34,
+      "method": "from",
+      "target": "{ length: 1005 }"
+    },
+    {
+      "file": "tests/clientProjectPagination.test.js",
+      "line": 35,
+      "method": "from",
+      "target": "{ length: 1101 }"
+    },
+    {
+      "file": "tests/clientProjectPagination.test.js",
+      "line": 57,
+      "method": "from",
+      "target": "{ length: 1101 }"
+    },
+    {
+      "file": "tests/clientProjectPagination.test.js",
+      "line": 71,
+      "method": "from",
+      "target": "{ length: 1101 }"
+    },
+    {
+      "file": "tests/clientProjectScope.test.js",
+      "line": 4,
+      "method": "from",
+      "target": "{ length }"
+    },
+    {
       "file": "tests/dashboardOwnProjects.test.js",
       "line": 39,
       "method": "from",
@@ -19422,6 +20519,18 @@
       "line": 195,
       "method": "from",
       "target": "ab"
+    },
+    {
+      "file": "tests/developerOverview.test.js",
+      "line": 75,
+      "method": "from",
+      "target": "{ length: 1001 }"
+    },
+    {
+      "file": "tests/developerOverview.test.js",
+      "line": 87,
+      "method": "from",
+      "target": "{ length: 3 }"
     },
     {
       "file": "tests/deviceManagementRoute.test.js",
@@ -19538,6 +20647,12 @@
       "target": "{ length: 501 }"
     },
     {
+      "file": "tests/myWorkLoading.test.js",
+      "line": 22,
+      "method": "from",
+      "target": "{ length: 1201 }"
+    },
+    {
       "file": "tests/notificationCenter.test.js",
       "line": 464,
       "method": "from",
@@ -19566,6 +20681,18 @@
       "line": 81,
       "method": "from",
       "target": "JSON.stringify({ sub: UID, app_metadata: context })"
+    },
+    {
+      "file": "tests/platformProjectsExports.test.js",
+      "line": 31,
+      "method": "from",
+      "target": "{length:500}"
+    },
+    {
+      "file": "tests/platformProjectsExports.test.js",
+      "line": 39,
+      "method": "from",
+      "target": "{length:500}"
     },
     {
       "file": "tests/productivityData.test.js",
@@ -19808,36 +20935,6 @@
       "target": "/api/task-plan/review"
     },
     {
-      "file": "src/app/admin/registration/page.js",
-      "line": 429,
-      "target": "/api/invitations/accept"
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 613,
-      "target": "/api/send-verification"
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 730,
-      "target": "/api/auth/verify-code"
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 772,
-      "target": "/api/auth/signup"
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 865,
-      "target": "/api/auth/session"
-    },
-    {
-      "file": "src/app/admin/registration/page.js",
-      "line": 962,
-      "target": "/api/billing/plans"
-    },
-    {
       "file": "src/app/admin/upgrade/page.jsx",
       "line": 86,
       "target": "/api/billing/plans"
@@ -19866,6 +20963,11 @@
       "file": "src/app/api/ai-generate-tasks/route.js",
       "line": 199,
       "target": "downloadUrl"
+    },
+    {
+      "file": "src/app/contact/ContactForm.jsx",
+      "line": 14,
+      "target": "/api/contact"
     },
     {
       "file": "src/app/developer/gantt-chart/[projectId]/page.jsx",
@@ -19941,6 +21043,36 @@
       "file": "src/app/organizations/page.js",
       "line": 21,
       "target": "/api/organizations"
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 440,
+      "target": "/api/invitations/accept"
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 625,
+      "target": "/api/send-verification"
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 748,
+      "target": "/api/auth/verify-code"
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 790,
+      "target": "/api/auth/signup"
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 883,
+      "target": "/api/auth/session"
+    },
+    {
+      "file": "src/app/register/page.js",
+      "line": 980,
+      "target": "/api/billing/plans"
     },
     {
       "file": "src/components/admin/AdminAccount.jsx",
@@ -20249,7 +21381,7 @@
     },
     {
       "file": "src/components/admin/SignalsPanel.jsx",
-      "line": 58,
+      "line": 61,
       "target": "/api/signals"
     },
     {
@@ -20259,22 +21391,22 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 326,
+      "line": 322,
       "target": "`/api/tasks/${taskId}/reviewers`"
     },
     {
       "file": "src/components/admin/TaskReviewPanel.jsx",
-      "line": 89,
+      "line": 90,
       "target": "`/api/admin-review?adminId=${currentAdmin.id}&status=${reviewStatus}`"
     },
     {
       "file": "src/components/admin/TaskReviewPanel.jsx",
-      "line": 180,
+      "line": 181,
       "target": "/api/admin-review"
     },
     {
       "file": "src/components/admin/TaskReviewPanel.jsx",
-      "line": 266,
+      "line": 267,
       "target": "downloadUrl"
     },
     {
@@ -20429,12 +21561,12 @@
     },
     {
       "file": "src/components/client/ClientSupport.jsx",
-      "line": 351,
+      "line": 353,
       "target": "/api/client/projects"
     },
     {
       "file": "src/components/client/ClientSupport.jsx",
-      "line": 372,
+      "line": 374,
       "target": "/api/client/support"
     },
     {
@@ -20488,8 +21620,13 @@
       "target": "/api/organizations"
     },
     {
-      "file": "src/components/platform/PlatformConsole.jsx",
-      "line": 16,
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 64,
+      "target": "`/api/platform/export?${query({ ...filters, dataset, format })}`"
+    },
+    {
+      "file": "src/components/platform/PlatformUI.jsx",
+      "line": 10,
       "target": "`/api/platform/${path}`"
     },
     {
@@ -20618,6 +21755,11 @@
       "target": "`/api/search?${params.toString()}`"
     },
     {
+      "file": "src/contexts/WorkspacesContext.jsx",
+      "line": 24,
+      "target": "/api/organizations"
+    },
+    {
       "file": "src/utils/authFetch.js",
       "line": 18,
       "target": "url"
@@ -20684,7 +21826,7 @@
     },
     {
       "file": "src/utils/pmData.js",
-      "line": 320,
+      "line": 321,
       "target": "/api/admin-review"
     },
     {
@@ -20719,12 +21861,12 @@
     },
     {
       "file": "e2e/audit-security.spec.js",
-      "line": 31,
+      "line": 37,
       "target": "probeUrl"
     },
     {
       "file": "e2e/fixtures/auth.js",
-      "line": 126,
+      "line": 145,
       "target": "path"
     },
     {
@@ -20786,7 +21928,7 @@
     },
     {
       "file": "src/app/api/admin-review/route.js",
-      "line": 44,
+      "line": 45,
       "function": "requirePermission",
       "arguments": [
         "auth",
@@ -20795,7 +21937,7 @@
     },
     {
       "file": "src/app/api/admin-review/route.js",
-      "line": 238,
+      "line": 217,
       "function": "requirePermission",
       "arguments": [
         "auth",
@@ -20804,7 +21946,7 @@
     },
     {
       "file": "src/app/api/admin-review/route.js",
-      "line": 262,
+      "line": 241,
       "function": "authCan",
       "arguments": [
         "auth",
@@ -21780,7 +22922,7 @@
     },
     {
       "file": "src/app/api/task-submission/route.js",
-      "line": 147,
+      "line": 148,
       "function": "authCan",
       "arguments": [
         "auth",
@@ -21790,6 +22932,15 @@
     {
       "file": "src/app/api/task-submission/route.js",
       "line": 155,
+      "function": "authCan",
+      "arguments": [
+        "auth",
+        "task.manage"
+      ]
+    },
+    {
+      "file": "src/app/api/task-submission/route.js",
+      "line": 156,
       "function": "requirePermission",
       "arguments": [
         "auth",
@@ -21798,7 +22949,7 @@
     },
     {
       "file": "src/app/api/task-submission/route.js",
-      "line": 208,
+      "line": 209,
       "function": "authCan",
       "arguments": [
         "auth",
@@ -21807,7 +22958,7 @@
     },
     {
       "file": "src/app/api/task-submission/route.js",
-      "line": 208,
+      "line": 209,
       "function": "authCan",
       "arguments": [
         "auth",
@@ -21816,7 +22967,7 @@
     },
     {
       "file": "src/app/api/task-submission/route.js",
-      "line": 209,
+      "line": 210,
       "function": "authCan",
       "arguments": [
         "auth",
@@ -21975,7 +23126,7 @@
     },
     {
       "file": "src/components/admin/DashboardOverview.jsx",
-      "line": 195,
+      "line": 216,
       "function": "can",
       "arguments": [
         "all-projects"
@@ -21983,7 +23134,7 @@
     },
     {
       "file": "src/components/admin/DashboardOverview.jsx",
-      "line": 196,
+      "line": 217,
       "function": "can",
       "arguments": [
         "requests"
@@ -21991,7 +23142,7 @@
     },
     {
       "file": "src/components/admin/DashboardOverview.jsx",
-      "line": 197,
+      "line": 218,
       "function": "can",
       "arguments": [
         "views"
@@ -21999,7 +23150,7 @@
     },
     {
       "file": "src/components/admin/DashboardOverview.jsx",
-      "line": 198,
+      "line": 219,
       "function": "can",
       "arguments": [
         "bugs"
@@ -22007,7 +23158,7 @@
     },
     {
       "file": "src/components/admin/DashboardOverview.jsx",
-      "line": 199,
+      "line": 220,
       "function": "can",
       "arguments": [
         "capacity"
@@ -22015,7 +23166,7 @@
     },
     {
       "file": "src/components/admin/DashboardOverview.jsx",
-      "line": 200,
+      "line": 221,
       "function": "can",
       "arguments": [
         "hierarchy"
@@ -22023,7 +23174,7 @@
     },
     {
       "file": "src/components/admin/DashboardOverview.jsx",
-      "line": 203,
+      "line": 224,
       "function": "can",
       "arguments": [
         "reports"
@@ -22031,7 +23182,7 @@
     },
     {
       "file": "src/components/admin/DashboardOverview.jsx",
-      "line": 315,
+      "line": 348,
       "function": "can",
       "arguments": [
         "entry.section"
@@ -22039,7 +23190,7 @@
     },
     {
       "file": "src/components/admin/DashboardOverview.jsx",
-      "line": 370,
+      "line": 406,
       "function": "can",
       "arguments": [
         "all-projects"
@@ -22047,7 +23198,7 @@
     },
     {
       "file": "src/components/admin/DashboardOverview.jsx",
-      "line": 440,
+      "line": 476,
       "function": "can",
       "arguments": [
         "views"
@@ -22055,7 +23206,7 @@
     },
     {
       "file": "src/components/admin/DashboardOverview.jsx",
-      "line": 458,
+      "line": 494,
       "function": "can",
       "arguments": [
         "views"
@@ -22063,7 +23214,7 @@
     },
     {
       "file": "src/components/admin/DashboardOverview.jsx",
-      "line": 490,
+      "line": 526,
       "function": "can",
       "arguments": [
         "capacity"
@@ -22071,7 +23222,7 @@
     },
     {
       "file": "src/components/admin/DashboardOverview.jsx",
-      "line": 594,
+      "line": 630,
       "function": "can",
       "arguments": [
         "hierarchy"
@@ -22079,7 +23230,7 @@
     },
     {
       "file": "src/components/admin/DashboardOverview.jsx",
-      "line": 702,
+      "line": 738,
       "function": "can",
       "arguments": [
         "requests"
@@ -22087,7 +23238,7 @@
     },
     {
       "file": "src/components/admin/DashboardOverview.jsx",
-      "line": 755,
+      "line": 791,
       "function": "can",
       "arguments": [
         "bugs"
@@ -22095,7 +23246,7 @@
     },
     {
       "file": "src/components/admin/DashboardOverview.jsx",
-      "line": 767,
+      "line": 803,
       "function": "can",
       "arguments": [
         "bugs"
@@ -22103,7 +23254,7 @@
     },
     {
       "file": "src/components/admin/DashboardOverview.jsx",
-      "line": 774,
+      "line": 810,
       "function": "can",
       "arguments": [
         "task-reviews"
@@ -22111,7 +23262,7 @@
     },
     {
       "file": "src/components/admin/DashboardOverview.jsx",
-      "line": 910,
+      "line": 946,
       "function": "can",
       "arguments": [
         "reports"
@@ -22343,7 +23494,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 465,
+      "line": 467,
       "function": "allowed",
       "arguments": [
         "task.manage"
@@ -22351,7 +23502,7 @@
     },
     {
       "file": "src/components/admin/SprintPlanning.jsx",
-      "line": 508,
+      "line": 510,
       "function": "allowed",
       "arguments": [
         "task.manage"
@@ -22359,7 +23510,7 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 212,
+      "line": 215,
       "function": "allowed",
       "arguments": [
         "task.update_own"
@@ -22367,10 +23518,205 @@
     },
     {
       "file": "src/components/admin/TaskDetailDrawer.jsx",
-      "line": 315,
+      "line": 311,
       "function": "allowed",
       "arguments": [
         "task.review"
+      ]
+    },
+    {
+      "file": "src/components/admin/TaskDetailDrawer.jsx",
+      "line": 775,
+      "function": "allowed",
+      "arguments": [
+        "task.review"
+      ]
+    },
+    {
+      "file": "src/components/admin/TaskDetailDrawer.jsx",
+      "line": 812,
+      "function": "allowed",
+      "arguments": [
+        "task.submit"
+      ]
+    },
+    {
+      "file": "src/components/developer/MyWork.jsx",
+      "line": 191,
+      "function": "allowed",
+      "arguments": [
+        "task.manage"
+      ]
+    },
+    {
+      "file": "src/components/platform/PlatformConsole.jsx",
+      "line": 27,
+      "function": "can",
+      "arguments": [
+        "access.data",
+        "permissions[item.id]"
+      ]
+    },
+    {
+      "file": "src/components/platform/PlatformConsole.jsx",
+      "line": 52,
+      "function": "can",
+      "arguments": [
+        "access",
+        "billing.read"
+      ]
+    },
+    {
+      "file": "src/components/platform/PlatformConsole.jsx",
+      "line": 53,
+      "function": "can",
+      "arguments": [
+        "access",
+        "billing.read"
+      ]
+    },
+    {
+      "file": "src/components/platform/PlatformConsole.jsx",
+      "line": 71,
+      "function": "can",
+      "arguments": [
+        "access",
+        "projects.read"
+      ]
+    },
+    {
+      "file": "src/components/platform/PlatformConsole.jsx",
+      "line": 77,
+      "function": "can",
+      "arguments": [
+        "access",
+        "billing.read"
+      ]
+    },
+    {
+      "file": "src/components/platform/PlatformConsole.jsx",
+      "line": 78,
+      "function": "can",
+      "arguments": [
+        "access",
+        "projects.read"
+      ]
+    },
+    {
+      "file": "src/components/platform/PlatformConsole.jsx",
+      "line": 78,
+      "function": "can",
+      "arguments": [
+        "access",
+        "members.manage"
+      ]
+    },
+    {
+      "file": "src/components/platform/PlatformConsole.jsx",
+      "line": 78,
+      "function": "can",
+      "arguments": [
+        "access",
+        "billing.read"
+      ]
+    },
+    {
+      "file": "src/components/platform/PlatformConsole.jsx",
+      "line": 79,
+      "function": "can",
+      "arguments": [
+        "access",
+        "organizations.delete"
+      ]
+    },
+    {
+      "file": "src/components/platform/PlatformConsole.jsx",
+      "line": 93,
+      "function": "can",
+      "arguments": [
+        "access",
+        "organizations.delete"
+      ]
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 82,
+      "function": "can",
+      "arguments": [
+        "access",
+        "projects.manage"
+      ]
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 127,
+      "function": "can",
+      "arguments": [
+        "access",
+        "members.manage"
+      ]
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 130,
+      "function": "can",
+      "arguments": [
+        "access",
+        "members.manage"
+      ]
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 137,
+      "function": "can",
+      "arguments": [
+        "access",
+        "organizations.manage"
+      ]
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 139,
+      "function": "can",
+      "arguments": [
+        "access",
+        "organizations.manage"
+      ]
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 151,
+      "function": "can",
+      "arguments": [
+        "access",
+        "team.manage"
+      ]
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 152,
+      "function": "can",
+      "arguments": [
+        "access",
+        "team.manage"
+      ]
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 162,
+      "function": "can",
+      "arguments": [
+        "access",
+        "billing.manage"
+      ]
+    },
+    {
+      "file": "src/components/platform/PlatformSuitePanels.jsx",
+      "line": 192,
+      "function": "can",
+      "arguments": [
+        "access",
+        "alerts.manage"
       ]
     },
     {
@@ -22849,7 +24195,7 @@
     },
     {
       "file": "src/utils/taskNotificationAccess.js",
-      "line": 10,
+      "line": 11,
       "function": "authCan",
       "arguments": [
         "subject",
@@ -22858,7 +24204,7 @@
     },
     {
       "file": "src/utils/taskNotificationAccess.js",
-      "line": 10,
+      "line": 11,
       "function": "authCan",
       "arguments": [
         "subject",
@@ -22867,7 +24213,7 @@
     },
     {
       "file": "src/utils/taskNotificationAccess.js",
-      "line": 11,
+      "line": 12,
       "function": "authCan",
       "arguments": [
         "subject",
@@ -22910,7 +24256,7 @@
     },
     {
       "file": "src/utils/taskUiPermissions.js",
-      "line": 5,
+      "line": 6,
       "function": "allowed",
       "arguments": [
         "key"
@@ -22918,7 +24264,7 @@
     },
     {
       "file": "src/utils/taskUiPermissions.js",
-      "line": 6,
+      "line": 7,
       "function": "can",
       "arguments": [
         "task.manage"
@@ -22926,7 +24272,7 @@
     },
     {
       "file": "src/utils/taskUiPermissions.js",
-      "line": 8,
+      "line": 9,
       "function": "can",
       "arguments": [
         "task.update_own"
@@ -22934,7 +24280,7 @@
     },
     {
       "file": "src/utils/taskUiPermissions.js",
-      "line": 11,
+      "line": 12,
       "function": "can",
       "arguments": [
         "bug.raise"
@@ -22942,7 +24288,7 @@
     },
     {
       "file": "src/utils/taskUiPermissions.js",
-      "line": 12,
+      "line": 13,
       "function": "can",
       "arguments": [
         "bug.triage"
@@ -22950,7 +24296,7 @@
     },
     {
       "file": "src/utils/taskUiPermissions.js",
-      "line": 14,
+      "line": 15,
       "function": "can",
       "arguments": [
         "task.set_client_visibility"
@@ -23964,7 +25310,25 @@
     },
     {
       "file": "tests/taskNotificationAccess.test.js",
-      "line": 14,
+      "line": 15,
+      "function": "can",
+      "arguments": [
+        "owner",
+        "{ organization_id: 'org', assignee_admin_id: 'assignee' }"
+      ]
+    },
+    {
+      "file": "tests/taskNotificationAccess.test.js",
+      "line": 16,
+      "function": "can",
+      "arguments": [
+        "owner",
+        "task"
+      ]
+    },
+    {
+      "file": "tests/taskNotificationAccess.test.js",
+      "line": 19,
       "function": "can",
       "arguments": [
         "subject('owner', { userType: 'client' })",
@@ -23973,7 +25337,7 @@
     },
     {
       "file": "tests/taskNotificationAccess.test.js",
-      "line": 17,
+      "line": 22,
       "function": "can",
       "arguments": [
         "subject('hr', { userType: 'admin', appUserId: 'assignee' })",
@@ -23982,7 +25346,7 @@
     },
     {
       "file": "tests/taskNotificationAccess.test.js",
-      "line": 20,
+      "line": 25,
       "function": "can",
       "arguments": [
         "subject('owner', { overrides: { 'task.view_all': false, 'task.review': false } })",
@@ -23991,7 +25355,7 @@
     },
     {
       "file": "tests/taskNotificationAccess.test.js",
-      "line": 21,
+      "line": 26,
       "function": "can",
       "arguments": [
         "subject('developer', { overrides: { 'task.view_all': true } })",
@@ -24000,7 +25364,7 @@
     },
     {
       "file": "tests/taskNotificationAccess.test.js",
-      "line": 22,
+      "line": 27,
       "function": "can",
       "arguments": [
         "subject('developer', { appUserId: 'assignee', overrides: { 'task.view_own': false } })",
@@ -24009,7 +25373,7 @@
     },
     {
       "file": "tests/taskNotificationAccess.test.js",
-      "line": 26,
+      "line": 31,
       "function": "can",
       "arguments": [
         "recipient",
@@ -24018,7 +25382,7 @@
     },
     {
       "file": "tests/taskNotificationAccess.test.js",
-      "line": 27,
+      "line": 32,
       "function": "can",
       "arguments": [
         "recipient",
@@ -24027,7 +25391,7 @@
     },
     {
       "file": "tests/taskNotificationAccess.test.js",
-      "line": 28,
+      "line": 33,
       "function": "can",
       "arguments": [
         "subject('qa', { overrides: { 'task.review': false, 'bug.triage': false } })",
@@ -24036,7 +25400,7 @@
     },
     {
       "file": "tests/taskNotificationAccess.test.js",
-      "line": 31,
+      "line": 36,
       "function": "can",
       "arguments": [
         "subject('owner', { overridesUnavailable: true })",
@@ -24045,7 +25409,7 @@
     },
     {
       "file": "tests/taskNotificationAccess.test.js",
-      "line": 32,
+      "line": 37,
       "function": "can",
       "arguments": [
         "subject('owner', { orgId: 'elsewhere' })",
@@ -24054,7 +25418,7 @@
     },
     {
       "file": "tests/taskNotificationAccess.test.js",
-      "line": 33,
+      "line": 38,
       "function": "can",
       "arguments": [
         "null",
@@ -24081,54 +25445,54 @@
     {
       "file": "e2e/admin-modules.spec.js",
       "line": 77,
-      "title": "admin: every sidebar entry opens its screen, and Permissions is owner-only",
+      "title": "legacy admin account: co-owner can open every offered section and owner permissions",
       "layer": "browser"
     },
     {
       "file": "e2e/admin-modules.spec.js",
-      "line": 94,
+      "line": 98,
       "title": "billing loads the plan (the screen that showed the permission outage)",
       "layer": "browser"
     },
     {
       "file": "e2e/admin-modules.spec.js",
-      "line": 101,
+      "line": 105,
       "title": "organization: a department and a team can be created",
       "layer": "browser"
     },
     {
       "file": "e2e/admin-modules.spec.js",
-      "line": 132,
+      "line": 136,
       "title": "employees: the directory lists the seeded people",
       "layer": "browser"
     },
     {
       "file": "e2e/admin-modules.spec.js",
-      "line": 142,
+      "line": 146,
       "title": "team structure: the reporting-lines editor renders the directory",
       "layer": "browser"
     },
     {
       "file": "e2e/admin-modules.spec.js",
-      "line": 149,
+      "line": 153,
       "title": "projects: the internal project is listed and its detail page opens",
       "layer": "browser"
     },
     {
       "file": "e2e/admin-modules.spec.js",
-      "line": 160,
+      "line": 164,
       "title": "quality: a test case is written and a run is started against it",
       "layer": "browser"
     },
     {
       "file": "e2e/admin-modules.spec.js",
-      "line": 204,
+      "line": 208,
       "title": "approvals: leave and timesheet queues render",
       "layer": "browser"
     },
     {
       "file": "e2e/admin-modules.spec.js",
-      "line": 211,
+      "line": 215,
       "title": "permissions: the owner-only matrix renders every role",
       "layer": "browser"
     },
@@ -24152,19 +25516,19 @@
     },
     {
       "file": "e2e/audit-security.spec.js",
-      "line": 26,
+      "line": 28,
       "title": "anonymous direct requests cannot use protected API handlers",
       "layer": "browser"
     },
     {
       "file": "e2e/audit-security.spec.js",
-      "line": 41,
+      "line": 47,
       "title": "anonymous mobile bootstrap exposes only public configuration",
       "layer": "browser"
     },
     {
       "file": "e2e/audit-security.spec.js",
-      "line": 58,
+      "line": 64,
       "title": "middleware cannot be bypassed with the internal subrequest header",
       "layer": "browser"
     },
@@ -24255,42 +25619,42 @@
     {
       "file": "e2e/developer.spec.js",
       "line": 57,
-      "title": "assigned work: the dashboard summarises the projects assigned to them",
+      "title": "assigned work: the dashboard summarises their work and opens assigned projects",
       "layer": "browser"
     },
     {
       "file": "e2e/developer.spec.js",
-      "line": 68,
+      "line": 69,
       "title": "tasks: the project task plan renders with its schedule",
       "layer": "browser"
     },
     {
       "file": "e2e/developer.spec.js",
-      "line": 75,
+      "line": 76,
       "title": "submission: the task plan can be submitted for review",
       "layer": "browser"
     },
     {
       "file": "e2e/developer.spec.js",
-      "line": 106,
+      "line": 107,
       "title": "timer: an approved task exposes start and complete controls",
       "layer": "browser"
     },
     {
       "file": "e2e/developer.spec.js",
-      "line": 131,
+      "line": 132,
       "title": "comments: review feedback from the admin is shown on the task",
       "layer": "browser"
     },
     {
       "file": "e2e/developer.spec.js",
-      "line": 144,
+      "line": 145,
       "title": "time tracking: the developer can read their own session history",
       "layer": "browser"
     },
     {
       "file": "e2e/developer.spec.js",
-      "line": 151,
+      "line": 152,
       "title": "account: the developer can open their own profile",
       "layer": "browser"
     },
@@ -25226,139 +26590,139 @@
     },
     {
       "file": "tests/adminShellPolish.test.js",
-      "line": 109,
+      "line": 111,
       "title": "has no More button",
       "layer": "unit"
     },
     {
       "file": "tests/adminShellPolish.test.js",
-      "line": 117,
+      "line": 119,
       "title": "has no logout control and no name/email block",
       "layer": "unit"
     },
     {
       "file": "tests/adminShellPolish.test.js",
-      "line": 125,
+      "line": 127,
       "title": "no longer receives onLogout from the shell",
       "layer": "unit"
     },
     {
       "file": "tests/adminShellPolish.test.js",
-      "line": 129,
+      "line": 131,
       "title": "keeps the nav a real scroller, with padding taller than the bottom fade",
       "layer": "unit"
     },
     {
       "file": "tests/adminShellPolish.test.js",
-      "line": 147,
+      "line": 149,
       "title": "lives in the Topbar account menu",
       "layer": "unit"
     },
     {
       "file": "tests/adminShellPolish.test.js",
-      "line": 157,
+      "line": 159,
       "title": "is wired to the class strategy",
       "layer": "unit"
     },
     {
       "file": "tests/adminShellPolish.test.js",
-      "line": 162,
+      "line": 164,
       "title": "sets the class before first paint, not in an effect",
       "layer": "unit"
     },
     {
       "file": "tests/adminShellPolish.test.js",
-      "line": 177,
+      "line": 179,
       "title": "runs the persisted choice through the same key the toggle writes",
       "layer": "unit"
     },
     {
       "file": "tests/adminShellPolish.test.js",
-      "line": 183,
+      "line": 185,
       "title": "offers a labelled toggle whose icon needs no JS state",
       "layer": "unit"
     },
     {
       "file": "tests/adminShellPolish.test.js",
-      "line": 192,
+      "line": 194,
       "title": "gives every light token a dark counterpart",
       "layer": "unit"
     },
     {
       "file": "tests/adminShellPolish.test.js",
-      "line": 206,
-      "title": "--primary is the exact brand indigo #4840dd",
+      "line": 208,
+      "title": "--primary is the exact brand indigo #24206e",
       "layer": "unit"
     },
     {
       "file": "tests/adminShellPolish.test.js",
-      "line": 210,
+      "line": 212,
       "title": "paints the selected sidebar item with it, not the lighter step",
       "layer": "unit"
     },
     {
       "file": "tests/adminShellPolish.test.js",
-      "line": 217,
+      "line": 219,
       "title": "paints avatars and primary buttons with it",
       "layer": "unit"
     },
     {
       "file": "tests/adminShellPolish.test.js",
-      "line": 225,
-      "title": "improves the failing contrast rather than shipping it",
+      "line": 227,
+      "title": "keeps white primary and selected-sidebar text readable in both modes",
       "layer": "unit"
     },
     {
       "file": "tests/adminShellPolish.test.js",
-      "line": 243,
-      "title": "keeps the logo mark on the lighter step, where it is the legible one",
+      "line": 235,
+      "title": "keeps the sidebar logo on the same brand color",
       "layer": "unit"
     },
     {
       "file": "tests/adminShellPolish.test.js",
-      "line": 253,
-      "title": "no longer prints the glance/last-updated line",
+      "line": 242,
+      "title": "shows refresh feedback without restoring the old glance subtitle",
       "layer": "unit"
     },
     {
       "file": "tests/adminShellPolish.test.js",
-      "line": 260,
+      "line": 249,
       "title": "keeps the page h1 and the refresh action",
       "layer": "unit"
     },
     {
       "file": "tests/adminShellPolish.test.js",
-      "line": 273,
+      "line": 262,
       "title": "removes the title and subtitle from the Topbar",
       "layer": "unit"
     },
     {
       "file": "tests/adminShellPolish.test.js",
-      "line": 283,
+      "line": 272,
       "title": "drops the Signed in as subtitle",
       "layer": "unit"
     },
     {
       "file": "tests/adminShellPolish.test.js",
-      "line": 287,
+      "line": 276,
       "title": "leaves the canonical h1 alone",
       "layer": "unit"
     },
     {
       "file": "tests/adminShellPolish.test.js",
-      "line": 296,
+      "line": 285,
       "title": "uses the existing sweetalert2 wrapper and adds no second pattern",
       "layer": "unit"
     },
     {
       "file": "tests/adminShellPolish.test.js",
-      "line": 303,
+      "line": 292,
       "title": "fires once, not on every visit",
       "layer": "unit"
     },
     {
       "file": "tests/adminShellPolish.test.js",
-      "line": 320,
+      "line": 309,
       "title": "does not consume the key it does not own",
       "layer": "unit"
     },
@@ -25641,42 +27005,42 @@
     {
       "file": "tests/apiPermissionEnforcement.test.js",
       "line": 997,
-      "title": "does not treat an admin profile UUID as a developer assignment",
+      "title": "uses the admin assignment column for admin-profile personal submissions",
       "layer": "unit"
     },
     {
       "file": "tests/apiPermissionEnforcement.test.js",
-      "line": 1001,
+      "line": 1002,
       "title": "fails closed without a developer identity",
       "layer": "unit"
     },
     {
       "file": "tests/apiPermissionEnforcement.test.js",
-      "line": 1005,
+      "line": 1006,
       "title": "pins an own-work reader to the verified identity",
       "layer": "unit"
     },
     {
       "file": "tests/apiPermissionEnforcement.test.js",
-      "line": 1009,
+      "line": 1010,
       "title": "allows an explicitly granted reviewer to inspect the requested developer",
       "layer": "unit"
     },
     {
       "file": "tests/apiPermissionEnforcement.test.js",
-      "line": 1015,
+      "line": 1016,
       "title": "admin review inbox considers manager delegation before fetching submissions",
       "layer": "unit"
     },
     {
       "file": "tests/apiPermissionEnforcement.test.js",
-      "line": 1026,
+      "line": 1027,
       "title": "refuses unknown profile types at both review endpoints",
       "layer": "unit"
     },
     {
       "file": "tests/apiPermissionEnforcement.test.js",
-      "line": 1032,
+      "line": 1033,
       "title": "does not expose database lookup details from the review inbox",
       "layer": "unit"
     },
@@ -28387,6 +29751,24 @@
       "layer": "unit"
     },
     {
+      "file": "tests/clientAuthScope.test.js",
+      "line": 22,
+      "title": "uses the complete project scope for the verified client and organization",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/clientAuthScope.test.js",
+      "line": 26,
+      "title": "returns an explicit unavailable refusal without any partial authorization on scope failure",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/clientAuthScope.test.js",
+      "line": 32,
+      "title": "preserves plan refusal without loading project access",
+      "layer": "unit"
+    },
+    {
       "file": "tests/clientContracts.test.js",
       "line": 45,
       "title": "lets a manager read and not write",
@@ -28657,6 +30039,54 @@
       "layer": "unit"
     },
     {
+      "file": "tests/clientProjectPagination.test.js",
+      "line": 41,
+      "title": "counts more than 1000 visible tasks and approvals in list summaries",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/clientProjectPagination.test.js",
+      "line": 48,
+      "title": "returns full detail with attachment counts while keeping internal and other-org tasks out",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/clientProjectPagination.test.js",
+      "line": 56,
+      "title": "loads more than 1000 linked projects through bounded ID filters and restores global order",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/clientProjectPagination.test.js",
+      "line": 65,
+      "title": "fails rather than publishing partial totals after a database error",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/clientProjectPagination.test.js",
+      "line": 72,
+      "title": "continues from actual page size when the service cap is lower than the requested range",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/clientProjectScope.test.js",
+      "line": 24,
+      "title": "continues when the configured server row cap is smaller than the requested page",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/clientProjectScope.test.js",
+      "line": 41,
+      "title": "refuses a changing count instead of silently returning partial access",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/clientProjectScope.test.js",
+      "line": 45,
+      "title": "rejects repeated pages instead of looping indefinitely",
+      "layer": "unit"
+    },
+    {
       "file": "tests/clientProjectShape.test.js",
       "line": 13,
       "title": "carries the project description through to the card",
@@ -28666,6 +30096,42 @@
       "file": "tests/clientProjectShape.test.js",
       "line": 18,
       "title": "is null (not undefined) when the project has no description",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/clientProjectShape.test.js",
+      "line": 26,
+      "title": "keeps returned work and review work open until completion",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/clientProjectShape.test.js",
+      "line": 32,
+      "title": "does not tell a client that a project with only rejected work has no open tasks",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/clientProjectShape.test.js",
+      "line": 38,
+      "title": "closes the returned task only after it is completed",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/contactRoute.test.js",
+      "line": 9,
+      "title": "delivers only to the configured mailbox and escapes visitor content",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/contactRoute.test.js",
+      "line": 15,
+      "title": "does not report success for mock or failed delivery",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/contactRoute.test.js",
+      "line": 19,
+      "title": "rejects invalid input and limits repeated submissions",
       "layer": "unit"
     },
     {
@@ -29384,19 +30850,19 @@
     },
     {
       "file": "tests/desktopDownloadPage.test.js",
-      "line": 11,
+      "line": 13,
       "title": "shows honest availability without an executable link",
       "layer": "unit"
     },
     {
       "file": "tests/desktopDownloadPage.test.js",
-      "line": 12,
+      "line": 14,
       "title": "shows the approved installer version and checksum without exposing raw source URL",
       "layer": "unit"
     },
     {
       "file": "tests/desktopDownloadPage.test.js",
-      "line": 13,
+      "line": 15,
       "title": "keeps login, privacy and OS guidance available before release",
       "layer": "unit"
     },
@@ -29446,6 +30912,48 @@
       "file": "tests/desktopRelease.test.js",
       "line": 19,
       "title": "redirects only to operator release URL and never caches stale availability",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/developerOverview.test.js",
+      "line": 31,
+      "title": "uses the workspace day before UTC midnight",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/developerOverview.test.js",
+      "line": 48,
+      "title": "falls back to UTC for an invalid timezone",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/developerOverview.test.js",
+      "line": 52,
+      "title": "formats saved seconds without inventing elapsed time",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/developerOverview.test.js",
+      "line": 58,
+      "title": "deduplicates urgent work and excludes review/completed tasks from open totals",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/developerOverview.test.js",
+      "line": 74,
+      "title": "loads all scoped tasks across server pages",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/developerOverview.test.js",
+      "line": 109,
+      "title": "rejects changing counts between pages",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/developerOverview.test.js",
+      "line": 123,
+      "title": "ignores a response after the account unmounts",
       "layer": "unit"
     },
     {
@@ -29566,6 +31074,42 @@
       "file": "tests/devicePagination.test.js",
       "line": 60,
       "title": "role changes and refreshed authority invalidate previously visible devices",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/e2eEnvFile.test.js",
+      "line": 9,
+      "title": "loads the default file when no override is set",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/e2eEnvFile.test.js",
+      "line": 11,
+      "title": "preserves explicit process environment precedence",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/e2eEnvFile.test.js",
+      "line": 12,
+      "title": "refuses missing explicit file instead of falling back",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/e2eEnvFile.test.js",
+      "line": 13,
+      "title": "allows absent default file for credential-free test listing",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/e2eLoginDestinations.test.js",
+      "line": 21,
+      "title": "an explicit portal remains an expected destination override",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/e2eLoginDestinations.test.js",
+      "line": 29,
+      "title": "pins disposable roles to their explicit organization without mixing tenants",
       "layer": "unit"
     },
     {
@@ -30290,31 +31834,31 @@
     },
     {
       "file": "tests/everyKeyIsAsked.test.js",
-      "line": 92,
+      "line": 95,
       "title": "has a catalogue to check",
       "layer": "unit"
     },
     {
       "file": "tests/everyKeyIsAsked.test.js",
-      "line": 96,
+      "line": 99,
       "title": "finds no unasked key that has not been argued for",
       "layer": "unit"
     },
     {
       "file": "tests/everyKeyIsAsked.test.js",
-      "line": 109,
+      "line": 112,
       "title": "gives every recorded key a real reason, not a shrug",
       "layer": "unit"
     },
     {
       "file": "tests/everyKeyIsAsked.test.js",
-      "line": 117,
+      "line": 120,
       "title": "names them, because the policy is the only thing deciding them",
       "layer": "unit"
     },
     {
       "file": "tests/everyKeyIsAsked.test.js",
-      "line": 128,
+      "line": 131,
       "title": "does not let that list quietly grow",
       "layer": "unit"
     },
@@ -32001,7 +33545,7 @@
     {
       "file": "tests/middlewareGate.test.js",
       "line": 65,
-      "title": "exempts /admin/registration, or signup becomes unreachable",
+      "title": "exempts /register, or signup becomes unreachable",
       "layer": "unit"
     },
     {
@@ -32794,6 +34338,24 @@
       "file": "tests/myWork.test.js",
       "line": 269,
       "title": "refuses to guess when the session is incomplete",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/myWorkLoading.test.js",
+      "line": 21,
+      "title": "loads older active work beyond 500 newer completed tasks with stable keyset pages",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/myWorkLoading.test.js",
+      "line": 32,
+      "title": "keeps Developer/Employee filtering on their existing profile foreign key",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/myWorkLoading.test.js",
+      "line": 36,
+      "title": "rejects missing and client identities and reports project lookup failures",
       "layer": "unit"
     },
     {
@@ -34237,6 +35799,30 @@
       "layer": "unit"
     },
     {
+      "file": "tests/ownerOverviewCounts.test.js",
+      "line": 25,
+      "title": "uses exact organization-scoped counts and actionable request statuses",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/ownerOverviewCounts.test.js",
+      "line": 41,
+      "title": "does not query queues a viewer cannot access",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/ownerOverviewCounts.test.js",
+      "line": 47,
+      "title": "reads updated values again on refresh and surfaces errors instead of reporting zero",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/ownerOverviewCounts.test.js",
+      "line": 56,
+      "title": "includes the requested owner metrics without crowding out operational queues",
+      "layer": "unit"
+    },
+    {
       "file": "tests/paymentMethod.test.js",
       "line": 46,
       "title": "has no column for a card number or a security code",
@@ -35599,74 +37185,260 @@
       "layer": "unit"
     },
     {
-      "file": "tests/platformOwner.test.js",
+      "file": "tests/platformAnalyticsRoutes.test.js",
+      "line": 23,
+      "title": "accepts a real leap day and forwards exact dates",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformAnalyticsRoutes.test.js",
+      "line": 27,
+      "title": "rejects reversed ranges",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformAnalyticsRoutes.test.js",
+      "line": 31,
+      "title": "stops unauthorized requests before querying revenue",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformBillingActions.test.js",
+      "line": 8,
+      "title": "requires explicit reason and immutable request ID",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformBillingActions.test.js",
+      "line": 9,
+      "title": "does not coerce refund amounts or accept negative/fractional values",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformBillingActions.test.js",
+      "line": 10,
+      "title": "rejects trials outside one year",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformBillingActions.test.js",
+      "line": 13,
+      "title": "rejects customer mismatch before any mutation",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformBillingActions.test.js",
+      "line": 14,
+      "title": "schedules cancellation and reuses stable provider idempotency",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformBillingActions.test.js",
+      "line": 15,
+      "title": "keeps quantity and uses configured price only",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformBillingActions.test.js",
+      "line": 16,
+      "title": "rejects invoice from another organization",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformBillingActions.test.js",
       "line": 17,
-      "title": "does not accept organization-owner metadata as platform authority",
+      "title": "rejects provider invoice subscription mismatch",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformBillingActions.test.js",
+      "line": 18,
+      "title": "rejects refund beyond actual provider payment",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformBillingActions.test.js",
+      "line": 19,
+      "title": "refunds only scoped payment with request metadata",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformBillingActions.test.js",
+      "line": 20,
+      "title": "cannot turn an active paid subscription into a trial",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformBillingRoutes.test.js",
+      "line": 14,
+      "title": "stops before DB/provider when permission denied",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformBillingRoutes.test.js",
+      "line": 15,
+      "title": "returns completed receipt without provider mutation",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformBillingRoutes.test.js",
+      "line": 16,
+      "title": "replays completed local trial after its new end is already stored",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformBillingRoutes.test.js",
+      "line": 17,
+      "title": "does not mutate provider when reservation conflicts",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformBillingRoutes.test.js",
+      "line": 18,
+      "title": "keeps ambiguous provider failures recoverable rather than marking definitively failed",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformBillingRoutes.test.js",
+      "line": 19,
+      "title": "returns JSON even if recording an error also throws",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformBillingRoutes.test.js",
+      "line": 20,
+      "title": "classifies validation failures as safe failed receipts",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformBillingRoutes.test.js",
+      "line": 21,
+      "title": "does not report success if provider accepted but DB completion failed",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformBillingRoutes.test.js",
+      "line": 22,
+      "title": "rejects reconciliation when current provider account mismatches",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformBillingRoutes.test.js",
+      "line": 23,
+      "title": "rejects reconciliation when desired cancellation is absent",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformManagement.test.js",
+      "line": 12,
+      "title": "rejects anonymous mutation",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformManagement.test.js",
+      "line": 13,
+      "title": "rejects delegated role management before SQL mutation",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformManagement.test.js",
+      "line": 14,
+      "title": "requires current session MFA even when permission exists",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformManagement.test.js",
+      "line": 15,
+      "title": "rejects an old aal1 token even after its live session reached aal2",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformManagement.test.js",
+      "line": 16,
+      "title": "exposes only access metadata for MFA enrollment gate",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformManagement.test.js",
+      "line": 17,
+      "title": "uses verified identity and strips injected authority",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformManagement.test.js",
+      "line": 18,
+      "title": "does not mutate if durable access audit fails",
       "layer": "unit"
     },
     {
       "file": "tests/platformOwner.test.js",
       "line": 18,
-      "title": "fails closed on registry/session query failure",
+      "title": "does not accept organization-owner metadata as platform authority",
       "layer": "unit"
     },
     {
       "file": "tests/platformOwner.test.js",
       "line": 19,
-      "title": "does not cache the platform capability response",
+      "title": "fails closed on registry/session query failure",
       "layer": "unit"
     },
     {
       "file": "tests/platformOwner.test.js",
       "line": 20,
-      "title": "passes only the verified actor and live session to aggregate RPCs",
+      "title": "does not cache the platform capability response",
       "layer": "unit"
     },
     {
       "file": "tests/platformOwner.test.js",
       "line": 21,
+      "title": "passes only the verified actor and live session to aggregate RPCs",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformOwner.test.js",
+      "line": 22,
       "title": "rejects permission revocation between the API guard and RPC",
       "layer": "unit"
     },
     {
       "file": "tests/platformOwner.test.js",
-      "line": 25,
-      "title": "bounds literal search input",
-      "layer": "unit"
-    },
-    {
-      "file": "tests/platformOwner.test.js",
       "line": 26,
-      "title": "does not queue malformed deletion requests",
+      "title": "rejects oversized literal search input",
       "layer": "unit"
     },
     {
       "file": "tests/platformOwner.test.js",
       "line": 27,
-      "title": "queues deletion with the real owner and never processes it before returning the receipt",
+      "title": "does not queue malformed deletion requests",
       "layer": "unit"
     },
     {
       "file": "tests/platformOwner.test.js",
       "line": 28,
-      "title": "retains shared-account anchor protection",
+      "title": "queues deletion with the real owner and never processes it before returning the receipt",
       "layer": "unit"
     },
     {
       "file": "tests/platformOwner.test.js",
       "line": 29,
-      "title": "requires an existing job before dispatching retries",
+      "title": "retains shared-account anchor protection",
       "layer": "unit"
     },
     {
       "file": "tests/platformOwner.test.js",
       "line": 30,
-      "title": "dispatches only the validated organization for a retry",
+      "title": "requires an existing job before dispatching retries",
       "layer": "unit"
     },
     {
       "file": "tests/platformOwner.test.js",
       "line": 31,
+      "title": "dispatches only the validated organization for a retry",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformOwner.test.js",
+      "line": 32,
       "title": "loads invoice pages from the effective billing account",
       "layer": "unit"
     },
@@ -35680,6 +37452,84 @@
       "file": "tests/platformOwnerHome.test.js",
       "line": 8,
       "title": "retains regular login on access service failure",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformOwnerHome.test.js",
+      "line": 10,
+      "title": "recognizes delegated platform access",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformOwnerHome.test.js",
+      "line": 11,
+      "title": "routes recognized staff to the platform MFA gate",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformOwnerHome.test.js",
+      "line": 12,
+      "title": "does not route ordinary forbidden requests to platform",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformProjectsExports.test.js",
+      "line": 12,
+      "title": "passes the verified actor and validates exact-name deletion",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformProjectsExports.test.js",
+      "line": 18,
+      "title": "does not mutate when access denied",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformProjectsExports.test.js",
+      "line": 19,
+      "title": "surfaces protected database dependencies as conflict",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformProjectsExports.test.js",
+      "line": 23,
+      "title": "escapes quotes and keeps rows intact",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformProjectsExports.test.js",
+      "line": 24,
+      "title": "rejects invalid dates, inverted dates and invalid organizations",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformProjectsExports.test.js",
+      "line": 27,
+      "title": "uses inclusive UTC end date and literal search",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformProjectsExports.test.js",
+      "line": 28,
+      "title": "rejects inherited object dataset names",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformProjectsExports.test.js",
+      "line": 29,
+      "title": "fetches all pages past the REST row cap and supplies CSV download headers",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformProjectsExports.test.js",
+      "line": 48,
+      "title": "generates an actual PDF download",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/platformProjectsExports.test.js",
+      "line": 49,
+      "title": "does not silently truncate oversized exports",
       "layer": "unit"
     },
     {
@@ -39008,61 +40858,61 @@
     },
     {
       "file": "tests/roleDashboards.test.js",
-      "line": 245,
+      "line": 246,
       "title": "gives the founder the delivery view the brief asked for",
       "layer": "unit"
     },
     {
       "file": "tests/roleDashboards.test.js",
-      "line": 256,
+      "line": 263,
       "title": "gives a project manager delivery without the people admin",
       "layer": "unit"
     },
     {
       "file": "tests/roleDashboards.test.js",
-      "line": 267,
+      "line": 274,
       "title": "gives HR a staffing dashboard, not a project one",
       "layer": "unit"
     },
     {
       "file": "tests/roleDashboards.test.js",
-      "line": 289,
+      "line": 297,
       "title": "never shows a tile whose screen the viewer cannot open",
       "layer": "unit"
     },
     {
       "file": "tests/roleDashboards.test.js",
-      "line": 299,
+      "line": 307,
       "title": "leaves nobody with an empty KPI row",
       "layer": "unit"
     },
     {
       "file": "tests/roleDashboards.test.js",
-      "line": 307,
+      "line": 315,
       "title": "every catalogue entry names a real section, and a distinct number",
       "layer": "unit"
     },
     {
       "file": "tests/roleDashboards.test.js",
-      "line": 315,
+      "line": 323,
       "title": "gives each of the five the screens their own job is on",
       "layer": "unit"
     },
     {
       "file": "tests/roleDashboards.test.js",
-      "line": 348,
+      "line": 356,
       "title": "gives QA the review queue and the bug counts, not an empty row",
       "layer": "unit"
     },
     {
       "file": "tests/roleDashboards.test.js",
-      "line": 356,
-      "title": "does not disturb a dashboard that was already full",
+      "line": 364,
+      "title": "expands the owner summary while keeping other delivery dashboards focused",
       "layer": "unit"
     },
     {
       "file": "tests/roleDashboards.test.js",
-      "line": 370,
+      "line": 378,
       "title": "still shows a contributor nothing but the staff nav",
       "layer": "unit"
     },
@@ -39424,6 +41274,30 @@
       "file": "tests/routeGuards.test.js",
       "line": 203,
       "title": "change-requests keeps the client branch the staff permission would refuse",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/savedViewReliability.test.js",
+      "line": 9,
+      "title": "surfaces saved-view loading failures instead of showing an empty list",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/savedViewReliability.test.js",
+      "line": 16,
+      "title": "confirms the exact view before reporting a successful update",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/savedViewReliability.test.js",
+      "line": 20,
+      "title": "preserves database errors and prevents context-free writes",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/savedViewReliability.test.js",
+      "line": 25,
+      "title": "translates the persisted board type to the Kanban tab on reload",
       "layer": "unit"
     },
     {
@@ -41245,6 +43119,30 @@
       "layer": "unit"
     },
     {
+      "file": "tests/taskAssigneeViews.test.js",
+      "line": 4,
+      "title": "displays the correct profile when owner and employee UUIDs collide",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/taskAssigneeViews.test.js",
+      "line": 9,
+      "title": "does not count owner work as unassigned or include it in an employee filter",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/taskAssigneeViews.test.js",
+      "line": 16,
+      "title": "preserves legacy saved developer filters without granting them owner meaning",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/taskAssigneeViews.test.js",
+      "line": 20,
+      "title": "keeps workload groups distinct and refuses ambiguous assignments",
+      "layer": "unit"
+    },
+    {
       "file": "tests/taskExtrasRecurring.test.js",
       "line": 39,
       "title": "refuses an unexpected frequency before any save",
@@ -41337,30 +43235,36 @@
     {
       "file": "tests/taskNotificationAccess.test.js",
       "line": 13,
+      "title": "allows an assigned Owner through personal access while respecting profile type",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/taskNotificationAccess.test.js",
+      "line": 18,
       "title": "rejects clients even with a forged owner role",
       "layer": "unit"
     },
     {
       "file": "tests/taskNotificationAccess.test.js",
-      "line": 16,
+      "line": 21,
       "title": "does not confuse an admin profile UUID with an assigned developer UUID",
       "layer": "unit"
     },
     {
       "file": "tests/taskNotificationAccess.test.js",
-      "line": 19,
+      "line": 24,
       "title": "honors explicit reader/reviewer denials and grants",
       "layer": "unit"
     },
     {
       "file": "tests/taskNotificationAccess.test.js",
-      "line": 24,
+      "line": 29,
       "title": "matches the independent database bug-triage read grant",
       "layer": "unit"
     },
     {
       "file": "tests/taskNotificationAccess.test.js",
-      "line": 30,
+      "line": 35,
       "title": "fails closed on unknown permissions or tenant mismatch",
       "layer": "unit"
     },
@@ -42811,6 +44715,24 @@
       "layer": "unit"
     },
     {
+      "file": "tests/typedTaskAssignment.test.js",
+      "line": 6,
+      "title": "retains legacy developer assignments and atomically changes profile type",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/typedTaskAssignment.test.js",
+      "line": 13,
+      "title": "fails closed for ambiguous assignments and cross-profile UUID collisions",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/typedTaskAssignment.test.js",
+      "line": 20,
+      "title": "separates personal update permission from management and organization access",
+      "layer": "unit"
+    },
+    {
       "file": "tests/uiCorrectness.test.js",
       "line": 78,
       "title": "drops every scheme that is not http(s)",
@@ -43639,6 +45561,18 @@
       "layer": "unit"
     },
     {
+      "file": "tests/workspaceServerAuth.test.js",
+      "line": 60,
+      "title": "rejects a suspended organization even with valid membership and JWT",
+      "layer": "unit"
+    },
+    {
+      "file": "tests/workspaceServerAuth.test.js",
+      "line": 66,
+      "title": "rejects an application-revoked session before identity-only workspace actions",
+      "layer": "unit"
+    },
+    {
       "file": "tests/workspaceSessionObserver.test.js",
       "line": 19,
       "title": "keeps a refreshed token with the same typed workspace",
@@ -44308,6 +46242,7 @@
     "database/tests/automation_retention_deletion_integration.sql",
     "database/tests/canonical_productivity_recalculation.sql",
     "database/tests/canonical_productivity_review.sql",
+    "database/tests/client_support_transactions.sql",
     "database/tests/completed_signup_cleanup.sql",
     "database/tests/current_profile_authority.sql",
     "database/tests/delivery_write_lock.sql",
@@ -44349,7 +46284,11 @@
     "database/tests/organization_screenshot_policy.sql",
     "database/tests/permission_fields.sql",
     "database/tests/permission_fields_fixture.sql",
+    "database/tests/platform_billing_suite.sql",
+    "database/tests/platform_management.sql",
     "database/tests/platform_owner_console.sql",
+    "database/tests/platform_projects.sql",
+    "database/tests/platform_suite.sql",
     "database/tests/pm_storage_task_scope.sql",
     "database/tests/preserved_legacy_storage.sql",
     "database/tests/private_workflow_grants.sql",
@@ -44367,6 +46306,7 @@
     "database/tests/quota_fixture.sql",
     "database/tests/review_transaction.sql",
     "database/tests/review_transaction_fixture.sql",
+    "database/tests/saved_view_owner_isolation.sql",
     "database/tests/scalable_report_aggregates.sql",
     "database/tests/screenshot_metadata_pages.sql",
     "database/tests/selected_week_capacity.sql",
@@ -44386,6 +46326,7 @@
     "database/tests/task_authorization_fixture.sql",
     "database/tests/task_collaboration_authority.sql",
     "database/tests/task_comment_integrity.sql",
+    "database/tests/task_dependency_cycle.sql",
     "database/tests/task_notification_privacy.sql",
     "database/tests/task_plan_fixture.sql",
     "database/tests/task_plan_review_transaction.sql",
@@ -44409,6 +46350,8 @@
     "database/tests/typed_monitoring_read_permissions.sql",
     "database/tests/typed_notification.sql",
     "database/tests/typed_notification_fixture.sql",
+    "database/tests/typed_owner_task_assignment.sql",
+    "database/tests/typed_owner_task_assignment_fixture.sql",
     "database/tests/typed_permission.sql",
     "database/tests/typed_permission_fixture.sql",
     "database/tests/typed_project_manager_roster.sql",
@@ -44513,6 +46456,10 @@
     "supabase/migrations/20260920051306_authenticated_organization_workspaces.sql",
     "supabase/migrations/20260920070343_shared_account_billing.sql",
     "supabase/migrations/20260920105039_platform_owner_console.sql",
+    "supabase/migrations/20260920115119_platform_management_access.sql",
+    "supabase/migrations/20260920115133_platform_project_management.sql",
+    "supabase/migrations/20260920115502_platform_billing_suite.sql",
+    "supabase/migrations/20260920174850_client_support_transactions.sql",
     "supabase/migrations/20260921062149_restore_invitation_rpc_grants.sql",
     "supabase/migrations/20260921062832_restore_storage_usage_ledger.sql",
     "supabase/migrations/20260921065334_support_storage_upload_permission_probe.sql",
@@ -44521,6 +46468,10 @@
     "supabase/migrations/20260921081457_pin_legacy_function_search_paths.sql",
     "supabase/migrations/20260921082531_allow_unassigned_internal_task_imports.sql",
     "supabase/migrations/20260921082913_repair_legacy_task_progress_trigger.sql",
-    "supabase/migrations/20260921175040_organization_co_owners.sql"
+    "supabase/migrations/20260921175040_organization_co_owners.sql",
+    "supabase/migrations/20260922053957_typed_owner_task_assignment.sql",
+    "supabase/migrations/20260922061722_preserve_completed_task_assignment.sql",
+    "supabase/migrations/20260925072952_task_dependency_cycle_guard.sql",
+    "supabase/migrations/20260925074540_saved_view_owner_isolation.sql"
   ]
 }

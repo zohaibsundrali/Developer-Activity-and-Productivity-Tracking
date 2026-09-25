@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { memberAssignmentKey, matchesAssigneeFilter } from "@/utils/taskAssignment";
 import { supabase } from "@/utils/supabaseClient";
 import { getOrgId } from "@/utils/orgContext";
 import {
@@ -88,6 +89,7 @@ export default function ProjectViews() {
         let { data, error } = await runQuery(true);
         if (error) ({ data, error } = await runQuery(false));
         if (cancelled) return;
+        if (error) throw error;
         const rows = data || [];
         setProjects(rows);
         setProjectId(rows.length ? rows[0].id : null);
@@ -145,11 +147,7 @@ export default function ProjectViews() {
       if (term && !(t.task_title || "").toLowerCase().includes(term)) return false;
       if (filters.priority !== "all" && (t.priority || "medium") !== filters.priority) return false;
       if (filters.type !== "all" && (t.task_type || "feature") !== filters.type) return false;
-      if (filters.assignee !== "all") {
-        if (filters.assignee === "unassigned") {
-          if (t.developer_id) return false;
-        } else if (t.developer_id !== filters.assignee) return false;
-      }
+      if (!matchesAssigneeFilter(t, filters.assignee)) return false;
       if (filters.sprint !== "all" && String(t.sprint_id || "") !== filters.sprint) return false;
       return true;
     });
@@ -168,14 +166,18 @@ export default function ProjectViews() {
   const handleSaveView = async () => {
     const name = typeof window !== "undefined" ? window.prompt("Save this view as:") : null;
     if (!name || !name.trim()) return;
-    const { error } = await saveView(projectId, {
-      name: name.trim(),
-      view_type: viewType,
-      config: { filters },
-      is_shared: false,
-    });
-    if (error) return showError("Could not save view", error.message || String(error));
-    await reload();
+    try {
+      const { error } = await saveView(projectId, {
+        name: name.trim(),
+        view_type: viewType,
+        config: { filters },
+        is_shared: false,
+      });
+      if (error) throw error;
+      await reload();
+    } catch (error) {
+      showError("Could not save view", error.message || String(error));
+    }
   };
   const [deletingView, setDeletingView] = useState(false);
   const handleDeleteView = async () => {
@@ -190,11 +192,16 @@ export default function ProjectViews() {
     );
     if (!ok) return;
     setDeletingView(true);
-    const { error } = await deleteView(activeViewId);
-    setDeletingView(false);
-    if (error) return showError("Could not delete view", error.message || String(error));
-    setActiveViewId("");
-    await reload();
+    try {
+      const { error } = await deleteView(activeViewId);
+      if (error) throw error;
+      setActiveViewId("");
+      await reload();
+    } catch (error) {
+      showError("Could not delete view", error.message || String(error));
+    } finally {
+      setDeletingView(false);
+    }
   };
 
   const onOpenTask = useCallback((task) => setSelectedTask(task), []);
@@ -432,8 +439,8 @@ export default function ProjectViews() {
                   >
                     <option value="all">All assignees</option>
                     <option value="unassigned">Unassigned</option>
-                    {(employees || []).map((emp) => (
-                      <option key={emp.userId || emp.membershipId} value={emp.userId}>
+                    {(employees || []).filter(memberAssignmentKey).map((emp) => (
+                      <option key={memberAssignmentKey(emp)} value={memberAssignmentKey(emp)}>
                         {emp.name}
                       </option>
                     ))}

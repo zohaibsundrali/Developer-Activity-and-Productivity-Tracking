@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { credentialsFor, requireEnv, skipUnless } from './fixtures/credentials.js';
-import { login } from './fixtures/auth.js';
+import { apiRequest, login } from './fixtures/auth.js';
 import { clickAndResolveSection, expectNoErrorState, navItem, navLabels, openSection, pageHeading } from './fixtures/app.js';
 import { writesAllowed } from './fixtures/env.js';
 import { SECTION_TITLES } from '../src/components/shell/sectionTitles.js';
@@ -74,11 +74,15 @@ test.describe('Admin console — every section renders', () => {
     }
   });
 
-  test('admin: every sidebar entry opens its screen, and Permissions is owner-only', async ({ page }) => {
+  test('legacy admin account: co-owner can open every offered section and owner permissions', async ({ page }) => {
     skipUnless(admin);
     await login(page, admin);
+    const effective = await apiRequest(page, '/api/me/permissions');
+    expect(effective.status).toBe(200);
+    expect(effective.body.role).toBe('owner');
+    expect(effective.body.permissions).toContain('permissions.manage');
     const walked = await walkEverySection(page, 'admin');
-    expect(walked.some((w) => w.startsWith('Permissions →')), 'admin must not see Permissions').toBe(false);
+    expect(walked.some((w) => w.startsWith('Permissions →')), 'verified co-owner must see Permissions').toBe(true);
     for (const must of ['Billing', 'Organization', 'Employees', 'System Health']) {
       expect(walked.some((w) => w.startsWith(`${must} →`)), `admin sidebar must include ${must}`).toBe(true);
     }

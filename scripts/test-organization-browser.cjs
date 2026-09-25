@@ -290,12 +290,13 @@ function session(meta = context) {
       return r.fulfill({ status: 503, json: { error: 'QA signup unavailable. Please retry.' } });
     });
     await anon.locator('#reg-name').fill('Test Owner');
-    await anon.locator('#reg-company').fill('Public Signup Studio');
     await anon.locator('#reg-email').fill('signup@example.test');
     await anon.locator('#reg-password').fill('TestPassword123!');
     await anon.locator('#reg-confirm').fill('TestPassword123!');
+    await anon.getByRole('button', { name: 'Continue to company details', exact: true }).click();
+    await anon.locator('#reg-company').fill('Public Signup Studio');
     await anon.locator('#reg-terms').check();
-    await anon.getByRole('button', { name: 'Create account', exact: true }).click();
+    await anon.getByRole('button', { name: 'Send verification code', exact: true }).click();
     for (let digit = 1; digit <= 6; digit++) {
       await anon.getByRole('textbox', { name: `Verification code, digit ${digit} of 6`, exact: true }).fill(String(digit));
     }

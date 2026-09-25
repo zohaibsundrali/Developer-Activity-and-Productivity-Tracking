@@ -6,11 +6,12 @@ const assert = require('node:assert/strict');
   for (const width of [390,1440]) {
    const page = await browser.newPage({viewport:{width,height:900},reducedMotion:'reduce'});
    const errors=[]; page.on('pageerror',e=>errors.push(e.message));
+   let verificationRequests = 0;
    await page.route('**/*',route=>{
     const url=new URL(route.request().url());
     if (!['localhost','127.0.0.1'].includes(url.hostname)) return route.fulfill({status:200,contentType:'application/json',body:'{}'});
     if(url.pathname==='/api/billing/plans') return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({plans:[]})});
-    if(url.pathname==='/api/send-verification') return route.fulfill({status:200,contentType:'application/json',body:'{"success":true}'});
+    if(url.pathname==='/api/send-verification') { verificationRequests++; return route.fulfill({status:200,contentType:'application/json',body:'{"success":true}'}); }
     return route.continue();
    });
    await page.goto('http://127.0.0.1:3131',{timeout:180000});
@@ -48,9 +49,13 @@ const assert = require('node:assert/strict');
    await expect(page.locator('#reg-email')).toHaveValue('test@example.com');
    await page.getByRole('button',{name:'Continue to company details'}).click();
    await expect(page.locator('#reg-company')).toHaveValue('Example Company');
+   await page.getByRole('button',{name:'Send verification code'}).click();
+   await expect(page.getByText('Please accept the Terms of Service to continue',{exact:true})).toBeVisible();
+   assert.equal(verificationRequests,0,'verification must wait for terms acceptance');
    await page.locator('#reg-terms').click();
    await page.getByRole('button',{name:'Send verification code'}).click();
    await expect(page.getByRole('heading',{name:'Verify your email'})).toBeVisible();
+   assert.equal(verificationRequests,1);
    await page.goto('http://127.0.0.1:3131/contact',{timeout:120000});
    await expect(page.getByRole('button',{name:'Request a demo'})).toBeVisible({timeout:60000});
    assert(await page.evaluate(()=>document.body.scrollWidth<=innerWidth),'contact overflow');

@@ -2,7 +2,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),crypto=require(
 const {api,session,svc}=require('./live-context.cjs');
 if(process.env.E2E_ALLOW_WRITES!=='1')throw Error('E2E_ALLOW_WRITES=1 required');
 const name='deepqa-github-'+Date.now(),results=[];let project,step='setup';
-const save=()=>fs.writeFileSync('artifacts/deep-qa-20260921/github-lifecycle.json',JSON.stringify({name,results,projectId:project?.id},null,2),{mode:0o600});
+const save=()=>fs.writeFileSync(`${process.env.QA_ARTIFACT_DIR || 'artifacts/deep-qa-20260921'}/github-lifecycle.json`,JSON.stringify({name,results,projectId:project?.id},null,2),{mode:0o600});
 async function call(role,method,path,body,status=200){const r=await api(role,method,path,body);assert.equal(r.status,status,`${body?.action||method} ${path}: ${JSON.stringify(r.body)}`);return r.body;}
 function pass(){results.push({name:step,status:'PASS'});console.log('PASS',step);save();}
 (async()=>{
@@ -19,8 +19,8 @@ function pass(){results.push({name:step,status:'PASS'});console.log('PASS',step)
  await call('owner','POST',base,{action:'unlink',version:0},409);pass();
  step='preview and import public issue as an actual internal task';
  // GitHub is read-only: all imported data is written only to this new QA project.
- const response=await fetch('https://api.github.com/repos/supabase/supabase/issues?state=open&per_page=10',{headers:{Accept:'application/vnd.github+json'},signal:AbortSignal.timeout(20000)});assert.equal(response.status,200);
- const issue=(await response.json()).find(x=>!x.pull_request);assert(issue,'A public issue is required');
+ const response=await fetch('https://api.github.com/search/issues?q=repo%3Asupabase%2Fsupabase%20is%3Aissue%20is%3Aopen&per_page=1',{headers:{Accept:'application/vnd.github+json'},signal:AbortSignal.timeout(20000)});assert.equal(response.status,200);
+ const issue=(await response.json()).items?.find(x=>!x.pull_request);assert(issue,'A public issue is required');
  const preview=await call('owner','POST',base+'/issues',{action:'preview',number:issue.number,version:1});
  const request={action:'import',number:issue.number,version:1,fingerprint:preview.fingerprint,start:date,end:date};
  const imported=await call('owner','POST',base+'/issues',request);assert(imported.task.id);assert.equal(imported.unchanged,false);

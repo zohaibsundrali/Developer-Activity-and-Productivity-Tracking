@@ -11,6 +11,24 @@ export function taskAssignmentKey(task) {
   return assignee ? `${assignee.userType}:${assignee.userId}` : '';
 }
 
+export function memberAssignmentKey(member) {
+  return member?.userId && ['admin', 'developer'].includes(member.userType)
+    ? `${member.userType}:${member.userId}` : '';
+}
+
+export function taskAssigneeMember(task, members) {
+  const key = taskAssignmentKey(task);
+  return key ? (members || []).find(member => memberAssignmentKey(member) === key) || null : null;
+}
+
+/** Old saved filters contain a developer UUID; new filters preserve profile type. */
+export function matchesAssigneeFilter(task, filter) {
+  if (!filter || filter === 'all') return true;
+  if (filter === 'unassigned') return !task?.developer_id && !task?.assignee_admin_id;
+  const key = filter.includes(':') ? filter : `developer:${filter}`;
+  return taskAssignmentKey(task) === key;
+}
+
 export function isTaskAssignee(task, context) {
   const assignee = taskAssignee(task);
   const id = context?.appUserId !== undefined ? context.appUserId : context?.userId;

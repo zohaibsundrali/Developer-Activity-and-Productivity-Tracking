@@ -12,10 +12,10 @@ for (const role of ['owner', 'orgBOwner']) {
     const credentials = credentialsFor(role);
     skipUnless(credentials);
     await page.goto('/login');
-    await page.getByRole('button', { name: 'Owner / Platform Admin', exact: true }).click();
-    await page.getByPlaceholder('you@example.com').fill(credentials.email);
-    await page.getByPlaceholder('Enter your password').fill(credentials.password);
-    await page.getByRole('button', { name: /^Sign in as/ }).click();
+    // The verified account now determines its portal; the role picker was removed.
+    await page.getByLabel(/^Email address/).fill(credentials.email);
+    await page.getByLabel(/^Password/).fill(credentials.password);
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(page).toHaveURL(/\/organizations(?:\?|$)/);
     const workspace = page.getByRole('button', { name: /^Open .* workspace$/ }).first();
     await expect(workspace).toBeVisible();

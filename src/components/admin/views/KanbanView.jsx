@@ -1,5 +1,7 @@
 "use client";
 
+import { taskAssigneeMember } from "@/utils/taskAssignment";
+
 import { useCallback, useMemo, useState } from "react";
 import { changeTaskStatus, BOARD_COLUMNS, STATUS_META, normalizeStatus } from "@/utils/pmData";
 import { showError } from "@/utils/alerts";
@@ -13,11 +15,7 @@ export default function KanbanView({ tasks, employees, onOpenTask, onChanged }) 
   const [dragOverCol, setDragOverCol] = useState(null);
 
   const assigneeName = useCallback(
-    (developerId) => {
-      if (!developerId) return null;
-      const match = (employees || []).find((e) => e.userId === developerId);
-      return match?.name || null;
-    },
+    (task) => taskAssigneeMember(task, employees)?.name || null,
     [employees]
   );
 
@@ -94,7 +92,7 @@ export default function KanbanView({ tasks, employees, onOpenTask, onChanged }) 
         <TaskCard
           key={task.id}
           task={task}
-          assigneeName={assigneeName(task.developer_id)}
+          assigneeName={assigneeName(task)}
           onOpen={onOpenTask}
           onDragStart={handleDragStart}
           onDragEnd={() => setDragOverCol(null)}

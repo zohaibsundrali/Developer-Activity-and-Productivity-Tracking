@@ -799,20 +799,31 @@ export function computeBurndown(sprint, tasks) {
 // ---- Saved views (saved_views, 016) -------------------------------------
 export async function loadSavedViews(projectId) {
   const orgId = getOrgId();
+  if (!orgId) throw new Error("Organization context is required");
   let q = supabase.from("saved_views").select("*").eq("organization_id", orgId).order("created_at");
   if (projectId) q = q.eq("project_id", projectId);
-  const { data } = await q;
-  return data || [];
+  const { data, error } = await q;
+  if (error) throw error;
+  // The persisted 016 schema calls the Kanban view "board".
+  return (data || []).map(view => ({ ...view, view_type: view.view_type === "board" ? "kanban" : view.view_type }));
 }
 export async function saveView(projectId, { id, name, view_type = "kanban", config = {}, is_shared = false }) {
   const orgId = getOrgId();
   const ctx = getOrgContext();
+  if (!orgId || !ctx?.userId) return { error: new Error("Your organization and account could not be verified. Please sign in again.") };
+  if (typeof name !== "string" || !name.trim()) return { error: new Error("A view name is required.") };
+  if (!VIEW_TYPES.includes(view_type)) return { error: new Error("Choose a supported view type.") };
+  const storedViewType = view_type === "kanban" ? "board" : view_type;
   if (id) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("saved_views")
-      .update({ name, view_type, config, is_shared })
-      .eq("id", id);
-    return { error };
+      .update({ name: name.trim(), view_type: storedViewType, config, is_shared })
+      .eq("organization_id", orgId)
+      .eq("id", id)
+      .select("id");
+    if (error) return { error };
+    if (data?.length !== 1 || data[0].id !== id) return { error: new Error("The view was not saved. Refresh and check your access.") };
+    return { view: data[0], error: null };
   }
   const { data, error } = await supabase
     .from("saved_views")
@@ -820,8 +831,8 @@ export async function saveView(projectId, { id, name, view_type = "kanban", conf
       organization_id: orgId,
       project_id: projectId,
       user_id: ctx?.userId || null,
-      name,
-      view_type,
+      name: name.trim(),
+      view_type: storedViewType,
       config,
       is_shared,
     })
@@ -830,8 +841,12 @@ export async function saveView(projectId, { id, name, view_type = "kanban", conf
   return { view: data, error };
 }
 export async function deleteView(id) {
-  const { error } = await supabase.from("saved_views").delete().eq("id", id);
-  return { error };
+  const orgId = getOrgId();
+  if (!orgId) return { error: new Error("Organization context is required") };
+  const { data, error } = await supabase.from("saved_views").delete().eq("organization_id", orgId).eq("id", id).select("id");
+  if (error) return { error };
+  if (data?.length !== 1 || data[0].id !== id) return { error: new Error("The view was not deleted. Refresh and check your access.") };
+  return { error: null };
 }
 
 // ---- Activity feed (pm_activity, 017) -----------------------------------

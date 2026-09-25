@@ -32,4 +32,4 @@ const results=[];
   console.log(role,results.filter(r=>r.role===role&&!r.pass).length?'FAIL':'PASS');
  }
  for(let i=0;i<ROLES.length;i+=3)await Promise.all(ROLES.slice(i,i+3).map(probe));
-})().catch(e=>results.push({pass:false,error:e.message})).finally(()=>{fs.writeFileSync('artifacts/deep-qa-20260921/role-api-matrix.json',JSON.stringify(results,null,2),{mode:0o600});const failed=results.filter(r=>!r.pass);console.log(JSON.stringify({checks:results.length,failed:failed.length,failures:failed}));if(failed.length)process.exitCode=1;});
+})().catch(e=>results.push({pass:false,error:e.message})).finally(()=>{fs.writeFileSync(`${process.env.QA_ARTIFACT_DIR || 'artifacts/deep-qa-20260921'}/role-api-matrix.json`,JSON.stringify(results,null,2),{mode:0o600});const failed=results.filter(r=>!r.pass);console.log(JSON.stringify({checks:results.length,failed:failed.length,failures:failed}));if(failed.length)process.exitCode=1;});
