@@ -107,17 +107,17 @@ describe("full name validation on the create-organization form", () => {
 describe("the terms box stops the submit in the browser", () => {
   it("records a terms problem when the box is unticked", () => {
     expect(REGISTRATION_CODE).toMatch(
-      /if \(!termsAccepted\) \{\s*newErrors\.terms = "Please accept the Terms of Service to continue";/
+      /if \(!accountOnly && !termsAccepted\) \{\s*newErrors\.terms = "Please accept the Terms of Service to continue";/
     );
   });
 
   it("returns before anything is sent when there is any problem", () => {
     // No verification email, no Supabase read, no signup POST.
     expect(REGISTRATION_CODE).toMatch(
-      /const problems = validateForm\(\);\s*if \(Object\.keys\(problems\)\.length > 0\) \{[\s\S]{0,160}?return;\s*\}/
+      /const problems = validateForm\(detailsPart === "account"\);\s*if \(Object\.keys\(problems\)\.length > 0\) \{[\s\S]{0,160}?return;\s*\}/
     );
     const submitBody = REGISTRATION_CODE.slice(REGISTRATION_CODE.indexOf("const handleRegister"));
-    const guardAt = submitBody.indexOf("const problems = validateForm()");
+    const guardAt = submitBody.indexOf('const problems = validateForm(detailsPart === "account")');
     expect(guardAt).toBeGreaterThanOrEqual(0);
     expect(submitBody.indexOf("sendVerificationCode(formData.email)")).toBeGreaterThan(guardAt);
   });

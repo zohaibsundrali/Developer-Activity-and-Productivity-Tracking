@@ -72,6 +72,8 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
+  // Keep audit builds separate from a production server already under test.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   async headers() {
     return [
       {

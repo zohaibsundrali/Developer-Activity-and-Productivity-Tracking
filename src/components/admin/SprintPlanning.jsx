@@ -1,5 +1,7 @@
 "use client";
 
+import { taskAssigneeMember } from "@/utils/taskAssignment";
+
 import { useMemo, useState, useEffect, useRef } from "react";
 import {
   saveSprint,
@@ -143,8 +145,8 @@ function TaskRow({
   const [points, setPoints] = useState(task.story_points ?? '');
   useEffect(() => { setPoints(task.story_points ?? ''); }, [task.id, task.story_points]);
   const assignee = useMemo(
-    () => employees.find((e) => e.userType === "developer" && e.userId === task.developer_id),
-    [employees, task.developer_id]
+    () => taskAssigneeMember(task, employees),
+    [employees, task]
   );
 
   return (

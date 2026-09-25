@@ -1,5 +1,7 @@
 "use client";
 
+import { memberAssignmentKey, taskAssignmentKey, taskAssigneeMember } from "@/utils/taskAssignment";
+
 import { useMemo, useState } from "react";
 import { BOARD_COLUMNS, STATUS_META, normalizeStatus } from "@/utils/pmData";
 import { Badge } from "@/components/ui";
@@ -144,7 +146,7 @@ function buildGroups(groupBy, tasks, { sprints, epics, employees }) {
   }[groupBy];
 
   const nameFor = new Map(
-    (config.source || []).map((row) => [String(row[config.idKey]), row[config.nameKey]])
+    (config.source || []).map((row) => [groupBy === "assignee" ? memberAssignmentKey(row) : String(row[config.idKey]), row[config.nameKey]])
   );
 
   const buckets = new Map();
@@ -158,7 +160,7 @@ function buildGroups(groupBy, tasks, { sprints, epics, employees }) {
   };
 
   for (const t of list) {
-    const raw = t[config.field];
+    const raw = groupBy === "assignee" ? taskAssignmentKey(t) : t[config.field];
     if (raw == null || raw === "") {
       push("__none__", config.nullName, t);
     } else {
@@ -177,10 +179,7 @@ function buildGroups(groupBy, tasks, { sprints, epics, employees }) {
 export default function ListView({ tasks, employees, sprints, epics, onOpenTask }) {
   const [groupBy, setGroupBy] = useState("status");
 
-  const assigneeName = useMemo(() => {
-    const map = new Map((employees || []).map((e) => [e.userId, e.name]));
-    return (developerId) => (developerId ? map.get(developerId) || null : null);
-  }, [employees]);
+  const assigneeName = useMemo(() => (task) => taskAssigneeMember(task, employees)?.name || null, [employees]);
 
   const groups = useMemo(
     () => buildGroups(groupBy, tasks, { sprints, epics, employees }),
@@ -244,7 +243,7 @@ export default function ListView({ tasks, employees, sprints, epics, onOpenTask 
                 <TaskRow
                   key={task.id}
                   task={task}
-                  assigneeName={assigneeName(task.developer_id)}
+                  assigneeName={assigneeName(task)}
                   onOpenTask={onOpenTask}
                 />
               ))}

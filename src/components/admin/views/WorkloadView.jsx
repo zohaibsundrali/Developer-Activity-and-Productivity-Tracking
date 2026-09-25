@@ -1,5 +1,7 @@
 "use client";
 
+import { memberAssignmentKey, taskAssignmentKey } from "@/utils/taskAssignment";
+
 import { useMemo } from "react";
 import { STATUS_META, normalizeStatus } from "@/utils/pmData";
 import EChart from "@/components/charts/EChart";
@@ -32,9 +34,9 @@ const UNASSIGNED_KEY = "__unassigned__";
 export default function WorkloadView({ tasks, employees }) {
   const { rows, totals } = useMemo(() => {
     const nameById = new Map();
-    for (const e of employees || []) nameById.set(e.userId, e.name);
+    for (const e of employees || []) nameById.set(memberAssignmentKey(e), e.name);
 
-    // Group tasks by developer_id (null -> Unassigned bucket).
+    // Profile type and ID keep owner and employee assignments distinct.
     const buckets = new Map();
     const ensure = (key, name) => {
       if (!buckets.has(key)) {
@@ -57,8 +59,8 @@ export default function WorkloadView({ tasks, employees }) {
     };
 
     for (const t of tasks || []) {
-      const key = t.developer_id || UNASSIGNED_KEY;
-      const name = t.developer_id ? nameById.get(t.developer_id) || "Unknown" : "Unassigned";
+      const key = taskAssignmentKey(t) || UNASSIGNED_KEY;
+      const name = key !== UNASSIGNED_KEY ? nameById.get(key) || "Unknown" : "Unassigned";
       const b = ensure(key, name);
       const col = normalizeStatus(t.status);
       b.counts[col] += 1;
@@ -68,7 +70,7 @@ export default function WorkloadView({ tasks, employees }) {
 
       totalsAcc.tasks += 1;
       totalsAcc.points += pts;
-      if (t.developer_id) totalsAcc.assigned.add(t.developer_id);
+      if (key !== UNASSIGNED_KEY) totalsAcc.assigned.add(key);
       else totalsAcc.unassigned += 1;
     }
 

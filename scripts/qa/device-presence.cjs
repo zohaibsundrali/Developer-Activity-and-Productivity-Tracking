@@ -25,5 +25,5 @@ function pass(){results.push({name:step,status:'PASS'});console.log('PASS',step)
  await rpc(staff,'heartbeat_tracker_presence',{...pulse,p_sequence:2},'42501');await rpc(staff,'enroll_tracker_device',{p_name:'QA replay',p_platform:'qa-browser'},'42501');pass();
 })().catch(e=>{results.push({name:step,status:'FAIL',error:e.message});console.log('FAIL',step,e.message)}).finally(async()=>{
  if(device){const r=await svc.from('tracker_devices').delete().eq('id',device).eq('organization_id',staff.org);if(r.error)results.push({name:'cleanup only QA device',status:'FAIL',error:r.error.message});else results.push({name:'cleanup only QA device',status:'PASS'});}
- fs.writeFileSync('artifacts/deep-qa-20260921/device-presence.json',JSON.stringify({results,deviceId:device},null,2),{mode:0o600});if(results.some(x=>x.status==='FAIL'))process.exitCode=1;
+ fs.writeFileSync(`${process.env.QA_ARTIFACT_DIR || 'artifacts/deep-qa-20260921'}/device-presence.json`,JSON.stringify({results,deviceId:device},null,2),{mode:0o600});if(results.some(x=>x.status==='FAIL'))process.exitCode=1;
 });

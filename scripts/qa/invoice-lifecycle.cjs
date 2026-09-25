@@ -2,7 +2,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),crypto=require(
 const {api,session,svc,row}=require('./live-context.cjs');
 if(process.env.E2E_ALLOW_WRITES!=='1')throw Error('E2E_ALLOW_WRITES=1 required');
 const name='deepqa-invoice-'+Date.now(),results=[],records=[];let sheet,invoice,project,step='setup';
-const save=()=>fs.writeFileSync('artifacts/deep-qa-20260921/invoice-lifecycle.json',JSON.stringify({name,results,records},null,2),{mode:0o600});
+const save=()=>fs.writeFileSync(`${process.env.QA_ARTIFACT_DIR || 'artifacts/deep-qa-20260921'}/invoice-lifecycle.json`,JSON.stringify({name,results,records},null,2),{mode:0o600});
 async function call(role,method,path,body,status=200){const r=await api(role,method,path,body);assert.equal(r.status,status,JSON.stringify(r.body));return r.body;}
 async function insert(client,table,body){const r=await client.from(table).insert(body).select().single();assert.equal(r.error,null,JSON.stringify(r.error));records.push({table,id:r.data.id,org:body.organization_id});save();return r.data;}
 function pass(){results.push({name:step,status:'PASS'});console.log('PASS',step);save();}

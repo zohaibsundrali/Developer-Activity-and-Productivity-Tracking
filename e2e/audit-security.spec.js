@@ -8,6 +8,8 @@ const publicRoutes = new Set([
   '/api/billing/plans', '/api/billing/webhook', '/api/csp-report',
   // Android needs the public Supabase configuration before it can sign in.
   '/api/mobile/config',
+  // Public demo form validates input; it does not require a workspace session.
+  '/api/contact',
 ]);
 const root = path.resolve('src/app/api');
 function routes(dir = root) {
@@ -27,10 +29,14 @@ test('anonymous direct requests cannot use protected API handlers', async ({ req
   test.setTimeout(180_000);
   const results = [];
   for (const route of routes()) {
-    const probeUrl = route.url === '/api/developer-gantt' ? `${route.url}?projectId=00000000-0000-0000-0000-000000000001` : route.url;
+    // Supply valid routing inputs so validation cannot mask the auth boundary.
+    const probeUrl = route.url === '/api/developer-gantt' ? `${route.url}?projectId=00000000-0000-0000-0000-000000000001`
+      : route.url === '/api/platform/export' ? `${route.url}?dataset=organizations` : route.url;
+    const data = route.url === '/api/platform/management' && route.method === 'POST'
+      ? { action: 'member.sessions', reason: 'Anonymous access audit', authUserId: '00000000-0000-0000-0000-000000000001' } : {};
     const response = await request.fetch(probeUrl, {
       method: route.method,
-      ...(route.method === 'GET' ? {} : { data: {} }),
+      ...(route.method === 'GET' ? {} : { data }),
     });
     results.push({ ...route, status: response.status() });
   }

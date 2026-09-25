@@ -1,5 +1,7 @@
 "use client";
 
+import { memberAssignmentKey, taskAssignmentKey } from "@/utils/taskAssignment";
+
 import { useMemo, useState } from "react";
 import { STATUS_META, normalizeStatus } from "@/utils/pmData";
 import { Badge, DataTable } from "@/components/ui";
@@ -120,7 +122,7 @@ export default function TableView({ tasks, employees, sprints, epics, onOpenTask
 
   const empById = useMemo(() => {
     const m = new Map();
-    for (const e of employees || []) m.set(e.userId, e.name);
+    for (const e of employees || []) m.set(memberAssignmentKey(e), e.name);
     return m;
   }, [employees]);
 
@@ -143,7 +145,7 @@ export default function TableView({ tasks, employees, sprints, epics, onOpenTask
       task: t,
       title: t.task_title || "Untitled task",
       type: t.task_type || null,
-      assignee: t.developer_id ? empById.get(t.developer_id) || null : null,
+      assignee: empById.get(taskAssignmentKey(t)) || null,
       points: t.story_points == null ? null : Number(t.story_points),
       sprint: t.sprint_id != null ? sprintById.get(String(t.sprint_id)) || "—" : "—",
       epic: t.epic_id != null ? epicById.get(String(t.epic_id)) || "—" : "—",
@@ -171,7 +173,7 @@ export default function TableView({ tasks, employees, sprints, epics, onOpenTask
       case "priority":
         return PRIORITY_RANK[t.priority] ?? 0;
       case "assignee":
-        return t.developer_id ? empById.get(t.developer_id) || "" : "Unassigned";
+        return empById.get(taskAssignmentKey(t)) || "Unassigned";
       case "points":
         return t.story_points == null ? null : Number(t.story_points);
       case "due": {

@@ -2,7 +2,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),crypto=require(
 const {api,session,svc,env,row}=require('./live-context.cjs');
 if(process.env.E2E_ALLOW_WRITES!=='1')throw Error('E2E_ALLOW_WRITES=1 required');
 const run='deepqa-time-'+Date.now(),results=[],records=[],reopen=[];
-const out='artifacts/deep-qa-20260921/time-workflows.json';
+const out=`${process.env.QA_ARTIFACT_DIR || 'artifacts/deep-qa-20260921'}/time-workflows.json`;
 function save(){fs.writeFileSync(out,JSON.stringify({run,results,records},null,2),{mode:0o600});}
 async function check(name,fn){try{await fn();results.push({name,status:'PASS'});console.log('PASS',name)}catch(e){results.push({name,status:'FAIL',error:e.message});console.log('FAIL',name,e.message)}save();}
 async function call(role,method,path,body,status=200){const r=await api(role,method,path,body);assert.equal(r.status,status,`${method} ${path}: ${JSON.stringify(r.body)}`);return r.body;}

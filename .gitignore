@@ -15,6 +15,7 @@
 
 # next.js
 /.next/
+/.next-*/
 /out/
 
 # production
@@ -62,6 +63,7 @@ next-env.d.ts
 # Authenticated QA traces and reports can contain browser session material.
 /artifacts/qa-*/
 /artifacts/deep-qa-*/
+/artifacts/audit-*/
 
 # Supabase CLI local metadata
 /supabase/.temp/

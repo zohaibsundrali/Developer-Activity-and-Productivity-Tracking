@@ -54,8 +54,9 @@ test.describe('Developer', () => {
     });
   });
 
-  test('assigned work: the dashboard summarises the projects assigned to them', async ({ page }) => {
-    await expect(page.getByText(/^Total projects$/i)).toBeVisible();
+  test('assigned work: the dashboard summarises their work and opens assigned projects', async ({ page }) => {
+    await expect(page.getByText('Open tasks', { exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Work at a glance' })).toBeVisible();
 
     await openSection(page, 'My Projects', 'My Projects');
     // Either projects are listed, or the empty state says so — a silent blank

@@ -1,5 +1,7 @@
 "use client";
 
+import { taskAssigneeMember } from "@/utils/taskAssignment";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   changeTaskStatus,
@@ -123,11 +125,7 @@ export default function SprintBoard({
 
   /* ---- lookups -------------------------------------------------------- */
   const assigneeName = useCallback(
-    (developerId) => {
-      if (!developerId) return null;
-      const match = (employees || []).find((e) => e.userId === developerId);
-      return match?.name || null;
-    },
+    (task) => taskAssigneeMember(task, employees)?.name || null,
     [employees]
   );
 
@@ -310,7 +308,7 @@ export default function SprintBoard({
         <TaskCard
           key={task.id}
           task={task}
-          assigneeName={assigneeName(task.developer_id)}
+          assigneeName={assigneeName(task)}
           onDragStart={handleDragStart}
           onDragEnd={() => setDragOverCol(null)}
         />
